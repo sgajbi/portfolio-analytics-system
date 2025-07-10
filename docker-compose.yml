@@ -1,5 +1,5 @@
 
-services: 
+services:
   # Kafka (with Zookeeper)
   zookeeper:
     image: confluentinc/cp-zookeeper:7.5.0
@@ -67,7 +67,24 @@ services:
       retries: 5
       start_period: 10s
 
-
+  # Ingestion Service
+  ingestion-service:
+    build:
+      context: .
+      dockerfile: ./services/ingestion-service/Dockerfile
+    hostname: ingestion-service
+    container_name: ingestion-service
+    ports:
+      - "8000:8000" 
+    environment:
+      PYTHONPATH: "/app"
+    depends_on:
+      - kafka
+      - postgres
+      - mongodb
+    volumes:
+      - ./services/ingestion-service/app:/app/app 
+      - ./common:/app/common
 volumes:
   postgres_data:
   mongo_data:
