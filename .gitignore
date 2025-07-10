@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python/
+env/
+venv/
+*.egg-info/
+.pytest_cache/
+.coverage
+
+# Docker
+*.env
+.dockerignore
+!docker-compose.yml
+
+# Databases
+*.sqlite3
+*.db
+data/ # For local dev data outside of volumes
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.bak
+*~
+.DS_Store
+
+# Logs
+logs/
+*.log
