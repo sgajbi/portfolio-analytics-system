@@ -1,3 +1,4 @@
+# docker-compose.yml (updated)
 
 services:
   # Kafka (with Zookeeper)
@@ -50,7 +51,7 @@ services:
 
   # MongoDB Database
   mongodb:
-    image: mongo:7.0 
+    image: mongo:7.0 # Changed to a more general tag for MongoDB 7.0
     hostname: mongodb
     container_name: mongodb
     ports:
@@ -75,16 +76,34 @@ services:
     hostname: ingestion-service
     container_name: ingestion-service
     ports:
-      - "8000:8000" 
+      - "8000:8000" # Expose FastAPI port
     environment:
-      PYTHONPATH: "/app"
-    depends_on:
-      - kafka
-      - postgres
-      - mongodb
+      PYTHONPATH: "/app" # Add /app to PYTHONPATH for common module import
+      # Override Alembic's sqlalchemy.url for Docker context
+      SQLALCHEMY_DATABASE_URL: "postgresql://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD:-password}@postgres:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-portfolio_db}"
+    depends_on: # THIS SECTION IS CHANGED
+      postgres:
+        condition: service_healthy
+      kafka: # Changed to mapping
+        condition: service_started # Kafka healthcheck can be complex, `service_started` is safer initially.
+                                 # Or if you implement a specific Kafka healthcheck, change to service_healthy
+      mongodb: # Changed to mapping
+        condition: service_healthy
     volumes:
-      - ./services/ingestion-service/app:/app/app 
-      - ./common:/app/common
+      - ./services/ingestion-service/app:/app/app # Mount for live code changes during dev
+      - ./common:/app/common # Mount common module for live changes
+      - ./alembic:/app/alembic # Mount alembic directory for migrations
+      - ./alembic.ini:/app/alembic.ini # Mount alembic config
+
+    # Command to run Alembic migrations then start Uvicorn
+    # In production, migrations are usually a separate step.
+    # For dev, running on startup is convenient.
+    command: >
+      bash -c "
+        alembic -c /app/alembic.ini upgrade head &&
+        uvicorn app.main:app --host 0.0.0.0 --port 8000
+      "
+
 volumes:
   postgres_data:
   mongo_data:

@@ -1,8 +1,12 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends, status
 from contextlib import asynccontextmanager
 import logging
+from sqlalchemy.orm import Session
+from sqlalchemy import text # For testing DB connection
 
 from app.models.transaction import Transaction
+from app.database import engine, SessionLocal, Base, get_db # Import Base and get_db
+from app import crud # Import crud operations
 from common.config import POSTGRES_URL
 
 logging.basicConfig(level=logging.INFO)
@@ -13,8 +17,18 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     # Startup event
     logger.info("Ingestion Service starting up...")
-    # Add any startup logic here (e.g., DB connections, Kafka consumer setup)
-    logger.info(f"Using Postgres URL: {POSTGRES_URL}") # Just for demonstration
+    try:
+        # Test database connection on startup
+        with engine.connect() as connection:
+            connection.execute(text("SELECT 1"))
+        logger.info("Successfully connected to PostgreSQL database.")
+    except Exception as e:
+        logger.error(f"Failed to connect to PostgreSQL database: {e}")
+        # Depending on criticality, you might want to exit here or implement retry logic
+
+    # No need to call Base.metadata.create_all(bind=engine) here if using Alembic for migrations
+    # Base.metadata.create_all(bind=engine) # This line should typically be managed by Alembic
+
     yield
     # Shutdown event
     logger.info("Ingestion Service shutting down...")
@@ -31,11 +45,16 @@ app = FastAPI(
 async def health_check():
     return {"status": "ok", "service": "Ingestion Service"}
 
-@app.post("/ingest/transaction")
-async def ingest_transaction(transaction: Transaction):
+@app.post("/ingest/transaction", status_code=status.HTTP_201_CREATED)
+async def ingest_transaction(
+    transaction: Transaction,
+    db: Session = Depends(get_db) # Inject database session
+):
     logger.info(f"Received transaction: {transaction.transaction_id} for portfolio {transaction.portfolio_id}")
-    # In future steps, this is where we'd add logic to:
-    # 1. Validate data further
-    # 2. Store in database
-    # 3. Publish event to Kafka
-    return {"message": "Transaction received (not yet processed)", "transaction_id": transaction.transaction_id}
+    try:
+        db_transaction = crud.create_transaction(db=db, transaction=transaction)
+        logger.info(f"Transaction {db_transaction.transaction_id} saved to DB.")
+        return {"message": "Transaction ingested successfully", "transaction_id": db_transaction.transaction_id}
+    except Exception as e:
+        logger.error(f"Error ingesting transaction {transaction.transaction_id}: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to ingest transaction")
