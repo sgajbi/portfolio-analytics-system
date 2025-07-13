@@ -101,8 +101,6 @@ services:
         condition: service_healthy
       kafka:
         condition: service_healthy
-      mongodb:
-        condition: service_healthy
     volumes:
       - ./services/ingestion-service/app:/app/app # Mount for live code changes during dev
       - ./common:/app/common # Mount common module for live changes

@@ -7,8 +7,8 @@ from sqlalchemy import text # For testing DB connection
 from app.models.transaction import Transaction
 from app.database import engine, SessionLocal, Base, get_db
 from app import crud
-# from common.config import POSTGRES_URL # This import is not used in the current file, can be removed if not needed elsewhere
-from common.kafka_utils import get_kafka_producer # <--- Corrected Import
+from common.config import KAFKA_RAW_TRANSACTIONS_TOPIC # <--- New Import
+from common.kafka_utils import get_kafka_producer
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -70,30 +70,23 @@ async def ingest_transaction(
     logger.info(f"Received transaction: {transaction.transaction_id} for portfolio {transaction.portfolio_id}")
     try:
         # 1. Save to PostgreSQL
-        # Pydantic models can usually be passed directly to ORM create methods,
-        # or you might convert to dict if your crud.create_transaction expects a dict.
-        # Ensure crud.create_transaction correctly handles Pydantic model or its dict representation
         db_transaction = crud.create_transaction(db=db, transaction=transaction)
         logger.info(f"Transaction {db_transaction.transaction_id} saved to DB.")
 
         # 2. Publish to Kafka
         kafka_producer = get_kafka_producer()
-        # Define the Kafka topic for raw transactions
-        RAW_TRANSACTIONS_TOPIC = "raw_transactions" # <--- CONSIDER MOVING TO common/config.py FOR REUSABILITY
 
         # Convert Pydantic model to a JSON string using .model_dump_json()
         # This handles date and datetime serialization to ISO 8601 format.
         transaction_json_string = transaction.model_dump_json()
 
         # Use transaction_id as key for consistent partitioning
-        # The 'value' sent to Kafka should be bytes, so if publish_message doesn't
-        # handle encoding, you might need to add .encode('utf-8') here.
         kafka_producer.publish_message(
-            topic=RAW_TRANSACTIONS_TOPIC,
-            key=transaction.transaction_id, # Kafka keys are typically bytes as well
-            value=transaction_json_string # Pass the JSON string here
+            topic=KAFKA_RAW_TRANSACTIONS_TOPIC, # <--- Updated to use config variable
+            key=transaction.transaction_id,
+            value=transaction_json_string
         )
-        logger.info(f"Transaction {transaction.transaction_id} published to Kafka topic '{RAW_TRANSACTIONS_TOPIC}'.")
+        logger.info(f"Transaction {transaction.transaction_id} published to Kafka topic '{KAFKA_RAW_TRANSACTIONS_TOPIC}'.")
 
         return {"message": "Transaction ingested successfully", "transaction_id": db_transaction.transaction_id}
     except Exception as e:
