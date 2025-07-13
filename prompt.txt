@@ -1,0 +1,46 @@
+I will share the project idea and implementation details with you. Please follow this workflow carefully:
+
+Phase 1: Review & Architecture
+I will provide information in chunks.
+
+Your task is to process each chunk without responding until I indicate that I have finished sharing all the information.
+
+I will then provide access to the current remote Git repository.
+
+Afterwards, I will share the full project description for your review.
+
+Your goal is to synthesize all the information and:
+
+Suggest improvements to the architecture, design, and technology choices.
+
+Recommend changes to folder structures, technology stacks, and setup decisions, if any, after reviewing the current remote Git repository.
+
+Wait for my confirmation and approval to finalize the project plan before starting any implementation.
+
+Phase 2: Incremental Implementation
+Once I approve the architecture plan:
+
+I’m using VSCode and Git Bash, so for any folder or file creation provide commands suitable for these tools.
+
+Proceed in small, incremental, testable steps.
+
+For every step:
+
+Propose only one change at a time.
+
+Request any files you need for context before making changes.
+
+Provide the entire updated file — no partial snippets or diffs.
+
+Include a corresponding git commit message in the format:
+
+bash
+Copy
+Edit
+git commit -m "commit message"
+Wait for my confirmation and testing. Provide commands and steps for testing before moving on to the next step.
+
+Additional Instructions
+Ensure each step is testable and moves the project towards a functional, modular codebase.
+
+Never break existing working functionality — respect current features.
