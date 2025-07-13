@@ -9,8 +9,8 @@ The Portfolio Analytics System is a microservices-based application designed to 
 The system is composed of several key microservices and data stores:
 
 * **Ingestion Service (FastAPI)**: Responsible for receiving raw transaction data via a REST API, performing initial validation, and publishing it to a Kafka topic (`raw_transactions`). This service acts as the entry point for transaction data.
-* **Transaction Persistence Service (Python/Kafka Consumer)**: This *new* service will consume `raw_transactions` from Kafka, perform any necessary enrichment/validation, and store the validated data in PostgreSQL. This separates the API ingestion from the database write concerns.
-* **Transaction Processing Service (Python/Kafka Consumer)**: (Future) Will consume transaction data from Kafka, perform more complex enrichment, and prepare data for calculation services.
+* **Transaction Persistence Service (Python/Kafka Consumer)**: This service consumes `raw_transactions` from Kafka, performs any necessary validation/transformation, and stores the validated data in PostgreSQL. This clearly separates the API ingestion from the database write concerns.
+* **Transaction Processing Service (Python/Kafka Consumer)**: (Future) Will consume transaction data (potentially from a processed topic) from Kafka, perform more complex enrichment, and prepare data for calculation services.
 * **Calculator Orchestrator Service (Python/Kafka Consumer/Producer)**: Coordinates the triggering of various calculation tasks based on events (e.g., new transactions, market data updates) and dispatches messages to specific calculator services.
 * **Position Calculator Service (Python/Kafka Consumer/Producer)**: Consumes transaction data and market data to calculate real-time and historical positions, storing results in a state store (e.g., MongoDB, or a dedicated PostgreSQL table).
 * **API Service (FastAPI)**: (Future) Will provide APIs for managing portfolios, retrieving aggregated analytics, and accessing calculated data. This service will be the primary interface for consuming portfolio insights.
@@ -40,7 +40,7 @@ These instructions will get you a copy of the project up and running on your loc
 
 1.  **Clone the Repository:**
     ```bash
-    git clone [https://github.com/sgajbi/portfolio-analytics-system.git](https://github.com/sgajbi/portfolio-analytics-system.git)
+    git clone [https://github.com/sgajbi/portfolio-analytics-system.git](https://www.github.com/sgajbi/portfolio-analytics-system.git)
     cd sgajbi-portfolio-analytics-system
     ```
 
@@ -67,7 +67,7 @@ These instructions will get you a copy of the project up and running on your loc
         ```
 
     b.  **Generate Initial Migration for `transactions` table:**
-        This command inspects your SQLAlchemy models (`services/ingestion-service/app/database.py`) and compares them to the current database schema, generating a migration script for any detected differences.
+        This command inspects your SQLAlchemy models (`common/database_models.py` now) and compares them to the current database schema, generating a migration script for any detected differences.
         ```bash
         docker compose run --rm -e PYTHONPATH=/app ingestion-service bash -c "alembic -c /app/alembic.ini revision --autogenerate -m 'create transactions table'"
         ```
@@ -109,7 +109,7 @@ These instructions will get you a copy of the project up and running on your loc
     * Click "Try it out".
     * Modify the example `request body` if needed (e.g., change values).
     * Click "Execute".
-    * You should receive a `201 Created` response indicating successful ingestion. The data will be published to Kafka and, once the persistence service is built, stored in PostgreSQL.
+    * You should receive a `201 Created` response indicating successful ingestion. The data will be published to Kafka and, once the persistence service is built and running, stored in PostgreSQL.
 
     * To check logs for ingestion-service:
         ```bash
@@ -125,8 +125,8 @@ These instructions will get you a copy of the project up and running on your loc
         --max-messages 1
     ```
 
-4.  **Verify Data in PostgreSQL (Optional - *after* Persistence Service is built):**
-    Once the `transaction-persistence-service` is implemented and running, you can connect to the PostgreSQL container to verify the `transactions` table and inserted data:
+4.  **Verify Data in PostgreSQL (Optional - *after* Persistence Service is fully functional):**
+    Once the `transaction-persistence-service` is implemented and running, it will consume messages and save them. You can then connect to the PostgreSQL container to verify the `transactions` table and inserted data:
     ```bash
     docker exec -it postgres psql -U user -d portfolio_db
     ```
