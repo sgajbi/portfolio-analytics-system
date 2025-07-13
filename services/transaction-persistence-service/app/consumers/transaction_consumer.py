@@ -97,6 +97,15 @@ class TransactionConsumer:
         try:
             # 1. Parse and validate message value using Pydantic model
             transaction_data = json.loads(value)
+
+            # CRITICAL FIX: Ensure transaction_data is a dictionary.
+            # If the Kafka message value was a JSON string that encoded another JSON string,
+            # json.loads might return a string which is itself a JSON string.
+            if isinstance(transaction_data, str):
+                logger.warning("Detected transaction_data is a string after first JSON decode. Attempting second decode.")
+                transaction_data = json.loads(transaction_data) # Attempt to decode again
+
+
             transaction_event = TransactionEvent(**transaction_data)
             logger.info(f"Validated transaction event: {transaction_event.transaction_id}")
 
