@@ -1,144 +1,182 @@
+It's an excellent idea to keep the `README.md` updated with our progress. This will ensure that the documentation accurately reflects the current state of the project and makes it easier for anyone (including future you\!) to understand and set up the system.
+
+Given our progress, the `README.md` should now clearly describe the project, its architecture, and specifically detail the two services we've implemented so far: `ingestion-service` and `transaction-persistence-service`, along with instructions on how to run them.
+
+Please update your `README.md` file with the following content. This version provides an overview, details the services, and includes setup and running instructions.
+
+````markdown
 # Portfolio Analytics System
 
-## Project Overview
+Welcome to the Portfolio Analytics System! This system is designed to process financial transactions, calculate portfolio analytics (positions, valuations, performance), and expose them via REST APIs. It follows a modular, event-driven architecture using Kafka, PostgreSQL, and Python microservices, containerized with Docker.
 
-The Portfolio Analytics System is a microservices-based application designed to ingest, process, and analyze financial transaction data to provide insights into investment portfolios. It leverages a modern data stack including PostgreSQL for relational data, MongoDB for document-based data (optional/future), Kafka for real-time data streaming, and FastAPI for API services.
+## Table of Contents
 
-## Architecture
+1.  [Project Overview](#project-overview)
+2.  [System Architecture](#system-architecture)
+3.  [Current Implemented Services](#current-implemented-services)
+    * [Ingestion Service](#ingestion-service)
+    * [Transaction Persistence Service](#transaction-persistence-service)
+4.  [Technology Stack](#technology-stack)
+5.  [Setup and Running Locally with Docker Compose](#setup-and-running-locally-with-docker-compose)
+    * [Prerequisites](#prerequisites)
+    * [Cloning the Repository](#cloning-the-repository)
+    * [Building and Running Services](#building-and-running-services)
+    * [Accessing Services](#accessing-services)
+    * [Checking Database Data](#checking-database-data)
+    * [Stopping Services](#stopping-services)
+6.  [Project Structure](#project-structure)
+7.  [Future Development](#future-development)
 
-The system is composed of several key microservices and data stores:
+---
 
-* **Ingestion Service (FastAPI)**: Responsible for receiving raw transaction data via a REST API, performing initial validation, and publishing it to a Kafka topic (`raw_transactions`). This service acts as the entry point for transaction data.
-* **Transaction Persistence Service (Python/Kafka Consumer)**: This service consumes `raw_transactions` from Kafka, performs any necessary validation/transformation, and stores the validated data in PostgreSQL. This clearly separates the API ingestion from the database write concerns.
-* **Transaction Processing Service (Python/Kafka Consumer)**: (Future) Will consume transaction data (potentially from a processed topic) from Kafka, perform more complex enrichment, and prepare data for calculation services.
-* **Calculator Orchestrator Service (Python/Kafka Consumer/Producer)**: Coordinates the triggering of various calculation tasks based on events (e.g., new transactions, market data updates) and dispatches messages to specific calculator services.
-* **Position Calculator Service (Python/Kafka Consumer/Producer)**: Consumes transaction data and market data to calculate real-time and historical positions, storing results in a state store (e.g., MongoDB, or a dedicated PostgreSQL table).
-* **API Service (FastAPI)**: (Future) Will provide APIs for managing portfolios, retrieving aggregated analytics, and accessing calculated data. This service will be the primary interface for consuming portfolio insights.
-* **PostgreSQL**: Relational database used for storing structured transaction data, user information, and aggregated portfolio data. Managed by Alembic migrations.
-* **MongoDB**: (Optional/Future) Document database for storing potentially unstructured or supplementary data (e.g., raw ingestion logs, market data snapshots, or calculated state that benefits from document structure).
-* **Kafka**: Distributed streaming platform used for asynchronous communication between services, handling high-throughput data ingestion, and enabling event-driven processing.
-* **Zookeeper**: Manages Kafka brokers.
+## 1. Project Overview
 
-### Data Flow Example (Initial Phase - Transaction Ingestion)
+The Portfolio Analytics System is a scalable, event-driven microservices platform. Its core function is to process raw financial transaction data and build a robust foundation for various portfolio analytics, including real-time position keeping, valuation, and performance measurement.
 
-1.  Client sends a `POST /ingest/transaction` request to the **Ingestion Service**.
-2.  **Ingestion Service** validates the incoming transaction data.
-3.  **Ingestion Service** publishes the raw transaction data to the `raw_transactions` Kafka topic.
-4.  **Transaction Persistence Service** consumes the `raw_transactions` from Kafka, validates and transforms it, and saves it to the `transactions` table in PostgreSQL.
+## 2. System Architecture
 
-## Getting Started
+The system is built around a message broker (Kafka) to ensure loose coupling and high throughput. Transactions flow from an ingestion layer, through Kafka, to a persistence layer, and will eventually feed into analytical services.
 
-These instructions will get you a copy of the project up and running on your local machine for development and testing purposes.
+```mermaid
+graph TD
+    User[User/External System] --> IngestionService[Ingestion Service]
+    IngestionService -- Publishes Raw Transactions --> Kafka[Kafka Topic: raw_transactions]
+    Kafka --> TransactionPersistenceService[Transaction Persistence Service]
+    TransactionPersistenceService --> PostgreSQL[PostgreSQL Database]
+````
+
+## 3\. Current Implemented Services
+
+### Ingestion Service (`services/ingestion-service`)
+
+  * **Role**: Acts as the entry point for new transaction data. It receives transaction details via a REST API, validates them, and publishes them as events to the `raw_transactions` Kafka topic. It does **not** directly persist data to the database.
+  * **Technology**: FastAPI (Python), Confluent Kafka Producer.
+  * **API Endpoint**: `POST /ingest/transaction`
+
+### Transaction Persistence Service (`services/transaction-persistence-service`)
+
+  * **Role**: Consumes transaction events from the `raw_transactions` Kafka topic. It is responsible for validating these events, transforming them into a database-ready format, and persisting them into the PostgreSQL database.
+  * **Technology**: Python, Confluent Kafka Consumer, SQLAlchemy, PostgreSQL.
+
+## 4\. Technology Stack
+
+  * **Core Languages**: Python 3.11+
+  * **Containerization**: Docker
+  * **Orchestration (Local)**: Docker Compose
+  * **Message Broker**: Apache Kafka (via Confluent Kafka Python client)
+  * **Database**: PostgreSQL
+  * **API Framework**: FastAPI
+  * **Database ORM**: SQLAlchemy
+  * **Data Validation**: Pydantic
+
+## 5\. Setup and Running Locally with Docker Compose
+
+This section guides you through setting up and running the core components of the Portfolio Analytics System on your local machine using Docker Compose.
 
 ### Prerequisites
 
-* [Docker Desktop](https://www.docker.com/products/docker-desktop) (or Docker Engine and Docker Compose if on Linux/Server) installed and running.
-* Git for cloning the repository.
-* Python 3.9+ (for understanding project code, though most will run in Docker).
+  * **Docker Desktop**: Ensure Docker Desktop is installed and running (includes Docker Engine and Docker Compose).
 
-### Setup and Local Development
+### Cloning the Repository
 
-1.  **Clone the Repository:**
-    ```bash
-    git clone [https://github.com/sgajbi/portfolio-analytics-system.git](https://www.github.com/sgajbi/portfolio-analytics-system.git)
-    cd sgajbi-portfolio-analytics-system
-    ```
+First, clone the project repository to your local machine:
 
-2.  **Verify Docker Setup:**
-    Ensure Docker Desktop is running. You can check its status from the system tray (Windows/macOS) or by running:
-    ```bash
-    docker info
-    ```
+```bash
+git clone [https://github.com/your-username/portfolio-analytics-system.git](https://github.com/your-username/portfolio-analytics-system.git)
+cd portfolio-analytics-system
+```
 
-3.  **Build Docker Images:**
-    Build all service images. This step is crucial after any changes to `Dockerfile`s or `requirements.txt`.
-    ```bash
-    docker compose build
-    ```
-    *(If you only changed specific service code and not its Dockerfile, `docker compose build <service-name>` might be faster, e.g., `docker compose build ingestion-service`)*
+### Building and Running Services
 
-4.  **Database Migrations (Alembic for PostgreSQL):**
-    The `ingestion-service` currently manages the initial PostgreSQL schema using Alembic. You need to generate and apply migrations.
+Use Docker Compose to build the service images and start all the containers defined in `docker-compose.yml`:
 
-    a.  **Ensure `alembic` directory is initialized (if not already):**
-        *If you've already run `alembic init` on your host and have the `alembic/` directory, skip this step.*
-        ```bash
-        docker compose run --rm -e PYTHONPATH=/app ingestion-service bash -c "alembic -c /app/alembic.ini init alembic"
-        ```
+```bash
+docker compose build
+docker compose up -d
+```
 
-    b.  **Generate Initial Migration for `transactions` table:**
-        This command inspects your SQLAlchemy models (`common/database_models.py` now) and compares them to the current database schema, generating a migration script for any detected differences.
-        ```bash
-        docker compose run --rm -e PYTHONPATH=/app ingestion-service bash -c "alembic -c /app/alembic.ini revision --autogenerate -m 'create transactions table'"
-        ```
-        *Verify: After running, check the `alembic/versions/` directory for a new Python file describing the `transactions` table creation.*
+  * `docker compose build`: Builds the Docker images for all services.
+  * `docker compose up -d`: Starts all services in detached mode (in the background).
 
-    c.  **Apply All Pending Migrations:**
-        This will create the `transactions` table in your PostgreSQL database. This step is also integrated into the `ingestion-service` startup command in `docker-compose.yml`.
-        ```bash
-        docker compose run --rm -e PYTHONPATH=/app ingestion-service bash -c "alembic -c /app/alembic.ini upgrade head"
-        ```
-        *Note: The `ingestion-service`'s `command` in `docker-compose.yml` automatically runs `alembic upgrade head` on startup.*
+Wait for all services to become healthy. You can check their status with `docker compose ps` or monitor logs.
 
-5.  **Start All Services:**
-    This will bring up all containers defined in `docker-compose.yml` in detached mode.
-    ```bash
-    docker compose up -d
-    ```
+### Accessing Services
 
-6.  **Verify Service Status:**
-    Check that all containers are running:
-    ```bash
-    docker compose ps
-    ```
-    You can also view logs for a specific service (e.g., `ingestion-service`):
-    ```bash
-    docker compose logs -f ingestion-service
-    ```
-    Look for messages indicating successful database connection (from Ingestion Service, soon to be from Persistence Service) and FastAPI startup.
+Once all containers are up and running:
 
-### Using the Application
+  * **Ingestion Service (FastAPI)**:
+      * Swagger UI: `http://localhost:8000/docs`
+      * You can use this UI to send `POST /ingest/transaction` requests.
 
-1.  **Access API Documentation (Swagger UI):**
-    Open your web browser and navigate to:
-    `http://localhost:8000/docs`
-    You should see the interactive API documentation for the Ingestion Service.
+### Checking Database Data
 
-2.  **Ingest Sample Transaction Data:**
-    * In the Swagger UI, expand the `POST /ingest/transaction` endpoint.
-    * Click "Try it out".
-    * Modify the example `request body` if needed (e.g., change values).
-    * Click "Execute".
-    * You should receive a `201 Created` response indicating successful ingestion. The data will be published to Kafka and, once the persistence service is built and running, stored in PostgreSQL.
+To verify that transactions are being persisted by the `transaction-persistence-service` into PostgreSQL:
 
-    * To check logs for ingestion-service:
-        ```bash
-        docker compose logs -f ingestion-service
-        ```
-
-3.  **Verify Message on Kafka Topic:**
-    ```bash
-    docker exec kafka kafka-console-consumer \
-        --bootstrap-server kafka:9093 \
-        --topic raw_transactions \
-        --from-beginning \
-        --max-messages 1
-    ```
-
-4.  **Verify Data in PostgreSQL (Optional - *after* Persistence Service is fully functional):**
-    Once the `transaction-persistence-service` is implemented and running, it will consume messages and save them. You can then connect to the PostgreSQL container to verify the `transactions` table and inserted data:
+1.  **Access the PostgreSQL container's shell**:
     ```bash
     docker exec -it postgres psql -U user -d portfolio_db
     ```
-    Inside the `psql` prompt:
+2.  **At the `psql` prompt, query the `transactions` table**:
     ```sql
-    \dt -- List tables (should show 'transactions')
-    SELECT * FROM transactions; -- View ingested data
-    \q -- Exit psql
+    SELECT * FROM transactions;
     ```
+    You should see the transactions that you ingested via the Ingestion Service.
 
 ### Stopping Services
 
-To stop and remove all running containers, networks, and volumes:
+To stop and remove all running containers, networks, and volumes created by `docker compose`:
+
 ```bash
-docker compose down -v --remove-orphans
+docker compose down -v
+```
+
+  * The `-v` flag removes named volumes declared in the `volumes` section of the `docker-compose.yml` file, which is useful for starting fresh.
+
+## 6\. Project Structure
+
+```
+.
+├── services/
+│   ├── ingestion-service/
+│   │   ├── app/
+│   │   │   ├── main.py                   # FastAPI app for ingestion
+│   │   │   ├── models/                   # Pydantic models for data
+│   │   │   │   └── transaction.py
+│   │   │   └── database.py               # (Previously for direct DB interaction, now primarily for Alembic setup)
+│   │   ├── migrations/                   # Alembic migration scripts
+│   │   └── Dockerfile
+│   ├── transaction-persistence-service/
+│   │   ├── app/
+│   │   │   ├── main.py                   # Kafka consumer entry point
+│   │   │   ├── consumers/
+│   │   │   │   └── transaction_consumer.py # Kafka consumer logic
+│   │   │   ├── models/                   # Pydantic models for Kafka events
+│   │   │   │   └── transaction_event.py
+│   │   │   └── repositories/             # Database interaction logic
+│   │   │       └── transaction_db_repo.py
+│   │   └── Dockerfile
+│   └── ... (other future services)
+├── common/
+│   ├── __init__.py
+│   ├── config.py                         # Centralized configuration variables
+│   ├── kafka_utils.py                    # Kafka producer/consumer utilities
+│   ├── db_utils.py                       # Database session utilities
+│   ├── database_models.py                # SQLAlchemy ORM models (centralized)
+│   └── requirements.txt                  # Common Python dependencies
+├── .env.example                          # Example environment variables
+├── docker-compose.yml                    # Defines and links all services
+├── requirements.txt                      # Project-wide Python dependencies
+└── README.md                             # Project documentation
+```
+
+## 7\. Future Development
+
+Future work will include:
+
+  * Implementing services for market data ingestion.
+  * Developing analytics calculation services (e.g., position keeping, PnL).
+  * Creating a REST API layer to expose calculated analytics.
+  * Integrating monitoring (Prometheus/Grafana) and logging (ELK stack).
+  * Setting up CI/CD pipelines and Kubernetes deployment.
+
+ 
