@@ -30,7 +30,7 @@ These instructions will get you a copy of the project up and running on your loc
 
 1.  **Clone the Repository:**
     ```bash
-    git clone [https://github.com/sgajbi/portfolio-analytics-system.git](https://github.com/your-username/portfolio-analytics-system.git)
+    git clone [https://github.com/sgajbi/portfolio-analytics-system.git](https://github.com/sgajbi/portfolio-analytics-system.git)
     cd portfolio-analytics-system
     ```
 
