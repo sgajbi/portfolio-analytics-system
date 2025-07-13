@@ -94,24 +94,44 @@ services:
     environment:
       PYTHONPATH: "/app"
       SQLALCHEMY_DATABASE_URL: "postgresql://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD:-password}@postgres:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-portfolio_db}"
-      # No KAFKA_BOOTSTRAP_SERVERS environment variable needed here
-      # as it's now defaulted correctly in common/config.py
     depends_on:
       postgres:
         condition: service_healthy
       kafka:
+        condition: service_healthy
+      mongodb:
         condition: service_healthy
     volumes:
       - ./services/ingestion-service/app:/app/app # Mount for live code changes during dev
       - ./common:/app/common # Mount common module for live changes
       - ./alembic:/app/alembic # Mount alembic directory for migrations
       - ./alembic.ini:/app/alembic.ini # Mount alembic config
-
     command: >
       bash -c "
         alembic -c /app/alembic.ini upgrade head &&
         uvicorn app.main:app --host 0.0.0.0 --port 8000
       "
+
+  # Transaction Persistence Service (NEW SERVICE)
+  transaction-persistence-service:
+    build:
+      context: .
+      dockerfile: ./services/transaction-persistence-service/Dockerfile
+    hostname: transaction-persistence-service
+    container_name: transaction-persistence-service
+    environment:
+      PYTHONPATH: "/app"
+      # Database and Kafka configurations will be used from common/config.py,
+      # which is mounted as a volume.
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./services/transaction-persistence-service/app:/app/app # Mount for live code changes during dev
+      - ./common:/app/common # Mount common module for live changes
+    command: ["python", "app/main.py"]
 
 volumes:
   postgres_data:
