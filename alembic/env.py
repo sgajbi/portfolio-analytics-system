@@ -1,4 +1,3 @@
-
 from logging.config import fileConfig
 
 from sqlalchemy import engine_from_config
@@ -6,24 +5,24 @@ from sqlalchemy import pool
 
 from alembic import context
 
-# Ensure Base is imported correctly
 import sys
 import os
 import inspect
 
 # Calculate project_root (should be /app inside container)
-project_root = os.path.abspath(os.path.join(os.path.dirname(inspect.getfile(inspect.currentframe())), '..'))
-if project_root not in sys.path: # Avoid adding duplicate paths
+# Adjust project_root calculation if necessary to point to the base of the 'common' module
+# Given the Dockerfile COPY ./common /app/common, project_root should be the parent of /app/common
+# Let's make it more robust for local runs and container runs
+current_file_dir = os.path.dirname(inspect.getfile(inspect.currentframe()))
+# Assuming alembic/ is at project_root/alembic/
+project_root = os.path.abspath(os.path.join(current_file_dir, '..'))
+if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-# Import Base from your application's database module
-from app.database import Base # This is confirmed to work now!
 
+from common.database_models import Base 
 
-# this is the Alembic Config object, which provides
-# access to the values within the .ini file in use.
-# Ensure this is defined AT THE TOP LEVEL of the script
-config = context.config # <--- This line is critical and must be globally accessible
+config = context.config
 
 
 # Interpret the config file for Python logging.
@@ -65,7 +64,6 @@ def run_migrations_online() -> None:
         with context.begin_transaction():
             context.run_migrations()
 
-# This conditional block ensures either online or offline migration runs
 if context.is_offline_mode():
     run_migrations_offline()
 else:
