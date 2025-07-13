@@ -1,10 +1,3 @@
-It's an excellent idea to keep the `README.md` updated with our progress. This will ensure that the documentation accurately reflects the current state of the project and makes it easier for anyone (including future you\!) to understand and set up the system.
-
-Given our progress, the `README.md` should now clearly describe the project, its architecture, and specifically detail the two services we've implemented so far: `ingestion-service` and `transaction-persistence-service`, along with instructions on how to run them.
-
-Please update your `README.md` file with the following content. This version provides an overview, details the services, and includes setup and running instructions.
-
-````markdown
 # Portfolio Analytics System
 
 Welcome to the Portfolio Analytics System! This system is designed to process financial transactions, calculate portfolio analytics (positions, valuations, performance), and expose them via REST APIs. It follows a modular, event-driven architecture using Kafka, PostgreSQL, and Python microservices, containerized with Docker.
