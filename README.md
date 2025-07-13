@@ -101,6 +101,12 @@ These instructions will get you a copy of the project up and running on your loc
     * Click "Execute".
     * You should receive a `200 OK` response indicating successful ingestion. The data will be published to Kafka and, once the processing service is built, stored in PostgreSQL.
 
+    * To check logs for ingestion-service
+
+    ```
+    docker compose logs -f ingestion-service
+    ```
+
 3.  **Verify Data in PostgreSQL (Optional):**
     You can connect to the PostgreSQL container to verify the `transactions` table and inserted data:
     ```bash
@@ -113,8 +119,18 @@ These instructions will get you a copy of the project up and running on your loc
     \q -- Exit psql
     ```
 
+4. **Verify Message on Kafka Topic:**
+    ```
+    docker exec kafka kafka-console-consumer \
+  --bootstrap-server kafka:9093 \
+  --topic raw_transactions \
+  --from-beginning \
+  --max-messages 1
+    ```
+
 ### Stopping Services
 
 To stop and remove all running containers, networks, and volumes:
 ```bash
-docker compose down -v
+docker compose down -v --remove-orphans
+

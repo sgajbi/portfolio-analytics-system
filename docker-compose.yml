@@ -1,9 +1,6 @@
-# docker-compose.yml (updated)
-
 services:
-  # Kafka (with Zookeeper)
   zookeeper:
-    image: confluentinc/cp-zookeeper:7.5.0
+    image: confluentinc/cp-zookeeper:7.2.15
     hostname: zookeeper
     container_name: zookeeper
     ports:
@@ -11,7 +8,16 @@ services:
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
+      ZOOKEEPER_4LW_COMMANDS_WHITELIST: "ruok,stat,mntr,conf"
+      KAFKA_OPTS: "-Dzookeeper.4lw.commands.whitelist=ruok,stat,mntr,conf"
+    healthcheck:
+      test: ["CMD", "bash", "-c", "echo ruok | nc localhost 2181 | grep imok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
+  # Kafka Broker
   kafka:
     image: confluentinc/cp-kafka:7.5.0
     hostname: kafka
@@ -20,7 +26,8 @@ services:
       - "9092:9092"
       - "9093:9093" # Internal listener for services
     depends_on:
-      - zookeeper
+      zookeeper:
+        condition: service_healthy
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
@@ -28,7 +35,14 @@ services:
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9093,PLAINTEXT_HOST://localhost:9092
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
-      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true" # Auto-create topics for dev
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    healthcheck:
+      # CRITICAL FIX: Updated health check to use the internal listener 'kafka:9093'
+      test: ["CMD-SHELL", "kafka-topics --bootstrap-server kafka:9093 --list || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
 
   # PostgreSQL Database
   postgres:
@@ -51,7 +65,7 @@ services:
 
   # MongoDB Database
   mongodb:
-    image: mongo:7.0 # Changed to a more general tag for MongoDB 7.0
+    image: mongo:7.0
     hostname: mongodb
     container_name: mongodb
     ports:
@@ -76,18 +90,18 @@ services:
     hostname: ingestion-service
     container_name: ingestion-service
     ports:
-      - "8000:8000" # Expose FastAPI port
+      - "8000:8000"
     environment:
-      PYTHONPATH: "/app" # Add /app to PYTHONPATH for common module import
-      # Override Alembic's sqlalchemy.url for Docker context
+      PYTHONPATH: "/app"
       SQLALCHEMY_DATABASE_URL: "postgresql://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD:-password}@postgres:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-portfolio_db}"
-    depends_on: # THIS SECTION IS CHANGED
+      # No KAFKA_BOOTSTRAP_SERVERS environment variable needed here
+      # as it's now defaulted correctly in common/config.py
+    depends_on:
       postgres:
         condition: service_healthy
-      kafka: # Changed to mapping
-        condition: service_started # Kafka healthcheck can be complex, `service_started` is safer initially.
-                                 # Or if you implement a specific Kafka healthcheck, change to service_healthy
-      mongodb: # Changed to mapping
+      kafka:
+        condition: service_healthy
+      mongodb:
         condition: service_healthy
     volumes:
       - ./services/ingestion-service/app:/app/app # Mount for live code changes during dev
@@ -95,9 +109,6 @@ services:
       - ./alembic:/app/alembic # Mount alembic directory for migrations
       - ./alembic.ini:/app/alembic.ini # Mount alembic config
 
-    # Command to run Alembic migrations then start Uvicorn
-    # In production, migrations are usually a separate step.
-    # For dev, running on startup is convenient.
     command: >
       bash -c "
         alembic -c /app/alembic.ini upgrade head &&

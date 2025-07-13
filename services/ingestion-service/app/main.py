@@ -5,9 +5,10 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text # For testing DB connection
 
 from app.models.transaction import Transaction
-from app.database import engine, SessionLocal, Base, get_db # Import Base and get_db
-from app import crud # Import crud operations
-from common.config import POSTGRES_URL
+from app.database import engine, SessionLocal, Base, get_db
+from app import crud
+# from common.config import POSTGRES_URL # This import is not used in the current file, can be removed if not needed elsewhere
+from common.kafka_utils import get_kafka_producer # <--- Corrected Import
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -22,17 +23,33 @@ async def lifespan(app: FastAPI):
         with engine.connect() as connection:
             connection.execute(text("SELECT 1"))
         logger.info("Successfully connected to PostgreSQL database.")
-    except Exception as e:
-        logger.error(f"Failed to connect to PostgreSQL database: {e}")
-        # Depending on criticality, you might want to exit here or implement retry logic
 
-    # No need to call Base.metadata.create_all(bind=engine) here if using Alembic for migrations
-    # Base.metadata.create_all(bind=engine) # This line should typically be managed by Alembic
+        # Initialize Kafka Producer
+        # Calling this here ensures the producer is ready when the app starts
+        # and logs its initialization status.
+        producer_instance = get_kafka_producer()
+        # No explicit ping for Kafka producer, initialization is usually enough.
+        # If Kafka is unavailable, the producer might log connection errors during background operations.
+
+    except Exception as e:
+        logger.error(f"Failed critical service startup component (PostgreSQL or Kafka Producer): {e}")
+        # Re-raise the exception to prevent the application from starting in a broken state
+        raise
 
     yield
     # Shutdown event
     logger.info("Ingestion Service shutting down...")
-    # Add any cleanup logic here (e.g., close DB connections)
+    # Flush Kafka producer messages before shutdown
+    try:
+        producer_instance = get_kafka_producer() # Get the instance to flush
+        remaining = producer_instance.flush(timeout=5) # 5-second timeout for flushing
+        if remaining > 0:
+            logger.warning(f"Kafka producer flush timed out with {remaining} messages remaining in queue.")
+        else:
+            logger.info("Kafka producer flushed successfully.")
+    except Exception as e:
+        logger.error(f"Error flushing Kafka producer during shutdown: {e}")
+    # Add any other cleanup logic here (e.g., close DB connections, though SQLAlchemy handles pool)
 
 app = FastAPI(
     title="Ingestion Service",
@@ -52,9 +69,34 @@ async def ingest_transaction(
 ):
     logger.info(f"Received transaction: {transaction.transaction_id} for portfolio {transaction.portfolio_id}")
     try:
+        # 1. Save to PostgreSQL
+        # Pydantic models can usually be passed directly to ORM create methods,
+        # or you might convert to dict if your crud.create_transaction expects a dict.
+        # Ensure crud.create_transaction correctly handles Pydantic model or its dict representation
         db_transaction = crud.create_transaction(db=db, transaction=transaction)
         logger.info(f"Transaction {db_transaction.transaction_id} saved to DB.")
+
+        # 2. Publish to Kafka
+        kafka_producer = get_kafka_producer()
+        # Define the Kafka topic for raw transactions
+        RAW_TRANSACTIONS_TOPIC = "raw_transactions" # <--- CONSIDER MOVING TO common/config.py FOR REUSABILITY
+
+        # Convert Pydantic model to a JSON string using .model_dump_json()
+        # This handles date and datetime serialization to ISO 8601 format.
+        transaction_json_string = transaction.model_dump_json()
+
+        # Use transaction_id as key for consistent partitioning
+        # The 'value' sent to Kafka should be bytes, so if publish_message doesn't
+        # handle encoding, you might need to add .encode('utf-8') here.
+        kafka_producer.publish_message(
+            topic=RAW_TRANSACTIONS_TOPIC,
+            key=transaction.transaction_id, # Kafka keys are typically bytes as well
+            value=transaction_json_string # Pass the JSON string here
+        )
+        logger.info(f"Transaction {transaction.transaction_id} published to Kafka topic '{RAW_TRANSACTIONS_TOPIC}'.")
+
         return {"message": "Transaction ingested successfully", "transaction_id": db_transaction.transaction_id}
     except Exception as e:
-        logger.error(f"Error ingesting transaction {transaction.transaction_id}: {e}")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to ingest transaction")
+        logger.error(f"Error ingesting or publishing transaction {transaction.transaction_id}: {e}")
+        # Raise HTTP 500 if either DB save or Kafka publish fails
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to ingest and publish transaction")
