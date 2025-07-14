@@ -1,4 +1,9 @@
-confluent-kafka[librdkafka]==2.4.0
-SQLAlchemy==2.0.31
+fastapi==0.111.0
+uvicorn==0.30.1
+python-dotenv==1.0.1
+SQLAlchemy==2.0.30
+alembic==1.13.1
 psycopg2-binary==2.9.9
-pydantic==2.7.4
+confluent-kafka==2.4.0
+pydantic==2.7.1
+tenacity==8.2.3

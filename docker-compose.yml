@@ -151,6 +151,8 @@ services:
     volumes:
       - ./services/transaction-cost-calculator-service/app:/app/app
       - ./common:/app/common
+      - ./alembic.ini:/app/alembic.ini
+      - ./alembic:/app/alembic
     command: ["python", "app/main.py"]
 
 volumes:
