@@ -1,0 +1,4 @@
+confluent-kafka[librdkafka]==2.4.0
+SQLAlchemy==2.0.31
+psycopg2-binary==2.9.9
+pydantic==2.7.4

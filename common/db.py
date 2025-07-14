@@ -1,4 +1,3 @@
-
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 from common.config import POSTGRES_URL
@@ -8,7 +7,8 @@ SQLALCHEMY_DATABASE_URL = POSTGRES_URL
 engine = create_engine(SQLALCHEMY_DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-Base = declarative_base() # Define Base here for consistency across services
+# Define Base here to be imported by all SQLAlchemy models
+Base = declarative_base()
 
 def get_db_session():
     """
@@ -20,5 +20,3 @@ def get_db_session():
         yield db
     finally:
         db.close()
-
- 
