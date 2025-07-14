@@ -1,6 +1,6 @@
-from sqlalchemy import Column, String, Float, Date, DateTime, PrimaryKeyConstraint
+from sqlalchemy import Column, String, Float, Date, DateTime, PrimaryKeyConstraint, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 import uuid
 from common.db import Base # Import Base from common.db
 
@@ -16,9 +16,9 @@ class Transaction(Base):
     quantity = Column(Float, nullable=False)
     price = Column(Float, nullable=False)
     currency = Column(String, nullable=False)
-    trade_fee = Column(Float, nullable=False)
-    settlement_date = Column(Date, nullable=False) # Date of settlement
-    created_at = Column(DateTime, default=datetime.utcnow) # Timestamp of record creation
+    trade_fee = Column(Float, nullable=True) # Changed to nullable=True to align with migration
+    settlement_date = Column(Date, nullable=True) # Changed to nullable=True to align with migration
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc)) # Timestamp of record creation
 
     # Define a composite primary key as per the uploaded file
     __table_args__ = (
@@ -46,8 +46,13 @@ class TransactionCost(Base):
     
     cost_amount = Column(Float, nullable=False)
     cost_currency = Column(String, nullable=False)
-    calculation_date = Column(DateTime, default=datetime.utcnow, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    calculation_date = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        UniqueConstraint('transaction_id', 'portfolio_id', 'instrument_id', 'transaction_date', name='uq_transaction_cost_business_key'),
+        {}
+    )
 
     def __repr__(self):
         return (f"<TransactionCost("
