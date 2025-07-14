@@ -1,4 +1,4 @@
-
+# services/transaction-persistence-service/app/consumers/transaction_consumer.py
 import json
 import logging
 from confluent_kafka import Consumer, KafkaException, Message
@@ -119,14 +119,21 @@ class TransactionConsumer:
             transaction_event = TransactionEvent(**transaction_data)
             logger.info(f"Validated transaction event: {transaction_event.transaction_id}")
 
-            # 2. Persist to PostgreSQL using the repository
+            # 2. Persist to PostgreSQL using the repository (now idempotent)
             # Get a new DB session for each message processing to avoid stale sessions
             with next(get_db_session()) as db:
                 repo = TransactionDBRepository(db)
-                db_transaction = repo.create_transaction(transaction_event)
-                logger.info(f"Transaction {db_transaction.transaction_id} persisted to PostgreSQL.")
+                # Use the new idempotent method
+                db_transaction = repo.create_or_update_transaction(transaction_event)
+                # Log a success message for consistency, as the transaction is now 'handled'
+                # if not db_transaction.id: # Check if it was newly inserted or existing (depends on repo logic)
+                #    logger.info(f"Transaction {transaction_event.transaction_id} found existing in DB, no new insertion.")
+                # else:
+                #    logger.info(f"Transaction {transaction_event.transaction_id} persisted to PostgreSQL.")
 
                 # 3. Publish raw_transactions_completed event to Kafka
+                # This step now executes even if the transaction already existed,
+                # as it's considered "completed" (persisted).
                 completed_event_value = transaction_event.model_dump_json() # Use the validated event as payload
                 self.producer.publish_message(
                     topic=KAFKA_RAW_TRANSACTIONS_COMPLETED_TOPIC,
