@@ -2,8 +2,9 @@
 import json
 import logging
 from confluent_kafka import Consumer, KafkaException, Message
-from common.config import KAFKA_BOOTSTRAP_SERVERS, KAFKA_RAW_TRANSACTIONS_TOPIC
+from common.config import KAFKA_BOOTSTRAP_SERVERS, KAFKA_RAW_TRANSACTIONS_TOPIC, KAFKA_RAW_TRANSACTIONS_COMPLETED_TOPIC
 from common.db_utils import get_db_session
+from common.kafka_utils import get_kafka_producer
 from app.models.transaction_event import TransactionEvent
 from app.repositories.transaction_db_repo import TransactionDBRepository
 from pydantic import ValidationError
@@ -29,6 +30,7 @@ class TransactionConsumer:
             'session.timeout.ms': 10000,     # Session timeout for group rebalance
         }
         self.consumer = None
+        self.producer = get_kafka_producer() # Initialize Kafka Producer for publishing completion events
 
     def _initialize_consumer(self):
         """Initializes the Confluent Kafka Consumer."""
@@ -84,6 +86,14 @@ class TransactionConsumer:
             if self.consumer:
                 logger.info("Closing Kafka consumer.")
                 self.consumer.close()
+            # Ensure producer flushes any remaining messages on shutdown
+            if self.producer:
+                remaining = self.producer.flush(timeout=5)
+                if remaining > 0:
+                    logger.warning(f"Kafka producer flush timed out with {remaining} messages remaining in queue during shutdown.")
+                else:
+                    logger.info("Kafka producer flushed successfully during shutdown.")
+
 
     def _process_message(self, msg: Message):
         """Processes a single Kafka message."""
@@ -115,6 +125,16 @@ class TransactionConsumer:
                 repo = TransactionDBRepository(db)
                 db_transaction = repo.create_transaction(transaction_event)
                 logger.info(f"Transaction {db_transaction.transaction_id} persisted to PostgreSQL.")
+
+                # 3. Publish raw_transactions_completed event to Kafka
+                completed_event_value = transaction_event.model_dump_json() # Use the validated event as payload
+                self.producer.publish_message(
+                    topic=KAFKA_RAW_TRANSACTIONS_COMPLETED_TOPIC,
+                    key=transaction_event.transaction_id, # Use transaction_id as key for event
+                    value=completed_event_value
+                )
+                logger.info(f"Published transaction completion event for '{transaction_event.transaction_id}' to topic '{KAFKA_RAW_TRANSACTIONS_COMPLETED_TOPIC}'.")
+
 
         except json.JSONDecodeError as e:
             logger.error(f"Failed to decode JSON from message value for key '{key}': {e}. Value: {value[:200]}...")
