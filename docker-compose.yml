@@ -97,7 +97,6 @@ services:
     volumes: # Keeping volumes for development convenience
       - ./services/ingestion-service/app:/app/app
       - ./common:/app/common
-      # Alembic files are here, but this service doesn't run migrations
       - ./alembic.ini:/app/alembic.ini
       - ./alembic:/app/alembic
     command: >
@@ -125,39 +124,9 @@ services:
     volumes: # Keeping volumes for development convenience
       - ./services/transaction-persistence-service/app:/app/app
       - ./common:/app/common
-      # Mount Alembic files for this service to run migrations
       - ./alembic.ini:/app/alembic.ini
       - ./alembic:/app/alembic
-    # --- CHANGE: Start the python app directly, not the shell script ---
     command: ["python", "app/main.py"]
-
-  transaction-cost-calculator-service:
-    build:
-      context: .
-      dockerfile: ./services/transaction-cost-calculator-service/Dockerfile
-    hostname: transaction-cost-calculator-service
-    container_name: transaction-cost-calculator-service
-    environment:
-      PYTHONPATH: "/app"
-      KAFKA_BOOTSTRAP_SERVERS: "kafka:9093"
-      POSTGRES_USER: ${POSTGRES_USER:-user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
-      POSTGRES_DB: ${POSTGRES_DB:-portfolio_db}
-      POSTGRES_HOST: ${POSTGRES_HOST:-postgres}
-      POSTGRES_PORT: ${POSTGRES_PORT:-5432}
-    depends_on:
-      kafka:
-        condition: service_healthy
-      postgres:
-        condition: service_healthy
-    volumes:
-      - ./services/transaction-cost-calculator-service/app:/app/app
-      - ./common:/app/common
-      - ./alembic.ini:/app/alembic.ini
-      - ./alembic:/app/alembic
-    ports:
-      - "8001:8000" # CHANGED: Exposed on host port 8001 to avoid conflict with ingestion-service
-    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"] # Update command to bind to 0.0.0.0
 
 volumes:
   postgres_data:
