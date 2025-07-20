@@ -1,8 +1,8 @@
-"""Create final and complete initial schema
+"""Create initial schema
 
-Revision ID: 970e1630d3a3
+Revision ID: 4678aa2790c4
 Revises: 
-Create Date: 2025-07-21 03:10:50.655430
+Create Date: 2025-07-21 03:32:06.080885
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = '970e1630d3a3'
+revision: str = '4678aa2790c4'
 down_revision: Union[str, None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None

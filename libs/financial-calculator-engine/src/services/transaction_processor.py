@@ -1,6 +1,5 @@
 import logging
 from typing import Tuple, List, Any
-from decimal import Decimal
 
 from src.core.models.transaction import Transaction
 from src.core.models.response import ErroredTransaction
@@ -36,16 +35,11 @@ class TransactionProcessor:
         existing_transactions_raw: list[dict[str, Any]],
         new_transactions_raw: list[dict[str, Any]]
     ) -> Tuple[list[Transaction], list[ErroredTransaction]]:
-        """
-        Main method to process transactions. It merges existing and new transactions,
-        sorts them, and processes the entire timeline to ensure accuracy.
-        """
         self._error_reporter.clear()
 
         # 1. Parse all transactions
         parsed_existing = self._parser.parse_transactions(existing_transactions_raw)
         parsed_new = self._parser.parse_transactions(new_transactions_raw)
-
         new_transaction_ids = {txn.transaction_id for txn in parsed_new if not txn.error_reason}
         
         # 2. Combine and sort the full, valid transaction history
@@ -55,7 +49,6 @@ class TransactionProcessor:
         sorted_timeline = self._sorter.sort_transactions([], all_valid_transactions)
 
         # 3. Process the entire timeline from scratch
-        # The disposition engine is stateful, so it's implicitly reset by the new processor instance.
         processed_timeline: list[Transaction] = []
         for transaction in sorted_timeline:
             try:
@@ -68,7 +61,7 @@ class TransactionProcessor:
                 logger.error(f"Unexpected error for transaction {transaction.transaction_id}: {e}", exc_info=True)
                 self._error_reporter.add_error(transaction.transaction_id, f"Unexpected error: {str(e)}")
 
-        # 4. Filter the results to return only the newly processed transactions
+        # 4. Filter results to return only the newly processed transactions
         final_processed_new = [
             txn for txn in processed_timeline if txn.transaction_id in new_transaction_ids
         ]
