@@ -94,7 +94,7 @@ services:
     depends_on:
       kafka:
         condition: service_healthy
-    volumes: # Keeping volumes for development convenience
+    volumes:
       - ./services/ingestion-service/app:/app/app
       - ./common:/app/common
       - ./alembic.ini:/app/alembic.ini
@@ -121,12 +121,37 @@ services:
         condition: service_healthy
       postgres:
         condition: service_healthy
-    volumes: # Keeping volumes for development convenience
+    volumes:
       - ./services/transaction-persistence-service/app:/app/app
       - ./common:/app/common
       - ./alembic.ini:/app/alembic.ini
       - ./alembic:/app/alembic
     command: ["python", "app/main.py"]
+
+  # --- NEW SERVICE ---
+  cost-calculator-service:
+    build:
+      context: .
+      dockerfile: ./services/cost-calculator-service/Dockerfile
+    hostname: cost-calculator-service
+    container_name: cost-calculator-service
+    environment:
+      PYTHONPATH: "/app:/app/libs/financial-calculator-engine/src"
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9093
+      KAFKA_RAW_TRANSACTIONS_COMPLETED_TOPIC: raw_transactions_completed
+      DATABASE_URL: postgresql://user:password@postgres:5432/portfolio_db
+      # You can control the cost basis method here, e.g., COST_BASIS_METHOD: "AVERAGE_COST"
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./services/cost-calculator-service/app:/app/app
+      - ./common:/app/common
+      - ./libs/financial-calculator-engine:/app/libs/financial-calculator-engine
+    command: ["python", "app/main.py"]
+
 
 volumes:
   postgres_data:
