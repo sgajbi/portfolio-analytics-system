@@ -1,5 +1,7 @@
+# services/transaction-persistence-service/app/models/transaction_event.py
 from datetime import date, datetime
 from pydantic import BaseModel, Field
+from typing import Optional # Import Optional
 
 class TransactionEvent(BaseModel):
     transaction_id: str = Field(..., description="Unique identifier for the transaction")
@@ -11,7 +13,8 @@ class TransactionEvent(BaseModel):
     price: float = Field(..., gt=0, description="Price per unit of the instrument, must be positive")
     currency: str = Field(..., min_length=3, max_length=3, description="Currency of the transaction (e.g., USD, EUR)")
     trade_fee: float = Field(default=0.0, ge=0, description="Any fees associated with the trade, non-negative")
-    settlement_date: date = Field(..., description="Date when the transaction is settled (YYYY-MM-DD)")
+    # Corrected line below: Make settlement_date optional
+    settlement_date: Optional[date] = Field(None, description="Date when the transaction is settled (YYYY-MM-DD)")
     # created_at: datetime = Field(default_factory=datetime.utcnow, description="Timestamp when the event was created")
 
     model_config = {

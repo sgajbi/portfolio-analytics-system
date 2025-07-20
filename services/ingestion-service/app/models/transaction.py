@@ -4,8 +4,8 @@ from pydantic import BaseModel, Field
 
 class Transaction(BaseModel):
     transaction_id: str = Field(..., example="TRN001")
-    portfolio_id: str = Field(..., example="PORT001")
-    instrument_id: str = Field(..., example="AAPL")
+    portfolio_id: str = Field(..., example="PORT001") # Added this field
+    instrument_id: str = Field(..., example="AAPL")   # Added this field
     transaction_date: date = Field(..., example="2023-01-15")
     transaction_type: str = Field(..., example="BUY", pattern="^(BUY|SELL)$")
     quantity: float = Field(..., gt=0)

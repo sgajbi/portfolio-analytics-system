@@ -12,8 +12,8 @@ config = context.config
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
-if config.config_file_as_existing_filename:
-    fileConfig(config.config_file_as_existing_filename)
+if config.config_file_name:
+    fileConfig(config.config_file_name)
 
 # add your model's MetaData object here
 # for 'autogenerate' support
@@ -68,16 +68,13 @@ def run_migrations_online():
     # Get the configuration section
     configuration = config.get_section(config.config_ini_section)
 
-    # NEW: Explicitly set sqlalchemy.url in the configuration dictionary
+    # Explicitly set sqlalchemy.url in the configuration dictionary
     # using the DATABASE_URL environment variable.
     db_url = os.environ.get("DATABASE_URL")
     if db_url:
         configuration["sqlalchemy.url"] = db_url
     else:
-        # Fallback if DATABASE_URL is not set (shouldn't happen with docker-compose)
-        # This will make engine_from_config fail with 'url' KeyError if not present
-        # This mirrors Alembic's default behavior if no url is given.
-        pass
+        pass # The engine_from_config will raise an error if 'url' is missing.
 
     try:
         connectable = engine_from_config(
@@ -92,8 +89,8 @@ def run_migrations_online():
                 target_metadata=target_metadata
             )
 
-            with context.run_migrations():
-                pass
+            # CORRECTED LINE: Removed 'with' statement around context.run_migrations()
+            context.run_migrations()
     finally:
         if connectable is not None:
             connectable.dispose()
