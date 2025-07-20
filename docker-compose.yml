@@ -116,11 +116,11 @@ services:
       KAFKA_BOOTSTRAP_SERVERS: kafka:9093
       KAFKA_RAW_TRANSACTIONS_TOPIC: raw_transactions
       KAFKA_RAW_TRANSACTIONS_COMPLETED_TOPIC: raw_transactions_completed
+      # Explicitly set POSTGRES variables to their desired defaults
       POSTGRES_HOST: postgres
-      POSTGRES_DB: ${POSTGRES_DB:-portfolio_db} # Using flexible env var
-      POSTGRES_USER: ${POSTGRES_USER:-user} # Using flexible env var
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password} # Using flexible env var
-      # NEW: Define DATABASE_URL for Alembic and application to use
+      POSTGRES_DB: portfolio_db # Changed from ${POSTGRES_DB:-portfolio_db}
+      POSTGRES_USER: user       # Changed from ${POSTGRES_USER:-user}
+      POSTGRES_PASSWORD: password # Changed from ${POSTGRES_PASSWORD:-password}
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:5432/${POSTGRES_DB}
     depends_on:
       kafka:
