@@ -1,15 +1,6 @@
 #!/bin/bash
 set -e
 
-# --- Debugging Environment Variables (removed) ---
-# echo "--- Environment Variables ---"
-# echo "POSTGRES_USER: ${POSTGRES_USER}"
-# echo "POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}"
-# echo "POSTGRES_HOST: ${POSTGRES_HOST}"
-# echo "POSTGRES_DB: ${POSTGRES_DB}"
-# echo "DATABASE_URL: ${DATABASE_URL}"
-# echo "-----------------------------"
-
 # --- Wait for PostgreSQL to be ready ---
 echo "Waiting for PostgreSQL to be ready..."
 python -c '
@@ -38,8 +29,8 @@ else:
 echo "PostgreSQL is ready, proceeding with migrations."
 
 # --- Run Alembic Migrations ---
-# NEW: Added --verbose flag to see full Alembic output
-alembic -c /app/alembic.ini upgrade head --verbose
+# CORRECTED: Removed --verbose flag
+alembic -c /app/alembic.ini upgrade head
 
 echo "Alembic migrations applied."
 
