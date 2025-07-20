@@ -3,5 +3,5 @@ psycopg2-binary==2.9.9
 confluent-kafka==2.4.0
 pydantic==2.7.4
 
-# Local, editable dependency
--e file:../../libs/financial-calculator-engine
+# Path to the local library, relative to the WORKDIR in the Docker container
+-e ./libs/financial-calculator-engine
