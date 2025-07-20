@@ -1,7 +1,7 @@
-# src/services/transaction_processor.py
-
 import logging
 from typing import Tuple, List, Any
+from decimal import Decimal
+
 from src.core.models.transaction import Transaction
 from src.core.models.response import ErroredTransaction
 from src.logic.parser import TransactionParser
@@ -14,7 +14,8 @@ logger = logging.getLogger(__name__)
 
 class TransactionProcessor:
     """
-    Orchestrates the end-to-end processing of financial transactions.
+    Orchestrates the end-to-end processing of financial transactions by
+    recalculating a full history to ensure correctness and idempotency.
     """
     def __init__(
         self,
@@ -36,39 +37,40 @@ class TransactionProcessor:
         new_transactions_raw: list[dict[str, Any]]
     ) -> Tuple[list[Transaction], list[ErroredTransaction]]:
         """
-        Main method to process transactions.
+        Main method to process transactions. It merges existing and new transactions,
+        sorts them, and processes the entire timeline to ensure accuracy.
         """
         self._error_reporter.clear()
-        
+
+        # 1. Parse all transactions
         parsed_existing = self._parser.parse_transactions(existing_transactions_raw)
         parsed_new = self._parser.parse_transactions(new_transactions_raw)
-        
-        new_transaction_ids = {txn.transaction_id for txn in parsed_new}
-        
-        valid_existing = [txn for txn in parsed_existing if not txn.error_reason]
-        valid_new = [txn for txn in parsed_new if not txn.error_reason]
 
-        sorted_transactions = self._sorter.sort_transactions(
-            existing_transactions=valid_existing,
-            new_transactions=valid_new
-        )
+        new_transaction_ids = {txn.transaction_id for txn in parsed_new if not txn.error_reason}
         
-        self._disposition_engine.set_initial_lots(valid_existing)
+        # 2. Combine and sort the full, valid transaction history
+        all_valid_transactions = [txn for txn in parsed_existing if not txn.error_reason] + \
+                                 [txn for txn in parsed_new if not txn.error_reason]
+        
+        sorted_timeline = self._sorter.sort_transactions([], all_valid_transactions)
 
-        processed_transactions: list[Transaction] = []
-        for transaction in sorted_transactions:
-            if transaction.transaction_id in new_transaction_ids:
-                try:
-                    self._cost_calculator.calculate_transaction_costs(transaction)
-                    if not self._error_reporter.has_errors_for(transaction.transaction_id):
-                        processed_transactions.append(transaction)
-                except Exception as e:
-                    logger.error(f"Unexpected error for transaction {transaction.transaction_id}: {e}")
-                    self._error_reporter.add_error(transaction.transaction_id, f"Unexpected error: {str(e)}")
+        # 3. Process the entire timeline from scratch
+        # The disposition engine is stateful, so it's implicitly reset by the new processor instance.
+        processed_timeline: list[Transaction] = []
+        for transaction in sorted_timeline:
+            try:
+                # Calculate costs for every transaction in the timeline
+                self._cost_calculator.calculate_transaction_costs(transaction)
 
-        final_errored = self._error_reporter.get_errors()
-        final_processed = [
-            txn for txn in processed_transactions if not self._error_reporter.has_errors_for(txn.transaction_id)
+                if not self._error_reporter.has_errors_for(transaction.transaction_id):
+                    processed_timeline.append(transaction)
+            except Exception as e:
+                logger.error(f"Unexpected error for transaction {transaction.transaction_id}: {e}", exc_info=True)
+                self._error_reporter.add_error(transaction.transaction_id, f"Unexpected error: {str(e)}")
+
+        # 4. Filter the results to return only the newly processed transactions
+        final_processed_new = [
+            txn for txn in processed_timeline if txn.transaction_id in new_transaction_ids
         ]
-        
-        return final_processed, final_errored
+
+        return final_processed_new, self._error_reporter.get_errors()
