@@ -1,14 +1,14 @@
 #!/bin/bash
 set -e
 
-# --- Debugging Environment Variables (will remove later if successful) ---
-echo "--- Environment Variables ---"
-echo "POSTGRES_USER: ${POSTGRES_USER}"
-echo "POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}"
-echo "POSTGRES_HOST: ${POSTGRES_HOST}"
-echo "POSTGRES_DB: ${POSTGRES_DB}"
-echo "DATABASE_URL: ${DATABASE_URL}"
-echo "-----------------------------"
+# --- Debugging Environment Variables (removed) ---
+# echo "--- Environment Variables ---"
+# echo "POSTGRES_USER: ${POSTGRES_USER}"
+# echo "POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}"
+# echo "POSTGRES_HOST: ${POSTGRES_HOST}"
+# echo "POSTGRES_DB: ${POSTGRES_DB}"
+# echo "DATABASE_URL: ${DATABASE_URL}"
+# echo "-----------------------------"
 
 # --- Wait for PostgreSQL to be ready ---
 echo "Waiting for PostgreSQL to be ready..."
@@ -38,8 +38,8 @@ else:
 echo "PostgreSQL is ready, proceeding with migrations."
 
 # --- Run Alembic Migrations ---
-# Ensure Alembic uses the correct config path
-alembic -c /app/alembic.ini upgrade head
+# NEW: Added --verbose flag to see full Alembic output
+alembic -c /app/alembic.ini upgrade head --verbose
 
 echo "Alembic migrations applied."
 
