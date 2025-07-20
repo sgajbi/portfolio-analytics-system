@@ -4,12 +4,14 @@ import json
 import logging
 from confluent_kafka import Consumer, KafkaException, Message
 from common.config import KAFKA_BOOTSTRAP_SERVERS, KAFKA_RAW_TRANSACTIONS_TOPIC, KAFKA_RAW_TRANSACTIONS_COMPLETED_TOPIC
-from common.db import get_db_session # Corrected import
+from common.db import get_db_session
 from common.kafka_utils import get_kafka_producer
 from app.models.transaction_event import TransactionEvent
 from app.repositories.transaction_db_repo import TransactionDBRepository
 from pydantic import ValidationError
+from tenacity import retry, stop_after_attempt, wait_fixed, before_log # Import retry decorators
 
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 class TransactionConsumer:
@@ -33,24 +35,29 @@ class TransactionConsumer:
         self.consumer = None
         self.producer = get_kafka_producer() # Initialize Kafka Producer for publishing completion events
 
+    @retry(stop=stop_after_attempt(10), wait=wait_fixed(5), before=before_log(logger, logging.INFO))
     def _initialize_consumer(self):
-        """Initializes the Confluent Kafka Consumer."""
+        """Initializes the Confluent Kafka Consumer with retries for subscription."""
+        if self.consumer:
+            self.consumer.close() # Close existing consumer if retry is happening
+            self.consumer = None
         try:
             self.consumer = Consumer(self.consumer_config)
             self.consumer.subscribe([self.topic])
-            logger.info(f"Kafka consumer initialized for topic '{self.topic}' on brokers: {self.consumer_config['bootstrap.servers']}")
+            logger.info(f"Kafka consumer initialized and subscribed to topic '{self.topic}' on brokers: {self.consumer_config['bootstrap.servers']}")
         except KafkaException as e:
-            logger.error(f"Failed to initialize Kafka consumer: {e}")
+            logger.error(f"Failed to initialize or subscribe Kafka consumer, retrying: {e}")
             self.consumer = None
-            raise # Re-raise to indicate a critical setup failure
+            raise # Re-raise to trigger tenacity retry
 
     def start_consuming(self):
         """Starts the message consumption loop."""
-        if not self.consumer:
+        try:
+            # Initialize consumer with retry logic
             self._initialize_consumer()
-            if not self.consumer: # Check again if initialization failed
-                logger.error("Consumer is not initialized. Cannot start consuming.")
-                return
+        except Exception as e:
+            logger.critical(f"Failed to initialize Kafka consumer after multiple retries: {e}")
+            return # Exit if consumer cannot be initialized
 
         logger.info(f"Starting to consume messages from topic '{self.topic}'...")
         running = True
@@ -60,7 +67,6 @@ class TransactionConsumer:
                 if msg is None:
                     continue
                 if msg.error():
-                    # Corrected line below: Use .fatal() instead of .is_fatal()
                     if msg.error().fatal():
                         logger.error(f"Fatal consumer error: {msg.error()}")
                         running = False
