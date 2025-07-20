@@ -1,61 +1,85 @@
-from sqlalchemy import Column, String, Float, Date, DateTime, PrimaryKeyConstraint, UniqueConstraint
-from sqlalchemy.dialects.postgresql import UUID
-from datetime import datetime, date, timezone
-import uuid
-from common.db import Base # Import Base from common.db
+# common/models.py
 
-# The Transaction model based on your uploaded database_models.py
-class Transaction(Base):
-    __tablename__ = 'transactions'
+from datetime import datetime, date
+from typing import Optional, Dict, Any
+from pydantic import BaseModel, Field, condecimal
+from decimal import Decimal
 
-    transaction_id = Column(String, nullable=False)
-    portfolio_id = Column(String, nullable=False)
-    instrument_id = Column(String, nullable=False)
-    transaction_date = Column(Date, nullable=False) # Date of the transaction
-    transaction_type = Column(String, nullable=False) # e.g., 'BUY', 'SELL'
-    quantity = Column(Float, nullable=False)
-    price = Column(Float, nullable=False)
-    currency = Column(String, nullable=False)
-    trade_fee = Column(Float, nullable=True) # Changed to nullable=True to align with migration
-    settlement_date = Column(Date, nullable=True) # Changed to nullable=True to align with migration
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc)) # Timestamp of record creation
+class TransactionBase(BaseModel):
+    """Base Pydantic model for a transaction, defining common fields."""
+    transaction_id: str
+    portfolio_id: str = Field(alias="portfolioId")
+    instrument_id: str = Field(alias="instrumentId")
+    security_id: str
+    transaction_type: str
+    transaction_date: date
+    settlement_date: date
+    quantity: condecimal(ge=0)
+    gross_transaction_amount: condecimal(ge=0)
+    net_transaction_amount: Optional[condecimal(ge=0)] = None
+    fees: Optional[Dict[str, Any]] = None # Using Dict[str, Any] for flexibility
+    accrued_interest: Optional[condecimal(ge=0)] = Decimal(0)
+    average_price: Optional[condecimal(ge=0)] = None
+    trade_currency: str = Field(alias="tradeCurrency")
 
-    # Define a composite primary key as per the uploaded file
-    __table_args__ = (
-        PrimaryKeyConstraint('transaction_id', 'portfolio_id', 'instrument_id', 'transaction_date', name='pk_transactions'),
-        {}
-    )
+    class Config:
+        populate_by_name = True
+        json_encoders = {
+            Decimal: str # Encode Decimal to string for JSON serialization
+        }
 
-    def __repr__(self):
-        return (f"<Transaction("
-                f"transaction_id='{self.transaction_id}', "
-                f"portfolio_id='{self.portfolio_id}', "
-                f"instrument_id='{self.instrument_id}', "
-                f"transaction_date='{self.transaction_date}')>")
 
-# New model for TransactionCost
-class TransactionCost(Base):
-    __tablename__ = 'transaction_costs'
+class TransactionCreate(TransactionBase):
+    """Pydantic model for creating a new transaction."""
+    pass
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, unique=True, nullable=False)
-    # Link to Transaction using its business key fields for lookup
-    transaction_id = Column(String, nullable=False, index=True)
-    portfolio_id = Column(String, nullable=False, index=True)
-    instrument_id = Column(String, nullable=False, index=True)
-    transaction_date = Column(Date, nullable=False, index=True) # Ensure this matches the type in Transaction
-    
-    cost_amount = Column(Float, nullable=False)
-    cost_currency = Column(String, nullable=False)
-    calculation_date = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
-    __table_args__ = (
-        UniqueConstraint('transaction_id', 'portfolio_id', 'instrument_id', 'transaction_date', name='uq_transaction_cost_business_key'),
-        {}
-    )
+class Transaction(TransactionBase):
+    """
+    Pydantic model representing a full transaction record,
+    including calculated fields and database timestamps.
+    """
+    id: int # Database primary key
+    net_cost: Optional[condecimal()] = None # NEW: Calculated net cost from transaction-cost-engine
+    gross_cost: Optional[condecimal()] = None # NEW: Calculated gross cost from transaction-cost-engine
+    realized_gain_loss: Optional[condecimal()] = None # NEW: Calculated realized gain/loss from transaction-cost-engine
+    created_at: datetime
+    updated_at: datetime
 
-    def __repr__(self):
-        return (f"<TransactionCost("
-                f"id='{self.id}', "
-                f"transaction_id='{self.transaction_id}', "
-                f"cost_amount={self.cost_amount})>")
+    class Config:
+        from_attributes = True # Allow ORM models to be converted to this Pydantic model
+        json_encoders = {
+            Decimal: str
+        }
+
+
+class TransactionCostBase(BaseModel):
+    """Base Pydantic model for transaction cost details."""
+    transaction_id: str
+    fee_type: str
+    amount: condecimal(ge=0)
+    currency: str
+
+
+class TransactionCostCreate(TransactionCostBase):
+    """Pydantic model for creating new transaction cost records."""
+    pass
+
+
+class TransactionCost(TransactionCostBase):
+    """Pydantic model representing a full transaction cost record."""
+    id: int
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+        json_encoders = {
+            Decimal: str
+        }
+
+
+class HealthCheckResponse(BaseModel):
+    """Pydantic model for health check responses."""
+    status: str
+    timestamp: datetime

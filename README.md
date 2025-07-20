@@ -174,4 +174,22 @@ Future work will include:
   * Integrating monitoring (Prometheus/Grafana) and logging (ELK stack).
   * Setting up CI/CD pipelines and Kubernetes deployment.
 
- 
+ ## 8\. Database Migrations (Alembic)
+
+Alembic is used to manage database schema changes. **Ensure your virtual environment is active** before running these commands.
+
+* **Troubleshooting ModuleNotFoundError**: If you encounter `ModuleNotFoundError` when running Alembic, it might be due to Python not finding your project's modules (`common`, etc.). The `alembic/env.py` script has been configured to add the project root to `sys.path` to help resolve this. Ensure your current working directory in the terminal is the project root when running Alembic commands.
+
+* **Generate a new migration script**:
+    After making changes to SQLAlchemy ORM models (e.g., in `common/database_models.py`), use:
+    ```bash
+    python -m alembic revision --autogenerate -m "Your descriptive message here"
+    ```
+    Review the generated script in `alembic/versions/` to ensure it accurately captures the intended schema changes.
+
+* **Apply migrations to the database**:
+    To apply all pending migrations up to the latest revision (useful after initial setup or updates):
+    ```bash
+    python -m alembic upgrade head
+    ```
+    **Important**: Ensure your `DATABASE_URL` environment variable is correctly configured (e.g., in a `.env` file at the project root) for Alembic to connect to your database.
