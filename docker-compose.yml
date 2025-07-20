@@ -128,7 +128,6 @@ services:
       - ./alembic:/app/alembic
     command: ["python", "app/main.py"]
 
-  # --- NEW SERVICE ---
   cost-calculator-service:
     build:
       context: .
@@ -136,11 +135,10 @@ services:
     hostname: cost-calculator-service
     container_name: cost-calculator-service
     environment:
-      PYTHONPATH: "/app:/app/libs/financial-calculator-engine/src"
+      # --- THIS IS THE FIX: PYTHONPATH is now handled by the Dockerfile ---
       KAFKA_BOOTSTRAP_SERVERS: kafka:9093
       KAFKA_RAW_TRANSACTIONS_COMPLETED_TOPIC: raw_transactions_completed
       DATABASE_URL: postgresql://user:password@postgres:5432/portfolio_db
-      # You can control the cost basis method here, e.g., COST_BASIS_METHOD: "AVERAGE_COST"
     depends_on:
       kafka:
         condition: service_healthy
@@ -152,7 +150,6 @@ services:
       - ./libs/financial-calculator-engine:/app/libs/financial-calculator-engine
     command: ["python", "app/main.py"]
 
-
 volumes:
   postgres_data:
-  mongo_data:
+  mongo_
