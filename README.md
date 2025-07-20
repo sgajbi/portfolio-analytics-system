@@ -45,7 +45,6 @@ graph TD
     subgraph "Core Components"
         CostCalculator -- Uses --> EngineLib[financial-calculator-engine];
         PersistenceService --> DB;
-        IngestionService -.-> DB;
     end
 ````
 
@@ -129,7 +128,7 @@ Follow these steps to set up and run the project on your local machine.
     ```
 
 4.  **Install All Python Dependencies**:
-    This command installs the dependencies for all services and the core calculator library in editable mode.
+    This command installs the dependencies for all services and the core calculator library.
 
     ```bash
     pip install -e libs/financial-calculator-engine
@@ -138,24 +137,31 @@ Follow these steps to set up and run the project on your local machine.
 
 ### Database Migrations (Alembic)
 
-Database schema changes are managed by Alembic and must be applied manually during local development.
+Database schema changes are managed by Alembic. The recommended approach for development is to create one clean, initial migration.
 
-1.  **Start the Database**:
-    Before running migrations, the PostgreSQL container must be running.
+1.  **Clean Up Old Migrations** (if any exist):
+
+    ```bash
+    # Ensure your .venv is active
+    rm alembic/versions/*.py
+    ```
+
+2.  **Start the Database**:
 
     ```bash
     docker compose up -d postgres
     ```
 
-2.  **Generate a New Migration** (Only when you change a model in `common/database_models.py`):
+3.  **Wait for the Database to be Healthy**:
+    Run `docker compose ps` and wait for the `postgres` container to show a `(healthy)` status.
+
+4.  **Generate a New Migration**:
 
     ```bash
-    # Ensure your .venv is active
-    alembic revision --autogenerate -m "Your descriptive message here"
+    alembic revision --autogenerate -m "Create initial schema"
     ```
 
-3.  **Apply Migrations**:
-    To apply all pending migrations to the database, run:
+5.  **Apply Migrations**:
 
     ```bash
     alembic upgrade head
@@ -164,21 +170,19 @@ Database schema changes are managed by Alembic and must be applied manually duri
 ### Running the System with Docker Compose
 
 1.  **Build and Start All Services**:
-    This command will build the Docker images for all services and start the containers in the background.
+    This command will build the Docker images and start the containers.
 
     ```bash
     docker compose up --build -d
     ```
 
 2.  **Check Service Status**:
-    Wait for all containers to be in a `running` or `healthy` state.
 
     ```bash
     docker compose ps
     ```
 
 3.  **Stop All Services**:
-    To stop and remove all containers, networks, and volumes, run:
 
     ```bash
     docker compose down -v
@@ -190,10 +194,10 @@ Database schema changes are managed by Alembic and must be applied manually duri
 
 After starting all services, you can verify the full pipeline:
 
-1.  **Access the API Docs**: Open [http://localhost:8000/docs](https://www.google.com/search?q=http://localhost:8000/docs) in your browser.
-2.  **Ingest a BUY Transaction**: Use the `POST /ingest/transaction` endpoint to send an initial purchase.
-3.  **Ingest a SELL Transaction**: Send a second transaction to sell some of the previously purchased asset.
-4.  **Verify in Database**: Connect to the database and check the `transactions` table to confirm that both records were saved and that the `gross_cost`, `net_cost`, and `realized_gain_loss` fields have been correctly calculated and populated.
+1.  **Access the API Docs**: Open [http://localhost:8000/docs](https://www.google.com/search?q=http://localhost:8000/docs).
+2.  **Ingest a BUY Transaction**: Use the `POST /ingest/transaction` endpoint.
+3.  **Ingest a SELL Transaction**: Send a second transaction for the same instrument.
+4.  **Verify in Database**: Connect to the database and check the `transactions` table to confirm that both records were saved and that the cost fields have been correctly calculated.
     ```bash
     # Connect to the database
     docker exec -it postgres psql -U user -d portfolio_db
@@ -209,30 +213,16 @@ After starting all services, you can verify the full pipeline:
 ```
 .
 ├── libs/
-│   └── financial-calculator-engine/  # Core calculation logic as an installable library
-│       ├── pyproject.toml
-│       ├── src/
-│       └── tests/
+│   └── financial-calculator-engine/  # Core calculation logic
 ├── services/
-│   ├── cost-calculator-service/      # NEW: Kafka consumer for cost calculations
-│   │   ├── Dockerfile
-│   │   ├── pyproject.toml
-│   │   └── app/
+│   ├── cost-calculator-service/      # Kafka consumer for cost calculations
 │   ├── ingestion-service/            # FastAPI service for data ingestion
-│   │   ├── Dockerfile
-│   │   ├── pyproject.toml
-│   │   └── app/
 │   └── transaction-persistence-service/ # Kafka consumer for data persistence
-│       ├── Dockerfile
-│       ├── pyproject.toml
-│       └── app/
 ├── alembic/                           # Alembic migration scripts
-│   └── versions/
 ├── common/                            # Shared utilities and data models
 ├── .env
-├── .gitignore
 ├── docker-compose.yml
-├── pyproject.toml                     # Root project file
+├── pyproject.toml
 └── README.md
 ```
 
@@ -243,8 +233,10 @@ After starting all services, you can verify the full pipeline:
   * Complete the decoupling of the `common` module into versioned, installable packages.
   * Implement the remaining calculator services (position, valuation, performance).
   * Build the final REST API service to expose the calculated analytics.
-  * Integrate monitoring (Prometheus/Grafana) and structured logging.
-  * Establish a CI/CD pipeline for automated testing and deployment.
+  * Integrate monitoring and structured logging.
+  * Establish a CI/CD pipeline.
 
 <!-- end list -->
- 
+
+```
+```

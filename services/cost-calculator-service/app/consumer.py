@@ -11,7 +11,8 @@ from common.events import TransactionEvent
 
 # Import the TransactionProcessor AND the engine's internal Transaction model
 from src.services.transaction_processor import TransactionProcessor
-from src.core.models.transaction import Transaction as EngineTransaction # <-- THE FIX: Import engine's model
+# --- THIS IMPORT IS THE KEY PART OF THE FIX ---
+from src.core.models.transaction import Transaction as EngineTransaction
 from src.logic.parser import TransactionParser
 from src.logic.sorter import TransactionSorter
 from src.logic.disposition_engine import DispositionEngine
@@ -40,11 +41,9 @@ class CostCalculatorConsumer:
     def _get_transaction_processor(self) -> TransactionProcessor:
         settings = Settings()
         error_reporter = ErrorReporter()
-        
         strategy = FIFOBasisStrategy() if settings.COST_BASIS_METHOD == CostMethod.FIFO else AverageCostBasisStrategy()
         disposition_engine = DispositionEngine(cost_basis_strategy=strategy)
         cost_calculator = CostCalculator(disposition_engine, error_reporter)
-        
         return TransactionProcessor(
             parser=TransactionParser(error_reporter),
             sorter=TransactionSorter(),
@@ -85,8 +84,8 @@ class CostCalculatorConsumer:
                 DBTransaction.instrument_id == new_transaction_event.instrument_id
             ).all()
 
-            # --- THE FIX ---
-            # Use the engine's own Transaction model to correctly serialize DB objects, preserving net_cost.
+            # --- THIS LINE IS THE FIX ---
+            # Use the engine's model to correctly serialize DB objects, preserving net_cost.
             existing_txns_raw = [EngineTransaction.model_validate(t).model_dump(by_alias=True) for t in existing_db_txns]
             new_txn_raw = [new_transaction_event.model_dump()]
 
