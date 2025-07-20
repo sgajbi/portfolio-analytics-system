@@ -1,29 +1,23 @@
 
 # Portfolio Analytics System
 
-Welcome to the Portfolio Analytics System! This system is designed to process financial transactions, calculate portfolio analytics (positions, valuations, performance), and expose them via REST APIs. It follows a modular, event-driven architecture using Kafka, PostgreSQL, and Python microservices, containerized with Docker.
+This system is designed to process financial transactions, calculate portfolio analytics (positions, valuations, performance), and expose them via REST APIs. It follows a modular, event-driven architecture using Kafka, PostgreSQL, and Python microservices, containerized with Docker.
 
 ## Table of Contents
 
-1.  [Project Overview](#project-overview)
-2.  [System Architecture](#system-architecture)
-3.  [Current Implemented Services](#current-implemented-services)
-    * [Ingestion Service](#ingestion-service)
-    * [Transaction Persistence Service](#transaction-persistence-service)
-    * [Transaction Cost Calculator Service](#transaction-cost-calculator-service)
-4.  [Integrated Calculator Logic](#integrated-calculator-logic)
-5.  [Technology Stack](#technology-stack)
-6.  [Environment Setup](#environment-setup)
-7.  [Setup and Running Locally with Docker Compose](#setup-and-running-locally-with-docker-compose)
+1.  [Project Overview](#1-project-overview)
+2.  [System Architecture](#2-system-architecture)
+3.  [Implemented Services](#3-implemented-services)
+4.  [Core Libraries](#4-core-libraries)
+5.  [Technology Stack](#5-technology-stack)
+6.  [Local Development Setup](#6-local-development-setup)
     * [Prerequisites](#prerequisites)
-    * [Cloning the Repository](#cloning-the-repository)
-    * [Building and Running Services](#building-and-running-services)
-    * [Accessing Services](#accessing-services)
-    * [Checking Database Data](#checking-database-data)
-    * [Stopping Services](#stopping-services)
-8.  [Database Migrations (Alembic)](#database-migrations-alembic)
-9.  [Project Structure](#project-structure)
-10. [Future Development](#future-development)
+    * [Initial Setup](#initial-setup)
+    * [Database Migrations](#database-migrations-alembic)
+    * [Running the System](#running-the-system-with-docker-compose)
+7.  [End-to-End Testing](#7-end-to-end-testing)
+8.  [Project Structure](#8-project-structure)
+9.  [Future Development](#9-future-development)
 
 ---
 
@@ -31,244 +25,226 @@ Welcome to the Portfolio Analytics System! This system is designed to process fi
 
 The Portfolio Analytics System is a scalable, event-driven microservices platform. Its core function is to process raw financial transaction data and build a robust foundation for various portfolio analytics, including real-time position keeping, valuation, and performance measurement.
 
+---
+
 ## 2. System Architecture
 
-The system is built around a message broker (Kafka) to ensure loose coupling and high throughput. Transactions flow from an ingestion layer, through Kafka, to a persistence layer, and will eventually feed into analytical services.
+The system is built around Kafka to ensure loose coupling between services. Transactions are ingested, persisted, and then enriched by a pipeline of consumer services.
 
 ```mermaid
 graph TD
-    User[User/External System] --> IngestionService[Ingestion Service]
-    IngestionService -- Publishes Raw Transactions --> Kafka[Kafka Topic: raw_transactions]
-    Kafka --> TransactionPersistenceService[Transaction Persistence Service]
-    TransactionPersistenceService --> PostgreSQL[PostgreSQL Database]
+    subgraph "Event Flow"
+        User[User/Client] -- POST /ingest/transaction --> IngestionService[Ingestion Service];
+        IngestionService -- Publishes Event --> KafkaRaw[Kafka Topic: raw_transactions];
+        KafkaRaw --> PersistenceService[Transaction Persistence Service];
+        PersistenceService -- Persists to DB & Publishes Event --> KafkaCompleted[Kafka Topic: raw_transactions_completed];
+        KafkaCompleted --> CostCalculator[Cost Calculator Service];
+        CostCalculator -- Enriches Data --> DB[(PostgreSQL)];
+    end
+
+    subgraph "Core Components"
+        CostCalculator -- Uses --> EngineLib[financial-calculator-engine];
+        PersistenceService --> DB;
+        IngestionService -.-> DB;
+    end
 ````
 
-## 3\. Current Implemented Services
+-----
 
-### Ingestion Service (`services/ingestion-service`)
+## 3\. Implemented Services
 
-  * **Role**: Acts as the entry point for new transaction data. It receives transaction details via a REST API, validates them, and publishes them as events to the `raw_transactions` Kafka topic. It does **not** directly persist data to the database.
-  * **Technology**: FastAPI (Python), Confluent Kafka Producer.
+### `ingestion-service`
+
+  * **Role**: A FastAPI application that acts as the entry point for new transaction data. It receives transaction details via a REST API, validates them, and publishes them as events to the `raw_transactions` Kafka topic.
+  * **Technology**: FastAPI, Pydantic, Confluent Kafka Producer.
   * **API Endpoint**: `POST /ingest/transaction`
 
-### Transaction Persistence Service (`services/transaction-persistence-service`)
+### `transaction-persistence-service`
 
-  * **Role**: Consumes transaction events from the `raw_transactions` Kafka topic. It is responsible for validating these events, transforming them into a database-ready format, and persisting them into the PostgreSQL database.
+  * **Role**: A Kafka consumer that listens to the `raw_transactions` topic. It is responsible for transforming the event data and persisting it into the PostgreSQL `transactions` table. Upon successful persistence, it publishes a new event to the `raw_transactions_completed` topic.
   * **Technology**: Python, Confluent Kafka Consumer, SQLAlchemy, PostgreSQL.
 
-### Transaction Cost Calculator Service (`services/transaction-cost-calculator-service`)
+### `cost-calculator-service`
 
-  * **Role**: Calculates transaction-related costs and attributes, including cost basis (FIFO/Average Cost) and realized gain/loss. This service now integrates the advanced logic from the `transaction-cost-engine`.
-  * **Technology**: FastAPI (Python), Confluent Kafka Consumer, SQLAlchemy, PostgreSQL, Pydantic, integrated core logic from `transaction-cost-engine`.
+  * **Role**: A Kafka consumer that listens to the `raw_transactions_completed` topic. It uses the `financial-calculator-engine` library to calculate cost basis (`gross_cost`, `net_cost`) and `realized_gain_loss`. It then updates the corresponding transaction record in the PostgreSQL database with these calculated values.
+  * **Technology**: Python, Confluent Kafka Consumer, SQLAlchemy, PostgreSQL.
 
-## 4\. Integrated Calculator Logic
+-----
 
-This system now integrates the core calculator logic from the `transaction-cost-engine` project. This allows for advanced cost basis calculations (FIFO, Average Cost) and realized gain/loss computations directly within the `Transaction Cost Calculator Service`. The `transaction-cost-engine` remains a separate, independently runnable API service for isolated testing and ad-hoc usage.
+## 4\. Core Libraries
 
-  * **Core Logic Copied**: The essential Python modules (models, enums, and core calculation logic) from `transaction-cost-engine/src/core` and `transaction-cost-engine/src/logic` have been copied into `services/transaction-cost-calculator-service/app/cost_engine/`.
-  * **Internal Imports Adjusted**: The import paths within the copied files have been updated to align with the new project structure (`from app.cost_engine.`). The `settings.py` file has also been updated to correctly locate the `.env` file from the root of the `portfolio-analytics-system`.
-  * **Common Models Updated**: The shared `Transaction` Pydantic model (`common/models.py`) and SQLAlchemy ORM model (`common/database_models.py`) have been extended to include `net_cost`, `gross_cost`, and `realized_gain_loss` fields, preparing the database schema for these new calculated values. A new Alembic migration has been generated and applied to reflect these schema changes in the database.
+### `financial-calculator-engine`
+
+  * **Location**: `libs/financial-calculator-engine`
+  * **Role**: A self-contained, installable Python library that holds the core business logic for financial calculations. It handles parsing, sorting, and processing transactions to determine cost basis using configurable strategies (FIFO, Average Cost). It is decoupled from any specific service and includes its own unit tests.
+
+-----
 
 ## 5\. Technology Stack
 
-  * **Core Languages**: Python 3.11+
+  * **Core Language**: Python 3.11
   * **Containerization**: Docker
   * **Orchestration (Local)**: Docker Compose
-  * **Message Broker**: Apache Kafka (via Confluent Kafka Python client)
+  * **Message Broker**: Apache Kafka
   * **Database**: PostgreSQL
+  * **Database Migrations**: Alembic
   * **API Framework**: FastAPI
   * **Database ORM**: SQLAlchemy
   * **Data Validation**: Pydantic
 
-## 6\. Environment Setup
+-----
 
-To get the project running and manage dependencies effectively, follow these steps in your terminal (e.g., Git Bash on Windows, or any terminal on Linux/macOS):
+## 6\. Local Development Setup
 
-1.  **Create a Python Virtual Environment** (highly recommended for dependency isolation):
-
-    ```bash
-    python -m venv .venv
-    ```
-
-    This creates a `.venv` folder in your project root containing a new Python installation.
-
-2.  **Activate the Virtual Environment**:
-
-      * **On Windows (Git Bash / MinGW)**:
-        ```bash
-        source .venv/Scripts/activate
-        ```
-      * **On Linux / macOS**:
-        ```bash
-        source .venv/bin/activate
-        ```
-
-    You should see `(.venv)` appear at the beginning of your terminal prompt, indicating the virtual environment is active. **Always ensure this is active before installing packages or running Python scripts for this project.**
-
-3.  **Install Dependencies**: Install all project-wide requirements, including `alembic` and necessary database drivers, into your *active* virtual environment.
-
-    ```bash
-    pip install -r common/requirements.txt
-    pip install alembic sqlalchemy psycopg2-binary # Ensure alembic, sqlalchemy and a PostgreSQL driver are installed
-    ```
-
-    (Note: `psycopg2-binary` is specifically for PostgreSQL. If you are using a different database, adjust the driver as needed.)
-
-## 7\. Setup and Running Locally with Docker Compose
-
-This section guides you through setting up and running the core components of the Portfolio Analytics System on your local machine using Docker Compose.
+Follow these steps to set up and run the project on your local machine.
 
 ### Prerequisites
 
-  * **Docker Desktop**: Ensure Docker Desktop is installed and running (includes Docker Engine and Docker Compose).
+  * **Docker Desktop**: Ensure it's installed and running.
+  * **Python 3.11**: You must have a Python 3.11 interpreter installed locally.
 
-### Cloning the Repository
+### Initial Setup
 
-First, clone the project repository to your local machine:
+1.  **Clone the Repository**:
 
-```bash
-git clone [https://github.com/your-username/portfolio-analytics-system.git](https://github.com/your-username/portfolio-analytics-system.git)
-cd portfolio-analytics-system
-```
-
-### Building and Running Services
-
-Use Docker Compose to build the service images and start all the containers defined in `docker-compose.yml`:
-
-```bash
-docker compose build
-docker compose up -d
-```
-
-  * `docker compose build`: Builds the Docker images for all services.
-  * `docker compose up -d`: Starts all services in detached mode (in the background).
-
-Wait for all services to become healthy. You can check their status with `docker compose ps` or monitor logs.
-
-### Accessing Services
-
-Once all containers are up and running:
-
-  * **Ingestion Service (FastAPI)**:
-      * Swagger UI: `http://localhost:8000/docs`
-      * You can use this UI to send `POST /ingest/transaction` requests.
-
-### Checking Database Data
-
-To verify that transactions are being persisted by the `transaction-persistence-service` into PostgreSQL:
-
-1.  **Access the PostgreSQL container's shell**:
     ```bash
+    git clone <your-repo-url>
+    cd portfolio-analytics-system
+    ```
+
+2.  **Create `.env` file**:
+    Create a `.env` file in the project root by copying the example. This file stores configuration for Docker and local scripts.
+
+    ```bash
+    cp .env.example .env
+    ```
+
+3.  **Create and Activate Python 3.11 Virtual Environment**:
+    *(Use the command specific to your system for running Python 3.11, e.g., `py -3.11` or `python3.11`)*
+
+    ```bash
+    # Replace 'py -3.11' with your command if different
+    py -3.11 -m venv .venv
+    source .venv/Scripts/activate
+    ```
+
+4.  **Install All Python Dependencies**:
+    This command installs the dependencies for all services and the core calculator library in editable mode.
+
+    ```bash
+    pip install -e libs/financial-calculator-engine
+    pip install python-dotenv alembic psycopg2-binary -r services/ingestion-service/requirements.txt -r services/transaction-persistence-service/requirements.txt -r services/cost-calculator-service/requirements.txt
+    ```
+
+### Database Migrations (Alembic)
+
+Database schema changes are managed by Alembic and must be applied manually during local development.
+
+1.  **Start the Database**:
+    Before running migrations, the PostgreSQL container must be running.
+
+    ```bash
+    docker compose up -d postgres
+    ```
+
+2.  **Generate a New Migration** (Only when you change a model in `common/database_models.py`):
+
+    ```bash
+    # Ensure your .venv is active
+    alembic revision --autogenerate -m "Your descriptive message here"
+    ```
+
+3.  **Apply Migrations**:
+    To apply all pending migrations to the database, run:
+
+    ```bash
+    alembic upgrade head
+    ```
+
+### Running the System with Docker Compose
+
+1.  **Build and Start All Services**:
+    This command will build the Docker images for all services and start the containers in the background.
+
+    ```bash
+    docker compose up --build -d
+    ```
+
+2.  **Check Service Status**:
+    Wait for all containers to be in a `running` or `healthy` state.
+
+    ```bash
+    docker compose ps
+    ```
+
+3.  **Stop All Services**:
+    To stop and remove all containers, networks, and volumes, run:
+
+    ```bash
+    docker compose down -v
+    ```
+
+-----
+
+## 7\. End-to-End Testing
+
+After starting all services, you can verify the full pipeline:
+
+1.  **Access the API Docs**: Open [http://localhost:8000/docs](https://www.google.com/search?q=http://localhost:8000/docs) in your browser.
+2.  **Ingest a BUY Transaction**: Use the `POST /ingest/transaction` endpoint to send an initial purchase.
+3.  **Ingest a SELL Transaction**: Send a second transaction to sell some of the previously purchased asset.
+4.  **Verify in Database**: Connect to the database and check the `transactions` table to confirm that both records were saved and that the `gross_cost`, `net_cost`, and `realized_gain_loss` fields have been correctly calculated and populated.
+    ```bash
+    # Connect to the database
     docker exec -it postgres psql -U user -d portfolio_db
+
+    # Run query
+    SELECT transaction_id, gross_cost, net_cost, realized_gain_loss FROM transactions;
     ```
-    *(Note: The container name might be `portfolio-postgres` or just `postgres` depending on your Docker environment. Use `docker ps -a` to confirm the exact name.)*
-2.  **At the `psql` prompt, query the `transactions` table**:
-    ```sql
-    SELECT * FROM transactions;
-    ```
-    You should see the transactions that you ingested via the Ingestion Service, now including the new cost calculation fields.
 
-### Stopping Services
+-----
 
-To stop and remove all running containers, networks, and volumes created by `docker compose`:
-
-```bash
-docker compose down -v
-```
-
-  * The `-v` flag removes named volumes declared in the `volumes` section of the `docker-compose.yml` file, which is useful for starting fresh.
-
-## 8\. Database Migrations (Alembic)
-
-Alembic is used to manage database schema changes. **Ensure your virtual environment is active** before running these commands.
-
-  * **Ensure Database is Running:** Before generating or applying migrations, ensure your PostgreSQL database is running.
-    ```bash
-    docker-compose up -d postgres
-    # Or to start all services:
-    # docker-compose up -d
-    ```
-  * **Troubleshooting ModuleNotFoundError**: If you encounter `ModuleNotFoundError` when running Alembic, it might be due to Python not finding your project's modules (`common`, etc.). The `alembic/env.py` script has been configured to add the project root to `sys.path` to help resolve this. Ensure your current working directory in the terminal is the project root when running Alembic commands.
-  * **Troubleshooting "Can't locate revision"**: If Alembic cannot find a revision, ensure the migration file exists and that the database history (`alembic_version` table) is consistent. If needed in development, you can reset the database history (`DROP TABLE alembic_version;`) and then run `python -m alembic upgrade head` to re-apply all migrations.
-  * **Generate a new migration script**:
-    After making changes to SQLAlchemy ORM models (e.g., in `common/database_models.py`), use:
-    ```bash
-    python -m alembic revision --autogenerate -m "Your descriptive message here"
-    ```
-    *Note*: For `autogenerate` to work from your host machine, `alembic.ini` has been configured to connect to `localhost:5432`, assuming your Docker setup exposes PostgreSQL on that port.
-  * **Apply migrations to the database**:
-    To apply all pending migrations up to the latest revision (useful after initial setup or updates):
-    ```bash
-    python -m alembic upgrade head
-    ```
-    **Important**: Ensure your `DATABASE_URL` environment variable is correctly configured (e.g., in a `.env` file at the project root) for your *application services* when they run inside Docker, and `alembic.ini` has the correct `localhost` URL for host-based Alembic execution.
-  * **Current Migration Status**: A new migration script has been generated to add cost calculation fields to the `transactions` table and update the `transaction_costs` table structure. This script has been successfully applied.
-
-## 9\. Project Structure
+## 8\. Project Structure
 
 ```
 .
+├── libs/
+│   └── financial-calculator-engine/  # Core calculation logic as an installable library
+│       ├── pyproject.toml
+│       ├── src/
+│       └── tests/
 ├── services/
-│   ├── ingestion-service/
-│   │   ├── app/
-│   │   │   ├── main.py                   # FastAPI app for ingestion
-│   │   │   ├── models/                   # Pydantic models for data
-│   │   │   │   └── transaction.py
-│   │   │   └── database.py               # (Previously for direct DB interaction, now primarily for Alembic setup)
-│   │   ├── migrations/                   # Alembic migration scripts
-│   │   └── Dockerfile
-│   ├── transaction-persistence-service/
-│   │   ├── app/
-│   │   │   ├── main.py                   # Kafka consumer entry point
-│   │   │   ├── consumers/
-│   │   │   │   └── transaction_consumer.py # Kafka consumer logic
-│   │   │   ├── models/                   # Pydantic models for Kafka events
-│   │   │   │   └── transaction_event.py
-│   │   │   └── repositories/             # Database interaction logic
-│   │   │       └── transaction_db_repo.py
-│   │   └── Dockerfile
-│   ├── transaction-cost-calculator-service/
-│   │   ├── app/
-│   │   │   ├── main.py                   # FastAPI app / Kafka consumer entry point
-│   │   │   ├── consumers/                # Kafka consumer logic
-│   │   │   │   └── transaction_cost_consumer.py
-│   │   │   ├── cost_engine/              # Core logic copied from transaction-cost-engine
-│   │   │   │   ├── core/
-│   │   │   │   │   ├── config/
-│   │   │   │   │   ├── enums/
-│   │   │   │   │   └── models/
-│   │   │   │   └── logic/
-│   │   │   ├── fee_calculators.py        # Existing fee calculation (to be integrated/replaced)
-│   │   │   ├── models/                   # Schemas for service-specific API/DB (can be refactored)
-│   │   │   │   └── ...
-│   │   │   └── repositories/             # Database interaction logic (to be adapted)
-│   │   │       └── ...
-│   │   └── Dockerfile
-│   └── ... (other future services)
-├── common/
-│   ├── __init__.py
-│   ├── config.py                         # Centralized configuration variables
-│   ├── kafka_utils.py                    # Kafka producer/consumer utilities
-│   ├── db_utils.py                       # Database session utilities
-│   ├── database_models.py                # SQLAlchemy ORM models (centralized)
-│   └── requirements.txt                  # Common Python dependencies
-├── .env.example                          # Example environment variables
-├── docker-compose.yml                    # Defines and links all services
-├── requirements.txt                      # Project-wide Python dependencies
-└── README.md                             # Project documentation
+│   ├── cost-calculator-service/      # NEW: Kafka consumer for cost calculations
+│   │   ├── Dockerfile
+│   │   ├── pyproject.toml
+│   │   └── app/
+│   ├── ingestion-service/            # FastAPI service for data ingestion
+│   │   ├── Dockerfile
+│   │   ├── pyproject.toml
+│   │   └── app/
+│   └── transaction-persistence-service/ # Kafka consumer for data persistence
+│       ├── Dockerfile
+│       ├── pyproject.toml
+│       └── app/
+├── alembic/                           # Alembic migration scripts
+│   └── versions/
+├── common/                            # Shared utilities and data models
+├── .env
+├── .gitignore
+├── docker-compose.yml
+├── pyproject.toml                     # Root project file
+└── README.md
 ```
 
-## 10\. Future Development
+-----
 
-Future work will include:
+## 9\. Future Development
 
-  * Implementing services for market data ingestion.
-  * Developing analytics calculation services (e.g., position keeping, PnL) that consume the new `transaction.calculated` events.
-  * Creating a REST API layer to expose calculated analytics.
-  * Integrating monitoring (Prometheus/Grafana) and logging (ELK stack).
-  * Setting up CI/CD pipelines and Kubernetes deployment.
+  * Complete the decoupling of the `common` module into versioned, installable packages.
+  * Implement the remaining calculator services (position, valuation, performance).
+  * Build the final REST API service to expose the calculated analytics.
+  * Integrate monitoring (Prometheus/Grafana) and structured logging.
+  * Establish a CI/CD pipeline for automated testing and deployment.
 
 <!-- end list -->
-
-```
-```
+ 
