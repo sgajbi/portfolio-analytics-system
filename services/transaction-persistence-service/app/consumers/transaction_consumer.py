@@ -1,9 +1,11 @@
 # services/transaction-persistence-service/app/consumers/transaction_consumer.py
+
 import json
 import logging
 from confluent_kafka import Consumer, KafkaException, Message
 from common.config import KAFKA_BOOTSTRAP_SERVERS, KAFKA_RAW_TRANSACTIONS_TOPIC, KAFKA_RAW_TRANSACTIONS_COMPLETED_TOPIC
-from common.db_utils import get_db_session
+# Corrected import below
+from common.db import get_db_session
 from common.kafka_utils import get_kafka_producer
 from app.models.transaction_event import TransactionEvent
 from app.repositories.transaction_db_repo import TransactionDBRepository
