@@ -118,9 +118,9 @@ services:
       KAFKA_RAW_TRANSACTIONS_COMPLETED_TOPIC: raw_transactions_completed
       # Explicitly set POSTGRES variables to their desired defaults
       POSTGRES_HOST: postgres
-      POSTGRES_DB: portfolio_db # Changed from ${POSTGRES_DB:-portfolio_db}
-      POSTGRES_USER: user       # Changed from ${POSTGRES_USER:-user}
-      POSTGRES_PASSWORD: password # Changed from ${POSTGRES_PASSWORD:-password}
+      POSTGRES_DB: portfolio_db
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:5432/${POSTGRES_DB}
     depends_on:
       kafka:
@@ -134,6 +134,11 @@ services:
       - ./alembic.ini:/app/alembic.ini
       - ./alembic:/app/alembic
     command: 'bash -c "
+        echo \"POSTGRES_USER: $POSTGRES_USER\"
+        echo \"POSTGRES_PASSWORD: $POSTGRES_PASSWORD\"
+        echo \"POSTGRES_HOST: $POSTGRES_HOST\"
+        echo \"POSTGRES_DB: $POSTGRES_DB\"
+        echo \"DATABASE_URL: $DATABASE_URL\"
         # Wait for PostgreSQL to be ready before running migrations
         /usr/bin/env python -c ''
 import sys, time, os
