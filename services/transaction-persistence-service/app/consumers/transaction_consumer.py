@@ -4,8 +4,7 @@ import json
 import logging
 from confluent_kafka import Consumer, KafkaException, Message
 from common.config import KAFKA_BOOTSTRAP_SERVERS, KAFKA_RAW_TRANSACTIONS_TOPIC, KAFKA_RAW_TRANSACTIONS_COMPLETED_TOPIC
-# Corrected import below
-from common.db import get_db_session
+from common.db import get_db_session # Corrected import
 from common.kafka_utils import get_kafka_producer
 from app.models.transaction_event import TransactionEvent
 from app.repositories.transaction_db_repo import TransactionDBRepository
@@ -61,7 +60,8 @@ class TransactionConsumer:
                 if msg is None:
                     continue
                 if msg.error():
-                    if msg.error().is_fatal():
+                    # Corrected line below: Use .fatal() instead of .is_fatal()
+                    if msg.error().fatal():
                         logger.error(f"Fatal consumer error: {msg.error()}")
                         running = False
                     elif msg.error().code() == -190: # RD_KAFKA_RESP_ERR__PARTITION_EOF
