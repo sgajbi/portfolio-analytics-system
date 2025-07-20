@@ -1,33 +1,68 @@
-# Python
+# Byte-compiled / optimized / DLL files
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
-.Python/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+#  Usually these files are written by a CI, but they should be ignored if they are created locally.
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# Environments
+.env
+.venv/
 env/
 venv/
-*.egg-info/
-.pytest_cache/
-.coverage
-
-# Docker
-*.env
-.dockerignore
-!docker-compose.yml
-
-# Databases
-*.sqlite3
-*.db
-data/ # For local dev data outside of volumes
+ENV/
+env.bak
+venv.bak
 
 # IDEs
 .idea/
 .vscode/
 *.swp
-*.bak
-*~
-.DS_Store
 
-# Logs
-logs/
-*.log
+# Docker
+docker-compose.override.yml
+
+# Jupyter Notebook
+.ipynb_checkpoints
