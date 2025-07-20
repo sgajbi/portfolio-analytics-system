@@ -16,8 +16,8 @@ RUN pip install --no-cache-dir -r /app/requirements.txt
 # Copy the application code into the container
 COPY ./services/cost-calculator-service/app /app/app
 
-# Set PYTHONPATH to include the library's source
-ENV PYTHONPATH="/app:/app/libs/financial-calculator-engine/src"
+# Set PYTHONPATH to include the root of the library, so 'src' is found
+ENV PYTHONPATH="/app:/app/libs/financial-calculator-engine"
 
 # The command to run the service will be defined in docker-compose.yml
 CMD ["python", "app/main.py"]
