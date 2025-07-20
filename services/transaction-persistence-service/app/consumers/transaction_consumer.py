@@ -2,14 +2,15 @@
 
 import json
 import logging
-from confluent_kafka import Consumer, KafkaException, Message
+import time # Import the time module
+from confluent_kafka import Consumer, KafkaException, Message, KafkaError # Import KafkaError explicitly
 from common.config import KAFKA_BOOTSTRAP_SERVERS, KAFKA_RAW_TRANSACTIONS_TOPIC, KAFKA_RAW_TRANSACTIONS_COMPLETED_TOPIC
 from common.db import get_db_session
 from common.kafka_utils import get_kafka_producer
 from app.models.transaction_event import TransactionEvent
 from app.repositories.transaction_db_repo import TransactionDBRepository
 from pydantic import ValidationError
-from tenacity import retry, stop_after_attempt, wait_fixed, before_log # Import retry decorators
+from tenacity import retry, stop_after_attempt, wait_fixed, before_log
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -70,6 +71,9 @@ class TransactionConsumer:
                     if msg.error().fatal():
                         logger.error(f"Fatal consumer error: {msg.error()}")
                         running = False
+                    elif msg.error().code() == KafkaError.UNKNOWN_TOPIC_OR_PART: # Handle specific topic not ready error
+                        logger.info(f"Topic '{self.topic}' not yet available or partitioned. Retrying in 1 second. Error: {msg.error()}")
+                        time.sleep(1) # Wait before retrying to poll
                     elif msg.error().code() == -190: # RD_KAFKA_RESP_ERR__PARTITION_EOF
                         # Normal, expected error when no more messages in partition
                         # logger.debug(f"End of partition reached {msg.topic()} [{msg.partition()}] at offset {msg.offset()}")
