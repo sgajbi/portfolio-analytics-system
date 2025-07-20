@@ -1,8 +1,8 @@
-"""Create initial transactions and transaction_costs tables
+"""Create initial database schema
 
-Revision ID: 6667dbf8a364
+Revision ID: 42f218ad1451
 Revises: 
-Create Date: 2025-07-21 01:18:02.558363
+Create Date: 2025-07-21 02:04:16.453678
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = '6667dbf8a364'
+revision: str = '42f218ad1451'
 down_revision: Union[str, None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -24,7 +24,7 @@ def upgrade() -> None:
     sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
     sa.Column('transaction_id', sa.String(), nullable=False),
     sa.Column('portfolio_id', sa.String(), nullable=False),
-    sa.Column('asset_id', sa.String(), nullable=False),
+    sa.Column('instrument_id', sa.String(), nullable=False),
     sa.Column('transaction_type', sa.String(), nullable=False),
     sa.Column('quantity', sa.Numeric(precision=18, scale=10), nullable=False),
     sa.Column('price', sa.Numeric(precision=18, scale=10), nullable=False),
@@ -32,6 +32,9 @@ def upgrade() -> None:
     sa.Column('transaction_date', sa.DateTime(), nullable=False),
     sa.Column('created_at', sa.DateTime(), nullable=True),
     sa.Column('updated_at', sa.DateTime(), nullable=True),
+    sa.Column('gross_cost', sa.Numeric(precision=18, scale=10), nullable=True),
+    sa.Column('net_cost', sa.Numeric(precision=18, scale=10), nullable=True),
+    sa.Column('realized_gain_loss', sa.Numeric(precision=18, scale=10), nullable=True),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_transactions_transaction_id'), 'transactions', ['transaction_id'], unique=True)
