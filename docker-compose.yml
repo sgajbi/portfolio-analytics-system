@@ -152,4 +152,4 @@ services:
 
 volumes:
   postgres_data:
-  mongo_
+  mongo_data:

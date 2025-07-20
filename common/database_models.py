@@ -10,16 +10,16 @@ class Transaction(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     transaction_id = Column(String, unique=True, index=True, nullable=False)
     portfolio_id = Column(String, nullable=False)
-    instrument_id = Column(String, nullable=False) # <-- THE FIX: Renamed from asset_id
+    instrument_id = Column(String, nullable=False)
     transaction_type = Column(String, nullable=False)
     quantity = Column(Numeric(18, 10), nullable=False)
     price = Column(Numeric(18, 10), nullable=False)
     currency = Column(String, nullable=False)
     transaction_date = Column(DateTime, nullable=False)
+    settlement_date = Column(DateTime, nullable=True) 
+    trade_fee = Column(Numeric(18, 10), nullable=True)
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
-
-    # --- COLUMNS TO STORE CALCULATION RESULTS ---
     gross_cost = Column(Numeric(18, 10), nullable=True)
     net_cost = Column(Numeric(18, 10), nullable=True)
     realized_gain_loss = Column(Numeric(18, 10), nullable=True)
