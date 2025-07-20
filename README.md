@@ -51,6 +51,8 @@ graph TD
   * **Role**: Consumes transaction events from the `raw_transactions` Kafka topic. It is responsible for validating these events, transforming them into a database-ready format, and persisting them into the PostgreSQL database.
   * **Technology**: Python, Confluent Kafka Consumer, SQLAlchemy, PostgreSQL.
 
+* **Transaction Cost Calculator Service**: Calculates transaction-related costs and attributes, including cost basis (FIFO/Average Cost) and realized gain/loss. This service will now integrate the advanced logic from the `transaction-cost-engine`.
+
 ## 4\. Technology Stack
 
   * **Core Languages**: Python 3.11+
