@@ -26,13 +26,29 @@ else:
     sys.exit(1)
 '
 
-echo "PostgreSQL is ready, proceeding with migrations."
+echo "PostgreSQL is ready, proceeding with table creation."
 
-# --- Run Alembic Migrations ---
-# CORRECTED: Removed --verbose flag
-alembic -c /app/alembic.ini upgrade head
+# --- NEW: Create tables directly using SQLAlchemy ---
+echo "Creating database tables via SQLAlchemy Base.metadata.create_all()..."
+python -c '
+import sys, os
+from sqlalchemy import create_engine
+from common.db import Base, engine # Import Base and engine from common.db
 
-echo "Alembic migrations applied."
+db_url = os.environ.get("DATABASE_URL")
+if not db_url:
+    print("DATABASE_URL environment variable is not set for SQLAlchemy.", file=sys.stderr)
+    sys.exit(1)
+
+try:
+    Base.metadata.create_all(engine)
+    print("Database tables created successfully using Base.metadata.create_all().")
+except Exception as e:
+    print(f"Error creating database tables: {e}", file=sys.stderr)
+    sys.exit(1)
+'
+
+echo "Database schema creation step completed."
 
 # --- Start the main application ---
 echo "Starting Transaction Persistence Service application..."
