@@ -116,12 +116,8 @@ services:
       KAFKA_BOOTSTRAP_SERVERS: kafka:9093
       KAFKA_RAW_TRANSACTIONS_TOPIC: raw_transactions
       KAFKA_RAW_TRANSACTIONS_COMPLETED_TOPIC: raw_transactions_completed
-      # Explicitly set POSTGRES variables to their desired defaults
-      POSTGRES_HOST: postgres
-      POSTGRES_DB: portfolio_db
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: password
-      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:5432/${POSTGRES_DB}
+      # Removed individual POSTGRES_ variables, and directly define DATABASE_URL
+      DATABASE_URL: postgresql://user:password@postgres:5432/portfolio_db
     depends_on:
       kafka:
         condition: service_healthy
@@ -130,21 +126,11 @@ services:
     volumes: # Keeping volumes for development convenience
       - ./services/transaction-persistence-service/app:/app/app
       - ./common:/app/common
-      # NEW: Mount Alembic files for this service to run migrations
+      # Mount Alembic files for this service to run migrations
       - ./alembic.ini:/app/alembic.ini
       - ./alembic:/app/alembic
-    command: >
-      bash -c "
-        echo \"POSTGRES_USER: ${POSTGRES_USER}\" && \
-        echo \"POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}\" && \
-        echo \"POSTGRES_HOST: ${POSTGRES_HOST}\" && \
-        echo \"POSTGRES_DB: ${POSTGRES_DB}\" && \
-        echo \"DATABASE_URL: ${DATABASE_URL}\" && \
-        # Wait for PostgreSQL to be ready before running migrations
-        /usr/bin/env python -c ''import sys, time, os; from sqlalchemy import create_engine; from sqlalchemy.exc import OperationalError; db_url = os.environ.get(\"DATABASE_URL\"); if not db_url: print(\"DATABASE_URL environment variable is not set.\", file=sys.stderr); sys.exit(1); engine = create_engine(db_url); for i in range(20): try: conn = engine.connect(); conn.close(); print(\"PostgreSQL is ready!\"); break; except OperationalError: print(f\"PostgreSQL not ready, retrying... ({i+1}/20)\"); time.sleep(1); else: print(\"PostgreSQL did not become ready in time.\", file=sys.stderr); sys.exit(1);'' && \
-        alembic -c /app/alembic.ini upgrade head && \
-        exec python app/main.py
-      "
+      - ./services/transaction-persistence-service/startup.sh:/app/startup.sh # Ensure startup.sh is mounted
+    command: ["/app/startup.sh"] # NEW: Directly execute the startup script
 
   transaction-cost-calculator-service:
     build:
