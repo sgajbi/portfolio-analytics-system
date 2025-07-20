@@ -116,7 +116,6 @@ services:
       KAFKA_BOOTSTRAP_SERVERS: kafka:9093
       KAFKA_RAW_TRANSACTIONS_TOPIC: raw_transactions
       KAFKA_RAW_TRANSACTIONS_COMPLETED_TOPIC: raw_transactions_completed
-      # Removed individual POSTGRES_ variables, and directly define DATABASE_URL
       DATABASE_URL: postgresql://user:password@postgres:5432/portfolio_db
     depends_on:
       kafka:
@@ -129,8 +128,8 @@ services:
       # Mount Alembic files for this service to run migrations
       - ./alembic.ini:/app/alembic.ini
       - ./alembic:/app/alembic
-      - ./services/transaction-persistence-service/startup.sh:/app/startup.sh # Ensure startup.sh is mounted
-    command: ["/app/startup.sh"] # NEW: Directly execute the startup script
+    # --- CHANGE: Start the python app directly, not the shell script ---
+    command: ["python", "app/main.py"]
 
   transaction-cost-calculator-service:
     build:
