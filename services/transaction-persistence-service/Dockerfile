@@ -18,9 +18,5 @@ COPY services/transaction-persistence-service/requirements.txt /app/requirements
 # Install Python dependencies
 RUN pip install --no-cache-dir -r /app/requirements.txt
 
-# NEW: Copy the startup script and make it executable
-COPY services/transaction-persistence-service/startup.sh /app/startup.sh
-RUN chmod +x /app/startup.sh
-
-# The command to run the service will be defined in docker-compose.yml,
-# which will now execute the startup.sh script.
+# The command to run the service will be defined in docker-compose.yml
+# No startup script is needed.

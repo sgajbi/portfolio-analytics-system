@@ -1,49 +1,52 @@
 # alembic/env.py
+import os
+import sys
 from logging.config import fileConfig
 
+from dotenv import load_dotenv
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
 
 from alembic import context
 
-# this is the Alembic Config object, which provides
-# access to the values within the .ini file in use.
+# --- CUSTOM SETUP ---
+# Add the project root directory to the Python path.
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
+# Load environment variables from the .env file at the project root
+dotenv_path = os.path.join(project_root, '.env')
+if os.path.exists(dotenv_path):
+    load_dotenv(dotenv_path)
+# --- END CUSTOM SETUP ---
+
+# this is the Alembic Config object
 config = context.config
 
-# Interpret the config file for Python logging.
-# This line sets up loggers basically.
 if config.config_file_name:
     fileConfig(config.config_file_name)
 
 # add your model's MetaData object here
-# for 'autogenerate' support
-# from myapp import Base
-# target_metadata = Base.metadata
-from common.database_models import Base # Import your Base
+from common.database_models import Base
 target_metadata = Base.metadata
 
-# other values from the config, defined by the needs of env.py,
-# can be acquired:
-# my_important_option = config.get_main_option("my_important_option")
-# ... etc.
 
-def run_migrations_offline():
-    """Run migrations in 'offline' mode.
+def get_db_url():
+    """Gets the correct DB URL for the current context (host vs container)."""
+    # Use HOST_DATABASE_URL if available (for local tools), otherwise use DATABASE_URL.
+    url = os.environ.get("HOST_DATABASE_URL") or os.environ.get("DATABASE_URL")
+    if url is None:
+        raise Exception(
+            "Neither HOST_DATABASE_URL nor DATABASE_URL are set. "
+            "Please check your .env file."
+        )
+    return url
 
-    This configures the context with just a URL
-    and not an actual DBAPI connection.
 
-    Calls to context.execute() here send SQL statements to the compiler
-    (implicitly or explicitly) for later output to the given file handle.
-
-    """
-    url = config.get_main_option("sqlalchemy.url")
-    if url is None: # Fallback to DATABASE_URL env var if not in alembic.ini
-        import os
-        url = os.environ.get("DATABASE_URL")
-        if url is None:
-            raise Exception("DATABASE_URL environment variable is not set and sqlalchemy.url is not in alembic.ini")
-
+def run_migrations_offline() -> None:
+    """Run migrations in 'offline' mode."""
+    url = get_db_url()
     context.configure(
         url=url,
         target_metadata=target_metadata,
@@ -55,45 +58,24 @@ def run_migrations_offline():
         context.run_migrations()
 
 
-def run_migrations_online():
-    """Run migrations in 'online' mode.
+def run_migrations_online() -> None:
+    """Run migrations in 'online' mode."""
+    engine_config = config.get_section(config.config_ini_section)
+    engine_config["sqlalchemy.url"] = get_db_url()
 
-    In this scenario we need to create a connection
-    to the database truly.
+    connectable = engine_from_config(
+        engine_config,
+        prefix="sqlalchemy.",
+        poolclass=pool.NullPool,
+    )
 
-    """
-    import os
-    connectable = None # Initialize connectable
-
-    # Get the configuration section
-    configuration = config.get_section(config.config_ini_section)
-
-    # Explicitly set sqlalchemy.url in the configuration dictionary
-    # using the DATABASE_URL environment variable.
-    db_url = os.environ.get("DATABASE_URL")
-    if db_url:
-        configuration["sqlalchemy.url"] = db_url
-    else:
-        pass # The engine_from_config will raise an error if 'url' is missing.
-
-    try:
-        connectable = engine_from_config(
-            configuration,
-            prefix="sqlalchemy.",
-            poolclass=pool.NullPool,
+    with connectable.connect() as connection:
+        context.configure(
+            connection=connection, target_metadata=target_metadata
         )
 
-        with connectable.connect() as connection:
-            context.configure(
-                connection=connection,
-                target_metadata=target_metadata
-            )
-
-            # CORRECTED LINE: Removed 'with' statement around context.run_migrations()
+        with context.begin_transaction():
             context.run_migrations()
-    finally:
-        if connectable is not None:
-            connectable.dispose()
 
 
 if context.is_offline_mode():
