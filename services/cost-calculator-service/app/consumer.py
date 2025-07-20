@@ -1,16 +1,17 @@
 # services/cost-calculator-service/app/consumer.py
 import json
 import logging
-from confluent_kafka import Consumer, KafkaException, Message
+from confluent_kafka import Consumer, Message
 from pydantic import ValidationError
 
 from common.config import KAFKA_BOOTSTRAP_SERVERS
 from common.db import get_db_session
 from common.database_models import Transaction as DBTransaction
-from common.events import TransactionEvent # <-- THE FIX: Import the shared event model
+from common.events import TransactionEvent
 
-# Import the TransactionProcessor from our new library
+# Import the TransactionProcessor AND the engine's internal Transaction model
 from src.services.transaction_processor import TransactionProcessor
+from src.core.models.transaction import Transaction as EngineTransaction # <-- THE FIX: Import engine's model
 from src.logic.parser import TransactionParser
 from src.logic.sorter import TransactionSorter
 from src.logic.disposition_engine import DispositionEngine
@@ -40,11 +41,7 @@ class CostCalculatorConsumer:
         settings = Settings()
         error_reporter = ErrorReporter()
         
-        if settings.COST_BASIS_METHOD == CostMethod.FIFO:
-            strategy = FIFOBasisStrategy()
-        else:
-            strategy = AverageCostBasisStrategy()
-
+        strategy = FIFOBasisStrategy() if settings.COST_BASIS_METHOD == CostMethod.FIFO else AverageCostBasisStrategy()
         disposition_engine = DispositionEngine(cost_basis_strategy=strategy)
         cost_calculator = CostCalculator(disposition_engine, error_reporter)
         
@@ -60,10 +57,7 @@ class CostCalculatorConsumer:
         try:
             while True:
                 msg = self.consumer.poll(timeout=1.0)
-                if msg is None: continue
-                if msg.error():
-                    logger.warning(f"Kafka consumer error: {msg.error()}. Retrying...")
-                    continue
+                if not msg or msg.error(): continue
                 try:
                     self._process_message(msg)
                     self.consumer.commit(asynchronous=False)
@@ -78,7 +72,6 @@ class CostCalculatorConsumer:
         
         try:
             data = json.loads(message_value)
-            # --- THE FIX: Use the correct, simple event model for validation ---
             new_transaction_event = TransactionEvent.model_validate(data)
         except (json.JSONDecodeError, ValidationError) as e:
             logger.error(f"Failed to parse message into TransactionEvent model: {e}")
@@ -92,9 +85,9 @@ class CostCalculatorConsumer:
                 DBTransaction.instrument_id == new_transaction_event.instrument_id
             ).all()
 
-            # The engine expects a list of dictionaries. We must convert our objects.
-            # We use model_dump() which respects Pydantic aliases.
-            existing_txns_raw = [TransactionEvent.model_validate(t).model_dump() for t in existing_db_txns]
+            # --- THE FIX ---
+            # Use the engine's own Transaction model to correctly serialize DB objects, preserving net_cost.
+            existing_txns_raw = [EngineTransaction.model_validate(t).model_dump(by_alias=True) for t in existing_db_txns]
             new_txn_raw = [new_transaction_event.model_dump()]
 
             processed, errored = processor.process_transactions(
@@ -108,9 +101,7 @@ class CostCalculatorConsumer:
 
             if processed:
                 result = processed[0]
-                db_txn_to_update = db.query(DBTransaction).filter(
-                    DBTransaction.transaction_id == result.transaction_id
-                ).first()
+                db_txn_to_update = db.query(DBTransaction).filter(DBTransaction.transaction_id == result.transaction_id).first()
 
                 if db_txn_to_update:
                     logger.info(f"Updating transaction {result.transaction_id} with calculated costs.")
@@ -119,5 +110,3 @@ class CostCalculatorConsumer:
                     db_txn_to_update.realized_gain_loss = result.realized_gain_loss
                     db.commit()
                     logger.info(f"Successfully updated transaction {result.transaction_id}.")
-                else:
-                    logger.error(f"Could not find transaction {result.transaction_id} in DB to update.")
