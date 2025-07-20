@@ -1,15 +1,13 @@
 # services/cost-calculator-service/app/consumer.py
 import json
 import logging
-from decimal import Decimal
 from confluent_kafka import Consumer, KafkaException, Message
-from sqlalchemy.orm import Session
 from pydantic import ValidationError
 
 from common.config import KAFKA_BOOTSTRAP_SERVERS
 from common.db import get_db_session
 from common.database_models import Transaction as DBTransaction
-from common.models import Transaction as PydanticTransaction
+from common.events import TransactionEvent # <-- THE FIX: Import the shared event model
 
 # Import the TransactionProcessor from our new library
 from src.services.transaction_processor import TransactionProcessor
@@ -39,8 +37,7 @@ class CostCalculatorConsumer:
         logger.info(f"Consumer subscribed to topic: {self.topic}")
 
     def _get_transaction_processor(self) -> TransactionProcessor:
-        """Builds and returns an instance of the TransactionProcessor."""
-        settings = Settings() # Loads settings from .env (e.g., COST_BASIS_METHOD)
+        settings = Settings()
         error_reporter = ErrorReporter()
         
         if settings.COST_BASIS_METHOD == CostMethod.FIFO:
@@ -63,12 +60,10 @@ class CostCalculatorConsumer:
         try:
             while True:
                 msg = self.consumer.poll(timeout=1.0)
-                if msg is None:
-                    continue
+                if msg is None: continue
                 if msg.error():
-                    logger.error(f"Kafka consumer error: {msg.error()}")
+                    logger.warning(f"Kafka consumer error: {msg.error()}. Retrying...")
                     continue
-                
                 try:
                     self._process_message(msg)
                     self.consumer.commit(asynchronous=False)
@@ -83,39 +78,36 @@ class CostCalculatorConsumer:
         
         try:
             data = json.loads(message_value)
-            # The payload from the persistence service should match this model
-            new_transaction_event = PydanticTransaction.model_validate(data)
+            # --- THE FIX: Use the correct, simple event model for validation ---
+            new_transaction_event = TransactionEvent.model_validate(data)
         except (json.JSONDecodeError, ValidationError) as e:
-            logger.error(f"Failed to parse message into Pydantic model: {e}")
+            logger.error(f"Failed to parse message into TransactionEvent model: {e}")
             return
 
         processor = self._get_transaction_processor()
         
         with next(get_db_session()) as db:
-            # 1. Fetch existing transactions for context
             existing_db_txns = db.query(DBTransaction).filter(
                 DBTransaction.portfolio_id == new_transaction_event.portfolio_id,
                 DBTransaction.instrument_id == new_transaction_event.instrument_id
             ).all()
 
-            # Convert DB models to raw dicts for the processor
-            existing_txns_raw = [PydanticTransaction.model_validate(t).model_dump() for t in existing_db_txns]
+            # The engine expects a list of dictionaries. We must convert our objects.
+            # We use model_dump() which respects Pydantic aliases.
+            existing_txns_raw = [TransactionEvent.model_validate(t).model_dump() for t in existing_db_txns]
             new_txn_raw = [new_transaction_event.model_dump()]
 
-            # 2. Process using the engine
             processed, errored = processor.process_transactions(
                 existing_transactions_raw=existing_txns_raw,
                 new_transactions_raw=new_txn_raw
             )
             
-            # 3. Handle results
             if errored:
                 for e in errored:
                     logger.error(f"Transaction {e.transaction_id} failed processing: {e.error_reason}")
 
             if processed:
                 result = processed[0]
-                # Find the corresponding transaction in the DB to update it
                 db_txn_to_update = db.query(DBTransaction).filter(
                     DBTransaction.transaction_id == result.transaction_id
                 ).first()

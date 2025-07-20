@@ -6,7 +6,7 @@ from confluent_kafka import Consumer, KafkaException, Message
 from common.config import KAFKA_BOOTSTRAP_SERVERS, KAFKA_RAW_TRANSACTIONS_TOPIC, KAFKA_RAW_TRANSACTIONS_COMPLETED_TOPIC
 from common.db import get_db_session
 from common.kafka_utils import get_kafka_producer
-from app.models.transaction_event import TransactionEvent
+from common.events import TransactionEvent # <-- THE FIX: Import from common
 from app.repositories.transaction_db_repo import TransactionDBRepository
 from pydantic import ValidationError
 from tenacity import retry, stop_after_attempt, wait_fixed, before_log
@@ -71,7 +71,6 @@ class TransactionConsumer:
 
         try:
             transaction_data = json.loads(value)
-            # This handles the double-encoding from the (now fixed) ingestion service
             if isinstance(transaction_data, str):
                 logger.warning("Detected double-encoded JSON, decoding again.")
                 transaction_data = json.loads(transaction_data)
@@ -83,14 +82,12 @@ class TransactionConsumer:
                 repo = TransactionDBRepository(db)
                 repo.create_or_update_transaction(transaction_event)
                 
-                # --- THIS IS THE FIX ---
-                # Use model_dump() to get a dictionary for the next message
                 completed_event_payload = transaction_event.model_dump()
 
                 self.producer.publish_message(
                     topic=KAFKA_RAW_TRANSACTIONS_COMPLETED_TOPIC,
                     key=transaction_event.transaction_id,
-                    value=completed_event_payload # Pass the dictionary
+                    value=completed_event_payload
                 )
                 logger.info(f"Published completion event for '{transaction_event.transaction_id}'")
         except (json.JSONDecodeError, ValidationError) as e:
