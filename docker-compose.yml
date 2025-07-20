@@ -120,6 +120,8 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-portfolio_db} # Using flexible env var
       POSTGRES_USER: ${POSTGRES_USER:-user} # Using flexible env var
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password} # Using flexible env var
+      # NEW: Define DATABASE_URL for Alembic and application to use
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:5432/${POSTGRES_DB}
     depends_on:
       kafka:
         condition: service_healthy
@@ -131,13 +133,35 @@ services:
       # NEW: Mount Alembic files for this service to run migrations
       - ./alembic.ini:/app/alembic.ini
       - ./alembic:/app/alembic
-    command: >
-      bash -c "
-        # Run Alembic migrations first
+    command: 'bash -c "
+        # Wait for PostgreSQL to be ready before running migrations
+        /usr/bin/env python -c ''
+import sys, time, os
+from sqlalchemy import create_engine
+from sqlalchemy.exc import OperationalError
+db_url = os.environ.get(\"DATABASE_URL\")
+if not db_url:
+    print(\"DATABASE_URL environment variable is not set.\", file=sys.stderr)
+    sys.exit(1)
+engine = create_engine(db_url)
+for i in range(20): # Retry up to 20 times, 1 second apart
+    try:
+        conn = engine.connect()
+        conn.close()
+        print(\"PostgreSQL is ready!\")
+        break
+    except OperationalError:
+        print(f\"PostgreSQL not ready, retrying... ({i+1}/20)\")
+        time.sleep(1)
+else:
+    print(\"PostgreSQL did not become ready in time.\", file=sys.stderr)
+    sys.exit(1)
+        ''
+        # Run Alembic migrations
         alembic -c /app/alembic.ini upgrade head
         # Then start the main application
         exec python app/main.py
-      "
+      "'
 
   transaction-cost-calculator-service:
     build:
