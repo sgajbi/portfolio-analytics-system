@@ -1,5 +1,3 @@
-# src/logic/cost_calculator.py
-
 from typing import Protocol, Optional
 from decimal import Decimal
 
@@ -14,7 +12,10 @@ class TransactionCostStrategy(Protocol):
 class BuyStrategy:
     def calculate_costs(self, transaction: Transaction, disposition_engine: DispositionEngine, error_reporter: ErrorReporter) -> None:
         transaction.gross_cost = Decimal(str(transaction.gross_transaction_amount))
-        total_fees = transaction.fees.total_fees if transaction.fees else Decimal(0)
+        
+        # --- FIX: The Transaction model uses a Fees object, so we access trade_fee from there ---
+        total_fees = transaction.fees.brokerage if transaction.fees else Decimal(0)
+        
         accrued_interest = Decimal(str(transaction.accrued_interest)) if transaction.accrued_interest is not None else Decimal(0)
         transaction.net_cost = transaction.gross_cost + total_fees + accrued_interest
 
@@ -33,25 +34,21 @@ class SellStrategy:
     def calculate_costs(self, transaction: Transaction, disposition_engine: DispositionEngine, error_reporter: ErrorReporter) -> None:
         sell_quantity = Decimal(str(transaction.quantity))
         gross_sell_proceeds = Decimal(str(transaction.gross_transaction_amount))
-        sell_fees = transaction.fees.total_fees if transaction.fees else Decimal(0)
+
+        # --- FIX: The Transaction model uses a Fees object, so we access trade_fee from there ---
+        sell_fees = transaction.fees.brokerage if transaction.fees else Decimal(0)
         net_sell_proceeds = gross_sell_proceeds - sell_fees
 
         total_matched_cost, consumed_quantity, error_reason = disposition_engine.consume_sell_quantity(transaction)
+        
         if error_reason:
             error_reporter.add_error(transaction.transaction_id, error_reason)
-            transaction.realized_gain_loss = None
-            transaction.gross_cost = Decimal(0)
-            transaction.net_cost = Decimal(0)
             return
 
         if consumed_quantity > Decimal(0):
             transaction.realized_gain_loss = net_sell_proceeds - total_matched_cost
             transaction.gross_cost = -total_matched_cost
             transaction.net_cost = -total_matched_cost
-        else:
-            transaction.realized_gain_loss = Decimal(0)
-            transaction.gross_cost = Decimal(0)
-            transaction.net_cost = Decimal(0)
         
         if sell_quantity > Decimal(0):
             transaction.average_price = gross_sell_proceeds / sell_quantity
