@@ -1,4 +1,4 @@
-
+# docker-compose.yml
 services:
   zookeeper:
     image: confluentinc/cp-zookeeper:7.2.15
@@ -97,8 +97,9 @@ services:
     volumes: # Keeping volumes for development convenience
       - ./services/ingestion-service/app:/app/app
       - ./common:/app/common
-      - ./services/ingestion-service/alembic.ini:/app/alembic.ini
-      - ./services/ingestion-service/alembic:/app/alembic
+      # Alembic files are here, but this service doesn't run migrations
+      - ./alembic.ini:/app/alembic.ini
+      - ./alembic:/app/alembic
     command: >
       bash -c "
         uvicorn app.main:app --host 0.0.0.0 --port 8000
@@ -127,7 +128,16 @@ services:
     volumes: # Keeping volumes for development convenience
       - ./services/transaction-persistence-service/app:/app/app
       - ./common:/app/common
-    command: ["python", "app/main.py"]
+      # NEW: Mount Alembic files for this service to run migrations
+      - ./alembic.ini:/app/alembic.ini
+      - ./alembic:/app/alembic
+    command: >
+      bash -c "
+        # Run Alembic migrations first
+        alembic -c /app/alembic.ini upgrade head
+        # Then start the main application
+        exec python app/main.py
+      "
 
   transaction-cost-calculator-service:
     build:
@@ -154,7 +164,7 @@ services:
       - ./alembic.ini:/app/alembic.ini
       - ./alembic:/app/alembic
     ports:
-      - "8001:8000"
+      - "8000:8000"
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"] # Update command to bind to 0.0.0.0
 
 volumes:
