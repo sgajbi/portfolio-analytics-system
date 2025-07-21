@@ -13,13 +13,13 @@ COPY alembic.ini /app/alembic.ini
 COPY alembic /app/alembic
 COPY libs/portfolio-common/ /app/libs/portfolio-common/
 
+# Convert Windows line endings (CRLF) to Unix line endings (LF) for startup.sh using sed
+RUN sed -i 's/\r$//' /app/startup.sh # ADDED THIS LINE
+
 # Install application and test dependencies
 RUN pip install --no-cache-dir -r /app/requirements.txt \
     && pip install --no-cache-dir -r /app/tests/requirements.txt \
     && pip install -e /app/libs/portfolio-common
-
-# Removed the dos2unix installation step as it's no longer needed with a newer base image
-# and the assumption that startup.sh will have correct line endings in the repository.
 
 # Set the Python path to include the service's app directory and the common libraries
 ENV PYTHONPATH="/app:/app/libs/portfolio-common"
@@ -35,7 +35,7 @@ WORKDIR /app
 # Copy built application code and necessary files from the builder stage
 COPY --from=builder /app/app /app/app
 COPY --from=builder /app/requirements.txt /app/requirements.txt
-COPY --from=builder /app/startup.sh /app/startup.sh
+COPY --from=builder /app/startup.sh /app/startup.sh 
 COPY --from=builder /app/alembic.ini /app/alembic.ini
 COPY --from=builder /app/alembic /app/alembic
 COPY --from=builder /app/libs/portfolio-common/ /app/libs/portfolio-common/
