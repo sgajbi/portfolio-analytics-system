@@ -114,7 +114,7 @@ services:
       - ./libs/portfolio-common:/app/libs/portfolio-common
       - ./alembic.ini:/app/alembic.ini
       - ./alembic:/app/alembic
-    command: ["/app/startup.sh"] 
+    command: ["bash", "/app/startup.sh"] 
     networks:
       - app_network
 
