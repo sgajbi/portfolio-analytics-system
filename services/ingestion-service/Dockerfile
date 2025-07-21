@@ -23,13 +23,11 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Copy only the application files from the builder stage
+# Copy application files and dependencies from the builder stage
 COPY --from=builder /app/app /app/app
 COPY --from=builder /app/requirements.txt /app/requirements.txt
 COPY --from=builder /usr/local/lib/python3.11/site-packages/ /usr/local/lib/python3.11/site-packages/
-
-# Install application dependencies (already copied from builder)
-RUN pip install --no-cache-dir -r /app/requirements.txt
+COPY --from=builder /usr/local/bin/ /usr/local/bin/
 
 # Expose the port FastAPI will run on
 EXPOSE 8000
