@@ -1,40 +1,53 @@
-# services/cost-calculator-service/Dockerfile
-FROM python:3.11-slim-buster as builder
+# ----------- Stage 1: Builder stage -----------
+FROM python:3.11-slim-bookworm as builder
 
 WORKDIR /app
 
-# Copy all necessary files for this service and shared libraries from the root build context.
-# Paths are now relative to the project root.
+# Copy requirements files first for caching
 COPY services/cost-calculator-service/requirements.txt /app/requirements.txt
-COPY services/cost-calculator-service/app /app/app
-# No explicit tests folder found for cost-calculator-service in original Dockerfile or structure
 
-# Copy shared libraries
+# Copy shared libraries early to cache dependencies properly
 COPY libs/portfolio-common/ /app/libs/portfolio-common/
-COPY libs/financial-calculator-engine /app/libs/financial-calculator-engine
+COPY libs/financial-calculator-engine/ /app/libs/financial-calculator-engine/
 
-# Install Python dependencies, including the local editable libraries from requirements.txt
-RUN pip install --no-cache-dir -r /app/requirements.txt
+# Create and activate virtual environment, then install dependencies including editable libs
+RUN python -m venv /opt/venv && \
+    /opt/venv/bin/pip install --upgrade pip setuptools wheel && \
+    /opt/venv/bin/pip install --no-cache-dir -r /app/requirements.txt && \
+    /opt/venv/bin/pip install -e /app/libs/portfolio-common && \
+    /opt/venv/bin/pip install -e /app/libs/financial-calculator-engine
 
-# Set PYTHONPATH to include the service's app directory and the common libraries
+# Copy application source code last for better cache usage
+COPY services/cost-calculator-service/app /app/app
+
+# Set environment variables for shared libs
 ENV PYTHONPATH="/app:/app/libs/portfolio-common:/app/libs/financial-calculator-engine"
 
-# No tests to run in builder stage for this service as per original Dockerfile / project structure
-
-# Stage 2: Final production stage
-FROM python:3.11-slim-buster
+# ----------- Stage 2: Production stage -----------
+FROM python:3.11-slim-bookworm
 
 WORKDIR /app
 
-# Copy built application code and necessary files from the builder stage
+# Copy virtual environment from builder
+COPY --from=builder /opt/venv /opt/venv
+
+# Copy app and shared libs
 COPY --from=builder /app/app /app/app
-COPY --from=builder /app/requirements.txt /app/requirements.txt
-COPY --from=builder /app/libs/portfolio-common/ /app/libs/portfolio-common/
-COPY --from=builder /app/libs/financial-calculator-engine/ /app/libs/financial-calculator-engine/
+COPY --from=builder /app/libs/portfolio-common /app/libs/portfolio-common
+COPY --from=builder /app/libs/financial-calculator-engine /app/libs/financial-calculator-engine
 
-# Copy installed Python site-packages and executables
-COPY --from=builder /usr/local/lib/python3.11/site-packages/ /usr/local/lib/python3.11/site-packages/
-COPY --from=builder /usr/local/bin/ /usr/local/bin/
+# Set environment variables for python
+ENV PATH="/opt/venv/bin:$PATH"
+ENV PYTHONPATH="/app:/app/libs/portfolio-common:/app/libs/financial-calculator-engine"
 
-# The command to run the service will be defined in docker-compose.yml
+# Expose default port if your app listens on a port (adjust if necessary)
+EXPOSE 8000
+
+# Create a non-root user and fix permissions
+RUN useradd --create-home appuser && \
+    chown -R appuser:appuser /opt/venv /app
+
+USER appuser
+
+# Use production-ready command (adjust if you use Uvicorn or something else)
 CMD ["python", "app/main.py"]

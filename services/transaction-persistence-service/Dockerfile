@@ -1,51 +1,71 @@
-# Stage 1: Builder stage with test dependencies
-FROM python:3.11-slim-bookworm as builder
+# ----------- Stage 1: Builder with dependencies and tests -----------
+FROM python:3.11-slim-bookworm AS builder
+
+ENV POETRY_VIRTUALENVS_CREATE=false \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH="/app:/app/libs/portfolio-common"
 
 WORKDIR /app
 
-# Copy all necessary files for this service and shared libraries from the root build context.
-# Paths are now relative to the project root.
+# Install system dependencies for building and PostgreSQL client
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    libpq-dev \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy all needed files
 COPY services/transaction-persistence-service/app /app/app
-COPY services/transaction-persistence-service/requirements.txt /app/requirements.txt
 COPY services/transaction-persistence-service/tests /app/tests
+COPY services/transaction-persistence-service/requirements.txt /app/requirements.txt
 COPY services/transaction-persistence-service/startup.sh /app/startup.sh
 COPY alembic.ini /app/alembic.ini
 COPY alembic /app/alembic
 COPY libs/portfolio-common/ /app/libs/portfolio-common/
 
-# Convert Windows line endings (CRLF) to Unix line endings (LF) for startup.sh using sed
-RUN sed -i 's/\r$//' /app/startup.sh # ADDED THIS LINE
+# Fix Windows line endings in shell scripts
+RUN sed -i 's/\r$//' /app/startup.sh
 
-# Install application and test dependencies
-RUN pip install --no-cache-dir -r /app/requirements.txt \
-    && pip install --no-cache-dir -r /app/tests/requirements.txt \
-    && pip install -e /app/libs/portfolio-common
+# Create a virtual environment for dependencies
+RUN python -m venv /opt/venv
 
-# Set the Python path to include the service's app directory and the common libraries
-ENV PYTHONPATH="/app:/app/libs/portfolio-common"
+# Activate virtualenv and install dependencies as root so /opt/venv has correct permissions
+RUN /opt/venv/bin/pip install --upgrade pip && \
+    /opt/venv/bin/pip install --no-cache-dir -r /app/requirements.txt && \
+    /opt/venv/bin/pip install --no-cache-dir -r /app/tests/requirements.txt && \
+    /opt/venv/bin/pip install -e /app/libs/portfolio-common
 
-# Run tests
-RUN pytest /app/tests
+# Run tests with the virtualenv activated
+RUN /opt/venv/bin/pytest /app/tests
 
-# Stage 2: Final production stage
-FROM python:3.11-slim-bookworm
+# ----------- Stage 2: Final minimal runtime -----------
+FROM python:3.11-slim-bookworm AS final
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH="/app:/app/libs/portfolio-common" \
+    PATH="/opt/venv/bin:$PATH"
 
 WORKDIR /app
 
-# Copy built application code and necessary files from the builder stage
+# Copy the virtual environment from the builder
+COPY --from=builder /opt/venv /opt/venv
+
+# Copy application code and configs
 COPY --from=builder /app/app /app/app
-COPY --from=builder /app/requirements.txt /app/requirements.txt
-COPY --from=builder /app/startup.sh /app/startup.sh 
+COPY --from=builder /app/startup.sh /app/startup.sh
 COPY --from=builder /app/alembic.ini /app/alembic.ini
 COPY --from=builder /app/alembic /app/alembic
 COPY --from=builder /app/libs/portfolio-common/ /app/libs/portfolio-common/
 
-# Copy installed Python site-packages and executables
-COPY --from=builder /usr/local/lib/python3.11/site-packages/ /usr/local/lib/python3.11/site-packages/
-COPY --from=builder /usr/local/bin/ /usr/local/bin/
-
-# Make startup script executable
+# Make sure startup script is executable
 RUN chmod +x /app/startup.sh
 
-# Set the entrypoint to our startup script (overridden by docker-compose.yml 'command' for local development)
+# Create a non-root user with proper permissions to /opt/venv and app folders
+RUN useradd --create-home appuser && \
+    chown -R appuser:appuser /opt/venv /app
+
+USER appuser
+
 ENTRYPOINT ["/app/startup.sh"]

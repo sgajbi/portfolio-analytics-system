@@ -1,3 +1,4 @@
+version: '3.8'
 
 services:
   zookeeper:
@@ -60,13 +61,12 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 5
     networks:
       - app_network
-
 
   ingestion-service:
     build:
@@ -77,7 +77,7 @@ services:
     ports:
       - "8000:8000"
     environment:
-      # Removed PYTHONPATH here, setting it in Dockerfile
+      PYTHONPATH: "/app:/app/libs/portfolio-common"
       KAFKA_BOOTSTRAP_SERVERS: kafka:9093
       KAFKA_RAW_TRANSACTIONS_TOPIC: raw_transactions
     depends_on:
@@ -87,8 +87,7 @@ services:
       - ./services/ingestion-service/app:/app/app
       - ./libs/portfolio-common:/app/libs/portfolio-common
     command: >
-      bash -c "pip install -e /app/libs/portfolio-common && 
-        uvicorn app.main:app --host 0.0.0.0 --port 8000"
+      uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4 --timeout-keep-alive 30
     networks:
       - app_network
 
@@ -99,7 +98,7 @@ services:
     hostname: transaction-persistence-service
     container_name: transaction-persistence-service
     environment:
-      # Removed PYTHONPATH here, setting it in Dockerfile
+      PYTHONPATH: "/app:/app/app:/app/libs/portfolio-common"
       KAFKA_BOOTSTRAP_SERVERS: kafka:9093
       KAFKA_RAW_TRANSACTIONS_TOPIC: raw_transactions
       KAFKA_RAW_TRANSACTIONS_COMPLETED_TOPIC: raw_transactions_completed
@@ -114,10 +113,9 @@ services:
       - ./libs/portfolio-common:/app/libs/portfolio-common
       - ./alembic.ini:/app/alembic.ini
       - ./alembic:/app/alembic
-    command: ["bash", "/app/startup.sh"] 
+    command: ["/app/startup.sh"]
     networks:
       - app_network
-
 
   cost-calculator-service:
     build:
@@ -126,7 +124,7 @@ services:
     hostname: cost-calculator-service
     container_name: cost-calculator-service
     environment:
-      PYTHONPATH: "/app:/app/libs/portfolio-common:/app/libs/financial-calculator-engine" # ADDED/UPDATED THIS LINE
+      PYTHONPATH: "/app:/app/libs/portfolio-common:/app/libs/financial-calculator-engine"
       KAFKA_BOOTSTRAP_SERVERS: kafka:9093
       KAFKA_RAW_TRANSACTIONS_COMPLETED_TOPIC: raw_transactions_completed
       DATABASE_URL: postgresql://user:password@postgres:5432/portfolio_db
@@ -139,9 +137,7 @@ services:
       - ./services/cost-calculator-service/app:/app/app
       - ./libs/portfolio-common:/app/libs/portfolio-common
       - ./libs/financial-calculator-engine:/app/libs/financial-calculator-engine
-    command: > 
-      bash -c "pip install -e /app/libs/portfolio-common && 
-               python app/main.py"
+    command: ["python", "app/main.py"]
     networks:
       - app_network
 
