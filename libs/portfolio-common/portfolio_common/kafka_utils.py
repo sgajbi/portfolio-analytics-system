@@ -1,7 +1,7 @@
 # common/kafka_utils.py
 import logging
 from confluent_kafka import Producer, KafkaException
-from common.config import KAFKA_BOOTSTRAP_SERVERS
+from .config import KAFKA_BOOTSTRAP_SERVERS # <-- CORRECTED IMPORT
 import json
 
 logger = logging.getLogger(__name__)
@@ -33,7 +33,6 @@ class KafkaProducer:
             raise RuntimeError("Kafka producer is not initialized.")
 
         try:
-            # --- THIS IS THE FIX ---
             # Add `default=str` to handle non-serializable types like date/datetime
             json_value = json.dumps(value, default=str)
 

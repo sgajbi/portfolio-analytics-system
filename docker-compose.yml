@@ -125,9 +125,7 @@ services:
       - ./libs/portfolio-common:/app/libs/portfolio-common
       - ./alembic.ini:/app/alembic.ini
       - ./alembic:/app/alembic
-    command: >
-      bash -c "pip install -e /app/libs/portfolio-common && 
-               python app/main.py"
+    command: ["/app/startup.sh"] 
 
 
   cost-calculator-service:

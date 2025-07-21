@@ -1,7 +1,7 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from common.config import POSTGRES_URL
-from common.database_models import Base  # Import Base from database_models
+from .config import POSTGRES_URL
+from .database_models import Base
 
 # Database setup
 SQLALCHEMY_DATABASE_URL = POSTGRES_URL

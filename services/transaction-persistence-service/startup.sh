@@ -2,6 +2,10 @@
 # Exit immediately if a command exits with a non-zero status.
 set -e
 
+# 0. Install shared library first
+echo "Installing shared libraries..."
+pip install -e /app/libs/portfolio-common
+
 # 1. Wait for the database to be ready
 echo "Waiting for database connection..."
 python -c '
