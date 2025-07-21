@@ -1,4 +1,5 @@
-# docker-compose.yml
+version: '3.8'
+
 services:
   zookeeper:
     image: confluentinc/cp-zookeeper:7.2.15
@@ -17,6 +18,8 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+    networks:
+      - app_network
 
   kafka:
     image: confluentinc/cp-kafka:7.5.0
@@ -42,6 +45,8 @@ services:
       timeout: 5s
       retries: 10
       start_period: 30s
+    networks:
+      - app_network
 
   postgres:
     image: postgres:16-alpine
@@ -60,7 +65,8 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
-
+    networks:
+      - app_network
 
   ingestion-service:
     build:
@@ -71,18 +77,21 @@ services:
     ports:
       - "8000:8000"
     environment:
-      PYTHONPATH: "/app"
+      # Removed PYTHONPATH here, setting it in Dockerfile
       KAFKA_BOOTSTRAP_SERVERS: kafka:9093
       KAFKA_RAW_TRANSACTIONS_TOPIC: raw_transactions
     depends_on:
       kafka:
         condition: service_healthy
     volumes:
+      # These volumes ensure live code updates and access to shared libs
       - ./services/ingestion-service/app:/app/app
       - ./libs/portfolio-common:/app/libs/portfolio-common
     command: >
       bash -c "pip install -e /app/libs/portfolio-common && 
         uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    networks:
+      - app_network
 
   transaction-persistence-service:
     build:
@@ -91,7 +100,7 @@ services:
     hostname: transaction-persistence-service
     container_name: transaction-persistence-service
     environment:
-      PYTHONPATH: "/app"
+      # Removed PYTHONPATH here, setting it in Dockerfile
       KAFKA_BOOTSTRAP_SERVERS: kafka:9093
       KAFKA_RAW_TRANSACTIONS_TOPIC: raw_transactions
       KAFKA_RAW_TRANSACTIONS_COMPLETED_TOPIC: raw_transactions_completed
@@ -102,12 +111,14 @@ services:
       postgres:
         condition: service_healthy
     volumes:
+      # These volumes ensure live code updates and access to shared libs
       - ./services/transaction-persistence-service/app:/app/app
       - ./libs/portfolio-common:/app/libs/portfolio-common
       - ./alembic.ini:/app/alembic.ini
       - ./alembic:/app/alembic
     command: ["/app/startup.sh"] 
-
+    networks:
+      - app_network
 
   cost-calculator-service:
     build:
@@ -125,12 +136,19 @@ services:
       postgres:
         condition: service_healthy
     volumes:
+      # These volumes ensure live code updates and access to shared libs
       - ./services/cost-calculator-service/app:/app/app
       - ./libs/portfolio-common:/app/libs/portfolio-common
       - ./libs/financial-calculator-engine:/app/libs/financial-calculator-engine
     command: > 
       bash -c "pip install -e /app/libs/portfolio-common && 
                python app/main.py"
+    networks:
+      - app_network
 
 volumes:
   postgres_data:
+
+networks:
+  app_network:
+    driver: bridge
