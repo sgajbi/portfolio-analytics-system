@@ -14,10 +14,12 @@ COPY alembic /app/alembic
 COPY libs/portfolio-common/ /app/libs/portfolio-common/
 
 # Install application and test dependencies
-# The requirements.txt is now correctly located at /app/requirements.txt
 RUN pip install --no-cache-dir -r /app/requirements.txt \
     && pip install --no-cache-dir -r /app/tests/requirements.txt \
     && pip install -e /app/libs/portfolio-common
+
+# Install dos2unix and convert Windows line endings to Unix line endings for startup.sh
+RUN apt-get update && apt-get install -y dos2unix && dos2unix /app/startup.sh
 
 # Set the Python path to include the service's app directory and the common libraries
 ENV PYTHONPATH="/app:/app/libs/portfolio-common"
