@@ -27,8 +27,7 @@ config = context.config
 if config.config_file_name:
     fileConfig(config.config_file_name)
 
-# add your model's MetaData object here
-from common.database_models import Base
+from portfolio_common.database_models import Base
 target_metadata = Base.metadata
 
 

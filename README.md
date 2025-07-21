@@ -77,6 +77,9 @@ graph TD
   * **Location**: `libs/financial-calculator-engine`
   * **Role**: A self-contained, installable Python library that holds the core business logic for financial calculations. It handles parsing, sorting, and processing transactions to determine cost basis using configurable strategies (FIFO, Average Cost). It is decoupled from any specific service and includes its own unit tests.
 
+# Portfolio Common
+
+This library contains common utilities and data structures used across the wealth management platform's microservices.
 -----
 
 ## 5\. Technology Stack

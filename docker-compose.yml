@@ -96,13 +96,12 @@ services:
         condition: service_healthy
     volumes:
       - ./services/ingestion-service/app:/app/app
-      - ./common:/app/common
+      - ./libs/portfolio-common:/app/libs/portfolio-common
       - ./alembic.ini:/app/alembic.ini
       - ./alembic:/app/alembic
     command: >
-      bash -c "
-        uvicorn app.main:app --host 0.0.0.0 --port 8000
-      "
+      bash -c "pip install -e /app/libs/portfolio-common && 
+        uvicorn app.main:app --host 0.0.0.0 --port 8000"
 
   transaction-persistence-service:
     build:
@@ -123,10 +122,13 @@ services:
         condition: service_healthy
     volumes:
       - ./services/transaction-persistence-service/app:/app/app
-      - ./common:/app/common
+      - ./libs/portfolio-common:/app/libs/portfolio-common
       - ./alembic.ini:/app/alembic.ini
       - ./alembic:/app/alembic
-    command: ["python", "app/main.py"]
+    command: >
+      bash -c "pip install -e /app/libs/portfolio-common && 
+               python app/main.py"
+
 
   cost-calculator-service:
     build:
@@ -135,7 +137,6 @@ services:
     hostname: cost-calculator-service
     container_name: cost-calculator-service
     environment:
-      # --- THIS IS THE FIX: PYTHONPATH is now handled by the Dockerfile ---
       KAFKA_BOOTSTRAP_SERVERS: kafka:9093
       KAFKA_RAW_TRANSACTIONS_COMPLETED_TOPIC: raw_transactions_completed
       DATABASE_URL: postgresql://user:password@postgres:5432/portfolio_db
@@ -146,9 +147,11 @@ services:
         condition: service_healthy
     volumes:
       - ./services/cost-calculator-service/app:/app/app
-      - ./common:/app/common
+      - ./libs/portfolio-common:/app/libs/portfolio-common
       - ./libs/financial-calculator-engine:/app/libs/financial-calculator-engine
-    command: ["python", "app/main.py"]
+    command: > 
+      bash -c "pip install -e /app/libs/portfolio-common && 
+               python app/main.py"
 
 volumes:
   postgres_data:

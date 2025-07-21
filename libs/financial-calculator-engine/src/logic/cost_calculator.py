@@ -13,7 +13,7 @@ class BuyStrategy:
     def calculate_costs(self, transaction: Transaction, disposition_engine: DispositionEngine, error_reporter: ErrorReporter) -> None:
         transaction.gross_cost = Decimal(str(transaction.gross_transaction_amount))
         
-        # --- FIX: Use the total_fees property from the Fees object ---
+        # This is the corrected logic:
         total_fees = transaction.fees.total_fees if transaction.fees else Decimal(0)
         
         accrued_interest = Decimal(str(transaction.accrued_interest)) if transaction.accrued_interest is not None else Decimal(0)
@@ -35,7 +35,7 @@ class SellStrategy:
         sell_quantity = Decimal(str(transaction.quantity))
         gross_sell_proceeds = Decimal(str(transaction.gross_transaction_amount))
 
-        # --- FIX: Use the total_fees property from the Fees object ---
+        # This is the corrected logic:
         sell_fees = transaction.fees.total_fees if transaction.fees else Decimal(0)
         net_sell_proceeds = gross_sell_proceeds - sell_fees
 

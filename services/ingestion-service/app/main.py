@@ -4,8 +4,8 @@ from contextlib import asynccontextmanager
 import logging
 
 from app.models.transaction import Transaction
-from common.config import KAFKA_RAW_TRANSACTIONS_TOPIC
-from common.kafka_utils import KafkaProducer, get_kafka_producer
+from portfolio_common.config import KAFKA_RAW_TRANSACTIONS_TOPIC
+from portfolio_common.kafka_utils import KafkaProducer, get_kafka_producer
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

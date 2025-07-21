@@ -4,10 +4,10 @@ import logging
 from confluent_kafka import Consumer, Message
 from pydantic import ValidationError
 
-from common.config import KAFKA_BOOTSTRAP_SERVERS
-from common.db import get_db_session
-from common.database_models import Transaction as DBTransaction
-from common.events import TransactionEvent
+from portfolio_common.config import KAFKA_BOOTSTRAP_SERVERS
+from portfolio_common.db import get_db_session
+from portfolio_common.database_models import Transaction as DBTransaction
+from portfolio_common.events import TransactionEvent
 
 # Import the TransactionProcessor AND the engine's internal Transaction model
 from src.services.transaction_processor import TransactionProcessor

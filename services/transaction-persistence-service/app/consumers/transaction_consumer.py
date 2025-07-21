@@ -3,10 +3,10 @@
 import json
 import logging
 from confluent_kafka import Consumer, KafkaException, Message
-from common.config import KAFKA_BOOTSTRAP_SERVERS, KAFKA_RAW_TRANSACTIONS_TOPIC, KAFKA_RAW_TRANSACTIONS_COMPLETED_TOPIC
-from common.db import get_db_session
-from common.kafka_utils import get_kafka_producer
-from common.events import TransactionEvent # <-- THE FIX: Import from common
+from portfolio_common.config import KAFKA_BOOTSTRAP_SERVERS, KAFKA_RAW_TRANSACTIONS_TOPIC, KAFKA_RAW_TRANSACTIONS_COMPLETED_TOPIC
+from portfolio_common.db import get_db_session
+from portfolio_common.kafka_utils import get_kafka_producer
+from portfolio_common.events import TransactionEvent # <-- THE FIX: Import from common
 from app.repositories.transaction_db_repo import TransactionDBRepository
 from pydantic import ValidationError
 from tenacity import retry, stop_after_attempt, wait_fixed, before_log

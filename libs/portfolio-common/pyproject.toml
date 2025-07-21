@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "portfolio-common"
+version = "0.1.0"
+description = "Common utilities, models, and configurations for the Portfolio Analytics System."
+requires-python = ">=3.11"
+dependencies = [
+    "pydantic==2.7.4",
+    "confluent-kafka[librdkafka]==2.4.0",
+    "SQLAlchemy==2.0.30",
+    "python-dotenv==1.0.1",
+    "psycopg2-binary==2.9.9",
+    "tenacity==8.2.3",
+    "alembic==1.13.1"
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
