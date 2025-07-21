@@ -16,8 +16,6 @@ class TransactionDBRepository:
         """
         Retrieves a transaction by its composite primary key using explicit filtering.
         """
-        # --- THIS IS THE FIX ---
-        # Using explicit filtering with `filter()` is more robust across DB backends.
         return self.db.query(DBTransaction).filter(
             DBTransaction.transaction_id == transaction_id,
             DBTransaction.portfolio_id == portfolio_id,
@@ -66,7 +64,7 @@ class TransactionDBRepository:
             self.db.rollback()
             logger.warning(f"Race condition: Transaction {transaction_event.transaction_id} was inserted by another process. Fetching existing.")
             # --- THIS IS THE FIX ---
-            # Re-fetch the transaction after a race condition rollback.
+            # Re-fetch and RETURN the transaction after a race condition rollback.
             return self.get_transaction_by_pk(
                 transaction_id=transaction_event.transaction_id,
                 portfolio_id=transaction_event.portfolio_id,
