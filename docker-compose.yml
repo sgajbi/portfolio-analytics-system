@@ -61,23 +61,6 @@ services:
       timeout: 5s
       retries: 5
 
-  mongodb:
-    image: mongo:7.0
-    hostname: mongodb
-    container_name: mongodb
-    ports:
-      - "27017:27017"
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME:-admin}
-      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD:-password}
-    volumes:
-      - mongo_data:/data/db
-    healthcheck:
-      test: echo 'db.runCommand("ping").ok' | mongosh mongodb:27017/test --quiet
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
 
   ingestion-service:
     build:
@@ -97,8 +80,6 @@ services:
     volumes:
       - ./services/ingestion-service/app:/app/app
       - ./libs/portfolio-common:/app/libs/portfolio-common
-      - ./alembic.ini:/app/alembic.ini
-      - ./alembic:/app/alembic
     command: >
       bash -c "pip install -e /app/libs/portfolio-common && 
         uvicorn app.main:app --host 0.0.0.0 --port 8000"
@@ -153,4 +134,3 @@ services:
 
 volumes:
   postgres_data:
-  mongo_data:
