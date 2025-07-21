@@ -1,5 +1,5 @@
 # Stage 1: Builder stage with test dependencies
-FROM python:3.11-slim-buster as builder
+FROM python:3.11-slim-bookworm as builder # CHANGED base image to Bookworm
 
 WORKDIR /app
 
@@ -18,8 +18,8 @@ RUN pip install --no-cache-dir -r /app/requirements.txt \
     && pip install --no-cache-dir -r /app/tests/requirements.txt \
     && pip install -e /app/libs/portfolio-common
 
-# Install dos2unix and convert Windows line endings to Unix line endings for startup.sh
-RUN apt-get update && apt-get install -y dos2unix && dos2unix /app/startup.sh
+# Removed the dos2unix installation step as it's no longer needed with a newer base image
+# and the assumption that startup.sh will have correct line endings in the repository.
 
 # Set the Python path to include the service's app directory and the common libraries
 ENV PYTHONPATH="/app:/app/libs/portfolio-common"
@@ -28,7 +28,7 @@ ENV PYTHONPATH="/app:/app/libs/portfolio-common"
 RUN pytest /app/tests
 
 # Stage 2: Final production stage
-FROM python:3.11-slim-buster
+FROM python:3.11-slim-bookworm # CHANGED base image to Bookworm
 
 WORKDIR /app
 
