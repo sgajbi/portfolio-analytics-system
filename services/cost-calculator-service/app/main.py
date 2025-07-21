@@ -1,7 +1,7 @@
 # services/cost-calculator-service/app/main.py
 import logging
 from app.consumer import CostCalculatorConsumer
-from common.config import KAFKA_BOOTSTRAP_SERVERS, KAFKA_RAW_TRANSACTIONS_COMPLETED_TOPIC
+from portfolio_common.config import KAFKA_BOOTSTRAP_SERVERS, KAFKA_RAW_TRANSACTIONS_COMPLETED_TOPIC # <-- CORRECTED IMPORT
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)

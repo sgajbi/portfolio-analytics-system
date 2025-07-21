@@ -2,8 +2,8 @@ import logging
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 
-from common.database_models import Transaction as DBTransaction
-from common.events import TransactionEvent
+from portfolio_common.database_models import Transaction as DBTransaction # <-- CORRECTED IMPORT
+from portfolio_common.events import TransactionEvent # <-- CORRECTED IMPORT
 
 logger = logging.getLogger(__name__)
 
@@ -35,13 +35,13 @@ class TransactionDBRepository:
                 transaction_id=transaction_event.transaction_id,
                 portfolio_id=transaction_event.portfolio_id,
                 instrument_id=transaction_event.instrument_id,
-                security_id=transaction_event.security_id, # <-- ADDED
+                security_id=transaction_event.security_id,
                 transaction_date=transaction_event.transaction_date,
                 transaction_type=transaction_event.transaction_type,
                 quantity=transaction_event.quantity,
                 price=transaction_event.price,
-                gross_transaction_amount=transaction_event.gross_transaction_amount, # <-- ADDED
-                trade_currency=transaction_event.trade_currency, # <-- ADDED
+                gross_transaction_amount=transaction_event.gross_transaction_amount,
+                trade_currency=transaction_event.trade_currency,
                 currency=transaction_event.currency,
                 trade_fee=transaction_event.trade_fee,
                 settlement_date=transaction_event.settlement_date
