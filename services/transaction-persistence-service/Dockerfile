@@ -1,5 +1,5 @@
 # Stage 1: Builder stage with test dependencies
-FROM python:3.11-slim-bookworm as builder # CHANGED base image to Bookworm
+FROM python:3.11-slim-bookworm as builder
 
 WORKDIR /app
 
@@ -28,7 +28,7 @@ ENV PYTHONPATH="/app:/app/libs/portfolio-common"
 RUN pytest /app/tests
 
 # Stage 2: Final production stage
-FROM python:3.11-slim-bookworm # CHANGED base image to Bookworm
+FROM python:3.11-slim-bookworm
 
 WORKDIR /app
 
