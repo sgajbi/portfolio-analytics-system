@@ -14,19 +14,21 @@ class TransactionDBRepository:
 
     def get_transaction_by_pk(self, transaction_id: str, portfolio_id: str, instrument_id: str, transaction_date: date):
         """
-        Retrieves a transaction by its composite primary key.
-        The transaction_date is explicitly handled to ensure correct querying.
+        Retrieves a transaction by its composite primary key using explicit filtering.
         """
         # --- THIS IS THE FIX ---
-        # Ensure the query compares only the date part, ignoring time.
-        return self.db.query(DBTransaction).filter_by(
-            transaction_id=transaction_id,
-            portfolio_id=portfolio_id,
-            instrument_id=instrument_id,
-            transaction_date=transaction_date
+        # Using explicit filtering with `filter()` is more robust across DB backends.
+        return self.db.query(DBTransaction).filter(
+            DBTransaction.transaction_id == transaction_id,
+            DBTransaction.portfolio_id == portfolio_id,
+            DBTransaction.instrument_id == instrument_id,
+            DBTransaction.transaction_date == transaction_date
         ).first()
 
     def create_or_update_transaction(self, transaction_event: TransactionEvent) -> DBTransaction:
+        """
+        Creates a new transaction or returns the existing one if it already exists.
+        """
         existing_transaction = self.get_transaction_by_pk(
             transaction_id=transaction_event.transaction_id,
             portfolio_id=transaction_event.portfolio_id,
@@ -34,13 +36,10 @@ class TransactionDBRepository:
             transaction_date=transaction_event.transaction_date
         )
 
-        # --- THIS IS THE FIX ---
-        # If the transaction already exists, log it and return immediately.
         if existing_transaction:
             logger.info(f"Transaction {transaction_event.transaction_id} already exists. Skipping.")
             return existing_transaction
         
-        # If it doesn't exist, create the new record.
         db_transaction = DBTransaction(
             transaction_id=transaction_event.transaction_id,
             portfolio_id=transaction_event.portfolio_id,
@@ -65,7 +64,9 @@ class TransactionDBRepository:
             return db_transaction
         except IntegrityError:
             self.db.rollback()
-            logger.warning(f"Transaction {transaction_event.transaction_id} already exists (race condition). Rolling back.")
+            logger.warning(f"Race condition: Transaction {transaction_event.transaction_id} was inserted by another process. Fetching existing.")
+            # --- THIS IS THE FIX ---
+            # Re-fetch the transaction after a race condition rollback.
             return self.get_transaction_by_pk(
                 transaction_id=transaction_event.transaction_id,
                 portfolio_id=transaction_event.portfolio_id,
