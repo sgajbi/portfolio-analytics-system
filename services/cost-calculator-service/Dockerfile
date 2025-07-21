@@ -6,8 +6,7 @@ WORKDIR /app
 # Copy the requirements file first to leverage Docker layer caching
 COPY ./services/cost-calculator-service/requirements.txt /app/requirements.txt
 
-# Copy the shared common module and the calculator engine library
-COPY ./common /app/common
+# Copy the calculator engine library
 COPY ./libs/financial-calculator-engine /app/libs/financial-calculator-engine
 
 # Install Python dependencies, including the local library

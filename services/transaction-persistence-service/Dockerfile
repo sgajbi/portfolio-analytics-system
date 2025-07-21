@@ -3,7 +3,7 @@ FROM python:3.11-slim-buster
 
 WORKDIR /app
 
-COPY common /app/common
+# COPY common /app/common <-- THIS LINE HAS BEEN REMOVED
 COPY services/transaction-persistence-service/app /app/app
 COPY services/transaction-persistence-service/requirements.txt /app/requirements.txt
 

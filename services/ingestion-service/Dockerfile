@@ -1,9 +1,7 @@
+# services/ingestion-service/Dockerfile
 FROM python:3.11-slim
 
 WORKDIR /app
-
-# Copy common module first as it's a dependency
-COPY ./common /app/common
 
 # Copy ingestion service specific files
 COPY ./services/ingestion-service/app /app/app
