@@ -1,7 +1,10 @@
-from sqlalchemy import Column, Integer, String, Numeric, DateTime, func, ForeignKey
-from sqlalchemy.orm import relationship
-from sqlalchemy.ext.declarative import declarative_base
+# libs/portfolio-common/portfolio_common/database_models.py
+from sqlalchemy import (
+    Column, Integer, String, Numeric, DateTime, func, ForeignKey
+)
+from sqlalchemy.orm import declarative_base, relationship # <-- CORRECTED IMPORT
 
+# Use the modern declarative_base from sqlalchemy.orm
 Base = declarative_base()
 
 class Transaction(Base):
@@ -11,12 +14,12 @@ class Transaction(Base):
     transaction_id = Column(String, unique=True, index=True, nullable=False)
     portfolio_id = Column(String, nullable=False)
     instrument_id = Column(String, nullable=False)
-    security_id = Column(String, nullable=False) # <-- ADDED
+    security_id = Column(String, nullable=False)
     transaction_type = Column(String, nullable=False)
     quantity = Column(Numeric(18, 10), nullable=False)
     price = Column(Numeric(18, 10), nullable=False)
-    gross_transaction_amount = Column(Numeric(18, 10), nullable=False) # <-- ADDED
-    trade_currency = Column(String, nullable=False) # <-- ADDED
+    gross_transaction_amount = Column(Numeric(18, 10), nullable=False)
+    trade_currency = Column(String, nullable=False)
     currency = Column(String, nullable=False)
     transaction_date = Column(DateTime, nullable=False)
     settlement_date = Column(DateTime, nullable=True)
