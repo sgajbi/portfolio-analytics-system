@@ -1,56 +1,99 @@
-# services/ingestion-service/tests/unit/test_transaction_model.py
+# services/transaction-persistence-service/tests/unit/test_transaction_db_repo.py
 import pytest
-from datetime import date, datetime
-from pydantic import ValidationError
+from datetime import date
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 
-# CORRECTED: Import from the new DTOs path
-from app.DTOs.transaction_dto import Transaction
+from portfolio_common.database_models import Base
+# CORRECTED: Import the shared event model, not the ingestion DTO
+from portfolio_common.events import TransactionEvent
+from app.repositories.transaction_db_repo import TransactionDBRepository
 
-def test_transaction_model_success():
+# Setup for an in-memory SQLite database for testing
+# (This part remains the same)
+engine = create_engine("sqlite:///:memory:")
+TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+@pytest.fixture(scope="function")
+def db_session():
     """
-    Tests that the Transaction model successfully validates a correct data payload.
+    Fixture to create a new database session for each test function.
+    It creates all tables, yields the session, and then drops all tables.
     """
-    valid_payload = {
-        "transaction_id": "test_txn_001",
-        "portfolio_id": "test_port_001",
-        "instrument_id": "AAPL",
-        "security_id": "SEC_AAPL",
-        "transaction_date": "2025-07-21",
-        "transaction_type": "BUY",
-        "quantity": 10.0,
-        "price": 150.0,
-        "gross_transaction_amount": 1500.0,
-        "trade_currency": "USD",
-        "currency": "USD",
-        "trade_fee": 5.0,
-        "settlement_date": "2025-07-23",
-        "created_at": datetime.now()
-    }
+    Base.metadata.create_all(bind=engine)
+    db = TestingSessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+        Base.metadata.drop_all(bind=engine)
 
-    # This should not raise an exception
-    transaction = Transaction(**valid_payload)
-
-    assert transaction.transaction_id == "test_txn_001"
-    assert transaction.quantity == 10.0
-    assert transaction.transaction_date == date(2025, 7, 21)
-
-def test_transaction_model_missing_field_fails():
+def test_create_transaction_success(db_session):
     """
-    Tests that the Transaction model fails validation if a required field is missing.
+    Tests that a new transaction is successfully created in the database.
     """
-    invalid_payload = {
-        "transaction_id": "test_txn_002",
-        "portfolio_id": "test_port_002",
-        # instrument_id is missing
-        "security_id": "SEC_GOOG",
-        "transaction_date": "2025-07-22",
-        "transaction_type": "SELL",
-        "quantity": 5.0,
-        "price": 200.0,
-        "gross_transaction_amount": 1000.0,
-        "trade_currency": "USD",
-        "currency": "USD"
-    }
+    repo = TransactionDBRepository(db=db_session)
 
-    with pytest.raises(ValidationError):
-        Transaction(**invalid_payload)
+    # Use the correct TransactionEvent model
+    test_event = TransactionEvent(
+        transaction_id="test_txn_001",
+        portfolio_id="test_port_001",
+        instrument_id="AAPL",
+        security_id="SEC_AAPL",
+        transaction_date=date(2025, 7, 21),
+        transaction_type="BUY",
+        quantity=10.0,
+        price=150.0,
+        gross_transaction_amount=1500.0,
+        trade_currency="USD",
+        currency="USD"
+    )
+
+    # Action: Create the transaction
+    created_transaction = repo.create_or_update_transaction(test_event)
+
+    # Assertions
+    assert created_transaction is not None
+    assert created_transaction.transaction_id == "test_txn_001"
+    assert created_transaction.instrument_id == "AAPL"
+
+    # Verify it's actually in the DB
+    retrieved_transaction = repo.get_transaction_by_pk(
+        transaction_id="test_txn_001",
+        portfolio_id="test_port_001",
+        instrument_id="AAPL",
+        transaction_date=date(2025, 7, 21)
+    )
+    assert retrieved_transaction is not None
+    assert retrieved_transaction.security_id == "SEC_AAPL"
+
+def test_update_existing_transaction_skips(db_session):
+    """
+    Tests that attempting to create a transaction that already exists is skipped.
+    """
+    repo = TransactionDBRepository(db=db_session)
+
+    # Use the correct TransactionEvent model
+    test_event = TransactionEvent(
+        transaction_id="test_txn_002",
+        portfolio_id="test_port_002",
+        instrument_id="GOOG",
+        security_id="SEC_GOOG",
+        transaction_date=date(2025, 7, 22),
+        transaction_type="SELL",
+        quantity=5.0,
+        price=2000.0,
+        gross_transaction_amount=10000.0,
+        trade_currency="USD",
+        currency="USD"
+    )
+
+    # Create the transaction the first time
+    first_creation = repo.create_or_update_transaction(test_event)
+    assert first_creation.quantity == 5.0
+
+    # Attempt to create it again
+    second_attempt = repo.create_or_update_transaction(test_event)
+
+    # Assertion: The returned object should be the same as the first one
+    assert second_attempt.id == first_creation.id
