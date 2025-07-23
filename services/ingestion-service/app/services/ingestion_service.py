@@ -1,5 +1,6 @@
 # services/ingestion-service/app/services/ingestion_service.py
 from fastapi import Depends
+from typing import List
 from app.DTOs.transaction_dto import Transaction
 from portfolio_common.kafka_utils import KafkaProducer, get_kafka_producer
 from portfolio_common.config import KAFKA_RAW_TRANSACTIONS_TOPIC
@@ -16,6 +17,17 @@ class IngestionService:
             key=transaction.transaction_id,
             value=transaction_payload
         )
+
+    # NEW: Add a method to publish multiple transactions
+    async def publish_transactions(self, transactions: List[Transaction]) -> None:
+        """Publishes a list of transactions to the raw transactions topic."""
+        for transaction in transactions:
+            transaction_payload = transaction.model_dump()
+            self._kafka_producer.publish_message(
+                topic=KAFKA_RAW_TRANSACTIONS_TOPIC,
+                key=transaction.transaction_id,
+                value=transaction_payload
+            )
 
 def get_ingestion_service(
     kafka_producer: KafkaProducer = Depends(get_kafka_producer)

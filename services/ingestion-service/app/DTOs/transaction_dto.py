@@ -1,6 +1,6 @@
 # services/ingestion-service/app/DTOs/transaction_dto.py
 from datetime import date, datetime
-from typing import Optional
+from typing import Optional, List
 from pydantic import BaseModel, Field
 
 class Transaction(BaseModel):
@@ -18,3 +18,7 @@ class Transaction(BaseModel):
     trade_fee: Optional[float] = Field(default=0.0, ge=0)
     settlement_date: Optional[date] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
+
+# NEW: Add a model to handle a list of transactions
+class TransactionIngestionRequest(BaseModel):
+    transactions: List[Transaction]
