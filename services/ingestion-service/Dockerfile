@@ -23,12 +23,7 @@ RUN pip install --no-cache-dir -r /app/requirements.txt && \
 COPY ./services/ingestion-service/app /app/app
 COPY ./services/ingestion-service/tests /app/tests
 
-# ==================== TEMPORARY DIAGNOSTIC STEP ====================
-# This will print the contents of the test file during the build.
-RUN echo "--- Verifying test_transaction_model.py content ---" && \
-    cat /app/tests/unit/test_transaction_model.py && \
-    echo "-------------------------------------------------"
-# ===================================================================
+# REMOVED TEMPORARY DIAGNOSTIC STEP
 
 # Set the Python path so imports from 'app' work correctly
 ENV PYTHONPATH="/app"
@@ -58,4 +53,4 @@ ENV PATH="/opt/venv/bin:$PATH"
 EXPOSE 8000
 
 # Command to run the application using Uvicorn
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]  
