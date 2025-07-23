@@ -2,10 +2,6 @@
 # Exit immediately if a command exits with a non-zero status.
 set -e
 
-# REMOVED: The shared library is already installed in the Docker image.
-# echo "Installing shared libraries..."
-# pip install -e /app/libs/portfolio-common
-
 # 1. Wait for the database to be ready
 echo "Waiting for database connection..."
 python -c '
@@ -33,7 +29,8 @@ exit(1)
 
 # 2. Run database migrations
 echo "Running database migrations..."
-alembic upgrade head
+# CORRECTED: Run alembic as a Python module for more reliable pathing
+python -m alembic upgrade head
 
 # 3. Start the main application
 echo "Starting Transaction Persistence Service application..."
