@@ -72,7 +72,6 @@ services:
       dockerfile: ./services/transaction-persistence-service/Dockerfile
     hostname: migration-runner
     container_name: migration-runner
-    # NEW: Override the Dockerfile's entrypoint so our command is used instead.
     entrypoint: ""
     environment:
       PYTHONPATH: "/app:/app/app:/app/libs/portfolio-common"
@@ -86,8 +85,10 @@ services:
       - ./libs/portfolio-common:/app/libs/portfolio-common
       - ./alembic.ini:/app/alembic.ini
       - ./alembic:/app/alembic
+    # MODIFIED: Corrected python syntax and made the script fail-fast
     command: >
       bash -c "
+        set -e
         echo 'Waiting for database connection...'
         python -c '
       import socket
@@ -96,7 +97,7 @@ services:
       
       host = os.environ.get(\"POSTGRES_HOST\", \"postgres\")
       port = int(os.environ.get(\"POSTGRES_PORT\", 5432))
-      timeout = 30
+      timeout = 45
       start_time = time.time()
       
       while time.time() - start_time < timeout:
