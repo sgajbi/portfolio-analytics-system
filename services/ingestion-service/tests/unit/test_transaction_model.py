@@ -2,7 +2,7 @@ import pytest
 from datetime import date, datetime
 from pydantic import ValidationError
 
-from app.models.transaction import Transaction
+from app.DTOs.transaction_dto import Transaction
 
 def test_transaction_model_success():
     """
