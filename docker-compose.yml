@@ -66,7 +66,6 @@ services:
     networks:
       - app_network
 
-  # NEW: A dedicated service to run migrations and then exit.
   migration-runner:
     build:
       context: .
@@ -76,6 +75,9 @@ services:
     environment:
       PYTHONPATH: "/app:/app/app:/app/libs/portfolio-common"
       DATABASE_URL: postgresql://user:password@postgres:5432/portfolio_db
+      # Add POSTGRES_HOST and PORT for the wait script
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
     depends_on:
       postgres:
         condition: service_healthy
@@ -83,8 +85,35 @@ services:
       - ./libs/portfolio-common:/app/libs/portfolio-common
       - ./alembic.ini:/app/alembic.ini
       - ./alembic:/app/alembic
+    # MODIFIED: Added a wait-for-db script before the alembic command
     command: >
-      bash -c "python -m alembic upgrade head"
+      bash -c "
+        echo 'Waiting for database connection...'
+        python -c '
+      import socket
+      import time
+      import os
+      
+      host = os.environ.get(\"POSTGRES_HOST\", \"postgres\")
+      port = int(os.environ.get(\"POSTGRES_PORT\", 5432))
+      timeout = 30
+      start_time = time.time()
+      
+      while time.time() - start_time < timeout:
+          try:
+              with socket.create_connection((host, port), timeout=2):
+                  print(\"Database is ready!\")
+                  exit(0)
+          except (socket.timeout, ConnectionRefusedError):
+              print(\"Database not ready yet, sleeping for 2 seconds...\")
+              time.sleep(2)
+      
+      print(\"Database did not become available in time.\")
+      exit(1)
+      '
+        echo 'Running database migrations...'
+        python -m alembic upgrade head
+      "
     networks:
       - app_network
 
@@ -126,7 +155,6 @@ services:
     depends_on:
       kafka:
         condition: service_healthy
-      # MODIFIED: Waits for the migration-runner to finish successfully.
       migration-runner:
         condition: service_completed_successfully
     volumes:
@@ -152,7 +180,6 @@ services:
     depends_on:
       kafka:
         condition: service_healthy
-      # MODIFIED: Also waits for the migration-runner.
       migration-runner:
         condition: service_completed_successfully
     volumes:
