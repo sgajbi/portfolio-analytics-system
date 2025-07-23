@@ -2,6 +2,9 @@
 # Exit immediately if a command exits with a non-zero status.
 set -e
 
+# The migration is now handled by the 'migration-runner' service.
+# This script now only waits for the database and starts the application.
+
 # 1. Wait for the database to be ready
 echo "Waiting for database connection..."
 python -c '
@@ -27,11 +30,6 @@ print("Database did not become available in time.")
 exit(1)
 '
 
-# 2. Run database migrations
-echo "Running database migrations..."
-# CORRECTED: Run alembic as a Python module for more reliable pathing
-python -m alembic upgrade head
-
-# 3. Start the main application
+# 2. Start the main application
 echo "Starting Transaction Persistence Service application..."
 exec python app/main.py
