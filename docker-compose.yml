@@ -72,10 +72,11 @@ services:
       dockerfile: ./services/transaction-persistence-service/Dockerfile
     hostname: migration-runner
     container_name: migration-runner
+    # NEW: Override the Dockerfile's entrypoint so our command is used instead.
+    entrypoint: ""
     environment:
       PYTHONPATH: "/app:/app/app:/app/libs/portfolio-common"
       DATABASE_URL: postgresql://user:password@postgres:5432/portfolio_db
-      # Add POSTGRES_HOST and PORT for the wait script
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
     depends_on:
@@ -85,7 +86,6 @@ services:
       - ./libs/portfolio-common:/app/libs/portfolio-common
       - ./alembic.ini:/app/alembic.ini
       - ./alembic:/app/alembic
-    # MODIFIED: Added a wait-for-db script before the alembic command
     command: >
       bash -c "
         echo 'Waiting for database connection...'
