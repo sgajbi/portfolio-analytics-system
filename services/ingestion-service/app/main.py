@@ -4,8 +4,8 @@ from contextlib import asynccontextmanager
 import logging
 
 from portfolio_common.kafka_utils import get_kafka_producer, KafkaProducer
-# NEW: Import the new instruments router
-from app.routers import transactions, instruments
+# NEW: Import the new market_prices router
+from app.routers import transactions, instruments, market_prices
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -40,7 +40,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Ingestion Service",
     description="Service for ingesting financial data and publishing it to Kafka.",
-    version="0.2.0", # Version bump to reflect refactoring
+    version="0.3.0", # Version bump for new feature
     lifespan=lifespan
 )
 
@@ -52,7 +52,8 @@ async def health_check():
 
 # Include the API routers
 app.include_router(transactions.router)
-app.include_router(instruments.router) # NEW: Register the instruments router
+app.include_router(instruments.router)
+app.include_router(market_prices.router) # NEW: Register the market_prices router
 
 # Custom dependency to provide the Kafka producer and handle unavailability
 def get_producer_dependency() -> KafkaProducer:
