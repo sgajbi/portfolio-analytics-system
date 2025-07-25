@@ -157,6 +157,30 @@ services:
     networks:
       - app_network
 
+      
+  position-calculator-service:
+    build:
+      context: .
+      dockerfile: ./services/calculators/position-calculator/Dockerfile
+    hostname: position-calculator-service
+    container_name: position-calculator-service
+    environment:
+      PYTHONPATH: "/app"
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9093
+      DATABASE_URL: postgresql://user:password@postgres:5432/portfolio_db
+      HOST_DATABASE_URL: ""
+    depends_on:
+      kafka:
+        condition: service_healthy
+      migration-runner:
+        condition: service_completed_successfully
+    volumes:
+      - ./services/calculators/position-calculator/app:/app/app
+      - ./libs/portfolio-common:/app/libs/portfolio-common
+    command: ["python", "-m", "app.main"]
+    networks:
+      - app_network
+
 volumes:
   postgres_data:
 
