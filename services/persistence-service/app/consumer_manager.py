@@ -2,8 +2,13 @@
 import logging
 import signal
 import asyncio
-from portfolio_common.config import KAFKA_BOOTSTRAP_SERVERS, KAFKA_RAW_TRANSACTIONS_TOPIC
+from portfolio_common.config import (
+    KAFKA_BOOTSTRAP_SERVERS, 
+    KAFKA_RAW_TRANSACTIONS_TOPIC,
+    KAFKA_INSTRUMENTS_TOPIC
+)
 from .consumers.transaction_consumer import TransactionPersistenceConsumer
+from .consumers.instrument_consumer import InstrumentConsumer
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +30,13 @@ class ConsumerManager:
                 group_id="persistence_group_transactions"
             )
         )
-        # In the future, add other consumers here for instruments, fx_rates, etc.
+        self.consumers.append(
+            InstrumentConsumer(
+                bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
+                topic=KAFKA_INSTRUMENTS_TOPIC,
+                group_id="persistence_group_instruments"
+            )
+        )
 
         logger.info(f"ConsumerManager initialized with {len(self.consumers)} consumer(s).")
 
