@@ -37,10 +37,12 @@ class TransactionEvent(BaseModel):
     security_id: str
     transaction_date: date
     transaction_type: str
-    quantity: float
-    price: float
-    gross_transaction_amount: float
+    quantity: Decimal
+    price: Decimal
+    gross_transaction_amount: Decimal
     trade_currency: str
     currency: str
-    trade_fee: float = Field(default=0.0)
+    trade_fee: Decimal = Field(default=Decimal(0))
     settlement_date: Optional[date] = None
+    net_cost: Optional[Decimal] = None
+    realized_gain_loss: Optional[Decimal] = None
