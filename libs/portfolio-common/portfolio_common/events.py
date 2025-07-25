@@ -3,6 +3,14 @@ from typing import Optional
 from pydantic import BaseModel, Field, ConfigDict
 from decimal import Decimal
 
+class FxRateEvent(BaseModel):
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+    from_currency: str = Field(..., alias="fromCurrency")
+    to_currency: str = Field(..., alias="toCurrency")
+    rate_date: date = Field(..., alias="rateDate")
+    rate: Decimal
+
 class MarketPriceEvent(BaseModel):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
