@@ -52,7 +52,7 @@ class TransactionEventConsumer(BaseConsumer):
                     anchor_position = repo.get_last_position_before(
                         portfolio_id=incoming_txn.portfolio_id,
                         security_id=incoming_txn.security_id,
-                        a_date=incoming_txn.transaction_date.date()
+                        a_date=incoming_txn.transaction_date
                     )
                     current_state = PositionState(
                         quantity=anchor_position.quantity if anchor_position else Decimal(0),
@@ -63,14 +63,14 @@ class TransactionEventConsumer(BaseConsumer):
                     subsequent_txns = repo.get_transactions_on_or_after(
                         portfolio_id=incoming_txn.portfolio_id,
                         security_id=incoming_txn.security_id,
-                        a_date=incoming_txn.transaction_date.date()
+                        a_date=incoming_txn.transaction_date
                     )
 
                     # 3. Clear affected history
                     repo.delete_positions_from(
                         portfolio_id=incoming_txn.portfolio_id,
                         security_id=incoming_txn.security_id,
-                        a_date=incoming_txn.transaction_date.date()
+                        a_date=incoming_txn.transaction_date
                     )
 
                     # 4. Sort and recalculate
@@ -88,7 +88,7 @@ class TransactionEventConsumer(BaseConsumer):
                                 portfolio_id=txn.portfolio_id,
                                 security_id=txn.security_id,
                                 transaction_id=txn.transaction_id,
-                                position_date=txn.transaction_date.date(),
+                                position_date=txn.transaction_date,
                                 quantity=current_state.quantity,
                                 cost_basis=current_state.cost_basis
                             )
