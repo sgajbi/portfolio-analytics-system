@@ -2,10 +2,22 @@
 from sqlalchemy import (
     Column, Integer, String, Numeric, DateTime, func, ForeignKey
 )
-from sqlalchemy.orm import declarative_base, relationship # <-- CORRECTED IMPORT
+from sqlalchemy.orm import declarative_base, relationship
 
 # Use the modern declarative_base from sqlalchemy.orm
 Base = declarative_base()
+
+class Instrument(Base):
+    __tablename__ = 'instruments'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    security_id = Column(String, unique=True, index=True, nullable=False)
+    name = Column(String, nullable=False)
+    isin = Column(String, unique=True, nullable=False)
+    currency = Column(String, nullable=False)
+    product_type = Column(String, nullable=False)
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 
 class Transaction(Base):
     __tablename__ = 'transactions'
