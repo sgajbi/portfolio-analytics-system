@@ -28,8 +28,12 @@ config = context.config
 if config.config_file_name:
     fileConfig(config.config_file_name)
 
-from portfolio_common.database_models import Base, Transaction, TransactionCost, Instrument
+# --- CORRECTED MODEL IMPORT ---
+# Import the Base and all models that inherit from it so that
+# the metadata is populated correctly for autogenerate and upgrade.
+from portfolio_common.database_models import Base, Transaction, TransactionCost, Instrument, MarketPrice
 target_metadata = Base.metadata
+# --- END CORRECTION ---
 
 
 def get_db_url():

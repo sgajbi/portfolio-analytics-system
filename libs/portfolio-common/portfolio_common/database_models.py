@@ -1,11 +1,25 @@
 # libs/portfolio-common/portfolio_common/database_models.py
 from sqlalchemy import (
-    Column, Integer, String, Numeric, DateTime, func, ForeignKey
+    Column, Integer, String, Numeric, DateTime, Date, func, ForeignKey, UniqueConstraint
 )
 from sqlalchemy.orm import declarative_base, relationship
 
 # Use the modern declarative_base from sqlalchemy.orm
 Base = declarative_base()
+
+class MarketPrice(Base):
+    __tablename__ = 'market_prices'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    security_id = Column(String, index=True, nullable=False)
+    price_date = Column(Date, nullable=False)
+    price = Column(Numeric(18, 10), nullable=False)
+    currency = Column(String, nullable=False)
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+
+    __table_args__ = (UniqueConstraint('security_id', 'price_date', name='_security_price_date_uc'),)
+
 
 class Instrument(Base):
     __tablename__ = 'instruments'
