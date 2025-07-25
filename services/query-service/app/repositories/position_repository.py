@@ -1,0 +1,60 @@
+import logging
+from typing import List, Any
+
+from sqlalchemy.orm import Session, aliased
+from sqlalchemy import func, desc
+
+from portfolio_common.database_models import PositionHistory, Instrument
+
+logger = logging.getLogger(__name__)
+
+class PositionRepository:
+    """
+    Handles read-only database queries for position data.
+    """
+    def __init__(self, db: Session):
+        self.db = db
+
+    def get_latest_positions_by_portfolio(self, portfolio_id: str) -> List[Any]:
+        """
+        Retrieves the single latest position for each security in a given portfolio.
+        
+        This uses a window function to rank position records for each security
+        by date and then selects only the most recent one (rank=1). It also joins
+        with the Instrument table to fetch the instrument's name.
+        """
+        
+        # Subquery to rank positions for each security by date
+        ranked_positions_subq = self.db.query(
+            PositionHistory,
+            func.row_number().over(
+                partition_by=PositionHistory.security_id,
+                order_by=[
+                    PositionHistory.position_date.desc(),
+                    PositionHistory.id.desc() # Tie-breaker for same-day transactions
+                ]
+            ).label('rn')
+        ).filter(
+            PositionHistory.portfolio_id == portfolio_id
+        ).subquery('ranked_positions')
+
+        ranked_positions = aliased(PositionHistory, ranked_positions_subq)
+
+        # Main query to select the latest position (where rank is 1)
+        # and join with Instruments to get the name.
+        results = self.db.query(
+            ranked_positions.security_id,
+            ranked_positions.quantity,
+            ranked_positions.cost_basis,
+            ranked_positions.position_date,
+            Instrument.name.label('instrument_name')
+        ).join(
+            Instrument, Instrument.security_id == ranked_positions.security_id
+        ).filter(
+            ranked_positions_subq.c.rn == 1,
+            # Also filter out zero-quantity positions, as they are closed
+            ranked_positions.quantity > 0 
+        ).all()
+
+        logger.info(f"Found {len(results)} latest positions for portfolio '{portfolio_id}'.")
+        return results
