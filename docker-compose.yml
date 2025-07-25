@@ -79,7 +79,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    # CORRECTED: Use entrypoint to run the startup script with the 'migrate' command
     entrypoint: ["/app/startup.sh"]
     command: ["migrate"]
     networks:
@@ -98,6 +97,7 @@ services:
       KAFKA_BOOTSTRAP_SERVERS: kafka:9093
       KAFKA_RAW_TRANSACTIONS_TOPIC: raw_transactions
       KAFKA_MARKET_PRICES_TOPIC: market_prices
+      KAFKA_FX_RATES_TOPIC: fx_rates
     depends_on:
       kafka:
         condition: service_healthy
@@ -129,7 +129,6 @@ services:
     volumes:
       - ./services/transaction-persistence-service/app:/app/app
       - ./libs/portfolio-common:/app/libs/portfolio-common
-    # CORRECTED: Use entrypoint to run the startup script with the 'run' command
     entrypoint: ["/app/startup.sh"]
     command: ["run"]
     networks:

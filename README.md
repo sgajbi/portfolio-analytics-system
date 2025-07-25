@@ -1,4 +1,3 @@
-
 # Portfolio Analytics System
 
 This system is designed to process financial transactions, calculate portfolio analytics (positions, valuations, performance), and expose them via REST APIs. It follows a modular, event-driven architecture using Kafka, PostgreSQL, and Python microservices, containerized with Docker.
@@ -8,93 +7,84 @@ This system is designed to process financial transactions, calculate portfolio a
 1.  [Project Overview](#1-project-overview)
 2.  [System Architecture](#2-system-architecture)
 3.  [Implemented Services](#3-implemented-services)
-4.  [Core Libraries](#4-core-libraries)
-5.  [Technology Stack](#5-technology-stack)
+4.  [Kafka Topics](#4-kafka-topics)
+5.  [API Endpoints](#5-api-endpoints)
 6.  [Local Development Setup](#6-local-development-setup)
-    * [Prerequisites](#prerequisites)
-    * [Initial Setup](#initial-setup)
-    * [Database Migrations](#database-migrations-alembic)
-    * [Running the System](#running-the-system-with-docker-compose)
-7.  [End-to-End Testing](#7-end-to-end-testing)
-8.  [Project Structure](#8-project-structure)
-9.  [Future Development](#9-future-development)
+7.  [Testing the Endpoints](#7-testing-the-endpoints)
 
 ---
 
 ## 1. Project Overview
 
-The Portfolio Analytics System is a scalable, event-driven microservices platform. Its core function is to process raw financial transaction data and build a robust foundation for various portfolio analytics, including real-time position keeping, valuation, and performance measurement.
+The Portfolio Analytics System is a scalable, event-driven microservices platform. Its core function is to ingest and process raw financial data (transactions, instruments, market prices, FX rates) and build a robust foundation for various portfolio analytics.
 
 ---
 
 ## 2. System Architecture
 
-The system is built around Kafka to ensure loose coupling between services. Transactions are ingested, persisted, and then enriched by a pipeline of consumer services.
+The system is built around Kafka to ensure loose coupling between services. Data is ingested, persisted, and then enriched by a pipeline of consumer services.
 
 ```mermaid
 graph TD
-    subgraph "Event Flow"
-        User[User/Client] -- POST /ingest/transaction --> IngestionService[Ingestion Service];
-        IngestionService -- Publishes Event --> KafkaRaw[Kafka Topic: raw_transactions];
-        KafkaRaw --> PersistenceService[Transaction Persistence Service];
-        PersistenceService -- Persists to DB & Publishes Event --> KafkaCompleted[Kafka Topic: raw_transactions_completed];
-        KafkaCompleted --> CostCalculator[Cost Calculator Service];
+    subgraph "Ingestion & Event Production"
+        User[User/Client] -- POST --> IngestionService[Ingestion Service];
+        IngestionService -- Publishes Events --> Kafka;
+    end
+
+    subgraph "Kafka Topics"
+        Kafka --- raw_transactions((raw_transactions));
+        Kafka --- instruments((instruments));
+        Kafka --- market_prices((market_prices));
+        Kafka --- fx_rates((fx_rates));
+    end
+
+    subgraph "Event Consumption & Processing"
+        raw_transactions --> PersistenceService[Transaction Persistence Service];
+        PersistenceService -- Persists to DB & Publishes --> raw_transactions_completed((raw_transactions_completed));
+        raw_transactions_completed --> CostCalculator[Cost Calculator Service];
         CostCalculator -- Enriches Data --> DB[(PostgreSQL)];
     end
 
-    subgraph "Core Components"
-        CostCalculator -- Uses --> EngineLib[financial-calculator-engine];
-        PersistenceService --> DB;
-    end
-````
 
------
+```` 
+## 3. Implemented Services
 
-## 3\. Implemented Services
+#### ingestion-service
+* **Role**: A FastAPI application that acts as the entry point for new data. It receives details via REST API, validates them, and publishes them as events to the appropriate Kafka topic.
+* **Technology**: FastAPI, Pydantic, Confluent Kafka Producer.
 
-### `ingestion-service`
+#### transaction-persistence-service
+* **Role**: A Kafka consumer that listens to `raw_transactions`. It persists transaction data into the PostgreSQL `transactions` table and publishes an event to `raw_transactions_completed` on success.
+* **Technology**: Python, Confluent Kafka Consumer, SQLAlchemy, PostgreSQL.
 
-  * **Role**: A FastAPI application that acts as the entry point for new transaction data. It receives transaction details via a REST API, validates them, and publishes them as events to the `raw_transactions` Kafka topic.
-  * **Technology**: FastAPI, Pydantic, Confluent Kafka Producer.
-  * **API Endpoint**: `POST /ingest/transaction`
+#### cost-calculator-service
+* **Role**: A Kafka consumer that listens to `raw_transactions_completed`. It uses the `financial-calculator-engine` library to calculate cost basis (`gross_cost`, `net_cost`, `realized_gain_loss`) and updates the transaction record in the database.
+* **Technology**: Python, Confluent Kafka Consumer, SQLAlchemy, PostgreSQL.
 
-### `transaction-persistence-service`
+---
 
-  * **Role**: A Kafka consumer that listens to the `raw_transactions` topic. It is responsible for transforming the event data and persisting it into the PostgreSQL `transactions` table. Upon successful persistence, it publishes a new event to the `raw_transactions_completed` topic.
-  * **Technology**: Python, Confluent Kafka Consumer, SQLAlchemy, PostgreSQL.
+## 4. Kafka Topics
 
-### `cost-calculator-service`
+* **`raw_transactions`**: Contains raw, unprocessed transaction events as they are ingested.
+* **`raw_transactions_completed`**: Events published by the persistence service after a transaction has been successfully saved to the database.
+* **`instruments`**: Contains reference data for financial instruments (e.g., stocks, bonds).
+* **`market_prices`**: Contains daily closing prices for securities.
+* **`fx_rates`**: Contains daily foreign exchange rates between currency pairs.
 
-  * **Role**: A Kafka consumer that listens to the `raw_transactions_completed` topic. It uses the `financial-calculator-engine` library to calculate cost basis (`gross_cost`, `net_cost`) and `realized_gain_loss`. It then updates the corresponding transaction record in the PostgreSQL database with these calculated values.
-  * **Technology**: Python, Confluent Kafka Consumer, SQLAlchemy, PostgreSQL.
+---
 
------
+## 5. API Endpoints
 
-## 4\. Core Libraries
+All endpoints are served by the `ingestion-service` at `http://localhost:8000`.
 
-### `financial-calculator-engine`
+* **`POST /ingest/transactions`**: Ingests a list of financial transactions.
+* **`POST /ingest/instruments`**: Ingests a list of financial instruments.
+* **`POST /ingest/market-prices`**: Ingests a list of market prices.
+* **`POST /ingest/fx-rates`**: Ingests a list of foreign exchange rates.
+* **`GET /health`**: Health check for the service.
 
-  * **Location**: `libs/financial-calculator-engine`
-  * **Role**: A self-contained, installable Python library that holds the core business logic for financial calculations. It handles parsing, sorting, and processing transactions to determine cost basis using configurable strategies (FIFO, Average Cost). It is decoupled from any specific service and includes its own unit tests.
+---
 
-# Portfolio Common
-
-This library contains common utilities and data structures used across the wealth management platform's microservices.
------
-
-## 5\. Technology Stack
-
-  * **Core Language**: Python 3.11
-  * **Containerization**: Docker
-  * **Orchestration (Local)**: Docker Compose
-  * **Message Broker**: Apache Kafka
-  * **Database**: PostgreSQL
-  * **Database Migrations**: Alembic
-  * **API Framework**: FastAPI
-  * **Database ORM**: SQLAlchemy
-  * **Data Validation**: Pydantic
-
------
 
 ## 6\. Local Development Setup
 
@@ -193,53 +183,88 @@ Database schema changes are managed by Alembic. The recommended approach for dev
 
 -----
 
-## 7\. End-to-End Testing
+### 7\. Testing the Endpoints
 
-After starting all services, you can verify the full pipeline:
+After starting all services, you can verify the full pipeline.
 
-1.  **Access the API Docs**: Open [http://localhost:8000/docs](https://www.google.com/search?q=http://localhost:8000/docs).
-2.  **Ingest a BUY Transaction**: Use the `POST /ingest/transaction` endpoint.
-3.  **Ingest a SELL Transaction**: Send a second transaction for the same instrument.
-4.  **Verify in Database**: Connect to the database and check the `transactions` table to confirm that both records were saved and that the cost fields have been correctly calculated.
-    ```bash
-    # Connect to the database
-    docker exec -it postgres psql -U user -d portfolio_db
+1.  **Access the API Docs**: Open `http://localhost:8000/docs` in your browser.
+2.  **Use the "Try it out" feature** for each endpoint with the example payloads below. A successful request will return a `202 Accepted` status code.
 
-    # Run query
-    SELECT transaction_id, gross_cost, net_cost, realized_gain_loss FROM transactions;
-    ```
+#### Ingest Instruments
 
------
+**`POST /ingest/instruments`**
 
-## 8\. Project Structure
-
-```
-.
-├── libs/
-│   └── financial-calculator-engine/  # Core calculation logic
-├── services/
-│   ├── cost-calculator-service/      # Kafka consumer for cost calculations
-│   ├── ingestion-service/            # FastAPI service for data ingestion
-│   └── transaction-persistence-service/ # Kafka consumer for data persistence
-├── alembic/                           # Alembic migration scripts
-├── common/                            # Shared utilities and data models
-├── .env
-├── docker-compose.yml
-├── pyproject.toml
-└── README.md
+```json
+{
+  "instruments": [
+    {
+      "securityId": "SEC_AAPL",
+      "name": "Apple Inc.",
+      "isin": "US0378331005",
+      "instrumentCurrency": "USD",
+      "productType": "Equity"
+    }
+  ]
+}
 ```
 
------
+#### Ingest Transactions
 
-## 9\. Future Development
+**`POST /ingest/transactions`**
 
-  * Complete the decoupling of the `common` module into versioned, installable packages.
-  * Implement the remaining calculator services (position, valuation, performance).
-  * Build the final REST API service to expose the calculated analytics.
-  * Integrate monitoring and structured logging.
-  * Establish a CI/CD pipeline.
+```json
+{
+  "transactions": [
+    {
+      "transaction_id": "TXN_BUY_001",
+      "portfolio_id": "PORT_001",
+      "instrument_id": "AAPL",
+      "security_id": "SEC_AAPL",
+      "transaction_date": "2025-07-20",
+      "transaction_type": "BUY",
+      "quantity": 10,
+      "price": 150.50,
+      "gross_transaction_amount": 1505,
+      "trade_currency": "USD",
+      "currency": "USD"
+    }
+  ]
+}
+```
 
-<!-- end list -->
+#### Ingest Market Prices
+
+**`POST /ingest/market-prices`**
+
+```json
+{
+  "market_prices": [
+    {
+      "securityId": "SEC_AAPL",
+      "priceDate": "2025-07-25",
+      "price": 152.75,
+      "currency": "USD"
+    }
+  ]
+}
+```
+
+#### Ingest FX Rates
+
+**`POST /ingest/fx-rates`**
+
+```json
+{
+  "fx_rates": [
+    {
+      "fromCurrency": "USD",
+      "toCurrency": "SGD",
+      "rateDate": "2025-07-25",
+      "rate": 1.35
+    }
+  ]
+}
+```
 
 ```
 ```
