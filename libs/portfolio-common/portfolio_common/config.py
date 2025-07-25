@@ -1,4 +1,10 @@
 import os
+from dotenv import load_dotenv
+
+# Load environment variables from a .env file for local development.
+# This line will be ignored if run inside a Docker container where an .env file doesn't exist.
+load_dotenv()
+
 
 # Database Configurations
 POSTGRES_USER = os.getenv("POSTGRES_USER", "user")
@@ -15,7 +21,7 @@ MONGO_PORT = os.getenv("MONGO_PORT", "27017")
 MONGO_DB_NAME = os.getenv("MONGO_DB_NAME", "portfolio_state")
 MONGO_URL = f"mongodb://{MONGO_INITDB_ROOT_USERNAME}:{MONGO_INITDB_ROOT_PASSWORD}@{MONGO_HOST}:{MONGO_PORT}"
 
-# Kafka Configurations
+
 KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9093")
 KAFKA_RAW_TRANSACTIONS_TOPIC = os.getenv("KAFKA_RAW_TRANSACTIONS_TOPIC", "raw_transactions")
 KAFKA_RAW_TRANSACTIONS_COMPLETED_TOPIC = os.getenv("KAFKA_RAW_TRANSACTIONS_COMPLETED_TOPIC", "raw_transactions_completed")
