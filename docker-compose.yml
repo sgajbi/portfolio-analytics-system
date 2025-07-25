@@ -85,7 +85,6 @@ services:
       - ./libs/portfolio-common:/app/libs/portfolio-common
       - ./alembic.ini:/app/alembic.ini
       - ./alembic:/app/alembic
-    # MODIFIED: Corrected python syntax and made the script fail-fast
     command: >
       bash -c "
         set -e
@@ -130,6 +129,8 @@ services:
       PYTHONPATH: "/app:/app/libs/portfolio-common"
       KAFKA_BOOTSTRAP_SERVERS: kafka:9093
       KAFKA_RAW_TRANSACTIONS_TOPIC: raw_transactions
+      # NEW: Add the instruments topic environment variable
+      KAFKA_INSTRUMENTS_TOPIC: instruments
     depends_on:
       kafka:
         condition: service_healthy

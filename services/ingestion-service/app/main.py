@@ -4,7 +4,8 @@ from contextlib import asynccontextmanager
 import logging
 
 from portfolio_common.kafka_utils import get_kafka_producer, KafkaProducer
-from app.routers import transactions
+# NEW: Import the new instruments router
+from app.routers import transactions, instruments
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -49,8 +50,9 @@ async def health_check():
     """Returns the operational status of the service."""
     return {"status": "ok", "service": "Ingestion Service"}
 
-# Include the transaction router
+# Include the API routers
 app.include_router(transactions.router)
+app.include_router(instruments.router) # NEW: Register the instruments router
 
 # Custom dependency to provide the Kafka producer and handle unavailability
 def get_producer_dependency() -> KafkaProducer:
