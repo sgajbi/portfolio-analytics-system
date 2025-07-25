@@ -4,14 +4,14 @@ import logging
 from confluent_kafka import Consumer, Message
 from pydantic import ValidationError
 
-from portfolio_common.config import KAFKA_BOOTSTRAP_SERVERS
+from portfolio_common.config import KAFKA_BOOTSTRAP_SERVERS, KAFKA_PROCESSED_TRANSACTIONS_COMPLETED_TOPIC
 from portfolio_common.db import get_db_session
 from portfolio_common.database_models import Transaction as DBTransaction
 from portfolio_common.events import TransactionEvent
+from portfolio_common.kafka_utils import get_kafka_producer
 
 # Import the TransactionProcessor AND the engine's internal Transaction model
 from src.services.transaction_processor import TransactionProcessor
-# --- THIS IMPORT IS THE KEY PART OF THE FIX ---
 from src.core.models.transaction import Transaction as EngineTransaction
 from src.logic.parser import TransactionParser
 from src.logic.sorter import TransactionSorter
@@ -36,6 +36,7 @@ class CostCalculatorConsumer:
         }
         self.consumer = Consumer(self.consumer_config)
         self.consumer.subscribe([self.topic])
+        self._producer = get_kafka_producer()
         logger.info(f"Consumer subscribed to topic: {self.topic}")
 
     def _get_transaction_processor(self) -> TransactionProcessor:
@@ -84,8 +85,6 @@ class CostCalculatorConsumer:
                 DBTransaction.instrument_id == new_transaction_event.instrument_id
             ).all()
 
-            # --- THIS LINE IS THE FIX ---
-            # Use the engine's model to correctly serialize DB objects, preserving net_cost.
             existing_txns_raw = [EngineTransaction.model_validate(t).model_dump(by_alias=True) for t in existing_db_txns]
             new_txn_raw = [new_transaction_event.model_dump()]
 
@@ -108,4 +107,15 @@ class CostCalculatorConsumer:
                     db_txn_to_update.gross_cost = result.gross_cost
                     db_txn_to_update.realized_gain_loss = result.realized_gain_loss
                     db.commit()
+                    db.refresh(db_txn_to_update)
                     logger.info(f"Successfully updated transaction {result.transaction_id}.")
+                    
+                    # Publish the enriched transaction event
+                    completion_event = TransactionEvent.model_validate(db_txn_to_update)
+                    self._producer.publish_message(
+                        topic=KAFKA_PROCESSED_TRANSACTIONS_COMPLETED_TOPIC,
+                        key=completion_event.transaction_id,
+                        value=completion_event.model_dump(mode='json')
+                    )
+                    self._producer.flush(timeout=5)
+                    logger.info(f"Published processed completion event for {completion_event.transaction_id}")
