@@ -7,6 +7,20 @@ from sqlalchemy.orm import declarative_base, relationship
 # Use the modern declarative_base from sqlalchemy.orm
 Base = declarative_base()
 
+class PositionHistory(Base):
+    __tablename__ = 'position_history'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    portfolio_id = Column(String, index=True, nullable=False)
+    security_id = Column(String, index=True, nullable=False)
+    # A position record is created by one unique transaction
+    transaction_id = Column(String, ForeignKey('transactions.transaction_id'), unique=True, nullable=False)
+    position_date = Column(Date, index=True, nullable=False)
+    quantity = Column(Numeric(18, 10), nullable=False)
+    cost_basis = Column(Numeric(18, 10), nullable=False) # The total cost of the position
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+
 class FxRate(Base):
     __tablename__ = 'fx_rates'
 
