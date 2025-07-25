@@ -2,6 +2,15 @@ from datetime import date
 from typing import Optional
 from pydantic import BaseModel, Field, ConfigDict
 
+class InstrumentEvent(BaseModel):
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+    security_id: str = Field(..., alias="securityId")
+    name: str
+    isin: str
+    currency: str = Field(..., alias="instrumentCurrency")
+    product_type: str = Field(..., alias="productType")
+
 class TransactionEvent(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
