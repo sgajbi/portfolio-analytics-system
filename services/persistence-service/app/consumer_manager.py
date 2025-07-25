@@ -6,11 +6,13 @@ from portfolio_common.config import (
     KAFKA_BOOTSTRAP_SERVERS, 
     KAFKA_RAW_TRANSACTIONS_TOPIC,
     KAFKA_INSTRUMENTS_TOPIC,
-    KAFKA_MARKET_PRICES_TOPIC
+    KAFKA_MARKET_PRICES_TOPIC,
+    KAFKA_FX_RATES_TOPIC
 )
 from .consumers.transaction_consumer import TransactionPersistenceConsumer
 from .consumers.instrument_consumer import InstrumentConsumer
 from .consumers.market_price_consumer import MarketPriceConsumer
+from .consumers.fx_rate_consumer import FxRateConsumer
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +46,13 @@ class ConsumerManager:
                 bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
                 topic=KAFKA_MARKET_PRICES_TOPIC,
                 group_id="persistence_group_market_prices"
+            )
+        )
+        self.consumers.append(
+            FxRateConsumer(
+                bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
+                topic=KAFKA_FX_RATES_TOPIC,
+                group_id="persistence_group_fx_rates"
             )
         )
 
