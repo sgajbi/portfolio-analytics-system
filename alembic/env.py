@@ -12,8 +12,9 @@ from alembic import context
 # --- CUSTOM SETUP ---
 # Add the project root directory to the Python path.
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-if project_root not in sys.path:
-    sys.path.insert(0, project_root)
+portfolio_common_path = os.path.join(project_root, 'libs', 'portfolio-common')
+if portfolio_common_path not in sys.path:
+    sys.path.insert(0, portfolio_common_path)
 
 # Load environment variables from the .env file at the project root
 dotenv_path = os.path.join(project_root, '.env')
