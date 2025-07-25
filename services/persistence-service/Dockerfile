@@ -18,10 +18,12 @@ RUN /opt/venv/bin/pip install --upgrade pip && \
     /opt/venv/bin/pip install --no-cache-dir -r /app/requirements.txt && \
     /opt/venv/bin/pip install -e /app/libs/portfolio-common
 
-# Copy the application source code
+# Copy the application source code and Alembic files
 COPY services/persistence-service/app /app/app
 COPY services/persistence-service/__init__.py /app/services/persistence-service/__init__.py
 COPY services/__init__.py /app/services/__init__.py
+COPY alembic.ini /app/alembic.ini
+COPY alembic /app/alembic
 
 
 # Stage 2: Final production stage
@@ -40,10 +42,12 @@ RUN useradd --create-home appuser
 # Copy the virtual environment from the builder stage
 COPY --from=builder --chown=appuser:appuser /opt/venv /opt/venv
 
-# Copy the application code and necessary package __init__.py files
+# Copy the application code and necessary package/Alembic files
 COPY --from=builder --chown=appuser:appuser /app/app /app/app
 COPY --from=builder --chown=appuser:appuser /app/libs /app/libs
 COPY --from=builder --chown=appuser:appuser /app/services /app/services
+COPY --from=builder --chown=appuser:appuser /app/alembic.ini /app/alembic.ini
+COPY --from=builder --chown=appuser:appuser /app/alembic /app/alembic
 
 
 USER appuser

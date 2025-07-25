@@ -57,7 +57,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-user}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+     - postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
@@ -69,7 +69,7 @@ services:
   migration-runner:
     build:
       context: .
-      dockerfile: ./services/transaction-persistence-service/Dockerfile
+      dockerfile: ./services/persistence-service/Dockerfile
     hostname: migration-runner
     container_name: migration-runner
     environment:
@@ -79,8 +79,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    entrypoint: ["/app/startup.sh"]
-    command: ["migrate"]
+    entrypoint: ["/opt/venv/bin/alembic"]
+    command: ["upgrade", "head"]
     networks:
       - app_network
 
@@ -98,6 +98,7 @@ services:
       KAFKA_RAW_TRANSACTIONS_TOPIC: raw_transactions
       KAFKA_MARKET_PRICES_TOPIC: market_prices
       KAFKA_FX_RATES_TOPIC: fx_rates
+      KAFKA_INSTRUMENTS_TOPIC: instruments
     depends_on:
       kafka:
         condition: service_healthy
@@ -109,28 +110,26 @@ services:
     networks:
       - app_network
 
-  transaction-persistence-service:
+  persistence-service:
     build:
       context: .
-      dockerfile: ./services/transaction-persistence-service/Dockerfile
-    hostname: transaction-persistence-service
-    container_name: transaction-persistence-service
+      dockerfile: ./services/persistence-service/Dockerfile
+    hostname: persistence-service
+    container_name: persistence-service
     environment:
-      PYTHONPATH: "/app:/app/app:/app/libs/portfolio-common"
+      PYTHONPATH: "/app"
       KAFKA_BOOTSTRAP_SERVERS: kafka:9093
-      KAFKA_RAW_TRANSACTIONS_TOPIC: raw_transactions
-      KAFKA_RAW_TRANSACTIONS_COMPLETED_TOPIC: raw_transactions_completed
       DATABASE_URL: postgresql://user:password@postgres:5432/portfolio_db
+      HOST_DATABASE_URL: "" # Ensure this is empty so the container builds the correct URL
     depends_on:
       kafka:
         condition: service_healthy
       migration-runner:
         condition: service_completed_successfully
     volumes:
-      - ./services/transaction-persistence-service/app:/app/app
+      - ./services/persistence-service/app:/app/app
       - ./libs/portfolio-common:/app/libs/portfolio-common
-    entrypoint: ["/app/startup.sh"]
-    command: ["run"]
+    command: ["python", "-m", "app.main"]
     networks:
       - app_network
 
