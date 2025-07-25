@@ -1,6 +1,15 @@
 from datetime import date
 from typing import Optional
 from pydantic import BaseModel, Field, ConfigDict
+from decimal import Decimal
+
+class MarketPriceEvent(BaseModel):
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+    security_id: str = Field(..., alias="securityId")
+    price_date: date = Field(..., alias="priceDate")
+    price: Decimal
+    currency: str
 
 class InstrumentEvent(BaseModel):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
