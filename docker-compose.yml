@@ -109,6 +109,27 @@ services:
       uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4 --timeout-keep-alive 30
     networks:
       - app_network
+  
+  query-service:
+    build:
+      context: .
+      dockerfile: ./services/query-service/Dockerfile
+    hostname: query-service
+    container_name: query-service
+    ports:
+      - "8001:8001"
+    environment:
+      PYTHONPATH: "/app"
+      DATABASE_URL: postgresql://user:password@postgres:5432/portfolio_db
+      HOST_DATABASE_URL: ""
+    depends_on:
+      migration-runner:
+        condition: service_completed_successfully
+    volumes:
+      - ./services/query-service/app:/app/app
+      - ./libs/portfolio-common:/app/libs/portfolio-common
+    networks:
+      - app_network
 
   persistence-service:
     build:
@@ -120,7 +141,7 @@ services:
       PYTHONPATH: "/app"
       KAFKA_BOOTSTRAP_SERVERS: kafka:9093
       DATABASE_URL: postgresql://user:password@postgres:5432/portfolio_db
-      HOST_DATABASE_URL: "" # Ensure this is empty so the container builds the correct URL
+      HOST_DATABASE_URL: ""
     depends_on:
       kafka:
         condition: service_healthy
@@ -157,7 +178,6 @@ services:
     networks:
       - app_network
 
-      
   position-calculator-service:
     build:
       context: .
