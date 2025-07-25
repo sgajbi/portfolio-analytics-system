@@ -1,7 +1,7 @@
 # services/persistence-service/app/main.py
 import logging
 import asyncio
-from app.consumer_manager import ConsumerManager
+from .consumer_manager import ConsumerManager # <-- MODIFIED: Changed to relative import
 
 # Configure logging for the service
 logging.basicConfig(
