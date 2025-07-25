@@ -1,5 +1,6 @@
 import logging
 from fastapi import FastAPI
+from .routers import positions # Import the new router
 
 # Configure logging
 logging.basicConfig(
@@ -15,6 +16,9 @@ app = FastAPI(
     description="Service for querying portfolio analytics data.",
     version="0.1.0"
 )
+
+# Register the API routers
+app.include_router(positions.router)
 
 @app.get("/health")
 async def health_check():
