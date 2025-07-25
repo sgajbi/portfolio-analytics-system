@@ -7,6 +7,20 @@ from sqlalchemy.orm import declarative_base, relationship
 # Use the modern declarative_base from sqlalchemy.orm
 Base = declarative_base()
 
+class FxRate(Base):
+    __tablename__ = 'fx_rates'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    from_currency = Column(String(3), nullable=False)
+    to_currency = Column(String(3), nullable=False)
+    rate_date = Column(Date, nullable=False)
+    rate = Column(Numeric(18, 10), nullable=False)
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+
+    __table_args__ = (UniqueConstraint('from_currency', 'to_currency', 'rate_date', name='_currency_pair_date_uc'),)
+
+
 class MarketPrice(Base):
     __tablename__ = 'market_prices'
 
