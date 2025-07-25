@@ -79,7 +79,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    # CORRECTED: This passes "migrate" as an argument to the ENTRYPOINT script.
+    # CORRECTED: Use entrypoint to run the startup script with the 'migrate' command
+    entrypoint: ["/app/startup.sh"]
     command: ["migrate"]
     networks:
       - app_network
@@ -127,7 +128,8 @@ services:
     volumes:
       - ./services/transaction-persistence-service/app:/app/app
       - ./libs/portfolio-common:/app/libs/portfolio-common
-    # CORRECTED: This passes "run" as an argument to the ENTRYPOINT script.
+    # CORRECTED: Use entrypoint to run the startup script with the 'run' command
+    entrypoint: ["/app/startup.sh"]
     command: ["run"]
     networks:
       - app_network

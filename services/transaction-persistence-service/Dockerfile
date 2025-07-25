@@ -67,5 +67,3 @@ RUN useradd --create-home appuser && \
     chown -R appuser:appuser /opt/venv /app
 
 USER appuser
-
-ENTRYPOINT ["/app/startup.sh"]
