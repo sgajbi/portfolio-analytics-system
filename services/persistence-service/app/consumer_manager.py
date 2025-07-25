@@ -5,10 +5,12 @@ import asyncio
 from portfolio_common.config import (
     KAFKA_BOOTSTRAP_SERVERS, 
     KAFKA_RAW_TRANSACTIONS_TOPIC,
-    KAFKA_INSTRUMENTS_TOPIC
+    KAFKA_INSTRUMENTS_TOPIC,
+    KAFKA_MARKET_PRICES_TOPIC
 )
 from .consumers.transaction_consumer import TransactionPersistenceConsumer
 from .consumers.instrument_consumer import InstrumentConsumer
+from .consumers.market_price_consumer import MarketPriceConsumer
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +37,13 @@ class ConsumerManager:
                 bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
                 topic=KAFKA_INSTRUMENTS_TOPIC,
                 group_id="persistence_group_instruments"
+            )
+        )
+        self.consumers.append(
+            MarketPriceConsumer(
+                bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
+                topic=KAFKA_MARKET_PRICES_TOPIC,
+                group_id="persistence_group_market_prices"
             )
         )
 
