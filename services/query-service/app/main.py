@@ -1,6 +1,6 @@
 import logging
 from fastapi import FastAPI
-from .routers import positions, transactions, instruments, prices
+from .routers import positions, transactions, instruments, prices, fx_rates
 
 # Configure logging
 logging.basicConfig(
@@ -22,6 +22,7 @@ app.include_router(positions.router)
 app.include_router(transactions.router)
 app.include_router(instruments.router)
 app.include_router(prices.router)
+app.include_router(fx_rates.router)
 
 @app.get("/health")
 async def health_check():
