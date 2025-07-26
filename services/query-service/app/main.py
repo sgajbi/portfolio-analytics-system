@@ -1,6 +1,6 @@
 import logging
 from fastapi import FastAPI
-from .routers import positions, transactions # Import the new router
+from .routers import positions, transactions, instruments # Import the new router
 
 # Configure logging
 logging.basicConfig(
@@ -20,6 +20,7 @@ app = FastAPI(
 # Register the API routers
 app.include_router(positions.router)
 app.include_router(transactions.router)
+app.include_router(instruments.router)
 
 @app.get("/health")
 async def health_check():
