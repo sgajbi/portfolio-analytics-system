@@ -44,12 +44,15 @@ class TransactionPersistenceConsumer(BaseConsumer):
             logger.info(f"Successfully persisted transaction_id: {event.transaction_id}")
 
             # 3. Publish completion event
+            
+            partition_key = f"{event.portfolio_id}:{event.security_id}"
+            
             self._producer.publish_message(
                 topic=KAFKA_RAW_TRANSACTIONS_COMPLETED_TOPIC,
-                key=event.transaction_id,
+                key=partition_key,
                 value=event.model_dump(mode='json')
             )
-            logger.info(f"Published completion event for transaction_id: {event.transaction_id}")
+            logger.info(f"Published completion event for transaction_id: {event.transaction_id} with key {partition_key}")
             self._producer.flush(timeout=5)
 
 
