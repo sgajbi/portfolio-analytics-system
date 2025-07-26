@@ -27,34 +27,38 @@ class ConsumerManager:
         self.tasks = []
         self._shutdown_event = asyncio.Event()
         
-        # Instantiate all the consumers the service will manage
+        dlq_topic = KAFKA_PERSISTENCE_DLQ_TOPIC
+        
         self.consumers.append(
             TransactionPersistenceConsumer(
                 bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
                 topic=KAFKA_RAW_TRANSACTIONS_TOPIC,
                 group_id="persistence_group_transactions",
-                dlq_topic=KAFKA_PERSISTENCE_DLQ_TOPIC # Add DLQ topic
+                dlq_topic=dlq_topic
             )
         )
         self.consumers.append(
             InstrumentConsumer(
                 bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
                 topic=KAFKA_INSTRUMENTS_TOPIC,
-                group_id="persistence_group_instruments"
+                group_id="persistence_group_instruments",
+                dlq_topic=dlq_topic
             )
         )
         self.consumers.append(
             MarketPriceConsumer(
                 bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
                 topic=KAFKA_MARKET_PRICES_TOPIC,
-                group_id="persistence_group_market_prices"
+                group_id="persistence_group_market_prices",
+                dlq_topic=dlq_topic
             )
         )
         self.consumers.append(
             FxRateConsumer(
                 bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
                 topic=KAFKA_FX_RATES_TOPIC,
-                group_id="persistence_group_fx_rates"
+                group_id="persistence_group_fx_rates",
+                dlq_topic=dlq_topic
             )
         )
 

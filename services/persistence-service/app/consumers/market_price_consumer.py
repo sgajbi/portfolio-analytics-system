@@ -17,25 +17,19 @@ class MarketPriceConsumer(BaseConsumer):
     async def process_message(self, msg: Message):
         """
         Processes a single market price message from Kafka.
-        It validates the message and persists it to the database.
         """
         key = msg.key().decode('utf-8') if msg.key() else "NoKey"
         value = msg.value().decode('utf-8')
         
         try:
-            # 1. Validate the incoming message using the Pydantic event model
             market_price_data = json.loads(value)
             event = MarketPriceEvent.model_validate(market_price_data)
             logger.info(f"Successfully validated event for security_id: {event.security_id} on {event.price_date}")
 
-            # 2. Persist to the database using the repository
             with next(get_db_session()) as db:
                 repo = MarketPriceRepository(db)
                 repo.create_market_price(event)
             
-        except json.JSONDecodeError:
-            logger.error(f"Failed to decode JSON for message with key '{key}'. Value: '{value}'")
-        except ValidationError as e:
-            logger.error(f"Message validation failed for key '{key}': {e}. Value: '{value}'")
-        except Exception as e:
-            logger.error(f"An unexpected error occurred processing message with key '{key}': {e}", exc_info=True)
+        except (json.JSONDecodeError, ValidationError) as e:
+            logger.error(f"Message validation failed for key '{key}': {e}. Sending to DLQ.")
+            await self._send_to_dlq(msg, e)
