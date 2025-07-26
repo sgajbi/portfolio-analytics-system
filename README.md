@@ -1,4 +1,6 @@
 
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/sgajbi/portfolio-analytics-system)
+
 # Portfolio Analytics System
 
 This system is a modular, event-driven platform designed to ingest financial data, perform complex calculations like cost basis and historical positions, and expose the results via a clean API. It uses a microservices architecture built with Python, FastAPI, Kafka, and PostgreSQL, all orchestrated with Docker Compose.
