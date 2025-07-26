@@ -7,7 +7,8 @@ from portfolio_common.config import (
     KAFKA_RAW_TRANSACTIONS_TOPIC,
     KAFKA_INSTRUMENTS_TOPIC,
     KAFKA_MARKET_PRICES_TOPIC,
-    KAFKA_FX_RATES_TOPIC
+    KAFKA_FX_RATES_TOPIC,
+    KAFKA_PERSISTENCE_DLQ_TOPIC
 )
 from .consumers.transaction_consumer import TransactionPersistenceConsumer
 from .consumers.instrument_consumer import InstrumentConsumer
@@ -31,7 +32,8 @@ class ConsumerManager:
             TransactionPersistenceConsumer(
                 bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
                 topic=KAFKA_RAW_TRANSACTIONS_TOPIC,
-                group_id="persistence_group_transactions"
+                group_id="persistence_group_transactions",
+                dlq_topic=KAFKA_PERSISTENCE_DLQ_TOPIC # Add DLQ topic
             )
         )
         self.consumers.append(

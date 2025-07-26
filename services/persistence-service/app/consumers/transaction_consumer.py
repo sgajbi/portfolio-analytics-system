@@ -7,7 +7,6 @@ from confluent_kafka import Message
 from portfolio_common.kafka_consumer import BaseConsumer
 from portfolio_common.events import TransactionEvent
 from portfolio_common.db import get_db_session
-from portfolio_common.kafka_utils import get_kafka_producer
 from portfolio_common.config import KAFKA_RAW_TRANSACTIONS_COMPLETED_TOPIC
 from ..repositories.transaction_db_repo import TransactionDBRepository
 
@@ -16,16 +15,12 @@ logger = logging.getLogger(__name__)
 class TransactionPersistenceConsumer(BaseConsumer):
     """
     A concrete consumer for validating and persisting raw transaction events.
-    It also publishes a completion event after successful persistence.
+    - On success, it publishes a completion event.
+    - On validation failure, it publishes the message to a DLQ.
     """
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._producer = get_kafka_producer()
-
     async def process_message(self, msg: Message):
         """
         Processes a single raw transaction message from Kafka.
-        It validates the message, persists it, and publishes a completion event.
         """
         key = msg.key().decode('utf-8') if msg.key() else "NoKey"
         value = msg.value().decode('utf-8')
@@ -44,21 +39,17 @@ class TransactionPersistenceConsumer(BaseConsumer):
             logger.info(f"Successfully persisted transaction_id: {event.transaction_id}")
 
             # 3. Publish completion event
-            
-            partition_key = f"{event.portfolio_id}:{event.security_id}"
-            
-            self._producer.publish_message(
-                topic=KAFKA_RAW_TRANSACTIONS_COMPLETED_TOPIC,
-                key=partition_key,
-                value=event.model_dump(mode='json')
-            )
-            logger.info(f"Published completion event for transaction_id: {event.transaction_id} with key {partition_key}")
-            self._producer.flush(timeout=5)
+            if self._producer:
+                partition_key = f"{event.portfolio_id}:{event.security_id}"
+                self._producer.publish_message(
+                    topic=KAFKA_RAW_TRANSACTIONS_COMPLETED_TOPIC,
+                    key=partition_key,
+                    value=event.model_dump(mode='json')
+                )
+                logger.info(f"Published completion event for transaction_id: {event.transaction_id} with key {partition_key}")
+                self._producer.flush(timeout=5)
 
-
-        except json.JSONDecodeError:
-            logger.error(f"Failed to decode JSON for message with key '{key}'. Value: '{value}'")
-        except ValidationError as e:
-            logger.error(f"Message validation failed for key '{key}': {e}. Value: '{value}'")
-        except Exception as e:
-            logger.error(f"An unexpected error occurred processing message with key '{key}': {e}", exc_info=True)
+        except (json.JSONDecodeError, ValidationError) as e:
+            logger.error(f"Message validation failed for key '{key}': {e}. Sending to DLQ.")
+            # Send the poison pill message to the DLQ and commit offset
+            await self._send_to_dlq(msg, e)
