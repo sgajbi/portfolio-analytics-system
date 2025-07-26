@@ -18,6 +18,13 @@ class PositionHistory(Base):
     position_date = Column(Date, index=True, nullable=False)
     quantity = Column(Numeric(18, 10), nullable=False)
     cost_basis = Column(Numeric(18, 10), nullable=False) # The total cost of the position
+    
+    # --- NEW VALUATION FIELDS ---
+    market_price = Column(Numeric(18, 10), nullable=True)
+    market_value = Column(Numeric(18, 10), nullable=True)
+    unrealized_gain_loss = Column(Numeric(18, 10), nullable=True)
+    # --- END NEW FIELDS ---
+    
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 
