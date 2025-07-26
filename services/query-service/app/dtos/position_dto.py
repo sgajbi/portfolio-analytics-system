@@ -3,6 +3,23 @@ from decimal import Decimal
 from datetime import date
 from typing import List
 
+# DTO for the "latest positions" endpoint
+class Position(BaseModel):
+    security_id: str
+    quantity: Decimal
+    cost_basis: Decimal
+    instrument_name: str
+    position_date: date
+    
+    model_config = ConfigDict(from_attributes=True)
+
+# Response DTO for the "latest positions" endpoint
+class PortfolioPositionsResponse(BaseModel):
+    portfolio_id: str
+    positions: List[Position]
+
+# --- DTOs for the "position history" endpoint ---
+
 class PositionHistoryRecord(BaseModel):
     """
     Represents a snapshot of a security's position at a specific point in time,
@@ -14,7 +31,7 @@ class PositionHistoryRecord(BaseModel):
     cost_basis: Decimal = Field(..., description="The total cost basis of the holding as of this record.")
     
     model_config = ConfigDict(
-        from_attributes=True # Enables Pydantic to create this model from a database object
+        from_attributes=True
     )
 
 class PortfolioPositionHistoryResponse(BaseModel):
