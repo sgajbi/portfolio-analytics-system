@@ -46,3 +46,34 @@ class TransactionEvent(BaseModel):
     settlement_date: Optional[date] = None
     net_cost: Optional[Decimal] = None
     realized_gain_loss: Optional[Decimal] = None
+
+
+class PositionHistoryEvent(BaseModel):
+    """
+    Represents a full, valued position history record.
+    This can be used for publishing 'position_valued' events.
+    """
+    model_config = ConfigDict(from_attributes=True)
+    
+    id: int
+    portfolio_id: str
+    security_id: str
+    transaction_id: str
+    position_date: date
+    quantity: Decimal
+    cost_basis: Decimal
+    market_price: Optional[Decimal] = None
+    market_value: Optional[Decimal] = None
+    unrealized_gain_loss: Optional[Decimal] = None
+
+class PositionHistoryPersistedEvent(BaseModel):
+    """
+    A lightweight event published when a new position history record is created.
+    This triggers the valuation service.
+    """
+    model_config = ConfigDict(from_attributes=True)
+
+    position_history_id: int = Field(..., alias="id")
+    portfolio_id: str
+    security_id: str
+    position_date: date
