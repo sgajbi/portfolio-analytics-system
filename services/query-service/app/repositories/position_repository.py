@@ -1,5 +1,6 @@
 import logging
-from typing import List, Any
+from datetime import date
+from typing import List, Any, Optional
 
 from sqlalchemy.orm import Session, aliased
 from sqlalchemy import func, desc
@@ -14,6 +15,35 @@ class PositionRepository:
     """
     def __init__(self, db: Session):
         self.db = db
+
+    def get_position_history_by_security(
+        self,
+        portfolio_id: str,
+        security_id: str,
+        start_date: Optional[date] = None,
+        end_date: Optional[date] = None
+    ) -> List[PositionHistory]:
+        """
+        Retrieves the time series of position history for a specific security,
+        with optional date range filtering.
+        """
+        query = self.db.query(PositionHistory).filter(
+            PositionHistory.portfolio_id == portfolio_id,
+            PositionHistory.security_id == security_id
+        )
+
+        if start_date:
+            query = query.filter(PositionHistory.position_date >= start_date)
+        
+        if end_date:
+            query = query.filter(PositionHistory.position_date <= end_date)
+
+        results = query.order_by(PositionHistory.position_date.asc()).all()
+        logger.info(
+            f"Found {len(results)} position history records for security '{security_id}' "
+            f"in portfolio '{portfolio_id}'."
+        )
+        return results
 
     def get_latest_positions_by_portfolio(self, portfolio_id: str) -> List[Any]:
         """
