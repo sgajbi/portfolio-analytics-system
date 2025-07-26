@@ -65,5 +65,5 @@ class TransactionRepository:
         Returns the total count of transactions for the given filters.
         """
         query = self._get_base_query(portfolio_id, security_id, start_date, end_date)
-        count = query.with_entities(func.count(Transaction.id)).scalar_one()
+        count = query.with_entities(func.count(Transaction.id)).scalar()
         return count
