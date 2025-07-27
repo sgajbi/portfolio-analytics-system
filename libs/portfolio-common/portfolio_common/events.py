@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime # <-- IMPORT DATETIME
 from typing import Optional
 from pydantic import BaseModel, Field, ConfigDict
 from decimal import Decimal
@@ -35,7 +35,7 @@ class TransactionEvent(BaseModel):
     portfolio_id: str
     instrument_id: str
     security_id: str
-    transaction_date: date
+    transaction_date: datetime # <-- CORRECTED TYPE
     transaction_type: str
     quantity: Decimal
     price: Decimal
@@ -43,10 +43,11 @@ class TransactionEvent(BaseModel):
     trade_currency: str
     currency: str
     trade_fee: Decimal = Field(default=Decimal(0))
-    settlement_date: Optional[date] = None
+    settlement_date: Optional[datetime] = None # <-- CORRECTED TYPE
     net_cost: Optional[Decimal] = None
     realized_gain_loss: Optional[Decimal] = None
 
+# --- NEW POSITION EVENTS ---
 
 class PositionHistoryEvent(BaseModel):
     """
@@ -68,7 +69,7 @@ class PositionHistoryEvent(BaseModel):
 
 class PositionHistoryPersistedEvent(BaseModel):
     """
-    A lightweight event published when a new position history record is created.
+A lightweight event published when a new position history record is created.
     This triggers the valuation service.
     """
     model_config = ConfigDict(from_attributes=True)
