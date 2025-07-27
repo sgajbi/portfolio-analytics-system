@@ -12,42 +12,32 @@ from ..repositories.market_price_repository import MarketPriceRepository
 logger = logging.getLogger(__name__)
 
 class MarketPriceConsumer(BaseConsumer):
-    """
-    A concrete consumer for validating and persisting market price events.
-    Publishes a completion event on success.
-    """
-    # The BaseConsumer handles DLQ producer initialization; a specific one is not needed here
-    # unless publishing to other topics, which this consumer now does. We will rely
-    # on the BaseConsumer's self._producer for the DLQ. A separate producer for the
-    # completion event is needed.
-
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # The BaseConsumer initializes self._producer if a dlq_topic is provided.
-        # We can reuse it for publishing completion events.
         if not self._producer:
             from portfolio_common.kafka_utils import get_kafka_producer
             self._producer = get_kafka_producer()
 
-
     async def process_message(self, msg: Message):
-        """
-        Processes a single market price message from Kafka.
-        """
         key = msg.key().decode('utf-8') if msg.key() else "NoKey"
         value = msg.value().decode('utf-8')
-        
+        logger.info(f"MarketPriceConsumer received message with key '{key}'")
+
         try:
             market_price_data = json.loads(value)
+            logger.info("DEBUG: Message JSON decoded successfully.")
+            
             event = MarketPriceEvent.model_validate(market_price_data)
-            logger.info(f"Successfully validated event for security_id: {event.security_id} on {event.price_date}")
+            logger.info(f"DEBUG: Pydantic model validated for security_id: {event.security_id}")
 
             with next(get_db_session()) as db:
-                with db.begin(): # Use a transactional block for atomicity
+                with db.begin():
                     repo = MarketPriceRepository(db)
+                    logger.info("DEBUG: Calling repository to create market price.")
                     repo.create_market_price(event)
             
-            # Publish completion event only after a successful commit
+            logger.info("DEBUG: Database transaction committed successfully.")
+            
             self._producer.publish_message(
                 topic=KAFKA_MARKET_PRICE_PERSISTED_TOPIC,
                 key=event.security_id,
@@ -57,8 +47,8 @@ class MarketPriceConsumer(BaseConsumer):
             self._producer.flush(timeout=5)
 
         except (json.JSONDecodeError, ValidationError) as e:
-            logger.error(f"Message validation failed for key '{key}': {e}. Sending to DLQ.")
+            logger.error(f"Message validation failed for key '{key}': {e}. Sending to DLQ.", exc_info=True)
             await self._send_to_dlq(msg, e)
         except Exception as e:
             logger.error(f"An unexpected error occurred for key '{key}': {e}", exc_info=True)
-            await self._send_to_dlq(msg, e) # Also send unexpected errors to DLQ
+            await self._send_to_dlq(msg, e)
