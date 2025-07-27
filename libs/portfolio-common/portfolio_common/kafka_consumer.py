@@ -81,28 +81,31 @@ class BaseConsumer(ABC):
 
     async def run(self):
         """
-        The main consumer loop. Polls for messages, processes them, and commits offsets.
+        The main consumer loop.
+        Polls for messages, processes them, and commits offsets.
         """
         self._initialize_consumer()
+        loop = asyncio.get_running_loop()
         logger.info(f"Starting to consume messages from topic '{self.topic}'...")
         while self._running:
-            msg = self._consumer.poll(timeout=1.0)
+            # --- THIS IS THE CRITICAL FIX ---
+            # Run the blocking poll() in a thread to not block the event loop.
+            msg = await loop.run_in_executor(
+                None, self._consumer.poll, 1.0
+            )
 
             if msg is None:
                 continue
             if msg.error():
                 if msg.error().fatal():
-                    logger.error(f"Fatal consumer error on topic {self.topic}: {msg.error()}. Shutting down.")
+                    logger.error(f"Fatal consumer error on topic {self.topic}: {msg.error()}. Shutting down.", exc_info=True)
                     break
                 else:
                     logger.warning(f"Non-fatal consumer error on topic {self.topic}: {msg.error()}.")
                     continue
             
-            # Unhandled exceptions in process_message will break the loop and cause a service
-            # restart (allowing retries for transient errors), which is the desired behavior.
             await self.process_message(msg)
-            
-            # Commit only on successful processing
+        
             self._consumer.commit(message=msg, asynchronous=False)
         
         self.shutdown()
