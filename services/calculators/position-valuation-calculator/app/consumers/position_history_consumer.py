@@ -30,7 +30,6 @@ class PositionHistoryConsumer(BaseConsumer):
 
         except (json.JSONDecodeError, ValidationError) as e:
             logger.error(f"Message validation failed for key '{key}': {e}. Value: '{value}'")
-            # DLQ logic would go here
         except Exception as e:
             logger.error(f"Unexpected error processing message with key '{key}': {e}", exc_info=True)
 
@@ -42,13 +41,11 @@ class PositionHistoryConsumer(BaseConsumer):
             try:
                 repo = ValuationRepository(db)
                 
-                # 1. Fetch the full position object
                 position = repo.get_position_by_id(event.position_history_id)
                 if not position:
                     logger.warning(f"Position with id {event.position_history_id} not found. Cannot value.")
                     return
 
-                # 2. Find the latest market price on or before the position date
                 price = repo.get_latest_price_for_position(
                     security_id=position.security_id,
                     position_date=position.position_date
@@ -57,10 +54,12 @@ class PositionHistoryConsumer(BaseConsumer):
                     logger.warning(f"No market price found for {position.security_id} on or before {position.position_date}. Cannot value.")
                     return
 
-                # 3. Calculate the valuation
-                market_value, unrealized_gain_loss = ValuationLogic.calculate(position, price)
+                market_value, unrealized_gain_loss = ValuationLogic.calculate(
+                    quantity=position.quantity,
+                    cost_basis=position.cost_basis,
+                    market_price=price.price
+                )
                 
-                # 4. Update the position record in the database
                 repo.update_position_valuation(
                     position_history_id=position.id,
                     market_price=price.price,
