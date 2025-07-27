@@ -16,12 +16,25 @@ class MarketPriceRepository:
 
     def create_market_price(self, event: MarketPriceEvent) -> DBMarketPrice:
         """
-        Creates a new market price.
-        
+        Creates and adds a new market price to the session.
+        The calling function is responsible for committing the transaction.
         If a price for the given security_id and price_date already exists,
-        the database's unique constraint will raise an IntegrityError, which is
-        caught and handled gracefully. This makes the operation idempotent.
+        this will do nothing and the existing record can be queried if needed.
         """
+        
+        # Check if the record already exists to make the operation idempotent
+        existing_price = self.db.query(DBMarketPrice).filter(
+            DBMarketPrice.security_id == event.security_id,
+            DBMarketPrice.price_date == event.price_date
+        ).first()
+
+        if existing_price:
+            logger.warning(
+                f"Market price for '{event.security_id}' on '{event.price_date}' already exists. "
+                "Skipping creation."
+            )
+            return existing_price
+
         db_market_price = DBMarketPrice(
             security_id=event.security_id,
             price_date=event.price_date,
@@ -29,19 +42,6 @@ class MarketPriceRepository:
             currency=event.currency,
         )
         
-        try:
-            self.db.add(db_market_price)
-            self.db.commit()
-            self.db.refresh(db_market_price)
-            logger.info(f"Market price for '{db_market_price.security_id}' on '{db_market_price.price_date}' successfully inserted.")
-            return db_market_price
-        except IntegrityError:
-            self.db.rollback()
-            logger.warning(
-                f"Market price for '{event.security_id}' on '{event.price_date}' already exists. "
-                "Skipping creation due to unique constraint."
-            )
-            return self.db.query(DBMarketPrice).filter(
-                DBMarketPrice.security_id == event.security_id,
-                DBMarketPrice.price_date == event.price_date
-            ).first()
+        self.db.add(db_market_price)
+        logger.info(f"Market price for '{db_market_price.security_id}' on '{db_market_price.price_date}' added to session.")
+        return db_market_price

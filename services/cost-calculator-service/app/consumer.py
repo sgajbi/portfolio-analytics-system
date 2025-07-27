@@ -80,9 +80,6 @@ class CostCalculatorConsumer:
         processor = self._get_transaction_processor()
         
         with next(get_db_session()) as db:
-            # --- THIS IS THE CRITICAL FIX ---
-            # The financial engine requires history grouped by the unique security_id,
-            # not the potentially non-unique instrument_id.
             existing_db_txns = db.query(DBTransaction).filter(
                 DBTransaction.portfolio_id == new_transaction_event.portfolio_id,
                 DBTransaction.security_id == new_transaction_event.security_id
