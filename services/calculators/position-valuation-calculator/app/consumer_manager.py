@@ -1,0 +1,74 @@
+import logging
+import signal
+import asyncio
+
+from portfolio_common.config import (
+    KAFKA_BOOTSTRAP_SERVERS, 
+    KAFKA_POSITION_HISTORY_PERSISTED_TOPIC,
+    KAFKA_MARKET_PRICE_PERSISTED_TOPIC
+)
+from app.consumers.position_history_consumer import PositionHistoryConsumer
+from app.consumers.market_price_consumer import MarketPriceConsumer
+
+logger = logging.getLogger(__name__)
+
+class ConsumerManager:
+    """
+    Manages the lifecycle of Kafka consumers for the position valuation service.
+    It instantiates, runs, and gracefully shuts down all consumer tasks.
+    """
+    def __init__(self):
+        self.consumers = []
+        self.tasks = []
+        self._shutdown_event = asyncio.Event()
+        
+        group_id = "position_valuation_group"
+        
+        self.consumers.append(
+            PositionHistoryConsumer(
+                bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
+                topic=KAFKA_POSITION_HISTORY_PERSISTED_TOPIC,
+                group_id=f"{group_id}_positions" # Unique group ID for this consumer
+            )
+        )
+        self.consumers.append(
+            MarketPriceConsumer(
+                bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
+                topic=KAFKA_MARKET_PRICE_PERSISTED_TOPIC,
+                group_id=f"{group_id}_prices" # Unique group ID for this consumer
+            )
+        )
+
+        logger.info(f"ConsumerManager initialized with {len(self.consumers)} consumer(s).")
+
+    def _signal_handler(self, signum, frame):
+        """Sets the shutdown event when a signal is received."""
+        logger.info(f"Received shutdown signal: {signal.Signals(signum).name}. Initiating graceful shutdown...")
+        self._shutdown_event.set()
+
+    async def run(self):
+        """
+        The main execution function. Sets up signal handling and runs consumer tasks.
+        """
+        signal.signal(signal.SIGINT, self._signal_handler)
+        signal.signal(signal.SIGTERM, self._signal_handler)
+
+        if not self.consumers:
+            logger.warning("No consumers configured. Service will idle.")
+            await self._shutdown_event.wait()
+            logger.info("Shutdown event received. Exiting.")
+            return
+
+        logger.info("Starting all consumer tasks...")
+        self.tasks = [asyncio.create_task(c.run()) for c in self.consumers]
+        
+        logger.info("ConsumerManager is running. Press Ctrl+C to exit.")
+        await self._shutdown_event.wait()
+        
+        logger.info("Shutdown event received. Stopping all consumers...")
+        for consumer in self.consumers:
+            consumer.shutdown() # Tell each consumer to stop its loop
+        
+        # Wait for all tasks to complete
+        await asyncio.gather(*self.tasks, return_exceptions=True)
+        logger.info("All consumer tasks have been successfully shut down.")
