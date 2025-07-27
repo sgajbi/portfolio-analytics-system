@@ -13,8 +13,8 @@ def docker_services(request):
     A session-scoped fixture that starts the Docker Compose stack and waits for the
     ingestion-service to become healthy before yielding to the tests.
     """
-    # Using a unique project name prevents conflicts with other compose instances
-    compose = DockerCompose(".", compose_file_name="docker-compose.yml", project_name="pytest-e2e")
+    # CORRECTED: Removed the unexpected 'project_name' argument
+    compose = DockerCompose(".", compose_file_name="docker-compose.yml")
     with compose:
         host = compose.get_service_host("ingestion-service", 8000)
         port = compose.get_service_port("ingestion-service", 8000)

@@ -17,10 +17,6 @@ from ..core.position_models import PositionState
 logger = logging.getLogger(__name__)
 
 class TransactionEventConsumer(BaseConsumer):
-    """
-    Consumes enriched transaction events, recalculates position history,
-    and publishes an event for each persisted position record.
-    """
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._producer = get_kafka_producer()
@@ -42,10 +38,6 @@ class TransactionEventConsumer(BaseConsumer):
             logger.error(f"Unexpected error processing message with key '{key}': {e}", exc_info=True)
 
     def _recalculate_position_history(self, incoming_event: TransactionEvent):
-        """
-        Executes the 'wipe and replay' strategy for a given security and
-        publishes events for newly created position history records.
-        """
         new_history_records = []
         with next(get_db_session()) as db:
             try:
@@ -108,10 +100,8 @@ class TransactionEventConsumer(BaseConsumer):
                 logger.error(f"Recalculation failed for transaction {incoming_event.transaction_id}: {e}", exc_info=True)
     
     def _publish_persisted_events(self, records: list[PositionHistory]):
-        """Publishes PositionHistoryPersistedEvent for each record."""
         if not records:
             return
-
         count = 0
         for record in records:
             try:

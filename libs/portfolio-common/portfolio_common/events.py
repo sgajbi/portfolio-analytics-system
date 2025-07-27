@@ -50,10 +50,6 @@ class TransactionEvent(BaseModel):
 # --- NEW POSITION EVENTS ---
 
 class PositionHistoryEvent(BaseModel):
-    """
-    Represents a full, valued position history record.
-    This can be used for publishing 'position_valued' events.
-    """
     model_config = ConfigDict(from_attributes=True)
     
     id: int
@@ -68,10 +64,6 @@ class PositionHistoryEvent(BaseModel):
     unrealized_gain_loss: Optional[Decimal] = None
 
 class PositionHistoryPersistedEvent(BaseModel):
-    """
-A lightweight event published when a new position history record is created.
-    This triggers the valuation service.
-    """
     model_config = ConfigDict(from_attributes=True)
 
     position_history_id: int = Field(..., alias="id")

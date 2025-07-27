@@ -1,6 +1,6 @@
 # src/core/models/transaction.py
 
-from datetime import date
+from datetime import date, datetime # <-- IMPORT DATETIME
 from typing import Optional, Any
 from pydantic import BaseModel, Field, condecimal, ConfigDict
 from decimal import Decimal
@@ -29,8 +29,8 @@ class Transaction(BaseModel):
     instrument_id: str = Field(..., alias="instrumentId", description="Identifier for the instrument (e.g., ticker)")
     security_id: str = Field(..., description="Unique identifier for the specific security")
     transaction_type: str = Field(..., description="Type of transaction (e.g., BUY, SELL, DIVIDEND)")
-    transaction_date: date = Field(..., description="Date the transaction occurred (ISO format)")
-    settlement_date: Optional[date] = Field(None, description="Date the transaction settled (ISO format)") # <-- THE FIX
+    transaction_date: datetime = Field(..., description="Date the transaction occurred (ISO format)")
+    settlement_date: Optional[datetime] = Field(None, description="Date the transaction settled (ISO format)")
     quantity: condecimal(ge=0) = Field(..., description="Quantity of the instrument involved")
     gross_transaction_amount: condecimal(ge=0) = Field(..., description="Gross amount of the transaction")
     net_transaction_amount: Optional[condecimal(ge=0)] = Field(None, description="Net amount of the transaction")
