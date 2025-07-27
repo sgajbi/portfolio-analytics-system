@@ -1,9 +1,10 @@
 
+
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/sgajbi/portfolio-analytics-system)
 
 # Portfolio Analytics System
 
-This system is a modular, event-driven platform designed to ingest financial data, perform complex calculations like cost basis and historical positions, and expose the results via a clean API. It uses a microservices architecture built with Python, FastAPI, Kafka, and PostgreSQL, all orchestrated with Docker Compose.
+This system is a modular, event-driven platform designed to ingest financial data, perform complex calculations like cost basis, historical positions, and market valuation, and expose the results via a clean API. It uses a microservices architecture built with Python, FastAPI, Kafka, and PostgreSQL, all orchestrated with Docker Compose.
 
 ---
 ## Table of Contents
@@ -32,28 +33,30 @@ graph TD
     end
 
     subgraph "Kafka Topics"
-        RawTransactions((raw_transactions));
-        RawCompleted((raw_transactions_completed));
-        ProcessedCompleted((processed_transactions_completed));
-        OtherRawData((instruments, fx_rates, etc.));
+        RawData((raw_transactions, instruments, etc.));
+        PersistenceCompleted((raw_transactions_completed, market_price_persisted));
+        CostCalculated((processed_transactions_completed));
+        PositionCalculated((position_history_persisted));
     end
 
     subgraph "Data Processing Pipeline"
-        IngestionService -- Publishes --> RawTransactions;
-        IngestionService -- Publishes --> OtherRawData;
+        IngestionService -- Publishes --> RawData;
 
-        RawTransactions --> PersistenceService[persistence-service];
-        OtherRawData --> PersistenceService;
-
+        RawData --> PersistenceService[persistence-service];
         PersistenceService -- Writes --> DB[(PostgreSQL)];
-        PersistenceService -- Publishes --> RawCompleted;
+        PersistenceService -- Publishes --> PersistenceCompleted;
 
-        RawCompleted --> CostCalculator[cost-calculator-service];
+        PersistenceCompleted --> CostCalculator[cost-calculator-service];
         CostCalculator -- Updates --> DB;
-        CostCalculator -- Publishes --> ProcessedCompleted;
+        CostCalculator -- Publishes --> CostCalculated;
 
-        ProcessedCompleted --> PositionCalculator[position-calculator-service];
+        CostCalculated --> PositionCalculator[position-calculator-service];
         PositionCalculator -- Writes --> DB;
+        PositionCalculator -- Publishes --> PositionCalculated;
+
+        PositionCalculated --> ValuationCalculator[position-valuation-calculator];
+        PersistenceCompleted -- market_price_persisted --> ValuationCalculator;
+        ValuationCalculator -- Updates --> DB;
     end
 
     subgraph "Data Query Path"
@@ -69,7 +72,8 @@ graph TD
   * **`query-service`**: A FastAPI application that serves as the read-only entry point for retrieving processed data. It queries the database to provide results for analytics and reporting.
   * **`persistence-service`**: A generic Kafka consumer that listens to all "raw" data topics. Its sole responsibility is to validate and persist incoming data to the PostgreSQL database.
   * **`cost-calculator-service`**: A Kafka consumer that listens for newly persisted transactions. It uses the `financial-calculator-engine` library to calculate cost basis (`net_cost`, `realized_gain_loss`) and publishes an enriched event.
-  * **`position-calculator-service`**: A Kafka consumer that listens for enriched transactions. It calculates and maintains a full, historical time series of portfolio positions, correctly handling backdated transactions.
+  * **`position-calculator-service`**: A Kafka consumer that listens for enriched transactions. It calculates and maintains a full, historical time series of portfolio positions and publishes an event upon persistence.
+  * **`position-valuation-calculator`**: A Kafka consumer that listens for newly persisted positions and market prices. It calculates the market value and unrealized gain/loss for a position and saves it to the database.
 
 -----
 
@@ -77,7 +81,9 @@ graph TD
 
   * **`raw_transactions`, `instruments`, `market_prices`, `fx_rates`**: Topics for raw, unprocessed data ingested by the system.
   * **`raw_transactions_completed`**: An event published by the `persistence-service` after a transaction has been successfully saved to the database.
+  * **`market_price_persisted`**: An event published by the `persistence-service` after a market price has been saved.
   * **`processed_transactions_completed`**: An event published by the `cost-calculator-service` containing the transaction data enriched with calculated cost basis and gains/losses.
+  * **`position_history_persisted`**: An event published by the `position-calculator-service` after a position history record has been saved to the database. This triggers the valuation service.
 
 -----
 
@@ -133,7 +139,8 @@ sgajbi-portfolio-analytics-system/
 │   ├── persistence-service/    # Generic data persistence consumer
 │   ├── cost-calculator-service/ # Business logic for cost basis
 │   └── calculators/
-│       └── position-calculator-service/ # Business logic for positions
+│       ├── position-calculator-service/ # Business logic for positions
+│       └── position-valuation-calculator/ # Business logic for valuation
 ├── tests/
 │   └── e2e/                    # End-to-end tests for the whole system
 ├── docker-compose.yml        # Orchestrates all services for local development
@@ -165,6 +172,7 @@ sgajbi-portfolio-analytics-system/
                 -r services/persistence-service/requirements.txt \
                 -r services/cost-calculator-service/requirements.txt \
                 -r services/calculators/position-calculator/requirements.txt \
+                -r services/calculators/position-valuation-calculator/requirements.txt \
                 -r services/query-service/requirements.txt
     ```
 
@@ -263,4 +271,5 @@ This example demonstrates the full flow from ingestion to querying the final cal
     ```
 
 <!-- end list -->
+ 
  
