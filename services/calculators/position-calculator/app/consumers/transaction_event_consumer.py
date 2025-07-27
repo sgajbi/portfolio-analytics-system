@@ -44,7 +44,9 @@ class TransactionEventConsumer(BaseConsumer):
                 repo = PositionRepository(db)
                 transaction_date_only = incoming_event.transaction_date.date()
                 
-                with db.begin_nested():
+                # --- THIS IS THE CRITICAL FIX ---
+                # Use db.begin() to ensure the transaction is committed.
+                with db.begin():
                     anchor_position = repo.get_last_position_before(
                         portfolio_id=incoming_event.portfolio_id,
                         security_id=incoming_event.security_id,
@@ -55,23 +57,27 @@ class TransactionEventConsumer(BaseConsumer):
                         cost_basis=anchor_position.cost_basis if anchor_position else Decimal(0)
                     )
 
-                    subsequent_txns = repo.get_transactions_on_or_after(
+                    db_txns = repo.get_transactions_on_or_after(
                         portfolio_id=incoming_event.portfolio_id,
                         security_id=incoming_event.security_id,
                         a_date=transaction_date_only
                     )
+
+                    txns_to_replay_map = {t.transaction_id: t for t in db_txns}
+                    incoming_txn_obj = Transaction(**incoming_event.model_dump())
+                    txns_to_replay_map[incoming_event.transaction_id] = incoming_txn_obj
+                    
+                    txns_to_replay = sorted(txns_to_replay_map.values(), key=lambda t: t.transaction_date)
+
+                    if not txns_to_replay:
+                        logger.warning(f"Logical error: txns_to_replay is empty for {incoming_event.security_id}")
+                        return
 
                     repo.delete_positions_from(
                         portfolio_id=incoming_event.portfolio_id,
                         security_id=incoming_event.security_id,
                         a_date=transaction_date_only
                     )
-
-                    txns_to_replay = sorted(subsequent_txns, key=lambda t: (t.transaction_date, t.id))
-
-                    if not txns_to_replay:
-                        logger.warning(f"No transactions to replay for {incoming_event.security_id} on or after {transaction_date_only}")
-                        return
 
                     for txn in txns_to_replay:
                         txn_event = TransactionEvent.model_validate(txn)
@@ -82,7 +88,7 @@ class TransactionEventConsumer(BaseConsumer):
                                 portfolio_id=txn.portfolio_id,
                                 security_id=txn.security_id,
                                 transaction_id=txn.transaction_id,
-                                position_date=txn.transaction_date.date(), # <-- CORRECTED: Use .date()
+                                position_date=txn.transaction_date.date(),
                                 quantity=current_state.quantity,
                                 cost_basis=current_state.cost_basis
                             )
@@ -91,7 +97,8 @@ class TransactionEventConsumer(BaseConsumer):
                     if new_history_records:
                         repo.save_positions(new_history_records)
                 
-                logger.info(f"Successfully reprocessed and saved {len(new_history_records)} positions for {incoming_event.security_id}")
+                # The db.begin() block has now successfully committed.
+                logger.info(f"Successfully reprocessed and committed {len(new_history_records)} positions for {incoming_event.security_id}")
 
                 self._publish_persisted_events(new_history_records)
                 self._producer.flush(timeout=5)
@@ -100,8 +107,7 @@ class TransactionEventConsumer(BaseConsumer):
                 logger.error(f"Recalculation failed for transaction {incoming_event.transaction_id}: {e}", exc_info=True)
     
     def _publish_persisted_events(self, records: list[PositionHistory]):
-        if not records:
-            return
+        if not records: return
         count = 0
         for record in records:
             try:
@@ -113,7 +119,5 @@ class TransactionEventConsumer(BaseConsumer):
                 )
                 count += 1
             except Exception as e:
-                logger.error(f"Failed to publish PositionHistoryPersistedEvent for position_history_id {record.id}: {e}", exc_info=True)
-        
-        if count > 0:
-            logger.info(f"Successfully published {count} PositionHistoryPersistedEvent messages.")
+                logger.error(f"Failed to publish event for position_history_id {record.id}: {e}", exc_info=True)
+        if count > 0: logger.info(f"Successfully published {count} PositionHistoryPersistedEvent messages.")
