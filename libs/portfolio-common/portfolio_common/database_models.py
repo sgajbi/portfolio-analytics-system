@@ -105,3 +105,27 @@ class TransactionCost(Base):
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 
     transaction = relationship("Transaction", back_populates="costs")
+
+class Cashflow(Base):
+    __tablename__ = 'cashflows'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    transaction_id = Column(String, ForeignKey('transactions.transaction_id'), nullable=False)
+    portfolio_id = Column(String, index=True, nullable=False)
+    security_id = Column(String, index=True, nullable=True) # Nullable for portfolio-level cashflows
+    cashflow_date = Column(Date, index=True, nullable=False)
+    
+    amount = Column(Numeric(18, 10), nullable=False)
+    currency = Column(String(3), nullable=False)
+    
+    classification = Column(String, nullable=False) # e.g., INVESTMENT_OUTFLOW, INCOME
+    timing = Column(String, nullable=False) # BOD or EOD
+    level = Column(String, nullable=False) # PORTFOLIO or POSITION
+    calculation_type = Column(String, nullable=False) # NET, GROSS, MVT
+    
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+    
+    transaction = relationship("Transaction")
+
+    __table_args__ = (UniqueConstraint('transaction_id', name='_transaction_id_uc'),)
