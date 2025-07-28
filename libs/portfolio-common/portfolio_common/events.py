@@ -70,3 +70,20 @@ class PositionHistoryPersistedEvent(BaseModel):
     portfolio_id: str
     security_id: str
     position_date: date
+
+# --- NEW CASHFLOW EVENT ---
+
+class CashflowCalculatedEvent(BaseModel):
+    """
+    Event published after a cashflow has been calculated and persisted.
+    """
+    model_config = ConfigDict(from_attributes=True)
+
+    cashflow_id: int = Field(..., alias="id")
+    transaction_id: str
+    portfolio_id: str
+    security_id: Optional[str] = None
+    cashflow_date: date
+    amount: Decimal
+    currency: str
+    classification: str
