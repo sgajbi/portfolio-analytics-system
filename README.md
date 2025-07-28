@@ -106,6 +106,7 @@ graph TD
 ### Read API (`query-service` @ `http://localhost:8001`)
 
   * `GET /portfolios/{portfolio_id}/positions`: Retrieves the latest position for each security held in a portfolio.
+  * `GET /portfolios/{portfolio_id}/transactions`: Retrieves a paginated list of transactions, each with its associated cashflow if one exists.
   * `GET /health`: Health check for the service.
 
 -----
@@ -118,7 +119,7 @@ Database schema changes are managed by **Alembic**. When you change a SQLAlchemy
     ```bash
     docker compose up -d postgres
     ```
-2.  **Generate a New Migration**: After changing a model, run this command. Alembic will compare your models to the database schema and create a new script in `alembic/versions/`.
+2.  **Generate a New Migration**: After changing a model, run this command. Alembic will compare your models to the database schema and create a new script in `allembic/versions/`.
     ```bash
     alembic revision --autogenerate -m "a descriptive message for your change"
     ```
@@ -261,7 +262,7 @@ This example demonstrates the full flow from ingestion to querying the final cal
     curl http://localhost:8001/portfolios/EXAMPLE_PORT_01/positions
     ```
 
-    **Expected Response**: You will get a JSON response showing the final position of 60 shares with its corresponding average cost basis.
+    **Expected Response**: You will get a JSON response showing the final position of 60 shares.
 
     ```json
     {
@@ -278,6 +279,65 @@ This example demonstrates the full flow from ingestion to querying the final cal
     }
     ```
 
-<!-- end list -->
+6.  **Query Transactions with Cashflows**:
+    Call the `query-service` to see the transaction details, including the calculated cashflow.
 
+    ```bash
+    curl http://localhost:8001/portfolios/EXAMPLE_PORT_01/transactions
+    ```
+
+    **Expected Response**: You will see the transactions, with the `BUY` showing a negative (outgoing) cashflow and the `SELL` showing a positive (incoming) cashflow.
+
+    ```json
+    {
+      "portfolio_id": "EXAMPLE_PORT_01",
+      "total": 2,
+      "skip": 0,
+      "limit": 100,
+      "transactions": [
+        {
+          "transaction_id": "EXAMPLE_SELL_01",
+          "transaction_date": "2025-07-25T00:00:00",
+          "transaction_type": "SELL",
+          "security_id": "SEC_AAPL",
+          "quantity": "40.0000000000",
+          "price": "170.0000000000",
+          "gross_transaction_amount": "6800.0000000000",
+          "net_cost": "-6000.0000000000",
+          "realized_gain_loss": "800.0000000000",
+          "currency": "USD",
+          "cashflow": {
+            "amount": "6800.0000000000",
+            "currency": "USD",
+            "classification": "INVESTMENT_INFLOW",
+            "timing": "EOD",
+            "level": "POSITION",
+            "calculationType": "NET"
+          }
+        },
+        {
+          "transaction_id": "EXAMPLE_BUY_01",
+          "transaction_date": "2025-07-20T00:00:00",
+          "transaction_type": "BUY",
+          "security_id": "SEC_AAPL",
+          "quantity": "100.0000000000",
+          "price": "150.0000000000",
+          "gross_transaction_amount": "15000.0000000000",
+          "net_cost": "15000.0000000000",
+          "realized_gain_loss": null,
+          "currency": "USD",
+          "cashflow": {
+            "amount": "-15000.0000000000",
+            "currency": "USD",
+            "classification": "INVESTMENT_OUTFLOW",
+            "timing": "EOD",
+            "level": "POSITION",
+            "calculationType": "NET"
+          }
+        }
+      ]
+    }
+    ```
+
+<!-- end list -->
  
