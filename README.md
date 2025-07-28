@@ -1,5 +1,4 @@
 
-
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/sgajbi/portfolio-analytics-system)
 
 # Portfolio Analytics System
@@ -37,6 +36,7 @@ graph TD
         PersistenceCompleted((raw_transactions_completed, market_price_persisted));
         CostCalculated((processed_transactions_completed));
         PositionCalculated((position_history_persisted));
+        CashflowCalculated((cashflow_calculated));
     end
 
     subgraph "Data Processing Pipeline"
@@ -49,6 +49,10 @@ graph TD
         PersistenceCompleted --> CostCalculator[cost-calculator-service];
         CostCalculator -- Updates --> DB;
         CostCalculator -- Publishes --> CostCalculated;
+        
+        PersistenceCompleted --> CashflowCalculator[cashflow-calculator-service];
+        CashflowCalculator -- Writes --> DB;
+        CashflowCalculator -- Publishes --> CashflowCalculated;
 
         CostCalculated --> PositionCalculator[position-calculator-service];
         PositionCalculator -- Writes --> DB;
@@ -72,6 +76,7 @@ graph TD
   * **`query-service`**: A FastAPI application that serves as the read-only entry point for retrieving processed data. It queries the database to provide results for analytics and reporting.
   * **`persistence-service`**: A generic Kafka consumer that listens to all "raw" data topics. Its sole responsibility is to validate and persist incoming data to the PostgreSQL database.
   * **`cost-calculator-service`**: A Kafka consumer that listens for newly persisted transactions. It uses the `financial-calculator-engine` library to calculate cost basis (`net_cost`, `realized_gain_loss`) and publishes an enriched event.
+  * **`cashflow-calculator-service`**: A Kafka consumer that listens for newly persisted transactions. It calculates a corresponding cashflow record based on configurable business rules and publishes an event upon persistence.
   * **`position-calculator-service`**: A Kafka consumer that listens for enriched transactions. It calculates and maintains a full, historical time series of portfolio positions and publishes an event upon persistence.
   * **`position-valuation-calculator`**: A Kafka consumer that listens for newly persisted positions and market prices. It calculates the market value and unrealized gain/loss for a position and saves it to the database.
 
@@ -84,6 +89,7 @@ graph TD
   * **`market_price_persisted`**: An event published by the `persistence-service` after a market price has been saved.
   * **`processed_transactions_completed`**: An event published by the `cost-calculator-service` containing the transaction data enriched with calculated cost basis and gains/losses.
   * **`position_history_persisted`**: An event published by the `position-calculator-service` after a position history record has been saved to the database. This triggers the valuation service.
+  * **`cashflow_calculated`**: An event published by the `cashflow-calculator-service` after a cashflow record has been calculated and saved to the database.
 
 -----
 
@@ -138,6 +144,7 @@ sgajbi-portfolio-analytics-system/
 │   ├── query-service/          # The Read API
 │   ├── persistence-service/    # Generic data persistence consumer
 │   ├── cost-calculator-service/ # Business logic for cost basis
+│   ├── cashflow-calculator-service/ # Business logic for cashflows
 │   └── calculators/
 │       ├── position-calculator-service/ # Business logic for positions
 │       └── position-valuation-calculator/ # Business logic for valuation
@@ -171,6 +178,7 @@ sgajbi-portfolio-analytics-system/
     pip install -r services/ingestion-service/requirements.txt \
                 -r services/persistence-service/requirements.txt \
                 -r services/cost-calculator-service/requirements.txt \
+                -r services/cashflow-calculator-service/requirements.txt \
                 -r services/calculators/position-calculator/requirements.txt \
                 -r services/calculators/position-valuation-calculator/requirements.txt \
                 -r services/query-service/requirements.txt
@@ -271,5 +279,5 @@ This example demonstrates the full flow from ingestion to querying the final cal
     ```
 
 <!-- end list -->
- 
+
  
