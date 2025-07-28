@@ -34,7 +34,6 @@ class PositionService:
         """
         logger.info(f"Fetching position history for security '{security_id}' in portfolio '{portfolio_id}'.")
         
-        # 1. Get raw history data from the repository
         db_results = self.repo.get_position_history_by_security(
             portfolio_id=portfolio_id,
             security_id=security_id,
@@ -42,15 +41,24 @@ class PositionService:
             end_date=end_date
         )
         
-        # 2. Map the database results to our PositionHistoryRecord DTO with nested valuation
         positions = []
         for row in db_results:
-            valuation_data = ValuationData.model_validate(row)
-            record = PositionHistoryRecord.model_validate(row)
-            record.valuation = valuation_data
+            # Explicitly create the nested valuation object
+            valuation_dto = ValuationData(
+                market_price=row.market_price,
+                market_value=row.market_value,
+                unrealized_gain_loss=row.unrealized_gain_loss,
+            )
+            # Create the main record and attach the valuation object
+            record = PositionHistoryRecord(
+                position_date=row.position_date,
+                transaction_id=row.transaction_id,
+                quantity=row.quantity,
+                cost_basis=row.cost_basis,
+                valuation=valuation_dto
+            )
             positions.append(record)
         
-        # 3. Construct the final API response object
         return PortfolioPositionHistoryResponse(
             portfolio_id=portfolio_id,
             security_id=security_id,
@@ -65,21 +73,24 @@ class PositionService:
         
         db_results = self.repo.get_latest_positions_by_portfolio(portfolio_id)
         
-        # Map the (PositionHistory, instrument_name) tuples to the Position DTO
         positions = []
         for pos_history, instrument_name in db_results:
-            valuation_data = ValuationData.model_validate(pos_history)
-            
-            # Manually construct the dictionary for the Position DTO
-            position_data = {
-                "security_id": pos_history.security_id,
-                "quantity": pos_history.quantity,
-                "cost_basis": pos_history.cost_basis,
-                "instrument_name": instrument_name or "N/A",
-                "position_date": pos_history.position_date,
-                "valuation": valuation_data
-            }
-            positions.append(Position.model_validate(position_data))
+            # Explicitly create the nested valuation object
+            valuation_dto = ValuationData(
+                market_price=pos_history.market_price,
+                market_value=pos_history.market_value,
+                unrealized_gain_loss=pos_history.unrealized_gain_loss,
+            )
+            # Create the main position object
+            position_dto = Position(
+                security_id=pos_history.security_id,
+                quantity=pos_history.quantity,
+                cost_basis=pos_history.cost_basis,
+                instrument_name=instrument_name or "N/A",
+                position_date=pos_history.position_date,
+                valuation=valuation_dto
+            )
+            positions.append(position_dto)
         
         return PortfolioPositionsResponse(
             portfolio_id=portfolio_id,
