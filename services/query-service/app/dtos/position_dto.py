@@ -1,7 +1,9 @@
 from pydantic import BaseModel, Field, ConfigDict
 from decimal import Decimal
 from datetime import date
-from typing import List
+from typing import List, Optional
+
+from .valuation_dto import ValuationData
 
 # DTO for the "latest positions" endpoint
 class Position(BaseModel):
@@ -10,6 +12,7 @@ class Position(BaseModel):
     cost_basis: Decimal
     instrument_name: str
     position_date: date
+    valuation: Optional[ValuationData] = None
     
     model_config = ConfigDict(from_attributes=True)
 
@@ -29,6 +32,7 @@ class PositionHistoryRecord(BaseModel):
     transaction_id: str = Field(..., description="The ID of the transaction that created this position state.")
     quantity: Decimal = Field(..., description="The number of shares held as of this record.")
     cost_basis: Decimal = Field(..., description="The total cost basis of the holding as of this record.")
+    valuation: Optional[ValuationData] = None
     
     model_config = ConfigDict(
         from_attributes=True
