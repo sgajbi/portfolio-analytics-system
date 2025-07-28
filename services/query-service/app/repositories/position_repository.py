@@ -70,15 +70,12 @@ class PositionRepository:
 
         ranked_positions = aliased(PositionHistory, ranked_positions_subq)
 
-        # Main query to select the latest position (where rank is 1)
-        # and join with Instruments to get the name.
+        # Main query to select the latest position object (where rank is 1)
+        # and LEFT JOIN with Instruments to get the name.
         results = self.db.query(
-            ranked_positions.security_id,
-            ranked_positions.quantity,
-            ranked_positions.cost_basis,
-            ranked_positions.position_date,
+            ranked_positions, # Select the entire ranked position object
             Instrument.name.label('instrument_name')
-        ).join(
+        ).outerjoin( # Use outerjoin to be more robust
             Instrument, Instrument.security_id == ranked_positions.security_id
         ).filter(
             ranked_positions_subq.c.rn == 1,
