@@ -10,6 +10,7 @@ from ..dtos.position_dto import (
     PositionHistoryRecord,
     PortfolioPositionHistoryResponse
 )
+from ..dtos.valuation_dto import ValuationData
 
 logger = logging.getLogger(__name__)
 
@@ -41,8 +42,13 @@ class PositionService:
             end_date=end_date
         )
         
-        # 2. Map the database results to our PositionHistoryRecord DTO
-        positions = [PositionHistoryRecord.model_validate(row) for row in db_results]
+        # 2. Map the database results to our PositionHistoryRecord DTO with nested valuation
+        positions = []
+        for row in db_results:
+            valuation_data = ValuationData.model_validate(row)
+            record = PositionHistoryRecord.model_validate(row)
+            record.valuation = valuation_data
+            positions.append(record)
         
         # 3. Construct the final API response object
         return PortfolioPositionHistoryResponse(
@@ -59,7 +65,21 @@ class PositionService:
         
         db_results = self.repo.get_latest_positions_by_portfolio(portfolio_id)
         
-        positions = [Position.model_validate(row) for row in db_results]
+        # Map the (PositionHistory, instrument_name) tuples to the Position DTO
+        positions = []
+        for pos_history, instrument_name in db_results:
+            valuation_data = ValuationData.model_validate(pos_history)
+            
+            # Manually construct the dictionary for the Position DTO
+            position_data = {
+                "security_id": pos_history.security_id,
+                "quantity": pos_history.quantity,
+                "cost_basis": pos_history.cost_basis,
+                "instrument_name": instrument_name or "N/A",
+                "position_date": pos_history.position_date,
+                "valuation": valuation_data
+            }
+            positions.append(Position.model_validate(position_data))
         
         return PortfolioPositionsResponse(
             portfolio_id=portfolio_id,
