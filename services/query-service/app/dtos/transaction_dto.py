@@ -3,6 +3,8 @@ from decimal import Decimal
 from datetime import datetime
 from typing import List, Optional
 
+from .cashflow_dto import CashflowRecord
+
 class TransactionRecord(BaseModel):
     """
     Represents a single, detailed transaction record for API responses.
@@ -17,6 +19,7 @@ class TransactionRecord(BaseModel):
     net_cost: Optional[Decimal] = None
     realized_gain_loss: Optional[Decimal] = None
     currency: str
+    cashflow: Optional[CashflowRecord] = None
     
     model_config = ConfigDict(
         from_attributes=True
