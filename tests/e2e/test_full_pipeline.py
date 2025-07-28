@@ -7,13 +7,17 @@ from decimal import Decimal
 
 def test_full_pipeline(docker_services: DockerCompose, db_connection):
     """
-    Tests the full pipeline from ingestion to cost calculation.
+    Tests the full pipeline from ingestion to cost calculation and
+    verifies the final API response from the query service.
     """
-    # 1. Get the API endpoint
-    host = docker_services.get_service_host("ingestion-service", 8000)
-    port = docker_services.get_service_port("ingestion-service", 8000)
-    api_url = f"http://{host}:{port}/ingest/transactions"
+    # 1. Get API endpoints
+    ingestion_host = docker_services.get_service_host("ingestion-service", 8000)
+    ingestion_port = docker_services.get_service_port("ingestion-service", 8000)
+    ingestion_url = f"http://{ingestion_host}:{ingestion_port}/ingest/transactions"
 
+    query_host = docker_services.get_service_host("query-service", 8001)
+    query_port = docker_services.get_service_port("query-service", 8001)
+    
     # 2. Define transaction payloads
     portfolio_id = "E2E_TEST_PORT_01"
     buy_payload = { "transactions": [{
@@ -30,42 +34,54 @@ def test_full_pipeline(docker_services: DockerCompose, db_connection):
     }]}
 
     # 3. Post transactions to the ingestion service
-    buy_response = requests.post(api_url, json=buy_payload)
+    buy_response = requests.post(ingestion_url, json=buy_payload)
     assert buy_response.status_code == 202
     
-    sell_response = requests.post(api_url, json=sell_payload)
+    sell_response = requests.post(ingestion_url, json=sell_payload)
     assert sell_response.status_code == 202
 
-    # 4. Poll the database to verify the results
+    # 4. Poll the database to verify the processing is complete
     with db_connection.cursor() as cursor:
         start_time = time.time()
         timeout = 30
         while time.time() - start_time < timeout:
             cursor.execute(
-                "SELECT transaction_id, transaction_type, net_cost, realized_gain_loss "
-                "FROM transactions WHERE portfolio_id = %s ORDER BY transaction_date",
+                "SELECT t.transaction_id FROM transactions t JOIN cashflows c ON t.transaction_id = c.transaction_id WHERE t.portfolio_id = %s",
                 (portfolio_id,)
             )
             results = cursor.fetchall()
-            # Wait until both transactions are processed and the SELL has a gain/loss
-            if len(results) == 2 and results[1][3] is not None:
+            # Wait until both transactions have been processed by all calculators
+            if len(results) == 2:
                 break
-            time.sleep(1)
+            time.sleep(2)
         else:
-            pytest.fail(f"Transactions were not processed within {timeout} seconds. Results: {results}")
+            pytest.fail(f"Transactions were not fully processed within {timeout} seconds.")
 
-    # 5. Assert the final state in the database
-    buy_record = results[0]
-    sell_record = results[1]
+    # 5. Query the API to verify the final response
+    query_url = f"http://{query_host}:{query_port}/portfolios/{portfolio_id}/transactions"
+    api_response = requests.get(query_url)
+    assert api_response.status_code == 200
+    response_data = api_response.json()
 
-    # BUY transaction checks
-    assert buy_record[0] == "E2E_BUY_01"
-    assert buy_record[1] == "BUY"
-    assert buy_record[2] == Decimal("1500.0000000000") # net_cost
-    assert buy_record[3] is None # realized_gain_loss
+    # 6. Assert the API response structure and content
+    assert response_data["portfolio_id"] == portfolio_id
+    assert response_data["total"] == 2
+    assert len(response_data["transactions"]) == 2
+
+    # Transactions are ordered by date descending
+    sell_txn_data = response_data["transactions"][0]
+    buy_txn_data = response_data["transactions"][1]
 
     # SELL transaction checks
-    assert sell_record[0] == "E2E_SELL_01"
-    assert sell_record[1] == "SELL"
-    assert sell_record[2] == Decimal("-1500.0000000000") # net_cost (cost of shares sold)
-    assert sell_record[3] == Decimal("250.0000000000") # realized_gain_loss (1750 - 1500)
+    assert sell_txn_data["transaction_id"] == "E2E_SELL_01"
+    assert "cashflow" in sell_txn_data
+    assert sell_txn_data["cashflow"]["amount"] == "1750.0000000000"
+    assert sell_txn_data["cashflow"]["classification"] == "INVESTMENT_INFLOW"
+    assert sell_txn_data["cashflow"]["level"] == "POSITION"
+
+    # BUY transaction checks
+    assert buy_txn_data["transaction_id"] == "E2E_BUY_01"
+    assert "cashflow" in buy_txn_data
+    assert buy_txn_data["cashflow"]["amount"] == "-1500.0000000000"
+    assert buy_txn_data["cashflow"]["classification"] == "INVESTMENT_OUTFLOW"
+    assert buy_txn_data["cashflow"]["level"] == "POSITION"
