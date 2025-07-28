@@ -1,0 +1,12 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cashflow-calculator-service"
+version = "0.1.0"
+description = "A service to calculate cashflows from transactions."
+requires-python = ">=3.11"
+
+[tool.setuptools.packages.find]
+where = ["app"]
