@@ -105,7 +105,7 @@ graph TD
 
 ### Read API (`query-service` @ `http://localhost:8001`)
 
-  * `GET /portfolios/{portfolio_id}/positions`: Retrieves the latest position for each security held in a portfolio.
+  * `GET /portfolios/{portfolio_id}/positions`: Retrieves the latest position for each security held in a portfolio, including valuation data if available.
   * `GET /portfolios/{portfolio_id}/transactions`: Retrieves a paginated list of transactions, each with its associated cashflow if one exists.
   * `GET /health`: Health check for the service.
 
@@ -253,16 +253,24 @@ This example demonstrates the full flow from ingestion to querying the final cal
     }'
     ```
 
+5.  **Ingest a Market Price** to value the final position:
+
+    ```bash
+    curl -X 'POST' 'http://localhost:8000/ingest/market-prices' -H 'Content-Type: application/json' -d '{
+    "market_prices": [{"securityId": "SEC_AAPL", "priceDate": "2025-07-25", "price": 180.0, "currency": "USD"}]
+    }'
+    ```
+
     Wait a few seconds for all services to process these events.
 
-5.  **Query the Final Position**:
+6.  **Query the Final Position**:
     Call the `query-service` to see the final state of your holding.
 
     ```bash
     curl http://localhost:8001/portfolios/EXAMPLE_PORT_01/positions
     ```
 
-    **Expected Response**: You will get a JSON response showing the final position of 60 shares.
+    **Expected Response**: You will get a JSON response showing the final position of 60 shares, now including valuation details.
 
     ```json
     {
@@ -273,13 +281,18 @@ This example demonstrates the full flow from ingestion to querying the final cal
           "quantity": "60.0000000000",
           "cost_basis": "9000.0000000000",
           "instrument_name": "Apple Inc.",
-          "position_date": "2025-07-25"
+          "position_date": "2025-07-25",
+          "valuation": {
+            "market_price": "180.0000000000",
+            "market_value": "10800.0000000000",
+            "unrealized_gain_loss": "1800.0000000000"
+          }
         }
       ]
     }
     ```
 
-6.  **Query Transactions with Cashflows**:
+7.  **Query Transactions with Cashflows**:
     Call the `query-service` to see the transaction details, including the calculated cashflow.
 
     ```bash
@@ -340,4 +353,5 @@ This example demonstrates the full flow from ingestion to querying the final cal
     ```
 
 <!-- end list -->
+
  
