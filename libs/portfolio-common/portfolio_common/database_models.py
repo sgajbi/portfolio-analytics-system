@@ -92,6 +92,7 @@ class Transaction(Base):
     realized_gain_loss = Column(Numeric(18, 10), nullable=True)
 
     costs = relationship("TransactionCost", back_populates="transaction", cascade="all, delete-orphan")
+    cashflow = relationship("Cashflow", uselist=False, back_populates="transaction", cascade="all, delete-orphan")
 
 class TransactionCost(Base):
     __tablename__ = 'transaction_costs'
@@ -126,6 +127,6 @@ class Cashflow(Base):
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
     
-    transaction = relationship("Transaction")
+    transaction = relationship("Transaction", back_populates="cashflow")
 
     __table_args__ = (UniqueConstraint('transaction_id', name='_transaction_id_uc'),)
