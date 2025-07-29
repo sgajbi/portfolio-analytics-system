@@ -33,7 +33,8 @@ class PositionHistory(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     portfolio_id = Column(String, ForeignKey('portfolios.portfolio_id'), index=True, nullable=False)
     security_id = Column(String, index=True, nullable=False)
-    transaction_id = Column(String, ForeignKey('transactions.transaction_id'), unique=True, nullable=False)
+    # A position record is created by one unique transaction, but snapshots can reuse IDs.
+    transaction_id = Column(String, ForeignKey('transactions.transaction_id'), nullable=False) # CORRECTED: Removed unique=True
     position_date = Column(Date, index=True, nullable=False)
     quantity = Column(Numeric(18, 10), nullable=False)
     cost_basis = Column(Numeric(18, 10), nullable=False)
@@ -42,6 +43,10 @@ class PositionHistory(Base):
     unrealized_gain_loss = Column(Numeric(18, 10), nullable=True)
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+
+    # Add a new unique constraint for data integrity
+    __table_args__ = (UniqueConstraint('portfolio_id', 'security_id', 'position_date', 'transaction_id', name='_portfolio_security_date_txn_uc'),)
+
 
 class FxRate(Base):
     __tablename__ = 'fx_rates'
