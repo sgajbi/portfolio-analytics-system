@@ -5,10 +5,10 @@ from decimal import Decimal
 
 from confluent_kafka import Message
 from portfolio_common.kafka_consumer import BaseConsumer
-from portfolio_common.events import MarketPriceEvent, PositionHistoryPersistedEvent
+from portfolio_common.events import MarketPriceEvent
 from portfolio_common.db import get_db_session
-from portfolio_common.database_models import PositionHistory
-from portfolio_common.config import KAFKA_POSITION_HISTORY_PERSISTED_TOPIC
+from portfolio_common.database_models import PositionHistory, DailyPositionSnapshot
+
 from ..repositories.valuation_repository import ValuationRepository
 from ..logic.valuation_logic import ValuationLogic
 
@@ -16,9 +16,8 @@ logger = logging.getLogger(__name__)
 
 class MarketPriceConsumer(BaseConsumer):
     """
-    Consumes market price events. It re-calculates valuations for any existing
-    positions on the same date or creates a new daily position snapshot if the
-    latest position is from a previous day.
+    Consumes market price events and creates or updates a daily position snapshot
+    with the new valuation.
     """
 
     async def process_message(self, msg: Message):
@@ -40,7 +39,7 @@ class MarketPriceConsumer(BaseConsumer):
 
                 for portfolio_tuple in portfolios_with_security:
                     portfolio_id = portfolio_tuple[0]
-                    self._value_position_for_portfolio(repo, portfolio_id, price_event)
+                    self._create_or_update_snapshot(repo, portfolio_id, price_event)
 
         except (json.JSONDecodeError, ValidationError) as e:
             logger.error(f"Message validation failed for key '{key}': {e}. Value: '{value}'")
@@ -49,10 +48,9 @@ class MarketPriceConsumer(BaseConsumer):
             logger.error(f"Unexpected error processing message with key '{key}': {e}", exc_info=True)
             await self._send_to_dlq(msg, e)
 
-    def _value_position_for_portfolio(self, repo: ValuationRepository, portfolio_id: str, price_event: MarketPriceEvent):
+    def _create_or_update_snapshot(self, repo: ValuationRepository, portfolio_id: str, price_event: MarketPriceEvent):
         """
-        Calculates valuation for a security within a single portfolio, creating a
-        new snapshot if necessary.
+        Creates or updates a daily position snapshot for a security within a portfolio.
         """
         latest_position = repo.get_latest_position_on_or_before(
             portfolio_id=portfolio_id,
@@ -69,33 +67,15 @@ class MarketPriceConsumer(BaseConsumer):
             market_price=price_event.price
         )
 
-        if latest_position.position_date == price_event.price_date:
-            updated_position = repo.update_position_valuation(
-                position_history_id=latest_position.id,
-                market_price=price_event.price,
-                market_value=market_value,
-                unrealized_gain_loss=unrealized_gain_loss
-            )
-        else:
-            new_snapshot = PositionHistory(
-                portfolio_id=latest_position.portfolio_id,
-                security_id=latest_position.security_id,
-                transaction_id=latest_position.transaction_id,
-                position_date=price_event.price_date,
-                snapshot_type='VALUATION', # Set snapshot type
-                quantity=latest_position.quantity,
-                cost_basis=latest_position.cost_basis,
-                market_price=price_event.price,
-                market_value=market_value,
-                unrealized_gain_loss=unrealized_gain_loss
-            )
-            updated_position = repo.create_position_snapshot(new_snapshot)
-
-        if updated_position and self._producer:
-            completion_event = PositionHistoryPersistedEvent.model_validate(updated_position)
-            self._producer.publish_message(
-                topic=KAFKA_POSITION_HISTORY_PERSISTED_TOPIC,
-                key=completion_event.security_id,
-                value=completion_event.model_dump(mode='json', by_alias=True)
-            )
-            self._producer.flush(timeout=5)
+        snapshot = DailyPositionSnapshot(
+            portfolio_id=portfolio_id,
+            security_id=price_event.security_id,
+            date=price_event.price_date,
+            quantity=latest_position.quantity,
+            cost_basis=latest_position.cost_basis,
+            market_price=price_event.price,
+            market_value=market_value,
+            unrealized_gain_loss=unrealized_gain_loss
+        )
+        
+        repo.upsert_daily_snapshot(snapshot)
