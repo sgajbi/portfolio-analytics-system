@@ -1,0 +1,84 @@
+import logging
+import json
+from pydantic import ValidationError
+from decimal import Decimal
+from datetime import date, timedelta
+
+from confluent_kafka import Message
+from portfolio_common.kafka_consumer import BaseConsumer
+from portfolio_common.events import PositionHistoryPersistedEvent, PositionTimeseriesGeneratedEvent
+from portfolio_common.db import get_db_session
+from portfolio_common.database_models import PositionHistory, Cashflow
+from portfolio_common.config import KAFKA_POSITION_TIMESERIES_GENERATED_TOPIC
+
+from ..core.position_timeseries_logic import PositionTimeseriesLogic
+from ..repositories.timeseries_repository import TimeseriesRepository
+
+logger = logging.getLogger(__name__)
+
+class PositionTimeseriesConsumer(BaseConsumer):
+    """
+    Consumes position history events and generates the corresponding daily
+    position time series record.
+    """
+
+    async def process_message(self, msg: Message):
+        try:
+            event_data = json.loads(msg.value().decode('utf-8'))
+            event = PositionHistoryPersistedEvent.model_validate(event_data)
+
+            logger.info(f"Processing position history for {event.security_id} on {event.position_date}")
+
+            with next(get_db_session()) as db:
+                # 1. Fetch all required data for the calculation
+                repo = TimeseriesRepository(db)
+
+                current_position = db.query(PositionHistory).get(event.position_history_id)
+                if not current_position:
+                    logger.warning(f"PositionHistory record with id {event.position_history_id} not found. Skipping.")
+                    return
+
+                previous_day = event.position_date - timedelta(days=1)
+                previous_timeseries = repo.get_last_position_timeseries_before(
+                    portfolio_id=event.portfolio_id,
+                    security_id=event.security_id,
+                    a_date=event.position_date
+                )
+
+                # Fetch cashflows for the specific day
+                cashflows = db.query(Cashflow).filter(
+                    Cashflow.portfolio_id == event.portfolio_id,
+                    Cashflow.security_id == event.security_id,
+                    Cashflow.cashflow_date == event.position_date
+                ).all()
+
+                bod_cashflow = sum(cf.amount for cf in cashflows if cf.timing == 'BOD')
+                eod_cashflow = sum(cf.amount for cf in cashflows if cf.timing == 'EOD')
+
+                # 2. Call the stateless logic to calculate the new record
+                new_timeseries_record = PositionTimeseriesLogic.calculate_daily_record(
+                    current_position=current_position,
+                    previous_timeseries=previous_timeseries,
+                    bod_cashflow=bod_cashflow,
+                    eod_cashflow=eod_cashflow
+                )
+
+                # 3. Persist the result using an idempotent upsert
+                repo.upsert_position_timeseries(new_timeseries_record)
+
+                # 4. Publish completion event
+                if self._producer:
+                    completion_event = PositionTimeseriesGeneratedEvent.model_validate(new_timeseries_record)
+                    self._producer.publish_message(
+                        topic=KAFKA_POSITION_TIMESERIES_GENERATED_TOPIC,
+                        key=f"{completion_event.portfolio_id}:{completion_event.security_id}",
+                        value=completion_event.model_dump(mode='json')
+                    )
+                    self._producer.flush(timeout=5)
+
+        except (json.JSONDecodeError, ValidationError) as e:
+            logger.error(f"Message validation failed: {e}. Sending to DLQ.", exc_info=True)
+            await self._send_to_dlq(msg, e)
+        except Exception as e:
+            logger.error(f"Unexpected error processing message: {e}", exc_info=True)
+            await self._send_to_dlq(msg, e)
