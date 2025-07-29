@@ -80,13 +80,10 @@ class MarketPriceConsumer(BaseConsumer):
             )
         else:
             # The latest position is from a previous day, create a new snapshot for today
-            # Use a synthetic, unique ID for this snapshot to avoid downstream collisions.
-            synthetic_txn_id = f"SNAPSHOT_{latest_position.security_id}_{price_event.price_date.isoformat()}"
-            
             new_snapshot = PositionHistory(
                 portfolio_id=latest_position.portfolio_id,
                 security_id=latest_position.security_id,
-                transaction_id=synthetic_txn_id, # Use synthetic ID
+                transaction_id=latest_position.transaction_id, # CORRECTED: Reuse last transaction_id
                 position_date=price_event.price_date,
                 quantity=latest_position.quantity,
                 cost_basis=latest_position.cost_basis,
