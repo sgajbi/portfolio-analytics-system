@@ -67,36 +67,27 @@ class TransactionEvent(BaseModel):
     net_cost: Optional[Decimal] = None
     realized_gain_loss: Optional[Decimal] = None
 
-# --- NEW POSITION EVENTS ---
+class PositionHistoryPersistedEvent(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
 
-class PositionHistoryEvent(BaseModel):
+    id: int
+    portfolio_id: str
+    security_id: str
+    position_date: date
+
+class DailyPositionSnapshotPersistedEvent(BaseModel):
+    """
+    Event published after a daily position snapshot has been created or updated.
+    This is the definitive trigger for time series generation.
+    """
     model_config = ConfigDict(from_attributes=True)
     
     id: int
     portfolio_id: str
     security_id: str
-    transaction_id: str
-    position_date: date
-    quantity: Decimal
-    cost_basis: Decimal
-    market_price: Optional[Decimal] = None
-    market_value: Optional[Decimal] = None
-    unrealized_gain_loss: Optional[Decimal] = None
-
-class PositionHistoryPersistedEvent(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    position_history_id: int = Field(..., alias="id")
-    portfolio_id: str
-    security_id: str
-    position_date: date
-
-# --- NEW CASHFLOW EVENT ---
+    date: date
 
 class CashflowCalculatedEvent(BaseModel):
-    """
-    Event published after a cashflow has been calculated and persisted.
-    """
     model_config = ConfigDict(from_attributes=True)
 
     cashflow_id: int = Field(..., alias="id")
@@ -108,21 +99,13 @@ class CashflowCalculatedEvent(BaseModel):
     currency: str
     classification: str
 
-# --- NEW TIME SERIES EVENTS ---
-
 class PositionTimeseriesGeneratedEvent(BaseModel):
-    """
-    Event published after a position time series record has been generated.
-    """
     model_config = ConfigDict(from_attributes=True)
     portfolio_id: str
     security_id: str
     date: date
 
 class PortfolioTimeseriesGeneratedEvent(BaseModel):
-    """
-    Event published after a portfolio time series record has been generated.
-    """
     model_config = ConfigDict(from_attributes=True)
     portfolio_id: str
     date: date
