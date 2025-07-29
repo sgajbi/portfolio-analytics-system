@@ -32,10 +32,10 @@ def docker_services(request):
             
         yield compose
 
-@pytest.fixture(scope="function")
+@pytest.fixture(scope="module") # CORRECTED: Changed scope from "function" to "module"
 def db_connection(docker_services: DockerCompose):
     """
-    A function-scoped fixture to provide a clean database connection for each test.
+    A module-scoped fixture to provide a clean database connection for each test module.
     """
     host = docker_services.get_service_host("postgres", 5432)
     port = docker_services.get_service_port("postgres", 5432)
