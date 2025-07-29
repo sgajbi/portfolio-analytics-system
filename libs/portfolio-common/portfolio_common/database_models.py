@@ -1,30 +1,45 @@
 # libs/portfolio-common/portfolio_common/database_models.py
 from sqlalchemy import (
-    Column, Integer, String, Numeric, DateTime, Date, func, ForeignKey, UniqueConstraint
+    Column, Integer, String, Numeric, DateTime, Date, func, ForeignKey, UniqueConstraint, Boolean
 )
 from sqlalchemy.orm import declarative_base, relationship
 
 # Use the modern declarative_base from sqlalchemy.orm
 Base = declarative_base()
 
+class Portfolio(Base):
+    __tablename__ = 'portfolios'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    portfolio_id = Column(String, unique=True, index=True, nullable=False)
+    base_currency = Column(String(3), nullable=False)
+    open_date = Column(Date, nullable=False)
+    close_date = Column(Date, nullable=True)
+    risk_exposure = Column(String, nullable=False)
+    investment_time_horizon = Column(String, nullable=False)
+    portfolio_type = Column(String, nullable=False)
+    objective = Column(String, nullable=True)
+    booking_center = Column(String, nullable=False)
+    cif_id = Column(String, index=True, nullable=False)
+    is_leverage_allowed = Column(Boolean, default=False, nullable=False)
+    advisor_id = Column(String, nullable=True)
+    status = Column(String, nullable=False)
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+
 class PositionHistory(Base):
     __tablename__ = 'position_history'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    portfolio_id = Column(String, index=True, nullable=False)
+    portfolio_id = Column(String, ForeignKey('portfolios.portfolio_id'), index=True, nullable=False)
     security_id = Column(String, index=True, nullable=False)
-    # A position record is created by one unique transaction
     transaction_id = Column(String, ForeignKey('transactions.transaction_id'), unique=True, nullable=False)
     position_date = Column(Date, index=True, nullable=False)
     quantity = Column(Numeric(18, 10), nullable=False)
-    cost_basis = Column(Numeric(18, 10), nullable=False) # The total cost of the position
-    
-    # --- NEW VALUATION FIELDS ---
+    cost_basis = Column(Numeric(18, 10), nullable=False)
     market_price = Column(Numeric(18, 10), nullable=True)
     market_value = Column(Numeric(18, 10), nullable=True)
     unrealized_gain_loss = Column(Numeric(18, 10), nullable=True)
-    # --- END NEW FIELDS ---
-    
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 
@@ -73,7 +88,7 @@ class Transaction(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     transaction_id = Column(String, unique=True, index=True, nullable=False)
-    portfolio_id = Column(String, nullable=False)
+    portfolio_id = Column(String, ForeignKey('portfolios.portfolio_id'), nullable=False)
     instrument_id = Column(String, nullable=False)
     security_id = Column(String, nullable=False)
     transaction_type = Column(String, nullable=False)
@@ -112,17 +127,17 @@ class Cashflow(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     transaction_id = Column(String, ForeignKey('transactions.transaction_id'), nullable=False)
-    portfolio_id = Column(String, index=True, nullable=False)
+    portfolio_id = Column(String, ForeignKey('portfolios.portfolio_id'), index=True, nullable=False)
     security_id = Column(String, index=True, nullable=True) # Nullable for portfolio-level cashflows
     cashflow_date = Column(Date, index=True, nullable=False)
     
     amount = Column(Numeric(18, 10), nullable=False)
     currency = Column(String(3), nullable=False)
     
-    classification = Column(String, nullable=False) # e.g., INVESTMENT_OUTFLOW, INCOME
-    timing = Column(String, nullable=False) # BOD or EOD
-    level = Column(String, nullable=False) # PORTFOLIO or POSITION
-    calculation_type = Column(String, nullable=False) # NET, GROSS, MVT
+    classification = Column(String, nullable=False)
+    timing = Column(String, nullable=False)
+    level = Column(String, nullable=False)
+    calculation_type = Column(String, nullable=False)
     
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
