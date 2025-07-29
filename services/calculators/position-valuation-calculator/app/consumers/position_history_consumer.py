@@ -4,9 +4,10 @@ from pydantic import ValidationError
 
 from confluent_kafka import Message
 from portfolio_common.kafka_consumer import BaseConsumer
-from portfolio_common.events import PositionHistoryPersistedEvent
+from portfolio_common.events import PositionHistoryPersistedEvent, DailyPositionSnapshotPersistedEvent
 from portfolio_common.db import get_db_session
-from portfolio_common.database_models import DailyPositionSnapshot # NEW IMPORT
+from portfolio_common.database_models import DailyPositionSnapshot, PositionHistory
+from portfolio_common.config import KAFKA_DAILY_POSITION_SNAPSHOT_PERSISTED_TOPIC
 from ..repositories.valuation_repository import ValuationRepository
 from ..logic.valuation_logic import ValuationLogic
 
@@ -39,16 +40,15 @@ class PositionHistoryConsumer(BaseConsumer):
     def _value_position(self, event: PositionHistoryPersistedEvent):
         """
         Fetches the full position and latest price, then calculates and saves
-        a daily snapshot.
+        a daily snapshot, publishing the correct downstream event.
         """
         with next(get_db_session()) as db:
             try:
                 repo = ValuationRepository(db)
                 
-                # Note: We still fetch the original PositionHistory record
-                position = repo.get_position_by_id(event.position_history_id)
+                position = db.query(PositionHistory).get(event.id)
                 if not position:
-                    logger.warning(f"PositionHistory with id {event.position_history_id} not found. Cannot create snapshot.")
+                    logger.warning(f"PositionHistory with id {event.id} not found. Cannot create snapshot.")
                     return
 
                 price = repo.get_latest_price_for_position(
@@ -66,7 +66,6 @@ class PositionHistoryConsumer(BaseConsumer):
                         market_price=market_price
                     )
                 
-                # Create the new snapshot record
                 snapshot = DailyPositionSnapshot(
                     portfolio_id=position.portfolio_id,
                     security_id=position.security_id,
@@ -79,6 +78,22 @@ class PositionHistoryConsumer(BaseConsumer):
                 )
                 
                 repo.upsert_daily_snapshot(snapshot)
+
+                # Fetch the ID of the upserted record to publish the event
+                persisted_snapshot = db.query(DailyPositionSnapshot).filter_by(
+                    portfolio_id=snapshot.portfolio_id,
+                    security_id=snapshot.security_id,
+                    date=snapshot.date
+                ).first()
+
+                if self._producer and persisted_snapshot:
+                    completion_event = DailyPositionSnapshotPersistedEvent.model_validate(persisted_snapshot)
+                    self._producer.publish_message(
+                        topic=KAFKA_DAILY_POSITION_SNAPSHOT_PERSISTED_TOPIC,
+                        key=completion_event.security_id,
+                        value=completion_event.model_dump(mode='json')
+                    )
+                    self._producer.flush(timeout=5)
                 
             except Exception as e:
-                logger.error(f"Failed during snapshot creation for position_history_id {event.position_history_id}: {e}", exc_info=True)
+                logger.error(f"Failed during snapshot creation for position_history_id {event.id}: {e}", exc_info=True)
