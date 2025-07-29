@@ -4,12 +4,12 @@ import asyncio
 
 from portfolio_common.config import (
     KAFKA_BOOTSTRAP_SERVERS,
-    KAFKA_POSITION_HISTORY_PERSISTED_TOPIC,
-    KAFKA_POSITION_TIMESERIES_GENERATED_TOPIC, # NEW IMPORT
+    KAFKA_DAILY_POSITION_SNAPSHOT_PERSISTED_TOPIC, # CORRECTED: Listen to the new, correct topic
+    KAFKA_POSITION_TIMESERIES_GENERATED_TOPIC,
     KAFKA_PERSISTENCE_DLQ_TOPIC
 )
 from .consumers.position_timeseries_consumer import PositionTimeseriesConsumer
-from .consumers.portfolio_timeseries_consumer import PortfolioTimeseriesConsumer # NEW IMPORT
+from .consumers.portfolio_timeseries_consumer import PortfolioTimeseriesConsumer
 
 logger = logging.getLogger(__name__)
 
@@ -24,12 +24,12 @@ class ConsumerManager:
 
         dlq_topic = KAFKA_PERSISTENCE_DLQ_TOPIC
         
-        # Stage 1 Consumer
+        # Stage 1 Consumer - Now listening to the correct snapshot event
         self.consumers.append(
             PositionTimeseriesConsumer(
                 bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
-                topic=KAFKA_POSITION_HISTORY_PERSISTED_TOPIC,
-                group_id="timeseries_generator_group_positions", # Unique group ID
+                topic=KAFKA_DAILY_POSITION_SNAPSHOT_PERSISTED_TOPIC,
+                group_id="timeseries_generator_group_positions",
                 dlq_topic=dlq_topic 
             )
         )
@@ -39,7 +39,7 @@ class ConsumerManager:
             PortfolioTimeseriesConsumer(
                 bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
                 topic=KAFKA_POSITION_TIMESERIES_GENERATED_TOPIC,
-                group_id="timeseries_generator_group_portfolios", # Unique group ID
+                group_id="timeseries_generator_group_portfolios",
                 dlq_topic=dlq_topic
             )
         )
