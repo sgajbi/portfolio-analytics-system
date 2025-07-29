@@ -28,11 +28,14 @@ def setup_timeseries_data(docker_services, db_connection):
     def post_data(endpoint, payload):
         url = f"http://{ingestion_host}:{ingestion_port}{endpoint}"
         response = requests.post(url, json=payload)
-        assert response.status_code == 202
+        assert response.status_code == 202, f"Failed to post to {endpoint}: {response.text}"
 
     # Ingest all base data
     post_data("/ingest/portfolios", {"portfolios": [{"portfolioId": "E2E_TS_PORT", "baseCurrency": "USD", "openDate": "2025-01-01", "riskExposure": "High", "investmentTimeHorizon": "Long", "portfolioType": "Discretionary", "bookingCenter": "SG", "cifId": "TS_CIF", "status": "Active"}]})
-    post_data("/ingest/instruments", {"instruments": [{"securityId": "SEC_EUR_STOCK", "name": "Euro Stock", "isin": "EU123", "instrumentCurrency": "EUR", "productType": "Equity"}]})
+    post_data("/ingest/instruments", {"instruments": [
+        {"securityId": "SEC_EUR_STOCK", "name": "Euro Stock", "isin": "EU123", "instrumentCurrency": "EUR", "productType": "Equity"},
+        {"securityId": "CASH", "name": "US Dollar", "isin": "USD_CASH", "instrumentCurrency": "USD", "productType": "Cash"}
+    ]})
     post_data("/ingest/fx-rates", {"fx_rates": [{"fromCurrency": "EUR", "toCurrency": "USD", "rateDate": "2025-07-28", "rate": "1.1"}, {"fromCurrency": "EUR", "toCurrency": "USD", "rateDate": "2025-07-29", "rate": "1.2"}]})
 
     # --- Day 1 Data ---
