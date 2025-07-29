@@ -28,15 +28,27 @@ class ValuationRepository:
             MarketPrice.price_date <= position_date
         ).order_by(MarketPrice.price_date.desc()).first()
 
-    def get_positions_for_price(self, security_id: str, price_date: date) -> List[PositionHistory]:
+    def get_latest_position_on_or_before(self, portfolio_id: str, security_id: str, a_date: date) -> Optional[PositionHistory]:
         """
-        Finds all position history records for a given security on a specific date.
-        This is used to re-value positions when a new price arrives.
+        Finds the single most recent position history record for a security on or before a given date.
+        This is used to carry forward a position to a new date when a market price arrives.
         """
         return self.db.query(PositionHistory).filter(
+            PositionHistory.portfolio_id == portfolio_id,
             PositionHistory.security_id == security_id,
-            PositionHistory.position_date == price_date
-        ).all()
+            PositionHistory.position_date <= a_date
+        ).order_by(PositionHistory.position_date.desc(), PositionHistory.id.desc()).first()
+
+    def create_position_snapshot(self, position: PositionHistory) -> PositionHistory:
+        """
+        Adds a new position history record to the session and commits it.
+        Used to create daily snapshots for valuation purposes.
+        """
+        self.db.add(position)
+        self.db.commit()
+        self.db.refresh(position)
+        logger.info(f"Created new position snapshot for {position.security_id} on {position.position_date} with id {position.id}")
+        return position
 
     def update_position_valuation(
         self,
