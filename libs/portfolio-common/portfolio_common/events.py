@@ -107,3 +107,22 @@ class CashflowCalculatedEvent(BaseModel):
     amount: Decimal
     currency: str
     classification: str
+
+# --- NEW TIME SERIES EVENTS ---
+
+class PositionTimeseriesGeneratedEvent(BaseModel):
+    """
+    Event published after a position time series record has been generated.
+    """
+    model_config = ConfigDict(from_attributes=True)
+    portfolio_id: str
+    security_id: str
+    date: date
+
+class PortfolioTimeseriesGeneratedEvent(BaseModel):
+    """
+    Event published after a portfolio time series record has been generated.
+    """
+    model_config = ConfigDict(from_attributes=True)
+    portfolio_id: str
+    date: date
