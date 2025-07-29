@@ -1,6 +1,6 @@
 # libs/portfolio-common/portfolio_common/database_models.py
 from sqlalchemy import (
-    Column, Integer, String, Numeric, DateTime, Date, func, ForeignKey, UniqueConstraint, Boolean
+    Column, Integer, String, Numeric, DateTime, Date, func, ForeignKey, UniqueConstraint, Boolean, PrimaryKeyConstraint
 )
 from sqlalchemy.orm import declarative_base, relationship
 
@@ -128,7 +128,7 @@ class Cashflow(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     transaction_id = Column(String, ForeignKey('transactions.transaction_id'), nullable=False)
     portfolio_id = Column(String, ForeignKey('portfolios.portfolio_id'), index=True, nullable=False)
-    security_id = Column(String, index=True, nullable=True) # Nullable for portfolio-level cashflows
+    security_id = Column(String, index=True, nullable=True)
     cashflow_date = Column(Date, index=True, nullable=False)
     
     amount = Column(Numeric(18, 10), nullable=False)
@@ -145,3 +145,36 @@ class Cashflow(Base):
     transaction = relationship("Transaction", back_populates="cashflow")
 
     __table_args__ = (UniqueConstraint('transaction_id', name='_transaction_id_uc'),)
+
+class PositionTimeseries(Base):
+    __tablename__ = 'position_timeseries'
+
+    portfolio_id = Column(String, ForeignKey('portfolios.portfolio_id'), primary_key=True)
+    security_id = Column(String, ForeignKey('instruments.security_id'), primary_key=True)
+    date = Column(Date, primary_key=True)
+    
+    bod_market_value = Column(Numeric(18, 10), nullable=False)
+    bod_cashflow = Column(Numeric(18, 10), nullable=False)
+    eod_cashflow = Column(Numeric(18, 10), nullable=False)
+    eod_market_value = Column(Numeric(18, 10), nullable=False)
+    fees = Column(Numeric(18, 10), default=0, nullable=False)
+    quantity = Column(Numeric(18, 10), nullable=False)
+    cost = Column(Numeric(18, 10), nullable=False)
+    
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+
+class PortfolioTimeseries(Base):
+    __tablename__ = 'portfolio_timeseries'
+
+    portfolio_id = Column(String, ForeignKey('portfolios.portfolio_id'), primary_key=True)
+    date = Column(Date, primary_key=True)
+    
+    bod_market_value = Column(Numeric(18, 10), nullable=False)
+    bod_cashflow = Column(Numeric(18, 10), nullable=False)
+    eod_cashflow = Column(Numeric(18, 10), nullable=False)
+    eod_market_value = Column(Numeric(18, 10), nullable=False)
+    fees = Column(Numeric(18, 10), nullable=False)
+    
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
