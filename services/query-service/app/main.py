@@ -1,6 +1,6 @@
 import logging
 from fastapi import FastAPI
-from .routers import positions, transactions, instruments, prices, fx_rates
+from .routers import positions, transactions, instruments, prices, fx_rates, portfolios
 
 # Configure logging
 logging.basicConfig(
@@ -14,10 +14,11 @@ logger = logging.getLogger(__name__)
 app = FastAPI(
     title="Query Service",
     description="Service for querying portfolio analytics data.",
-    version="0.1.0"
+    version="0.2.0" # Version bump for new feature
 )
 
 # Register the API routers
+app.include_router(portfolios.router)
 app.include_router(positions.router)
 app.include_router(transactions.router)
 app.include_router(instruments.router)
