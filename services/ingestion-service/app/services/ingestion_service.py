@@ -4,18 +4,30 @@ from typing import List
 from app.DTOs.transaction_dto import Transaction
 from app.DTOs.instrument_dto import Instrument
 from app.DTOs.market_price_dto import MarketPrice
-from app.DTOs.fx_rate_dto import FxRate # NEW IMPORT
+from app.DTOs.fx_rate_dto import FxRate
+from app.DTOs.portfolio_dto import Portfolio # NEW IMPORT
 from portfolio_common.kafka_utils import KafkaProducer, get_kafka_producer
 from portfolio_common.config import (
     KAFKA_RAW_TRANSACTIONS_TOPIC, 
     KAFKA_INSTRUMENTS_TOPIC, 
     KAFKA_MARKET_PRICES_TOPIC,
-    KAFKA_FX_RATES_TOPIC # NEW IMPORT
+    KAFKA_FX_RATES_TOPIC,
+    KAFKA_RAW_PORTFOLIOS_TOPIC # NEW IMPORT
 )
 
 class IngestionService:
     def __init__(self, kafka_producer: KafkaProducer):
         self._kafka_producer = kafka_producer
+
+    async def publish_portfolios(self, portfolios: List[Portfolio]) -> None:
+        """Publishes a list of portfolios to the raw portfolios topic."""
+        for portfolio in portfolios:
+            portfolio_payload = portfolio.model_dump(by_alias=True)
+            self._kafka_producer.publish_message(
+                topic=KAFKA_RAW_PORTFOLIOS_TOPIC,
+                key=portfolio.portfolio_id,
+                value=portfolio_payload
+            )
 
     async def publish_transaction(self, transaction: Transaction) -> None:
         """Publishes a single transaction to the raw transactions topic."""
@@ -56,7 +68,6 @@ class IngestionService:
                 value=price_payload
             )
 
-    # NEW: Add a method to publish multiple FX rates
     async def publish_fx_rates(self, fx_rates: List[FxRate]) -> None:
         """Publishes a list of FX rates to the fx_rates topic."""
         for rate in fx_rates:
