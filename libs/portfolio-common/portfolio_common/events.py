@@ -3,6 +3,26 @@ from typing import Optional
 from pydantic import BaseModel, Field, ConfigDict
 from decimal import Decimal
 
+class PortfolioEvent(BaseModel):
+    """
+    Event model for raw portfolio data.
+    """
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+    portfolio_id: str = Field(..., alias="portfolioId")
+    base_currency: str = Field(..., alias="baseCurrency")
+    open_date: date = Field(..., alias="openDate")
+    close_date: Optional[date] = Field(None, alias="closeDate")
+    risk_exposure: str = Field(..., alias="riskExposure")
+    investment_time_horizon: str = Field(..., alias="investmentTimeHorizon")
+    portfolio_type: str = Field(..., alias="portfolioType")
+    objective: Optional[str] = None
+    booking_center: str = Field(..., alias="bookingCenter")
+    cif_id: str = Field(..., alias="cifId")
+    is_leverage_allowed: bool = Field(False, alias="isLeverageAllowed")
+    advisor_id: Optional[str] = Field(None, alias="advisorId")
+    status: str
+
 class FxRateEvent(BaseModel):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
