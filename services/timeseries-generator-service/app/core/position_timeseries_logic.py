@@ -1,0 +1,49 @@
+from datetime import date
+from decimal import Decimal
+
+from portfolio_common.database_models import PositionTimeseries, PositionHistory
+
+class PositionTimeseriesLogic:
+    """
+    A stateless calculator for generating a single daily position time series record.
+    """
+    @staticmethod
+    def calculate_daily_record(
+        current_position: PositionHistory,
+        previous_timeseries: PositionTimeseries | None,
+        bod_cashflow: Decimal,
+        eod_cashflow: Decimal
+    ) -> PositionTimeseries:
+        """
+        Calculates a single, complete position time series record for a given day.
+
+        Args:
+            current_position: The PositionHistory record for the date being calculated.
+            previous_timeseries: The PositionTimeseries record for the previous day.
+            bod_cashflow: The sum of all beginning-of-day cashflows for the position.
+            eod_cashflow: The sum of all end-of-day cashflows for the position.
+
+        Returns:
+            A populated PositionTimeseries database model instance.
+        """
+        # The BOD Market Value for today is the EOD Market Value from yesterday.
+        # If there's no previous day, it's the first day, so BOD value is 0.
+        bod_market_value = previous_timeseries.eod_market_value if previous_timeseries else Decimal(0)
+
+        # EOD values are taken directly from the current day's valued position snapshot.
+        eod_market_value = current_position.market_value or Decimal(0)
+        eod_quantity = current_position.quantity
+        eod_avg_cost = (current_position.cost_basis / eod_quantity) if eod_quantity else Decimal(0)
+
+        return PositionTimeseries(
+            portfolio_id=current_position.portfolio_id,
+            security_id=current_position.security_id,
+            date=current_position.position_date,
+            bod_market_value=bod_market_value,
+            bod_cashflow=bod_cashflow,
+            eod_cashflow=eod_cashflow,
+            eod_market_value=eod_market_value,
+            fees=Decimal(0),  # Fees are always 0 at the position level
+            quantity=eod_quantity,
+            cost=eod_avg_cost
+        )
