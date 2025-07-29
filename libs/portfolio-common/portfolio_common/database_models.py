@@ -33,9 +33,9 @@ class PositionHistory(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     portfolio_id = Column(String, ForeignKey('portfolios.portfolio_id'), index=True, nullable=False)
     security_id = Column(String, index=True, nullable=False)
-    # A position record is created by one transaction, but snapshots can reuse the ID.
-    transaction_id = Column(String, ForeignKey('transactions.transaction_id'), nullable=False) # CORRECTED: Removed unique=True
+    transaction_id = Column(String, ForeignKey('transactions.transaction_id'), nullable=True) # Now nullable
     position_date = Column(Date, index=True, nullable=False)
+    snapshot_type = Column(String, nullable=False) # New field: 'TRANSACTION' or 'VALUATION'
     quantity = Column(Numeric(18, 10), nullable=False)
     cost_basis = Column(Numeric(18, 10), nullable=False)
     market_price = Column(Numeric(18, 10), nullable=True)
