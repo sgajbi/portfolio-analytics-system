@@ -5,9 +5,11 @@ import asyncio
 from portfolio_common.config import (
     KAFKA_BOOTSTRAP_SERVERS,
     KAFKA_POSITION_HISTORY_PERSISTED_TOPIC,
+    KAFKA_POSITION_TIMESERIES_GENERATED_TOPIC, # NEW IMPORT
     KAFKA_PERSISTENCE_DLQ_TOPIC
 )
 from .consumers.position_timeseries_consumer import PositionTimeseriesConsumer
+from .consumers.portfolio_timeseries_consumer import PortfolioTimeseriesConsumer # NEW IMPORT
 
 logger = logging.getLogger(__name__)
 
@@ -20,14 +22,28 @@ class ConsumerManager:
         self.tasks = []
         self._shutdown_event = asyncio.Event()
 
+        dlq_topic = KAFKA_PERSISTENCE_DLQ_TOPIC
+        
+        # Stage 1 Consumer
         self.consumers.append(
             PositionTimeseriesConsumer(
                 bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
                 topic=KAFKA_POSITION_HISTORY_PERSISTED_TOPIC,
-                group_id="timeseries_generator_group",
-                dlq_topic=KAFKA_PERSISTENCE_DLQ_TOPIC 
+                group_id="timeseries_generator_group_positions", # Unique group ID
+                dlq_topic=dlq_topic 
             )
         )
+
+        # Stage 2 Consumer
+        self.consumers.append(
+            PortfolioTimeseriesConsumer(
+                bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
+                topic=KAFKA_POSITION_TIMESERIES_GENERATED_TOPIC,
+                group_id="timeseries_generator_group_portfolios", # Unique group ID
+                dlq_topic=dlq_topic
+            )
+        )
+
         logger.info(f"ConsumerManager initialized with {len(self.consumers)} consumer(s).")
 
     def _signal_handler(self, signum, frame):
