@@ -5,9 +5,10 @@ from decimal import Decimal
 
 from confluent_kafka import Message
 from portfolio_common.kafka_consumer import BaseConsumer
-from portfolio_common.events import MarketPriceEvent
+from portfolio_common.events import MarketPriceEvent, DailyPositionSnapshotPersistedEvent
 from portfolio_common.db import get_db_session
 from portfolio_common.database_models import PositionHistory, DailyPositionSnapshot
+from portfolio_common.config import KAFKA_DAILY_POSITION_SNAPSHOT_PERSISTED_TOPIC
 
 from ..repositories.valuation_repository import ValuationRepository
 from ..logic.valuation_logic import ValuationLogic
@@ -79,3 +80,19 @@ class MarketPriceConsumer(BaseConsumer):
         )
         
         repo.upsert_daily_snapshot(snapshot)
+
+        # Fetch the ID of the upserted record to publish the event
+        persisted_snapshot = repo.db.query(DailyPositionSnapshot).filter_by(
+            portfolio_id=snapshot.portfolio_id,
+            security_id=snapshot.security_id,
+            date=snapshot.date
+        ).first()
+
+        if self._producer and persisted_snapshot:
+            completion_event = DailyPositionSnapshotPersistedEvent.model_validate(persisted_snapshot)
+            self._producer.publish_message(
+                topic=KAFKA_DAILY_POSITION_SNAPSHOT_PERSISTED_TOPIC,
+                key=completion_event.security_id,
+                value=completion_event.model_dump(mode='json')
+            )
+            self._producer.flush(timeout=5)
