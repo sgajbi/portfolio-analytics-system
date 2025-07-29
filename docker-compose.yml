@@ -245,6 +245,28 @@ services:
     command: ["python", "-m", "app.main"]
     networks:
       - app_network
+  
+  timeseries-generator-service:
+    build:
+      context: .
+      dockerfile: ./services/timeseries-generator-service/Dockerfile
+    hostname: timeseries-generator-service
+    container_name: timeseries-generator-service
+    environment:
+      PYTHONPATH: "/app:/app/libs/portfolio-common"
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9093
+      DATABASE_URL: postgresql://user:password@postgres:5432/portfolio_db
+    depends_on:
+      kafka:
+        condition: service_healthy
+      migration-runner:
+        condition: service_completed_successfully
+    volumes:
+      - ./services/timeseries-generator-service/app:/app/app
+      - ./libs/portfolio-common:/app/libs/portfolio-common
+    command: ["python", "-m", "app.main"]
+    networks:
+      - app_network
 
 volumes:
   postgres_data:
