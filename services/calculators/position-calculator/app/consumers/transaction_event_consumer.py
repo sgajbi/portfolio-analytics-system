@@ -38,7 +38,7 @@ class TransactionEventConsumer(BaseConsumer):
             logger.error(f"Unexpected error processing message with key '{key}': {e}", exc_info=True)
 
     def _recalculate_position_history(self, incoming_event: TransactionEvent):
-        new_history_records = []
+        new_history_records_to_save = []
         with next(get_db_session()) as db:
             try:
                 repo = PositionRepository(db)
@@ -68,10 +68,10 @@ class TransactionEventConsumer(BaseConsumer):
                     txns_to_replay = sorted(txns_to_replay_map.values(), key=lambda t: t.transaction_date)
 
                     if not txns_to_replay:
-                        logger.warning(f"Logical error: txns_to_replay is empty for {incoming_event.security_id}")
                         return
 
-                    repo.delete_positions_from(
+                    # Get IDs of records to be deleted for re-fetching later
+                    deleted_ids = repo.delete_positions_from(
                         portfolio_id=incoming_event.portfolio_id,
                         security_id=incoming_event.security_id,
                         a_date=transaction_date_only
@@ -81,24 +81,31 @@ class TransactionEventConsumer(BaseConsumer):
                         txn_event = TransactionEvent.model_validate(txn)
                         current_state = PositionCalculator.calculate_next_position(current_state, txn_event)
                         
-                        new_history_records.append(
+                        new_history_records_to_save.append(
                             PositionHistory(
                                 portfolio_id=txn.portfolio_id,
                                 security_id=txn.security_id,
                                 transaction_id=txn.transaction_id,
                                 position_date=txn.transaction_date.date(),
-                                snapshot_type='TRANSACTION', # CORRECTED: Set snapshot type
+                                snapshot_type='TRANSACTION',
                                 quantity=current_state.quantity,
                                 cost_basis=current_state.cost_basis
                             )
                         )
                     
-                    if new_history_records:
-                        repo.save_positions(new_history_records)
+                    if new_history_records_to_save:
+                        repo.save_positions(new_history_records_to_save)
                 
-                logger.info(f"Successfully reprocessed and committed {len(new_history_records)} positions for {incoming_event.security_id}")
+                # --- DEFINITIVE FIX ---
+                # After the commit, the local objects don't have their IDs. Re-fetch them.
+                transaction_ids_to_publish = [rec.transaction_id for rec in new_history_records_to_save]
+                
+                published_records = db.query(PositionHistory).filter(
+                    PositionHistory.transaction_id.in_(transaction_ids_to_publish)
+                ).all()
 
-                self._publish_persisted_events(new_history_records)
+                logger.info(f"Successfully reprocessed and committed {len(published_records)} positions for {incoming_event.security_id}")
+                self._publish_persisted_events(published_records)
                 self._producer.flush(timeout=5)
 
             except Exception as e:
@@ -109,8 +116,6 @@ class TransactionEventConsumer(BaseConsumer):
         count = 0
         for record in records:
             try:
-                # Manually refresh the object to get its ID after the commit
-                db.refresh(record)
                 event = PositionHistoryPersistedEvent.model_validate(record)
                 self._producer.publish_message(
                     topic=KAFKA_POSITION_HISTORY_PERSISTED_TOPIC,
