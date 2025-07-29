@@ -1,6 +1,6 @@
 # libs/portfolio-common/portfolio_common/database_models.py
 from sqlalchemy import (
-    Column, Integer, String, Numeric, DateTime, Date, func, ForeignKey, UniqueConstraint, Boolean, PrimaryKeyConstraint
+    Column, Integer, String, Numeric, DateTime, Date, func, ForeignKey, UniqueConstraint, Boolean
 )
 from sqlalchemy.orm import declarative_base, relationship
 
@@ -33,7 +33,7 @@ class PositionHistory(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     portfolio_id = Column(String, ForeignKey('portfolios.portfolio_id'), index=True, nullable=False)
     security_id = Column(String, index=True, nullable=False)
-    # A position record is created by one unique transaction, but snapshots can reuse IDs.
+    # A position record is created by one transaction, but snapshots can reuse the ID.
     transaction_id = Column(String, ForeignKey('transactions.transaction_id'), nullable=False) # CORRECTED: Removed unique=True
     position_date = Column(Date, index=True, nullable=False)
     quantity = Column(Numeric(18, 10), nullable=False)
@@ -43,10 +43,6 @@ class PositionHistory(Base):
     unrealized_gain_loss = Column(Numeric(18, 10), nullable=True)
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
-
-    # Add a new unique constraint for data integrity
-    __table_args__ = (UniqueConstraint('portfolio_id', 'security_id', 'position_date', 'transaction_id', name='_portfolio_security_date_txn_uc'),)
-
 
 class FxRate(Base):
     __tablename__ = 'fx_rates'
