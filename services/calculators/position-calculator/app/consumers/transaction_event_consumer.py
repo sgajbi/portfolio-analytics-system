@@ -44,8 +44,6 @@ class TransactionEventConsumer(BaseConsumer):
                 repo = PositionRepository(db)
                 transaction_date_only = incoming_event.transaction_date.date()
                 
-                # --- THIS IS THE CRITICAL FIX ---
-                # Use db.begin() to ensure the transaction is committed.
                 with db.begin():
                     anchor_position = repo.get_last_position_before(
                         portfolio_id=incoming_event.portfolio_id,
@@ -89,6 +87,7 @@ class TransactionEventConsumer(BaseConsumer):
                                 security_id=txn.security_id,
                                 transaction_id=txn.transaction_id,
                                 position_date=txn.transaction_date.date(),
+                                snapshot_type='TRANSACTION', # CORRECTED: Set snapshot type
                                 quantity=current_state.quantity,
                                 cost_basis=current_state.cost_basis
                             )
@@ -97,7 +96,6 @@ class TransactionEventConsumer(BaseConsumer):
                     if new_history_records:
                         repo.save_positions(new_history_records)
                 
-                # The db.begin() block has now successfully committed.
                 logger.info(f"Successfully reprocessed and committed {len(new_history_records)} positions for {incoming_event.security_id}")
 
                 self._publish_persisted_events(new_history_records)
@@ -111,11 +109,13 @@ class TransactionEventConsumer(BaseConsumer):
         count = 0
         for record in records:
             try:
+                # Manually refresh the object to get its ID after the commit
+                db.refresh(record)
                 event = PositionHistoryPersistedEvent.model_validate(record)
                 self._producer.publish_message(
                     topic=KAFKA_POSITION_HISTORY_PERSISTED_TOPIC,
                     key=event.security_id,
-                    value=event.model_dump(mode='json')
+                    value=event.model_dump(mode='json', by_alias=True)
                 )
                 count += 1
             except Exception as e:
