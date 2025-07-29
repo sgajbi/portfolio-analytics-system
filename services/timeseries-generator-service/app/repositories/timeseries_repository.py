@@ -1,6 +1,6 @@
 import logging
 from datetime import date, timedelta
-from typing import List, Optional
+from typing import Optional, List
 from sqlalchemy.orm import Session
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
@@ -70,13 +70,14 @@ class TimeseriesRepository:
     def upsert_position_timeseries(self, timeseries_record: PositionTimeseries):
         """Idempotent insert/update for a position time series record."""
         try:
-            # Create a dictionary of the record's values, excluding SQLAlchemy state
-            values = {c.name: getattr(timeseries_record, c.name) for c in timeseries_record.__table__.columns}
+            insert_dict = {c.name: getattr(timeseries_record, c.name) for c in timeseries_record.__table__.columns}
+            update_dict = {k: v for k, v in insert_dict.items() if k not in ['portfolio_id', 'security_id', 'date']}
+            
             stmt = pg_insert(PositionTimeseries).values(
-                **values
+                **insert_dict
             ).on_conflict_do_update(
                 index_elements=['portfolio_id', 'security_id', 'date'],
-                set_=values
+                set_=update_dict
             )
             self.db.execute(stmt)
             self.db.commit()
@@ -89,13 +90,14 @@ class TimeseriesRepository:
     def upsert_portfolio_timeseries(self, timeseries_record: PortfolioTimeseries):
         """Idempotent insert/update for a portfolio time series record."""
         try:
-            # Create a dictionary of the record's values, excluding SQLAlchemy state
-            values = {c.name: getattr(timeseries_record, c.name) for c in timeseries_record.__table__.columns}
+            insert_dict = {c.name: getattr(timeseries_record, c.name) for c in timeseries_record.__table__.columns}
+            update_dict = {k: v for k, v in insert_dict.items() if k not in ['portfolio_id', 'date']}
+
             stmt = pg_insert(PortfolioTimeseries).values(
-                **values
+                **insert_dict
             ).on_conflict_do_update(
                 index_elements=['portfolio_id', 'date'],
-                set_=values
+                set_=update_dict
             )
             self.db.execute(stmt)
             self.db.commit()
