@@ -1,6 +1,6 @@
 # libs/portfolio-common/portfolio_common/database_models.py
 from sqlalchemy import (
-    Column, Integer, String, Numeric, DateTime, Date, func, ForeignKey, UniqueConstraint, Boolean
+    Column, Integer, String, Numeric, DateTime, Date, func, ForeignKey, UniqueConstraint, Boolean, PrimaryKeyConstraint
 )
 from sqlalchemy.orm import declarative_base, relationship
 
@@ -33,9 +33,20 @@ class PositionHistory(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     portfolio_id = Column(String, ForeignKey('portfolios.portfolio_id'), index=True, nullable=False)
     security_id = Column(String, index=True, nullable=False)
-    transaction_id = Column(String, ForeignKey('transactions.transaction_id'), nullable=True) # Now nullable
+    transaction_id = Column(String, ForeignKey('transactions.transaction_id'), unique=True, nullable=False) # Reverted to unique
     position_date = Column(Date, index=True, nullable=False)
-    snapshot_type = Column(String, nullable=False) # New field: 'TRANSACTION' or 'VALUATION'
+    quantity = Column(Numeric(18, 10), nullable=False)
+    cost_basis = Column(Numeric(18, 10), nullable=False)
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+
+class DailyPositionSnapshot(Base):
+    __tablename__ = 'daily_position_snapshots'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    portfolio_id = Column(String, ForeignKey('portfolios.portfolio_id'), index=True, nullable=False)
+    security_id = Column(String, index=True, nullable=False)
+    date = Column(Date, index=True, nullable=False)
     quantity = Column(Numeric(18, 10), nullable=False)
     cost_basis = Column(Numeric(18, 10), nullable=False)
     market_price = Column(Numeric(18, 10), nullable=True)
@@ -43,6 +54,9 @@ class PositionHistory(Base):
     unrealized_gain_loss = Column(Numeric(18, 10), nullable=True)
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+
+    __table_args__ = (UniqueConstraint('portfolio_id', 'security_id', 'date', name='_portfolio_security_date_uc'),)
+
 
 class FxRate(Base):
     __tablename__ = 'fx_rates'
