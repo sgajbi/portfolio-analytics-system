@@ -34,7 +34,6 @@ class MarketPriceConsumer(BaseConsumer):
             with next(get_db_session()) as db:
                 repo = ValuationRepository(db)
                 
-                # Find all portfolios that hold this security
                 portfolios_with_security = db.query(PositionHistory.portfolio_id).filter(
                     PositionHistory.security_id == price_event.security_id
                 ).distinct().all()
@@ -62,7 +61,7 @@ class MarketPriceConsumer(BaseConsumer):
         )
 
         if not latest_position or latest_position.quantity == 0:
-            return # No active position to value
+            return
 
         market_value, unrealized_gain_loss = ValuationLogic.calculate(
             quantity=latest_position.quantity,
@@ -71,7 +70,6 @@ class MarketPriceConsumer(BaseConsumer):
         )
 
         if latest_position.position_date == price_event.price_date:
-            # The position is from today, just update it
             updated_position = repo.update_position_valuation(
                 position_history_id=latest_position.id,
                 market_price=price_event.price,
@@ -79,12 +77,12 @@ class MarketPriceConsumer(BaseConsumer):
                 unrealized_gain_loss=unrealized_gain_loss
             )
         else:
-            # The latest position is from a previous day, create a new snapshot for today
             new_snapshot = PositionHistory(
                 portfolio_id=latest_position.portfolio_id,
                 security_id=latest_position.security_id,
-                transaction_id=latest_position.transaction_id, # CORRECTED: Reuse last transaction_id
+                transaction_id=latest_position.transaction_id,
                 position_date=price_event.price_date,
+                snapshot_type='VALUATION', # Set snapshot type
                 quantity=latest_position.quantity,
                 cost_basis=latest_position.cost_basis,
                 market_price=price_event.price,
@@ -93,7 +91,6 @@ class MarketPriceConsumer(BaseConsumer):
             )
             updated_position = repo.create_position_snapshot(new_snapshot)
 
-        # Publish an event for the new/updated snapshot to trigger downstream services
         if updated_position and self._producer:
             completion_event = PositionHistoryPersistedEvent.model_validate(updated_position)
             self._producer.publish_message(
