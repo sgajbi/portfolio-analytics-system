@@ -40,7 +40,10 @@ class TransactionPersistenceConsumer(BaseConsumer):
 
             # 3. Publish completion event
             if self._producer:
-                partition_key = f"{event.portfolio_id}:{event.security_id}"
+                # --- THIS IS THE FIX ---
+                # Use portfolio_id as the key to ensure all transactions for one portfolio
+                # go to the same partition and are processed in order by downstream consumers.
+                partition_key = event.portfolio_id
                 self._producer.publish_message(
                     topic=KAFKA_RAW_TRANSACTIONS_COMPLETED_TOPIC,
                     key=partition_key,
