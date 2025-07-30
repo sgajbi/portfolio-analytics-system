@@ -7,6 +7,15 @@ name = "persistence-service"
 version = "0.1.0"
 description = "Portfolio Analytics - Generic Persistence Service"
 requires-python = ">=3.11"
+dependencies = [
+    "sqlalchemy==2.0.30",
+    "psycopg2-binary==2.9.9",
+    "confluent-kafka==2.4.0",
+    "pydantic==2.7.4",
+    "tenacity==8.2.3",
+    "alembic==1.13.1",
+    "python-dotenv==1.0.1"
+]
 
 [tool.setuptools.packages.find]
-where = ["app"]
+where = ["."]

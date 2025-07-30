@@ -8,20 +8,20 @@ ENV POETRY_VIRTUALENVS_CREATE=false \
 
 WORKDIR /app
 
-# Copy dependency files and shared library first for better layer caching
-COPY services/persistence-service/requirements.txt /app/requirements.txt
-COPY libs/portfolio-common/ /app/libs/portfolio-common/
-
-# Create a virtual environment and install dependencies
+# Create a virtual environment
 RUN python -m venv /opt/venv
-RUN /opt/venv/bin/pip install --upgrade pip && \
-    /opt/venv/bin/pip install --no-cache-dir -r /app/requirements.txt && \
-    /opt/venv/bin/pip install -e /app/libs/portfolio-common
+ENV PATH="/opt/venv/bin:$PATH"
 
-# Copy the application source code and Alembic files
-COPY services/persistence-service/app /app/app
-COPY services/persistence-service/__init__.py /app/services/persistence-service/__init__.py
-COPY services/__init__.py /app/services/__init__.py
+# Install shared library first for better layer caching
+COPY libs/portfolio-common/ /app/libs/portfolio-common/
+RUN pip install -e /app/libs/portfolio-common
+
+# Copy the application and install its dependencies
+COPY services/persistence-service/pyproject.toml /app/services/persistence-service/pyproject.toml
+COPY services/persistence-service/app /app/services/persistence-service/app
+RUN pip install /app/services/persistence-service
+
+# Copy Alembic files (used by migration-runner)
 COPY alembic.ini /app/alembic.ini
 COPY alembic /app/alembic
 
@@ -43,9 +43,8 @@ RUN useradd --create-home appuser
 COPY --from=builder --chown=appuser:appuser /opt/venv /opt/venv
 
 # Copy the application code and necessary package/Alembic files
-COPY --from=builder --chown=appuser:appuser /app/app /app/app
+COPY --from=builder --chown=appuser:appuser /app/services/persistence-service/app /app/app
 COPY --from=builder --chown=appuser:appuser /app/libs /app/libs
-COPY --from=builder --chown=appuser:appuser /app/services /app/services
 COPY --from=builder --chown=appuser:appuser /app/alembic.ini /app/alembic.ini
 COPY --from=builder --chown=appuser:appuser /app/alembic /app/alembic
 
