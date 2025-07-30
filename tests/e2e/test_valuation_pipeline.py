@@ -3,7 +3,7 @@ import requests
 import time
 from decimal import Decimal
 
-def test_full_valuation_pipeline(docker_services, db_connection):
+def test_full_valuation_pipeline(docker_services, db_connection, clean_db):
     """
     Tests the full pipeline from ingestion to position valuation, and verifies
     the final API response from the query service.

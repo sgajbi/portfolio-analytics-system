@@ -3,7 +3,7 @@ import requests
 import time
 from decimal import Decimal
 
-def test_cashflow_pipeline(docker_services, db_connection):
+def test_cashflow_pipeline(docker_services, db_connection, clean_db):
     """
     Tests the full pipeline from ingestion to cashflow calculation.
     It ingests a BUY transaction and verifies that a corresponding

@@ -50,6 +50,7 @@ def clean_db(db_connection):
     A function-scoped fixture that cleans all relevant tables before each test.
     This ensures test idempotency.
     """
+    print("\n--- Cleaning database tables ---")
     with db_connection.cursor() as cursor:
         cursor.execute("""
             TRUNCATE TABLE daily_position_snapshots, position_history, 
@@ -58,4 +59,5 @@ def clean_db(db_connection):
             RESTART IDENTITY;
         """)
     db_connection.commit()
+    print("--- Database clean complete ---")
     yield

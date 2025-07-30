@@ -3,7 +3,7 @@ import requests
 import time
 from decimal import Decimal
 
-def test_portfolio_ingestion_pipeline(docker_services, db_connection):
+def test_portfolio_ingestion_pipeline(docker_services, db_connection, clean_db):
     """
     Tests the full pipeline for portfolio ingestion.
     It ingests a new portfolio and verifies that the record is created
