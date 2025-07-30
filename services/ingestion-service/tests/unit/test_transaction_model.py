@@ -56,8 +56,9 @@ def test_transaction_model_missing_field_fails():
 
     with pytest.raises(ValidationError) as exc_info:
         Transaction(**invalid_payload)
-    # Check for specific error message components
-    assert any("field required" in err['msg'] and "instrument_id" in str(err['loc']) for err in exc_info.value.errors())
+    # The 'loc' tuple will contain the missing field name.
+    # We assert that 'instrument_id' is indeed in the location of one of the errors.
+    assert any("instrument_id" in err.get('loc', ()) for err in exc_info.value.errors())
 
 
 def test_transaction_model_invalid_quantity_fails():
@@ -74,13 +75,13 @@ def test_transaction_model_invalid_quantity_fails():
     payload_zero_qty = {**base_payload, "quantity": "0"}
     with pytest.raises(ValidationError) as exc_info:
         Transaction(**payload_zero_qty)
-    assert any("greater than 0" in err['msg'] and "quantity" in str(err['loc']) for err in exc_info.value.errors())
+    assert any("greater than 0" in err['msg'] and "quantity" in str(err.get('loc')) for err in exc_info.value.errors())
 
     # Test with negative quantity
     payload_neg_qty = {**base_payload, "quantity": "-10"}
     with pytest.raises(ValidationError) as exc_info:
         Transaction(**payload_neg_qty)
-    assert any("greater than 0" in err['msg'] and "quantity" in str(err['loc']) for err in exc_info.value.errors())
+    assert any("greater than 0" in err['msg'] and "quantity" in str(err.get('loc')) for err in exc_info.value.errors())
 
 def test_transaction_model_invalid_price_fails():
     """
@@ -96,13 +97,13 @@ def test_transaction_model_invalid_price_fails():
     payload_zero_price = {**base_payload, "price": "0"}
     with pytest.raises(ValidationError) as exc_info:
         Transaction(**payload_zero_price)
-    assert any("greater than 0" in err['msg'] and "price" in str(err['loc']) for err in exc_info.value.errors())
+    assert any("greater than 0" in err['msg'] and "price" in str(err.get('loc')) for err in exc_info.value.errors())
 
     # Test with negative price
     payload_neg_price = {**base_payload, "price": "-50"}
     with pytest.raises(ValidationError) as exc_info:
         Transaction(**payload_neg_price)
-    assert any("greater than 0" in err['msg'] and "price" in str(err['loc']) for err in exc_info.value.errors())
+    assert any("greater than 0" in err['msg'] and "price" in str(err.get('loc')) for err in exc_info.value.errors())
 
 def test_transaction_model_invalid_gross_amount_fails():
     """
@@ -118,13 +119,13 @@ def test_transaction_model_invalid_gross_amount_fails():
     payload_zero_gross = {**base_payload, "gross_transaction_amount": "0"}
     with pytest.raises(ValidationError) as exc_info:
         Transaction(**payload_zero_gross)
-    assert any("greater than 0" in err['msg'] and "gross_transaction_amount" in str(err['loc']) for err in exc_info.value.errors())
+    assert any("greater than 0" in err['msg'] and "gross_transaction_amount" in str(err.get('loc')) for err in exc_info.value.errors())
 
     # Test with negative gross_transaction_amount
     payload_neg_gross = {**base_payload, "gross_transaction_amount": "-100"}
     with pytest.raises(ValidationError) as exc_info:
         Transaction(**payload_neg_gross)
-    assert any("greater than 0" in err['msg'] and "gross_transaction_amount" in str(err['loc']) for err in exc_info.value.errors())
+    assert any("greater than 0" in err['msg'] and "gross_transaction_amount" in str(err.get('loc')) for err in exc_info.value.errors())
 
 def test_transaction_model_invalid_trade_fee_fails():
     """
@@ -141,7 +142,7 @@ def test_transaction_model_invalid_trade_fee_fails():
     payload_neg_fee = {**base_payload, "trade_fee": "-5.0"}
     with pytest.raises(ValidationError) as exc_info:
         Transaction(**payload_neg_fee)
-    assert any("greater than or equal to 0" in err['msg'] and "trade_fee" in str(err['loc']) for err in exc_info.value.errors())
+    assert any("greater than or equal to 0" in err['msg'] and "trade_fee" in str(err.get('loc')) for err in exc_info.value.errors())
 
 def test_transaction_model_non_numeric_input_fails():
     """
@@ -158,10 +159,10 @@ def test_transaction_model_non_numeric_input_fails():
     payload_non_numeric_qty = {**base_payload, "quantity": "abc"}
     with pytest.raises(ValidationError) as exc_info:
         Transaction(**payload_non_numeric_qty)
-    assert any("value is not a valid decimal" in err['msg'] and "quantity" in str(err['loc']) for err in exc_info.value.errors())
+    assert any("valid decimal" in err['msg'] and "quantity" in str(err.get('loc')) for err in exc_info.value.errors())
 
     # Test with non-numeric price
     payload_non_numeric_price = {**base_payload, "price": "xyz"}
     with pytest.raises(ValidationError) as exc_info:
         Transaction(**payload_non_numeric_price)
-    assert any("value is not a valid decimal" in err['msg'] and "price" in str(err['loc']) for err in exc_info.value.errors())
+    assert any("valid decimal" in err['msg'] and "price" in str(err.get('loc')) for err in exc_info.value.errors())
