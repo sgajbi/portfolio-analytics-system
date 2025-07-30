@@ -41,6 +41,8 @@ def db_connection(docker_services: DockerCompose):
     port = docker_services.get_service_port("postgres", 5432)
     url = f"postgresql://user:password@{host}:{port}/portfolio_db"
     conn = psycopg2.connect(url)
+    # --- FIX: Enable autocommit mode for the test connection ---
+    conn.autocommit = True
     yield conn
     conn.close()
 
@@ -58,6 +60,6 @@ def clean_db(db_connection):
                          market_prices, fx_rates, portfolios, portfolio_timeseries, position_timeseries
             RESTART IDENTITY;
         """)
-    db_connection.commit()
+    # db_connection.commit() is no longer needed due to autocommit
     print("--- Database clean complete ---")
     yield
