@@ -8,19 +8,20 @@ ENV POETRY_VIRTUALENVS_CREATE=false \
 
 WORKDIR /app
 
-# Copy dependency files and shared library first for better layer caching
-COPY services/calculators/position-calculator/requirements.txt /app/requirements.txt
-COPY libs/portfolio-common/ /app/libs/portfolio-common/
-
-# Create a virtual environment and install dependencies
+# Create a virtual environment
 RUN python -m venv /opt/venv
-RUN /opt/venv/bin/pip install --upgrade pip && \
-    /opt/venv/bin/pip install --no-cache-dir -r /app/requirements.txt && \
-    /opt/venv/bin/pip install -e /app/libs/portfolio-common
+ENV PATH="/opt/venv/bin:$PATH"
 
-# Copy the application source code and necessary package __init__.py files
-COPY services/calculators/position-calculator/app /app/app
-COPY services/calculators/position-calculator/__init__.py /app/services/calculators/position-calculator/__init__.py
+# Copy and install shared library first for better layer caching
+COPY libs/portfolio-common/ /app/libs/portfolio-common/
+RUN pip install -e /app/libs/portfolio-common
+
+# Copy the application and install its dependencies
+COPY services/calculators/position-calculator/pyproject.toml /app/services/calculators/position-calculator/pyproject.toml
+COPY services/calculators/position-calculator/app /app/services/calculators/position-calculator/app
+RUN pip install /app/services/calculators/position-calculator
+
+# Copy necessary package __init__.py files and Alembic config
 COPY services/calculators/__init__.py /app/services/calculators/__init__.py
 COPY services/__init__.py /app/services/__init__.py
 COPY alembic.ini /app/alembic.ini
@@ -44,7 +45,7 @@ RUN useradd --create-home appuser
 COPY --from=builder --chown=appuser:appuser /opt/venv /opt/venv
 
 # Copy the application code and necessary package/Alembic files
-COPY --from=builder --chown=appuser:appuser /app/app /app/app
+COPY --from=builder --chown=appuser:appuser /app/services/calculators/position-calculator/app /app/app
 COPY --from=builder --chown=appuser:appuser /app/libs /app/libs
 COPY --from=builder --chown=appuser:appuser /app/services /app/services
 COPY --from=builder --chown=appuser:appuser /app/alembic.ini /app/alembic.ini
