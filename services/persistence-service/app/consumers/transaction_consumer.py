@@ -4,7 +4,7 @@ import json
 from pydantic import ValidationError
 from confluent_kafka import Message
 
-from portfolio_common.kafka_consumer import BaseConsumer
+from portfolio_common.kafka_consumer import BaseConsumer, correlation_id_cv # Import correlation_id_cv
 from portfolio_common.events import TransactionEvent
 from portfolio_common.db import get_db_session
 from portfolio_common.config import KAFKA_RAW_TRANSACTIONS_COMPLETED_TOPIC
@@ -40,13 +40,17 @@ class TransactionPersistenceConsumer(BaseConsumer):
 
             # 3. Publish completion event
             if self._producer:
-                # Use portfolio_id as the key to ensure all transactions for one portfolio
-                # go to the same partition and are processed in order by downstream consumers.
                 partition_key = event.portfolio_id
+                
+                # --- FIX: Get correlation ID from context and create headers ---
+                corr_id = correlation_id_cv.get()
+                headers = [('X-Correlation-ID', corr_id.encode('utf-8'))] if corr_id else None
+                
                 self._producer.publish_message(
                     topic=KAFKA_RAW_TRANSACTIONS_COMPLETED_TOPIC,
                     key=partition_key,
-                    value=event.model_dump(mode='json')
+                    value=event.model_dump(mode='json'),
+                    headers=headers # Pass headers to the producer
                 )
                 logger.info(
                     "Published completion event", 
@@ -57,5 +61,4 @@ class TransactionPersistenceConsumer(BaseConsumer):
 
         except (json.JSONDecodeError, ValidationError) as e:
             logger.error("Message validation failed. Sending to DLQ.", key=key, error=str(e))
-            # Send the poison pill message to the DLQ and commit offset
             await self._send_to_dlq(msg, e)
