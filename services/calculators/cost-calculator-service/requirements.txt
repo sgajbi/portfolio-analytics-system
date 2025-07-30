@@ -1,7 +1,0 @@
-sqlalchemy==2.0.30
-psycopg2-binary==2.9.9
-confluent-kafka==2.4.0
-pydantic==2.7.4
-
-# Path to the local library, relative to the WORKDIR in the Docker container
--e ./libs/financial-calculator-engine

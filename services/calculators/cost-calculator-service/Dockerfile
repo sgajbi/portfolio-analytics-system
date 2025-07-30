@@ -3,22 +3,20 @@ FROM python:3.11-slim-bookworm as builder
 
 WORKDIR /app
 
-# Copy requirements files first for caching
-COPY services/calculators/cost-calculator-service/requirements.txt /app/requirements.txt
+# Create and activate virtual environment
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
 
 # Copy shared libraries early to cache dependencies properly
 COPY libs/portfolio-common/ /app/libs/portfolio-common/
 COPY libs/financial-calculator-engine/ /app/libs/financial-calculator-engine/
+RUN pip install -e /app/libs/portfolio-common && \
+    pip install -e /app/libs/financial-calculator-engine
 
-# Create and activate virtual environment, then install dependencies including editable libs
-RUN python -m venv /opt/venv && \
-    /opt/venv/bin/pip install --upgrade pip setuptools wheel && \
-    /opt/venv/bin/pip install --no-cache-dir -r /app/requirements.txt && \
-    /opt/venv/bin/pip install -e /app/libs/portfolio-common && \
-    /opt/venv/bin/pip install -e /app/libs/financial-calculator-engine
-
-# Copy application source code last for better cache usage
-COPY services/calculators/cost-calculator-service/app /app/app
+# Copy application and install it (which pulls in its dependencies)
+COPY services/calculators/cost-calculator-service/pyproject.toml /app/services/calculators/cost-calculator-service/pyproject.toml
+COPY services/calculators/cost-calculator-service/app /app/services/calculators/cost-calculator-service/app
+RUN pip install /app/services/calculators/cost-calculator-service
 
 # Set environment variables for shared libs
 ENV PYTHONPATH="/app:/app/libs/portfolio-common:/app/libs/financial-calculator-engine"
@@ -32,7 +30,7 @@ WORKDIR /app
 COPY --from=builder /opt/venv /opt/venv
 
 # Copy app and shared libs
-COPY --from=builder /app/app /app/app
+COPY --from=builder /app/services/calculators/cost-calculator-service/app /app/app
 COPY --from=builder /app/libs/portfolio-common /app/libs/portfolio-common
 COPY --from=builder /app/libs/financial-calculator-engine /app/libs/financial-calculator-engine
 

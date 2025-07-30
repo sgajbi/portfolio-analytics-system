@@ -7,6 +7,12 @@ name = "cost-calculator-service"
 version = "0.1.0"
 description = "Portfolio Analytics - Cost Calculator Service"
 requires-python = ">=3.11"
+dependencies = [
+    "sqlalchemy==2.0.30",
+    "psycopg2-binary==2.9.9",
+    "confluent-kafka==2.4.0",
+    "pydantic==2.7.4"
+]
 
 [tool.setuptools.packages.find]
 where = ["app"]
