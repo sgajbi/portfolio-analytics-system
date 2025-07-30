@@ -61,11 +61,9 @@ class TransactionEventConsumer(BaseConsumer):
                     a_date=transaction_date_only
                 )
 
-                txns_to_replay_map = {t.transaction_id: t for t in db_txns}
-                incoming_txn_obj = Transaction(**incoming_event.model_dump())
-                txns_to_replay_map[incoming_event.transaction_id] = incoming_txn_obj
-                
-                txns_to_replay = sorted(txns_to_replay_map.values(), key=lambda t: t.transaction_date)
+                # The transaction from the event is already in the list from the DB.
+                # We just need to sort them to ensure correct processing order.
+                txns_to_replay = sorted(db_txns, key=lambda t: t.transaction_date)
 
                 if not txns_to_replay:
                     return
