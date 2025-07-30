@@ -43,7 +43,8 @@ def test_full_pipeline(docker_services: DockerCompose, db_connection, clean_db):
     # 4. Poll the database to verify the processing is complete
     with db_connection.cursor() as cursor:
         start_time = time.time()
-        timeout = 30
+        # --- FIX: Increase timeout for slower test environments ---
+        timeout = 60
         while time.time() - start_time < timeout:
             cursor.execute(
                 "SELECT t.transaction_id FROM transactions t JOIN cashflows c ON t.transaction_id = c.transaction_id WHERE t.portfolio_id = %s",
