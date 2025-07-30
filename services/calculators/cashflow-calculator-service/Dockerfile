@@ -9,7 +9,7 @@ ENV POETRY_VIRTUALENVS_CREATE=false \
 WORKDIR /app
 
 # Copy dependency files and shared library first for better layer caching
-COPY services/cashflow-calculator-service/requirements.txt /app/requirements.txt
+COPY services/calculators/cashflow-calculator-service/requirements.txt /app/requirements.txt
 COPY libs/portfolio-common/ /app/libs/portfolio-common/
 
 # Create a virtual environment and install dependencies
@@ -19,8 +19,9 @@ RUN /opt/venv/bin/pip install --upgrade pip && \
     /opt/venv/bin/pip install -e /app/libs/portfolio-common
 
 # Copy the application source code and necessary package __init__.py files
-COPY services/cashflow-calculator-service/app /app/app
-COPY services/cashflow-calculator-service/__init__.py /app/services/cashflow-calculator-service/__init__.py
+COPY services/calculators/cashflow-calculator-service/app /app/app
+COPY services/calculators/cashflow-calculator-service/__init__.py /app/services/calculators/cashflow-calculator-service/__init__.py
+COPY services/calculators/__init__.py /app/services/calculators/__init__.py
 COPY services/__init__.py /app/services/__init__.py
 
 

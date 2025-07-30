@@ -4,7 +4,7 @@ FROM python:3.11-slim-bookworm as builder
 WORKDIR /app
 
 # Copy requirements files first for caching
-COPY services/cost-calculator-service/requirements.txt /app/requirements.txt
+COPY services/calculators/cost-calculator-service/requirements.txt /app/requirements.txt
 
 # Copy shared libraries early to cache dependencies properly
 COPY libs/portfolio-common/ /app/libs/portfolio-common/
@@ -18,7 +18,7 @@ RUN python -m venv /opt/venv && \
     /opt/venv/bin/pip install -e /app/libs/financial-calculator-engine
 
 # Copy application source code last for better cache usage
-COPY services/cost-calculator-service/app /app/app
+COPY services/calculators/cost-calculator-service/app /app/app
 
 # Set environment variables for shared libs
 ENV PYTHONPATH="/app:/app/libs/portfolio-common:/app/libs/financial-calculator-engine"
