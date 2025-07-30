@@ -98,6 +98,7 @@ class PortfolioTimeseriesConsumer(BaseConsumer):
 
             new_portfolio_record = PortfolioTimeseriesLogic.calculate_daily_record(
                 portfolio=portfolio,
+                a_date=a_date,
                 position_timeseries_list=position_timeseries_list,
                 portfolio_cashflows=portfolio_cashflows,
                 instruments=instruments,
