@@ -1,11 +1,11 @@
 # services/ingestion-service/app/routers/instruments.py
-import logging
+import structlog
 from fastapi import APIRouter, Depends, status, HTTPException
 
 from app.DTOs.instrument_dto import InstrumentIngestionRequest
 from app.services.ingestion_service import IngestionService, get_ingestion_service
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 router = APIRouter()
 
 @router.post("/ingest/instruments", status_code=status.HTTP_202_ACCEPTED, tags=["Instruments"])
@@ -17,15 +17,15 @@ async def ingest_instruments(
     Ingests a list of financial instruments and publishes each to a Kafka topic.
     """
     num_instruments = len(request.instruments)
-    logger.info(f"Received request to ingest {num_instruments} instruments.")
+    logger.info(f"Received request to ingest instruments.", num_instruments=num_instruments)
     try:
         await ingestion_service.publish_instruments(request.instruments)
-        logger.info(f"{num_instruments} instruments successfully queued.")
+        logger.info(f"Instruments successfully queued.", num_instruments=num_instruments)
         return {
             "message": f"Successfully queued {num_instruments} instruments for processing."
         }
     except Exception as e:
-        logger.error(f"Failed to publish bulk instruments: {e}", exc_info=True)
+        logger.error("Failed to publish bulk instruments", error=str(e), exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to publish bulk instruments: {str(e)}"

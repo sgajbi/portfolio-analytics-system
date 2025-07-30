@@ -1,12 +1,12 @@
 # services/ingestion-service/app/routers/transactions.py
-import logging
+import structlog
 from fastapi import APIRouter, Depends, status, HTTPException
 from typing import List
 
 from app.DTOs.transaction_dto import Transaction, TransactionIngestionRequest
 from app.services.ingestion_service import IngestionService, get_ingestion_service
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 router = APIRouter()
 
 @router.post("/ingest/transaction", status_code=status.HTTP_202_ACCEPTED, tags=["Transactions"])
@@ -17,16 +17,25 @@ async def ingest_transaction(
     """
     Ingests a single financial transaction and publishes it to a Kafka topic.
     """
-    logger.info(f"Received transaction: {transaction.transaction_id} for portfolio {transaction.portfolio_id}")
+    logger.info(
+        "Received single transaction.", 
+        transaction_id=transaction.transaction_id, 
+        portfolio_id=transaction.portfolio_id
+    )
     try:
         await ingestion_service.publish_transaction(transaction)
-        logger.info(f"Transaction {transaction.transaction_id} successfully queued.")
+        logger.info("Transaction successfully queued.", transaction_id=transaction.transaction_id)
         return {
             "message": "Transaction received and queued for processing",
             "transaction_id": transaction.transaction_id
         }
     except Exception as e:
-        logger.error(f"Failed to publish transaction {transaction.transaction_id}: {e}", exc_info=True)
+        logger.error(
+            "Failed to publish transaction", 
+            transaction_id=transaction.transaction_id, 
+            error=str(e), 
+            exc_info=True
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to publish transaction: {str(e)}"
@@ -42,15 +51,15 @@ async def ingest_transactions(
     Ingests a list of financial transactions and publishes each to a Kafka topic.
     """
     num_transactions = len(request.transactions)
-    logger.info(f"Received request to ingest {num_transactions} transactions.")
+    logger.info(f"Received request to ingest transactions.", num_transactions=num_transactions)
     try:
         await ingestion_service.publish_transactions(request.transactions)
-        logger.info(f"{num_transactions} transactions successfully queued.")
+        logger.info(f"Transactions successfully queued.", num_transactions=num_transactions)
         return {
             "message": f"Successfully queued {num_transactions} transactions for processing."
         }
     except Exception as e:
-        logger.error(f"Failed to publish bulk transactions: {e}", exc_info=True)
+        logger.error("Failed to publish bulk transactions", error=str(e), exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to publish bulk transactions: {str(e)}"
