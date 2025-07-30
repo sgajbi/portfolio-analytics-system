@@ -29,8 +29,9 @@ FROM portfolio-analytics/python-base:latest
 # Copy the virtual environment from the builder stage
 COPY --from=builder --chown=appuser:appuser /opt/venv /opt/venv
 
-# Copy only the necessary application code from the builder stage
+# Copy only the necessary application code and shared libs from the builder stage
 COPY --from=builder --chown=appuser:appuser /app/services/ingestion-service/app /app/app
+COPY --from=builder --chown=appuser:appuser /app/libs /app/libs
 
 USER appuser
 
