@@ -1,6 +1,7 @@
 # libs/portfolio-common/portfolio_common/database_models.py
 from sqlalchemy import (
-    Column, Integer, String, Numeric, DateTime, Date, func, ForeignKey, UniqueConstraint, Boolean, PrimaryKeyConstraint
+    Column, Integer, String, Numeric, DateTime, Date, func, 
+    ForeignKey, UniqueConstraint, Boolean, PrimaryKeyConstraint
 )
 from sqlalchemy.orm import declarative_base, relationship
 
@@ -33,7 +34,7 @@ class PositionHistory(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     portfolio_id = Column(String, ForeignKey('portfolios.portfolio_id'), index=True, nullable=False)
     security_id = Column(String, index=True, nullable=False)
-    transaction_id = Column(String, ForeignKey('transactions.transaction_id'), unique=True, nullable=False) # Reverted to unique
+    transaction_id = Column(String, ForeignKey('transactions.transaction_id'), nullable=False) # REMOVED unique=True
     position_date = Column(Date, index=True, nullable=False)
     quantity = Column(Numeric(18, 10), nullable=False)
     cost_basis = Column(Numeric(18, 10), nullable=False)
