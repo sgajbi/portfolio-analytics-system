@@ -114,7 +114,7 @@ class CostCalculatorConsumer:
                     completion_event = TransactionEvent.model_validate(db_txn_to_update)
                     self._producer.publish_message(
                         topic=KAFKA_PROCESSED_TRANSACTIONS_COMPLETED_TOPIC,
-                        key=completion_event.transaction_id,
+                        key=completion_event.portfolio_id, # <-- THE FINAL FIX
                         value=completion_event.model_dump(mode='json')
                     )
                     self._producer.flush(timeout=5)

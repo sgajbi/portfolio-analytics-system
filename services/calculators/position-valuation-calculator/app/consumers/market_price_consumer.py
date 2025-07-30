@@ -81,7 +81,6 @@ class MarketPriceConsumer(BaseConsumer):
         
         repo.upsert_daily_snapshot(snapshot)
 
-        # Fetch the ID of the upserted record to publish the event
         persisted_snapshot = repo.db.query(DailyPositionSnapshot).filter_by(
             portfolio_id=snapshot.portfolio_id,
             security_id=snapshot.security_id,

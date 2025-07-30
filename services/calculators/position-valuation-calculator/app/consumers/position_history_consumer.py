@@ -56,15 +56,18 @@ class PositionHistoryConsumer(BaseConsumer):
                     position_date=position.position_date
                 )
                 
-                market_price = price.price if price else None
+                market_price = None
                 market_value, unrealized_gain_loss = None, None
 
-                if market_price is not None:
+                if price:
+                    market_price = price.price
                     market_value, unrealized_gain_loss = ValuationLogic.calculate(
                         quantity=position.quantity,
                         cost_basis=position.cost_basis,
                         market_price=market_price
                     )
+                else:
+                    logger.warning(f"No market price found for {position.security_id} on or before {position.position_date}. Creating un-valued snapshot.")
                 
                 snapshot = DailyPositionSnapshot(
                     portfolio_id=position.portfolio_id,
@@ -79,7 +82,6 @@ class PositionHistoryConsumer(BaseConsumer):
                 
                 repo.upsert_daily_snapshot(snapshot)
 
-                # Fetch the ID of the upserted record to publish the event
                 persisted_snapshot = db.query(DailyPositionSnapshot).filter_by(
                     portfolio_id=snapshot.portfolio_id,
                     security_id=snapshot.security_id,
