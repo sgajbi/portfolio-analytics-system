@@ -9,24 +9,24 @@ WORKDIR /app
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Install test dependencies first
+# Install shared library first
+COPY ./libs/portfolio-common /app/libs/portfolio-common
+RUN pip install -e /app/libs/portfolio-common
+
+# Copy the application and install its dependencies
+COPY ./services/ingestion-service/pyproject.toml /app/services/ingestion-service/pyproject.toml
+COPY ./services/ingestion-service/app /app/services/ingestion-service/app
+RUN pip install /app/services/ingestion-service
+
+# Copy and install test dependencies
 COPY ./services/ingestion-service/tests/requirements.txt /app/tests/requirements.txt
 RUN pip install --no-cache-dir -r /app/tests/requirements.txt
 
-# Install application dependencies, including the shared library
-COPY ./services/ingestion-service/requirements.txt /app/requirements.txt
-COPY ./libs/portfolio-common /app/libs/portfolio-common
-RUN pip install --no-cache-dir -r /app/requirements.txt && \
-    pip install -e /app/libs/portfolio-common
-
-# Copy the rest of the application and test code
-COPY ./services/ingestion-service/app /app/app
+# Copy the rest of the test code
 COPY ./services/ingestion-service/tests /app/tests
 
-# REMOVED TEMPORARY DIAGNOSTIC STEP
-
 # Set the Python path so imports from 'app' work correctly
-ENV PYTHONPATH="/app"
+ENV PYTHONPATH="/app/services/ingestion-service"
 
 # Run tests to validate the build
 RUN pytest /app/tests
@@ -44,7 +44,7 @@ USER appuser
 COPY --from=builder --chown=appuser:appuser /opt/venv /opt/venv
 
 # Copy the application code from the builder stage
-COPY --from=builder --chown=appuser:appuser /app/app /app/app
+COPY --from=builder --chown=appuser:appuser /app/services/ingestion-service/app /app/app
 
 # Set the PATH to include the venv
 ENV PATH="/opt/venv/bin:$PATH"
@@ -53,4 +53,4 @@ ENV PATH="/opt/venv/bin:$PATH"
 EXPOSE 8000
 
 # Command to run the application using Uvicorn
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]  
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

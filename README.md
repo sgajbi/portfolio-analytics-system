@@ -1,10 +1,8 @@
-
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/sgajbi/portfolio-analytics-system)
 
 # Portfolio Analytics System
 
 This system is a modular, event-driven platform designed to ingest financial data, perform complex calculations like cost basis, historical positions, and market valuation, and expose the results via a clean API. It uses a microservices architecture built with Python, FastAPI, Kafka, and PostgreSQL, all orchestrated with Docker Compose.
-
 ---
 ## Table of Contents
 
@@ -22,7 +20,6 @@ This system is a modular, event-driven platform designed to ingest financial dat
 ## 1. System Architecture
 
 The system is designed around a central Kafka message bus to ensure services are decoupled and can be scaled independently. Data flows through a pipeline of services, where it is persisted, enriched, and calculated. A dedicated query service provides read access to the processed data.
-
 ```mermaid
 graph TD
     subgraph "API Layer"
@@ -41,7 +38,6 @@ graph TD
 
     subgraph "Data Processing Pipeline"
         IngestionService -- Publishes --> RawData;
-
         RawData --> PersistenceService[persistence-service];
         PersistenceService -- Writes --> DB[(PostgreSQL)];
         PersistenceService -- Publishes --> PersistenceCompleted;
@@ -57,7 +53,6 @@ graph TD
         CostCalculated --> PositionCalculator[position-calculator-service];
         PositionCalculator -- Writes --> DB;
         PositionCalculator -- Publishes --> PositionCalculated;
-
         PositionCalculated --> ValuationCalculator[position-valuation-calculator];
         PersistenceCompleted -- market_price_persisted --> ValuationCalculator;
         ValuationCalculator -- Updates --> DB;
@@ -66,7 +61,6 @@ graph TD
     subgraph "Data Query Path"
         QueryService -- Reads --> DB;
     end
-````
 
 -----
 
@@ -141,12 +135,12 @@ sgajbi-portfolio-analytics-system/
 │   ├── portfolio-common/     # Common DB models, events, and utilities
 │   └── financial-calculator-engine/ # Core financial calculation logic
 ├── services/                 # Individual microservices
-│   ├── ingestion-service/      # The Write API
+│   ├── ingestion-service/    # The Write API
 │   ├── query-service/          # The Read API
 │   ├── persistence-service/    # Generic data persistence consumer
-│   ├── cost-calculator-service/ # Business logic for cost basis
-│   ├── cashflow-calculator-service/ # Business logic for cashflows
 │   └── calculators/
+│       ├── cost-calculator-service/ # Business logic for cost basis
+│       ├── cashflow-calculator-service/ # Business logic for cashflows
 │       ├── position-calculator-service/ # Business logic for positions
 │       └── position-valuation-calculator/ # Business logic for valuation
 ├── tests/
@@ -175,14 +169,15 @@ sgajbi-portfolio-analytics-system/
     ```
 4.  **Install All Dependencies**:
     ```bash
-    pip install -e libs/financial-calculator-engine -e libs/portfolio-common
-    pip install -r services/ingestion-service/requirements.txt \
-                -r services/persistence-service/requirements.txt \
-                -r services/cost-calculator-service/requirements.txt \
-                -r services/cashflow-calculator-service/requirements.txt \
-                -r services/calculators/position-calculator/requirements.txt \
-                -r services/calculators/position-valuation-calculator/requirements.txt \
-                -r services/query-service/requirements.txt
+    pip install -e libs/financial-calculator-engine \
+            -e libs/portfolio-common \
+            -e services/ingestion-service \
+            -e services/persistence-service \
+            -e services/calculators/cost-calculator-service \
+            -e services/calculators/cashflow-calculator-service \
+            -e services/calculators/position-calculator \
+            -e services/calculators/position-valuation-calculator \
+            -e services/query-service
     ```
 
 ### Running the System
