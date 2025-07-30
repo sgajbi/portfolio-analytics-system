@@ -52,7 +52,7 @@ def clean_db(db_connection):
     """
     with db_connection.cursor() as cursor:
         cursor.execute("""
-            TRUNCATE TABLE corporate_actions, daily_position_snapshots, position_history, 
+            TRUNCATE TABLE daily_position_snapshots, position_history, 
                          cashflows, transaction_costs, transactions, instruments, 
                          market_prices, fx_rates, portfolios, portfolio_timeseries, position_timeseries
             RESTART IDENTITY;
