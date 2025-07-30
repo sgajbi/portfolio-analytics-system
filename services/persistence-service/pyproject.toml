@@ -14,8 +14,10 @@ dependencies = [
     "pydantic==2.7.4",
     "tenacity==8.2.3",
     "alembic==1.13.1",
-    "python-dotenv==1.0.1"
+    "python-dotenv==1.0.1",
+    "structlog==24.1.0",
+    "python-json-logger==2.0.7"
 ]
 
 [tool.setuptools.packages.find]
-where = ["."]
+where = ["app"]
