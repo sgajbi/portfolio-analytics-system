@@ -3,17 +3,15 @@ from fastapi import FastAPI, status, HTTPException, Request
 from contextlib import asynccontextmanager
 import logging
 import uuid
-import contextvars
 import sys
 
 import structlog
 from pythonjsonlogger import jsonlogger
 
+# --- Updated: Import from the new context file ---
+from .context import correlation_id_cv
 from portfolio_common.kafka_utils import get_kafka_producer, KafkaProducer
 from app.routers import transactions, instruments, market_prices, fx_rates, portfolios
-
-# ContextVar for Correlation ID
-correlation_id_cv = contextvars.ContextVar('correlation_id', default=None)
 
 # --- New: Structured Logging Configuration ---
 def configure_logging():

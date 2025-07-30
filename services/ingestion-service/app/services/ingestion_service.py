@@ -6,7 +6,7 @@ from app.DTOs.transaction_dto import Transaction
 from app.DTOs.instrument_dto import Instrument
 from app.DTOs.market_price_dto import MarketPrice
 from app.DTOs.fx_rate_dto import FxRate
-from app.DTOs.portfolio_dto import Portfolio # NEW IMPORT
+from app.DTOs.portfolio_dto import Portfolio
 from portfolio_common.kafka_utils import KafkaProducer, get_kafka_producer
 from portfolio_common.config import (
     KAFKA_RAW_TRANSACTIONS_TOPIC, 
@@ -15,7 +15,7 @@ from portfolio_common.config import (
     KAFKA_FX_RATES_TOPIC,
     KAFKA_RAW_PORTFOLIOS_TOPIC
 )
-from ..main import correlation_id_cv # --- New Import ---
+from ..context import correlation_id_cv # --- Updated Import ---
 
 class IngestionService:
     def __init__(self, kafka_producer: KafkaProducer):
