@@ -1,58 +1,29 @@
-# Stage 1: Builder stage to install dependencies
-FROM python:3.11-slim-bookworm as builder
+# Stage 1: Builder stage, using our new base image
+FROM portfolio-analytics/python-base:latest as builder
 
-ENV POETRY_VIRTUALENVS_CREATE=false \
-    PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    PYTHONPATH="/app:/app/libs/portfolio-common"
+# Set the Python path for the build context
+ENV PYTHONPATH="/app/libs/portfolio-common:/app/services/calculators/position-calculator"
 
-WORKDIR /app
-
-# Create a virtual environment
-RUN python -m venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
-
-# Copy and install shared library first for better layer caching
+# Copy and install shared library
 COPY libs/portfolio-common/ /app/libs/portfolio-common/
 RUN pip install -e /app/libs/portfolio-common
 
-# Copy the application and install its dependencies
+# Copy the application and install it
 COPY services/calculators/position-calculator/pyproject.toml /app/services/calculators/position-calculator/pyproject.toml
 COPY services/calculators/position-calculator/app /app/services/calculators/position-calculator/app
 RUN pip install /app/services/calculators/position-calculator
 
-# Copy necessary package __init__.py files and Alembic config
-COPY services/calculators/__init__.py /app/services/calculators/__init__.py
-COPY services/__init__.py /app/services/__init__.py
-COPY alembic.ini /app/alembic.ini
-COPY alembic /app/alembic
-
-
-# Stage 2: Final production stage
-FROM python:3.11-slim-bookworm
-
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    PYTHONPATH="/app" \
-    PATH="/opt/venv/bin:$PATH"
-
-WORKDIR /app
-
-# Create a non-root user for security
-RUN useradd --create-home appuser
+# Stage 2: Final production stage, also using our base image
+FROM portfolio-analytics/python-base:latest
 
 # Copy the virtual environment from the builder stage
 COPY --from=builder --chown=appuser:appuser /opt/venv /opt/venv
 
-# Copy the application code and necessary package/Alembic files
+# Copy the application code and shared libs from the builder stage
 COPY --from=builder --chown=appuser:appuser /app/services/calculators/position-calculator/app /app/app
 COPY --from=builder --chown=appuser:appuser /app/libs /app/libs
-COPY --from=builder --chown=appuser:appuser /app/services /app/services
-COPY --from=builder --chown=appuser:appuser /app/alembic.ini /app/alembic.ini
-COPY --from=builder --chown=appuser:appuser /app/alembic /app/alembic
-
 
 USER appuser
 
-# Command to run the application using module-based execution
+# Command to run the application
 CMD ["python", "-m", "app.main"]
