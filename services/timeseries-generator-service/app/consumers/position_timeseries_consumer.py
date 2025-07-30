@@ -6,9 +6,9 @@ from datetime import date, timedelta
 
 from confluent_kafka import Message
 from portfolio_common.kafka_consumer import BaseConsumer
-from portfolio_common.events import PositionHistoryPersistedEvent, PositionTimeseriesGeneratedEvent
+from portfolio_common.events import DailyPositionSnapshotPersistedEvent, PositionTimeseriesGeneratedEvent
 from portfolio_common.db import get_db_session
-from portfolio_common.database_models import PositionHistory, Cashflow
+from portfolio_common.database_models import DailyPositionSnapshot, Cashflow
 from portfolio_common.config import KAFKA_POSITION_TIMESERIES_GENERATED_TOPIC
 
 from ..core.position_timeseries_logic import PositionTimeseriesLogic
@@ -18,38 +18,37 @@ logger = logging.getLogger(__name__)
 
 class PositionTimeseriesConsumer(BaseConsumer):
     """
-    Consumes position history events and generates the corresponding daily
+    Consumes daily position snapshot events and generates the corresponding daily
     position time series record.
     """
 
     async def process_message(self, msg: Message):
         try:
             event_data = json.loads(msg.value().decode('utf-8'))
-            event = PositionHistoryPersistedEvent.model_validate(event_data)
+            event = DailyPositionSnapshotPersistedEvent.model_validate(event_data)
 
-            logger.info(f"Processing position history for {event.security_id} on {event.position_date}")
+            logger.info(f"Processing position snapshot for {event.security_id} on {event.date}")
 
             with next(get_db_session()) as db:
                 # 1. Fetch all required data for the calculation
                 repo = TimeseriesRepository(db)
 
-                current_position = db.query(PositionHistory).get(event.position_history_id)
-                if not current_position:
-                    logger.warning(f"PositionHistory record with id {event.position_history_id} not found. Skipping.")
+                current_snapshot = db.query(DailyPositionSnapshot).get(event.id)
+                if not current_snapshot:
+                    logger.warning(f"DailyPositionSnapshot record with id {event.id} not found. Skipping.")
                     return
 
-                previous_day = event.position_date - timedelta(days=1)
                 previous_timeseries = repo.get_last_position_timeseries_before(
                     portfolio_id=event.portfolio_id,
                     security_id=event.security_id,
-                    a_date=event.position_date
+                    a_date=event.date
                 )
 
-                # Fetch cashflows for the specific day
+                # Fetch position-level cashflows for the specific day
                 cashflows = db.query(Cashflow).filter(
                     Cashflow.portfolio_id == event.portfolio_id,
                     Cashflow.security_id == event.security_id,
-                    Cashflow.cashflow_date == event.position_date
+                    Cashflow.cashflow_date == event.date
                 ).all()
 
                 bod_cashflow = sum(cf.amount for cf in cashflows if cf.timing == 'BOD')
@@ -57,7 +56,7 @@ class PositionTimeseriesConsumer(BaseConsumer):
 
                 # 2. Call the stateless logic to calculate the new record
                 new_timeseries_record = PositionTimeseriesLogic.calculate_daily_record(
-                    current_position=current_position,
+                    current_snapshot=current_snapshot,
                     previous_timeseries=previous_timeseries,
                     bod_cashflow=bod_cashflow,
                     eod_cashflow=eod_cashflow
