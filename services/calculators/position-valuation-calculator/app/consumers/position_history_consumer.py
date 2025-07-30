@@ -27,7 +27,7 @@ class PositionHistoryConsumer(BaseConsumer):
             event_data = json.loads(value)
             position_event = PositionHistoryPersistedEvent.model_validate(event_data)
             
-            logger.info(f"Valuing transaction-based position for id {position_event.position_history_id}")
+            logger.info(f"Valuing transaction-based position for id {position_event.id}")
             self._value_position(position_event)
 
         except (json.JSONDecodeError, ValidationError) as e:

@@ -89,14 +89,13 @@ class TransactionEventConsumer(BaseConsumer):
                             security_id=txn.security_id,
                             transaction_id=txn.transaction_id,
                             position_date=txn.transaction_date.date(),
-                            snapshot_type='TRANSACTION',
                             quantity=current_state.quantity,
                             cost_basis=current_state.cost_basis
                         )
                         db.add(new_record)
                         db.flush() # Assigns the ID to new_record
                         db.commit() # Commits the record
-                        
+                  
                         # Now that the record is committed and has an ID, publish the event
                         self._publish_persisted_event(new_record)
 
