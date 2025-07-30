@@ -1,5 +1,5 @@
 # services/persistence-service/app/consumer_manager.py
-import logging
+import structlog
 import signal
 import asyncio
 from portfolio_common.config import (
@@ -17,7 +17,7 @@ from .consumers.market_price_consumer import MarketPriceConsumer
 from .consumers.fx_rate_consumer import FxRateConsumer
 from .consumers.portfolio_consumer import PortfolioConsumer # NEW IMPORT
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 class ConsumerManager:
     """
@@ -72,16 +72,17 @@ class ConsumerManager:
             )
         )
 
-        logger.info(f"ConsumerManager initialized with {len(self.consumers)} consumer(s).")
+        logger.info("ConsumerManager initialized", num_consumers=len(self.consumers))
 
     def _signal_handler(self, signum, frame):
         """Sets the shutdown event when a signal is received."""
-        logger.info(f"Received shutdown signal: {signal.Signals(signum).name}. Initiating graceful shutdown...")
+        logger.info("Shutdown signal received", signal=signal.Signals(signum).name)
         self._shutdown_event.set()
 
     async def run(self):
         """
-        The main execution function. Sets up signal handling and runs consumer tasks.
+        The main execution function.
+        Sets up signal handling and runs consumer tasks.
         """
         signal.signal(signal.SIGINT, self._signal_handler)
         signal.signal(signal.SIGTERM, self._signal_handler)
