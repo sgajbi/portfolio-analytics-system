@@ -12,3 +12,13 @@ requires-python = ">=3.11"
 [tool.setuptools.packages.find]
 where = ["."]
 exclude = ["tests*", "deployment*"]
+
+# --- NEW: Pytest Configuration for PYTHONPATH ---
+[tool.pytest.ini_options]
+pythonpath = [
+    ".",
+    "services",
+    "libs"
+]
+addopts = "--strict-markers --strict-paths"
+minversion = "6.0"
