@@ -4,6 +4,7 @@ from pydantic import ValidationError
 from decimal import Decimal
 
 from confluent_kafka import Message
+from sqlalchemy.exc import InvalidRequestError # Import the specific exception
 from portfolio_common.kafka_consumer import BaseConsumer
 from portfolio_common.events import TransactionEvent, PositionHistoryPersistedEvent
 from portfolio_common.db import get_db_session
@@ -24,23 +25,27 @@ class TransactionEventConsumer(BaseConsumer):
     async def process_message(self, msg: Message):
         key = msg.key().decode('utf-8') if msg.key() else "NoKey"
         value = msg.value().decode('utf-8')
+        event_id = "UNKNOWN_TXN"
 
         try:
             event_data = json.loads(value)
             incoming_event = TransactionEvent.model_validate(event_data)
+            event_id = incoming_event.transaction_id
             
-            logger.info(f"Processing transaction {incoming_event.transaction_id} dated {incoming_event.transaction_date}")
+            logger.info(f"[{event_id}] Processing transaction dated {incoming_event.transaction_date}")
             self._recalculate_position_history(incoming_event)
 
         except (json.JSONDecodeError, ValidationError) as e:
             logger.error(f"Message validation failed for key '{key}': {e}. Value: '{value}'")
             await self._send_to_dlq(msg, e)
         except Exception as e:
-            logger.error(f"Unexpected error processing message with key '{key}': {e}", exc_info=True)
+            logger.error(f"[{event_id}] Unexpected error processing message: {e}", exc_info=True)
             await self._send_to_dlq(msg, e)
 
     def _recalculate_position_history(self, incoming_event: TransactionEvent):
+        event_id = incoming_event.transaction_id
         with next(get_db_session()) as db:
+            logger.info(f"[{event_id}] DB session obtained. Session active: {db.is_active}, in transaction: {db.in_transaction()}")
             try:
                 repo = PositionRepository(db)
                 transaction_date_only = incoming_event.transaction_date.date()
@@ -64,10 +69,16 @@ class TransactionEventConsumer(BaseConsumer):
                 txns_to_replay = sorted(db_txns, key=lambda t: t.transaction_date)
 
                 if not txns_to_replay:
+                    logger.warning(f"[{event_id}] No transactions found to replay, which is unexpected.")
                     return
 
                 newly_created_records = []
-                with db.begin():  # Start a single transaction for the whole operation
+                # --- EXPLICIT TRANSACTION HANDLING FOR DIAGNOSIS ---
+                if db.in_transaction():
+                     logger.warning(f"[{event_id}] Session was already in a transaction before operations began. Proceeding within it.")
+                
+                try:
+                    logger.info(f"[{event_id}] Deleting positions from {transaction_date_only} onwards for {len(txns_to_replay)} transactions.")
                     repo.delete_positions_from(
                         portfolio_id=incoming_event.portfolio_id,
                         security_id=incoming_event.security_id,
@@ -89,6 +100,15 @@ class TransactionEventConsumer(BaseConsumer):
                         db.add(new_record)
                         newly_created_records.append(new_record)
 
+                    logger.info(f"[{event_id}] Staged {len(newly_created_records)} records. Committing.")
+                    db.commit()
+                    logger.info(f"[{event_id}] Commit successful.")
+
+                except Exception as e:
+                    logger.error(f"[{event_id}] EXCEPTION during DB operations. Rolling back. Error: {e}", exc_info=True)
+                    db.rollback()
+                    raise
+
                 # After the transaction is successfully committed, publish events
                 for record in newly_created_records:
                     self._publish_persisted_event(record)
@@ -97,20 +117,25 @@ class TransactionEventConsumer(BaseConsumer):
                     self._producer.flush(timeout=5)
 
             except Exception as e:
-                logger.error(f"Recalculation failed for transaction {incoming_event.transaction_id}: {e}", exc_info=True)
+                logger.error(f"[{event_id}] Recalculation failed: {e}", exc_info=True)
     
     def _publish_persisted_event(self, record: PositionHistory):
         """Publishes a single, guaranteed-to-be-committed event."""
         if not record or not record.id:
-            logger.error("Attempted to publish an invalid or uncommitted record.")
+            logger.error(f"[{record.transaction_id}] Attempted to publish an invalid or uncommitted record.")
             return
         try:
+            # Manually refresh the object to ensure it's loaded before access, as the session is committed.
+            db = Session.object_session(record)
+            if db:
+                db.refresh(record)
+
             event = PositionHistoryPersistedEvent.model_validate(record)
             self._producer.publish_message(
                 topic=KAFKA_POSITION_HISTORY_PERSISTED_TOPIC,
                 key=event.security_id,
                 value=event.model_dump(mode='json', by_alias=True)
             )
-            logger.info(f"Successfully published PositionHistoryPersistedEvent for id {record.id}")
+            logger.info(f"[{record.transaction_id}] Published PositionHistoryPersistedEvent for id {record.id}")
         except Exception as e:
-            logger.error(f"Failed to publish event for position_history_id {record.id}: {e}", exc_info=True)
+            logger.error(f"[{record.transaction_id}] Failed to publish event for position_history_id {record.id}: {e}", exc_info=True)
