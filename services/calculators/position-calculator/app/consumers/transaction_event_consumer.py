@@ -61,24 +61,20 @@ class TransactionEventConsumer(BaseConsumer):
                     a_date=transaction_date_only
                 )
 
-                # The transaction from the event is already in the list from the DB.
-                # We just need to sort them to ensure correct processing order.
                 txns_to_replay = sorted(db_txns, key=lambda t: t.transaction_date)
 
                 if not txns_to_replay:
                     return
 
-                # This is now a critical step that must happen before inserting new records
-                with db.begin():
+                newly_created_records = []
+                with db.begin():  # Start a single transaction for the whole operation
                     repo.delete_positions_from(
                         portfolio_id=incoming_event.portfolio_id,
                         security_id=incoming_event.security_id,
                         a_date=transaction_date_only
                     )
 
-                # --- DEFINITIVE FIX: Insert and publish one-by-one ---
-                for txn in txns_to_replay:
-                    with db.begin(): # Each record in its own transaction for clarity
+                    for txn in txns_to_replay:
                         txn_event = TransactionEvent.model_validate(txn)
                         current_state = PositionCalculator.calculate_next_position(current_state, txn_event)
                         
@@ -91,13 +87,14 @@ class TransactionEventConsumer(BaseConsumer):
                             cost_basis=current_state.cost_basis
                         )
                         db.add(new_record)
-                        db.flush() # Assigns the ID to new_record
-                        db.commit() # Commits the record
-                  
-                        # Now that the record is committed and has an ID, publish the event
-                        self._publish_persisted_event(new_record)
+                        newly_created_records.append(new_record)
 
-                self._producer.flush(timeout=5)
+                # After the transaction is successfully committed, publish events
+                for record in newly_created_records:
+                    self._publish_persisted_event(record)
+
+                if newly_created_records:
+                    self._producer.flush(timeout=5)
 
             except Exception as e:
                 logger.error(f"Recalculation failed for transaction {incoming_event.transaction_id}: {e}", exc_info=True)
