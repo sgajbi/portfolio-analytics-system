@@ -2,8 +2,9 @@ import pytest
 import requests
 import time
 import psycopg2
+import subprocess
+import os
 from testcontainers.compose import DockerCompose
-from decimal import Decimal
 
 @pytest.fixture(scope="session")
 def docker_services(request):
@@ -13,6 +14,15 @@ def docker_services(request):
     """
     compose = DockerCompose(".", compose_file_name="docker-compose.yml")
     with compose:
+        # Before starting tests, ensure the DB is fully migrated
+        print("\n--- Ensuring initial migration is complete ---")
+        migration_runner = compose.get_container("migration-runner")
+        exit_code = migration_runner.wait()
+        if exit_code != 0:
+            logs = migration_runner.get_logs()
+            pytest.fail(f"Migration runner failed to start. Exit code: {exit_code}\nLogs:\n{logs}")
+        print("--- Initial migration complete ---")
+
         host = compose.get_service_host("ingestion-service", 8000)
         port = compose.get_service_port("ingestion-service", 8000)
         health_url = f"http://{host}:{port}/health"
@@ -35,31 +45,47 @@ def docker_services(request):
 @pytest.fixture(scope="module")
 def db_connection(docker_services: DockerCompose):
     """
-    A module-scoped fixture to provide a clean database connection for each test module.
+    A module-scoped fixture to provide a database connection for each test module.
     """
     host = docker_services.get_service_host("postgres", 5432)
     port = docker_services.get_service_port("postgres", 5432)
     url = f"postgresql://user:password@{host}:{port}/portfolio_db"
     conn = psycopg2.connect(url)
-    # --- FIX: Enable autocommit mode for the test connection ---
     conn.autocommit = True
     yield conn
     conn.close()
 
 @pytest.fixture(scope="function")
-def clean_db(db_connection):
+def clean_db(docker_services):
     """
-    A function-scoped fixture that cleans all relevant tables before each test.
-    This ensures test idempotency.
+    A function-scoped fixture that completely resets the database schema
+    using Alembic before each test. This is the most robust way to ensure
+    test idempotency.
     """
-    print("\n--- Cleaning database tables ---")
-    with db_connection.cursor() as cursor:
-        cursor.execute("""
-            TRUNCATE TABLE daily_position_snapshots, position_history, 
-                         cashflows, transaction_costs, transactions, instruments, 
-                         market_prices, fx_rates, portfolios, portfolio_timeseries, position_timeseries
-            RESTART IDENTITY;
-        """)
-    # db_connection.commit() is no longer needed due to autocommit
-    print("--- Database clean complete ---")
+    print("\n--- Resetting database schema with Alembic ---")
+    
+    # Alembic's env.py is configured to use HOST_DATABASE_URL for local runs
+    # We must provide it to the subprocess environment
+    env = os.environ.copy()
+    host = docker_services.get_service_host("postgres", 5432)
+    port = docker_services.get_service_port("postgres", 5432)
+    env["HOST_DATABASE_URL"] = f"postgresql://user:password@{host}:{port}/portfolio_db"
+
+    # Downgrade to an empty schema
+    downgrade_result = subprocess.run(
+        ["alembic", "downgrade", "base"],
+        capture_output=True, text=True, env=env, shell=True # shell=True for Windows Git Bash compatibility
+    )
+    if downgrade_result.returncode != 0:
+        pytest.fail(f"Alembic downgrade failed:\nSTDOUT:\n{downgrade_result.stdout}\nSTDERR:\n{downgrade_result.stderr}")
+
+    # Upgrade to the latest schema
+    upgrade_result = subprocess.run(
+        ["alembic", "upgrade", "head"],
+        capture_output=True, text=True, env=env, shell=True # shell=True for Windows Git Bash compatibility
+    )
+    if upgrade_result.returncode != 0:
+        pytest.fail(f"Alembic upgrade failed:\nSTDOUT:\n{upgrade_result.stdout}\nSTDERR:\n{upgrade_result.stderr}")
+
+    print("--- Database reset complete ---")
     yield
