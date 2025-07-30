@@ -3,6 +3,7 @@ import logging
 from confluent_kafka import Producer, KafkaException
 from .config import KAFKA_BOOTSTRAP_SERVERS # <-- CORRECTED IMPORT
 import json
+from typing import Dict, Any, Optional, List, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +28,7 @@ class KafkaProducer:
             self.producer = None
             raise
 
-    def publish_message(self, topic: str, key: str, value: dict):
+    def publish_message(self, topic: str, key: str, value: Dict[str, Any], headers: Optional[List[Tuple[str, bytes]]] = None):
         if not self.producer:
             logger.error(f"Kafka producer not initialized. Cannot publish message to topic {topic}.")
             raise RuntimeError("Kafka producer is not initialized.")
@@ -48,6 +49,7 @@ class KafkaProducer:
                 topic,
                 key=key.encode('utf-8'),
                 value=json_value.encode('utf-8'),
+                headers=headers,
                 callback=delivery_report
             )
             self.producer.poll(0)
