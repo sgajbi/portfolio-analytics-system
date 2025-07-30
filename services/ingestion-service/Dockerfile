@@ -1,13 +1,8 @@
-# services/ingestion-service/Dockerfile
+# Stage 1: Builder stage, using our new base image
+FROM portfolio-analytics/python-base:latest as builder
 
-# Stage 1: Builder stage with test dependencies
-FROM python:3.11-slim-buster as builder
-
-WORKDIR /app
-
-# Create and activate a virtual environment
-RUN python -m venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
+# Set the Python path for the build context
+ENV PYTHONPATH="/app/libs/portfolio-common:/app/services/ingestion-service"
 
 # Install shared library first
 COPY ./libs/portfolio-common /app/libs/portfolio-common
@@ -25,29 +20,19 @@ RUN pip install --no-cache-dir -r /app/tests/requirements.txt
 # Copy the rest of the test code
 COPY ./services/ingestion-service/tests /app/tests
 
-# Set the Python path so imports from 'app' work correctly
-ENV PYTHONPATH="/app/services/ingestion-service"
-
 # Run tests to validate the build
 RUN pytest /app/tests
 
-# Stage 2: Final production stage
-FROM python:3.11-slim-buster
-
-WORKDIR /app
-
-# Create a non-root user for security
-RUN useradd --create-home appuser
-USER appuser
+# Stage 2: Final production stage, also using our base image
+FROM portfolio-analytics/python-base:latest
 
 # Copy the virtual environment from the builder stage
 COPY --from=builder --chown=appuser:appuser /opt/venv /opt/venv
 
-# Copy the application code from the builder stage
+# Copy only the necessary application code from the builder stage
 COPY --from=builder --chown=appuser:appuser /app/services/ingestion-service/app /app/app
 
-# Set the PATH to include the venv
-ENV PATH="/opt/venv/bin:$PATH"
+USER appuser
 
 # Expose the port FastAPI will run on
 EXPOSE 8000
