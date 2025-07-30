@@ -1,6 +1,6 @@
 import logging
 from sqlalchemy.orm import Session
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.dialects.postgresql import insert as pg_insert # Import pg_insert
 
 from portfolio_common.database_models import Instrument as DBInstrument
 from portfolio_common.events import InstrumentEvent
@@ -16,36 +16,41 @@ class InstrumentRepository:
 
     def create_or_update_instrument(self, event: InstrumentEvent) -> DBInstrument:
         """
-        Creates a new instrument or returns the existing one if the security_id already exists.
-        This operation is idempotent.
+        Idempotently creates a new instrument or updates an existing one based on security_id.
+        This operation leverages PostgreSQL's ON CONFLICT DO UPDATE (UPSERT).
         """
-        # Check if the instrument already exists
-        existing_instrument = self.db.query(DBInstrument).filter(
-            DBInstrument.security_id == event.security_id
-        ).first()
+        insert_dict = {
+            "security_id": event.security_id,
+            "name": event.name,
+            "isin": event.isin,
+            "currency": event.currency,
+            "product_type": event.product_type,
+        }
 
-        if existing_instrument:
-            logger.info(f"Instrument with security_id '{event.security_id}' already exists. Skipping creation.")
-            return existing_instrument
+        # For ON CONFLICT DO UPDATE, specify the unique constraint by its columns.
+        # 'security_id' is already unique and indexed.
+        # 'isin' is also unique, but 'security_id' is typically the primary business key for idempotency.
+        stmt = pg_insert(DBInstrument).values(**insert_dict)
         
-        # Create a new instrument if it doesn't exist
-        db_instrument = DBInstrument(
-            security_id=event.security_id,
-            name=event.name,
-            isin=event.isin,
-            currency=event.currency,
-            product_type=event.product_type,
-        )
-        
+        # Define what to update if a conflict on 'security_id' occurs.
+        # We generally update all fields in an upsert if they might have changed.
+        on_conflict_stmt = stmt.on_conflict_do_update(
+            index_elements=['security_id'],
+            set_={
+                'name': stmt.excluded.name,
+                'isin': stmt.excluded.isin,
+                'currency': stmt.excluded.currency,
+                'product_type': stmt.excluded.product_type,
+                'updated_at': stmt.excluded.updated_at # Ensure updated_at is refreshed
+            }
+        ).returning(DBInstrument) # Return the inserted or updated row
+
         try:
-            self.db.add(db_instrument)
+            result = self.db.execute(on_conflict_stmt).scalar_one()
             self.db.commit()
-            self.db.refresh(db_instrument)
-            logger.info(f"Instrument '{db_instrument.security_id}' successfully inserted into DB.")
-            return db_instrument
-        except IntegrityError:
+            logger.info(f"Instrument '{result.security_id}' successfully upserted into DB.")
+            return result
+        except Exception as e:
             self.db.rollback()
-            logger.warning(f"Race condition: Instrument '{event.security_id}' was inserted by another process. Fetching existing.")
-            return self.db.query(DBInstrument).filter(
-                DBInstrument.security_id == event.security_id
-            ).first()
+            logger.error(f"Failed to upsert instrument '{event.security_id}': {e}", exc_info=True)
+            raise

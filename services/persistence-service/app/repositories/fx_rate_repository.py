@@ -1,6 +1,6 @@
 import logging
 from sqlalchemy.orm import Session
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.dialects.postgresql import insert as pg_insert # Import pg_insert
 
 from portfolio_common.database_models import FxRate as DBFxRate
 from portfolio_common.events import FxRateEvent
@@ -16,36 +16,37 @@ class FxRateRepository:
 
     def create_fx_rate(self, event: FxRateEvent) -> DBFxRate:
         """
-        Creates a new FX rate.
-        
-        If a rate for the given currency pair and date already exists,
-        the database's unique constraint will raise an IntegrityError, which is
-        caught and handled gracefully. This makes the operation idempotent.
+        Idempotently creates a new FX rate or updates an existing one.
+        Uses PostgreSQL's ON CONFLICT DO UPDATE to handle potential duplicates.
+        The unique constraint for FxRate is ('from_currency', 'to_currency', 'rate_date').
         """
-        db_fx_rate = DBFxRate(
-            from_currency=event.from_currency,
-            to_currency=event.to_currency,
-            rate_date=event.rate_date,
-            rate=event.rate,
-        )
+        insert_dict = {
+            "from_currency": event.from_currency,
+            "to_currency": event.to_currency,
+            "rate_date": event.rate_date,
+            "rate": event.rate,
+        }
+
+        stmt = pg_insert(DBFxRate).values(**insert_dict)
         
+        # Define what to update if a conflict on the unique composite key occurs.
+        on_conflict_stmt = stmt.on_conflict_do_update(
+            index_elements=['from_currency', 'to_currency', 'rate_date'],
+            set_={
+                'rate': stmt.excluded.rate,
+                'updated_at': stmt.excluded.updated_at # Ensure updated_at is refreshed
+            }
+        ).returning(DBFxRate) # Return the inserted or updated row
+
         try:
-            self.db.add(db_fx_rate)
+            result = self.db.execute(on_conflict_stmt).scalar_one()
             self.db.commit()
-            self.db.refresh(db_fx_rate)
             logger.info(
-                f"FX rate for '{db_fx_rate.from_currency}-{db_fx_rate.to_currency}' on "
-                f"'{db_fx_rate.rate_date}' successfully inserted."
+                f"FX rate for '{result.from_currency}-{result.to_currency}' on "
+                f"'{result.rate_date}' successfully upserted."
             )
-            return db_fx_rate
-        except IntegrityError:
+            return result
+        except Exception as e:
             self.db.rollback()
-            logger.warning(
-                f"FX rate for '{event.from_currency}-{event.to_currency}' on '{event.rate_date}' already exists. "
-                "Skipping creation due to unique constraint."
-            )
-            return self.db.query(DBFxRate).filter(
-                DBFxRate.from_currency == event.from_currency,
-                DBFxRate.to_currency == event.to_currency,
-                DBFxRate.rate_date == event.rate_date
-            ).first()
+            logger.error(f"Failed to upsert FX rate for '{event.from_currency}-{event.to_currency}' on '{event.rate_date}': {e}", exc_info=True)
+            raise
