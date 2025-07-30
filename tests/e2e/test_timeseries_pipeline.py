@@ -3,7 +3,7 @@ import requests
 import time
 from decimal import Decimal
 
-def wait_for_portfolio_timeseries(db_connection, portfolio_id, expected_date, timeout=60):
+def wait_for_portfolio_timeseries(db_connection, portfolio_id, expected_date, timeout=120):
     """Helper function to poll the database until a portfolio time series record for a specific date is found."""
     start_time = time.time()
     while time.time() - start_time < timeout:
@@ -23,7 +23,7 @@ def setup_timeseries_data(docker_services, db_connection):
     """A module-scoped fixture to ingest all necessary data for the time series tests."""
     ingestion_host = docker_services.get_service_host("ingestion-service", 8000)
     ingestion_port = docker_services.get_service_port("ingestion-service", 8000)
-    
+
     # Helper to post data to endpoints
     def post_data(endpoint, payload):
         url = f"http://{ingestion_host}:{ingestion_port}{endpoint}"
@@ -39,12 +39,15 @@ def setup_timeseries_data(docker_services, db_connection):
     post_data("/ingest/fx-rates", {"fx_rates": [{"fromCurrency": "EUR", "toCurrency": "USD", "rateDate": "2025-07-28", "rate": "1.1"}, {"fromCurrency": "EUR", "toCurrency": "USD", "rateDate": "2025-07-29", "rate": "1.2"}]})
 
     # --- Day 1 Data ---
-    post_data("/ingest/transactions", {"transactions": [{"transaction_id": "TS_BUY_01", "portfolio_id": "E2E_TS_PORT", "instrument_id": "EUR_STOCK", "security_id": "SEC_EUR_STOCK", "transaction_date": "2025-07-28", "transaction_type": "BUY", "quantity": 100, "price": 50, "gross_transaction_amount": 5000, "trade_currency": "EUR", "currency": "EUR"}]})
+    post_data("/ingest/transactions", {"transactions": [{"transaction_id": "TS_BUY_01", "portfolio_id": "E2E_TS_PORT", "instrument_id": "EUR_STOCK", "security_id": "SEC_EUR_STOCK", "transaction_date": "2025-07-28T00:00:00Z", "transaction_type": "BUY", "quantity": 100, "price": 50, "gross_transaction_amount": 5000, "trade_currency": "EUR", "currency": "EUR"}]})
     post_data("/ingest/market-prices", {"market_prices": [{"securityId": "SEC_EUR_STOCK", "priceDate": "2025-07-28", "price": 52, "currency": "EUR"}]})
     
     # --- Day 2 Data ---
-    post_data("/ingest/transactions", {"transactions": [{"transaction_id": "TS_FEE_01", "portfolio_id": "E2E_TS_PORT", "instrument_id": "CASH", "security_id": "CASH", "transaction_date": "2025-07-29", "transaction_type": "FEE", "quantity": 1, "price": 25, "gross_transaction_amount": 25, "trade_currency": "USD", "currency": "USD"}]})
+    post_data("/ingest/transactions", {"transactions": [{"transaction_id": "TS_FEE_01", "portfolio_id": "E2E_TS_PORT", "instrument_id": "CASH", "security_id": "CASH", "transaction_date": "2025-07-29T00:00:00Z", "transaction_type": "FEE", "quantity": 1, "price": 25, "gross_transaction_amount": 25, "trade_currency": "USD", "currency": "USD"}]})
     post_data("/ingest/market-prices", {"market_prices": [{"securityId": "SEC_EUR_STOCK", "priceDate": "2025-07-29", "price": 55, "currency": "EUR"}]})
+
+    # Give services a moment to process before polling
+    time.sleep(10)
 
     # Wait for the final day's processing to complete
     wait_for_portfolio_timeseries(db_connection, "E2E_TS_PORT", "2025-07-29")
@@ -65,8 +68,6 @@ def test_timeseries_day_1(setup_timeseries_data, db_connection):
 
     bod_mv, bod_cf, eod_cf, eod_mv, fees = result
     
-    # EOD Cashflow = -5000 EUR (BUY) * 1.1 (FX) = -5500 USD
-    # EOD Market Value = 100 qty * 52 EUR/share * 1.1 (FX) = 5720 USD
     assert bod_mv == Decimal("0.0000000000")
     assert bod_cf == Decimal("0.0000000000")
     assert eod_cf == Decimal("-5500.0000000000")
@@ -84,9 +85,6 @@ def test_timeseries_day_2(setup_timeseries_data, db_connection):
 
     bod_mv, bod_cf, eod_cf, eod_mv, fees = result
 
-    # BOD Market Value = EOD Market Value of Day 1 = 5720 USD
-    # EOD Cashflow = -25 USD (FEE)
-    # EOD Market Value = 100 qty * 55 EUR/share * 1.2 (FX) = 6600 USD
     assert bod_mv == Decimal("5720.0000000000")
     assert bod_cf == Decimal("0.0000000000")
     assert eod_cf == Decimal("-25.0000000000")

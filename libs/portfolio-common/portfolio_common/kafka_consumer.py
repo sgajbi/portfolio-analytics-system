@@ -28,7 +28,7 @@ class BaseConsumer(ABC):
             'group.id': group_id,
             'auto.offset.reset': 'earliest',
             'enable.auto.commit': False,
-            'session.timeout.ms': 10000,
+            'session.timeout.ms': 30000,  # Increased from 10000 to 30000
             'heartbeat.interval.ms': 3000
         }
         self._running = True
