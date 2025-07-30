@@ -4,7 +4,8 @@ from pydantic import ValidationError
 from decimal import Decimal
 
 from confluent_kafka import Message
-from sqlalchemy.exc import InvalidRequestError # Import the specific exception
+from sqlalchemy.orm import Session # ADD THIS IMPORT
+from sqlalchemy.exc import InvalidRequestError 
 from portfolio_common.kafka_consumer import BaseConsumer
 from portfolio_common.events import TransactionEvent, PositionHistoryPersistedEvent
 from portfolio_common.db import get_db_session
