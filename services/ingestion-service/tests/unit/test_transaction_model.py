@@ -13,7 +13,7 @@ def test_transaction_model_success():
         "portfolio_id": "test_port_001",
         "instrument_id": "AAPL",
         "security_id": "SEC_AAPL",
-        "transaction_date": "2025-07-21",
+        "transaction_date": "2025-07-21T00:00:00",
         "transaction_type": "BUY",
         "quantity": 10.0,
         "price": 150.0,
@@ -21,7 +21,7 @@ def test_transaction_model_success():
         "trade_currency": "USD",
         "currency": "USD",
         "trade_fee": 5.0,
-        "settlement_date": "2025-07-23",
+        "settlement_date": "2025-07-23T00:00:00",
         "created_at": datetime.now()
     }
 
@@ -30,7 +30,7 @@ def test_transaction_model_success():
 
     assert transaction.transaction_id == "test_txn_001"
     assert transaction.quantity == 10.0
-    assert transaction.transaction_date == date(2025, 7, 21)
+    assert transaction.transaction_date == datetime(2025, 7, 21, 0, 0)
 
 def test_transaction_model_missing_field_fails():
     """
@@ -41,7 +41,7 @@ def test_transaction_model_missing_field_fails():
         "portfolio_id": "test_port_002",
         # instrument_id is missing
         "security_id": "SEC_GOOG",
-        "transaction_date": "2025-07-22",
+        "transaction_date": "2025-07-22T00:00:00",
         "transaction_type": "SELL",
         "quantity": 5.0,
         "price": 200.0,
