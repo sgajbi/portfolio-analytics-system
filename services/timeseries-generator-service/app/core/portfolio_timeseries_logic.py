@@ -22,6 +22,7 @@ class PortfolioTimeseriesLogic:
     @staticmethod
     def calculate_daily_record(
         portfolio: Portfolio,
+        a_date: date,
         position_timeseries_list: List[PositionTimeseries],
         portfolio_cashflows: List[Cashflow],
         instruments: Dict[str, Instrument],
@@ -71,7 +72,7 @@ class PortfolioTimeseriesLogic:
 
         return PortfolioTimeseries(
             portfolio_id=portfolio.portfolio_id,
-            date=position_timeseries_list[0].date if position_timeseries_list else date.today(),
+            date=a_date,
             bod_market_value=total_bod_mv,
             bod_cashflow=total_bod_cf,
             eod_cashflow=total_eod_cf,
