@@ -1,39 +1,45 @@
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/sgajbi/portfolio-analytics-system)
-
+ 
 # Portfolio Analytics System
 
-This system is a modular, event-driven platform designed to ingest financial data, perform complex calculations like cost basis, historical positions, and market valuation, and expose the results via a clean API. It uses a microservices architecture built with Python, FastAPI, Kafka, and PostgreSQL, all orchestrated with Docker Compose.
+[![Python Version](httpshttps://img.shields.io/badge/python-3.11-blue.svg)](https://www.python.org/downloads/release/python-3110/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Docker](https://img.shields.io/badge/docker-%230db7ed.svg?style=for-the-badge&logo=docker&logoColor=white)](https://www.docker.com/)
+[![Kafka](https://img.shields.io/badge/Apache%20Kafka-231F20?style=for-the-badge&logo=apachekafka&logoColor=white)](https://kafka.apache.org/)
+[![Postgres](https://img.shields.io/badge/postgresql-4169E1?style=for-the-badge&logo=postgresql&logoColor=white)](https://www.postgresql.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-005571?style=for-the-badge&logo=fastapi)](https://fastapi.tiangolo.com/)
+
+An event-driven, microservices-based platform for comprehensive portfolio analytics. Designed for wealth management, this system ingests financial data, performs complex calculations (cost basis, positions, valuation), and exposes the results through a clean, scalable API.
+
 ---
 ## Table of Contents
 
 1.  [System Architecture](#1-system-architecture)
-2.  [Implemented Services](#2-implemented-services)
-3.  [Kafka Topics](#3-kafka-topics)
+2.  [Core Services](#2-core-services)
+3.  [Data Flow & Kafka Topics](#3-data-flow--kafka-topics)
 4.  [API Endpoints](#4-api-endpoints)
-5.  [Database Migrations (Alembic)](#5-database-migrations-alembic)
-6.  [Directory Structure](#6-directory-structure)
-7.  [Local Development Setup](#7-local-development-setup)
-8.  [Testing](#8-testing)
-9.  [Full Usage Example](#9-full-usage-example)
+5.  [Local Development](#5-local-development)
+6.  [Testing](#6-testing)
+7.  [Database Migrations](#7-database-migrations)
+8.  [Directory Structure](#8-directory-structure)
 
 ---
 ## 1. System Architecture
 
-The system is designed around a central Kafka message bus to ensure services are decoupled and can be scaled independently. Data flows through a pipeline of services, where it is persisted, enriched, and calculated. A dedicated query service provides read access to the processed data.
+The system is architected around a central **Apache Kafka** message bus, promoting a highly decoupled and scalable environment. Data flows through a choreographed pipeline of specialized microservices, each responsible for a distinct business capability. Raw data is ingested, persisted, enriched through a series of calculations, and finally made available for query.
+
 ```mermaid
 graph TD
     subgraph "API Layer"
         direction LR
-        User[User/Client] -- POST Data --> IngestionService[ingestion-service:8000];
-        User -- GET Data --> QueryService[query-service:8001];
+        Client[User/Client] -- POST Data --> IngestionService[ingestion-service:8000];
+        Client -- GET Data --> QueryService[query-service:8001];
     end
 
-    subgraph "Kafka Topics"
-        RawData((raw_transactions, instruments, etc.));
-        PersistenceCompleted((raw_transactions_completed, market_price_persisted));
-        CostCalculated((processed_transactions_completed));
-        PositionCalculated((position_history_persisted));
-        CashflowCalculated((cashflow_calculated));
+    subgraph "Kafka Message Bus"
+        RawData((raw_events));
+        PersistenceCompleted((persistence_completed));
+        CalculationsCompleted((calculations_completed));
     end
 
     subgraph "Data Processing Pipeline"
@@ -42,48 +48,55 @@ graph TD
         PersistenceService -- Writes --> DB[(PostgreSQL)];
         PersistenceService -- Publishes --> PersistenceCompleted;
 
-        PersistenceCompleted --> CostCalculator[cost-calculator-service];
+        PersistenceCompleted -- "raw_transactions_completed" --> CostCalculator[cost-calculator-service];
         CostCalculator -- Updates --> DB;
-        CostCalculator -- Publishes --> CostCalculated;
+        CostCalculator -- Publishes --> CalculationsCompleted;
         
-        PersistenceCompleted --> CashflowCalculator[cashflow-calculator-service];
+        PersistenceCompleted -- "raw_transactions_completed" --> CashflowCalculator[cashflow-calculator-service];
         CashflowCalculator -- Writes --> DB;
-        CashflowCalculator -- Publishes --> CashflowCalculated;
-
-        CostCalculated --> PositionCalculator[position-calculator-service];
+        
+        CalculationsCompleted -- "processed_transactions_completed" --> PositionCalculator[position-calculator-service];
         PositionCalculator -- Writes --> DB;
-        PositionCalculator -- Publishes --> PositionCalculated;
-        PositionCalculated --> ValuationCalculator[position-valuation-calculator];
-        PersistenceCompleted -- market_price_persisted --> ValuationCalculator;
+        PositionCalculator -- Publishes --> CalculationsCompleted;
+
+        CalculationsCompleted -- "position_history_persisted" --> ValuationCalculator[position-valuation-calculator];
+        PersistenceCompleted -- "market_price_persisted" --> ValuationCalculator;
         ValuationCalculator -- Updates --> DB;
     end
 
-    subgraph "Data Query Path"
+    subgraph "Data Query Layer"
         QueryService -- Reads --> DB;
     end
+````
 
 -----
 
-## 2\. Implemented Services
+## 2\. Core Services
 
-  * **`ingestion-service`**: A FastAPI application that serves as the write-only entry point for all incoming data (transactions, instruments, etc.). It validates data and publishes it to the appropriate "raw" Kafka topic.
-  * **`query-service`**: A FastAPI application that serves as the read-only entry point for retrieving processed data. It queries the database to provide results for analytics and reporting.
-  * **`persistence-service`**: A generic Kafka consumer that listens to all "raw" data topics. Its sole responsibility is to validate and persist incoming data to the PostgreSQL database.
-  * **`cost-calculator-service`**: A Kafka consumer that listens for newly persisted transactions. It uses the `financial-calculator-engine` library to calculate cost basis (`net_cost`, `realized_gain_loss`) and publishes an enriched event.
-  * **`cashflow-calculator-service`**: A Kafka consumer that listens for newly persisted transactions. It calculates a corresponding cashflow record based on configurable business rules and publishes an event upon persistence.
-  * **`position-calculator-service`**: A Kafka consumer that listens for enriched transactions. It calculates and maintains a full, historical time series of portfolio positions and publishes an event upon persistence.
-  * **`position-valuation-calculator`**: A Kafka consumer that listens for newly persisted positions and market prices. It calculates the market value and unrealized gain/loss for a position and saves it to the database.
+  * **`ingestion-service`**: A write-only FastAPI application serving as the single entry point for all incoming data (portfolios, instruments, transactions, etc.). It validates and publishes raw events to Kafka.
+  * **`persistence-service`**: A generic consumer responsible for persisting raw data from Kafka to the PostgreSQL database. On successful persistence, it publishes a `_completed` event.
+  * **`query-service`**: A read-only FastAPI application providing access to all processed and calculated data for reporting and analytics.
+  * **Calculator Services (`services/calculators/`)**: A suite of specialized consumers that perform core business logic:
+      * **`cost-calculator-service`**: Calculates cost basis, realized gains/losses for transactions.
+      * **`cashflow-calculator-service`**: Generates cashflow records from transactions.
+      * **`position-calculator-service`**: Computes and maintains a historical time series of portfolio positions.
+      * **`position-valuation-calculator`**: Calculates the market value and unrealized gain/loss of positions using the latest market prices.
 
 -----
 
-## 3\. Kafka Topics
+## 3\. Data Flow & Kafka Topics
 
-  * **`raw_transactions`, `instruments`, `market_prices`, `fx_rates`**: Topics for raw, unprocessed data ingested by the system.
-  * **`raw_transactions_completed`**: An event published by the `persistence-service` after a transaction has been successfully saved to the database.
-  * **`market_price_persisted`**: An event published by the `persistence-service` after a market price has been saved.
-  * **`processed_transactions_completed`**: An event published by the `cost-calculator-service` containing the transaction data enriched with calculated cost basis and gains/losses.
-  * **`position_history_persisted`**: An event published by the `position-calculator-service` after a position history record has been saved to the database. This triggers the valuation service.
-  * **`cashflow_calculated`**: An event published by the `cashflow-calculator-service` after a cashflow record has been calculated and saved to the database.
+The system relies on a well-defined sequence of events published to Kafka topics.
+
+  * **Raw Data Topics**: `raw_portfolios`, `raw_transactions`, `raw_instruments`, `raw_market_prices`, `raw_fx_rates`
+      * Published by: `ingestion-service`
+      * Consumed by: `persistence-service`
+  * **Persistence Completion Topics**: `raw_transactions_completed`, `market_price_persisted`
+      * Published by: `persistence-service`
+      * Consumed by: Calculator services (`cost-calculator`, `cashflow-calculator`, `position-valuation-calculator`)
+  * **Calculation Completion Topics**: `processed_transactions_completed`, `position_history_persisted`
+      * Published by: Calculator services (`cost-calculator`, `position-calculator`)
+      * Consumed by: Downstream calculator services (`position-calculator`, `position-valuation-calculator`)
 
 -----
 
@@ -91,115 +104,78 @@ graph TD
 
 ### Write API (`ingestion-service` @ `http://localhost:8000`)
 
-  * `POST /ingest/transactions`: Ingests a list of financial transactions.
+  * `POST /ingest/portfolios`: Ingests a list of portfolios.
   * `POST /ingest/instruments`: Ingests a list of financial instruments.
+  * `POST /ingest/transactions`: Ingests a list of financial transactions.
   * `POST /ingest/market-prices`: Ingests a list of market prices.
   * `POST /ingest/fx-rates`: Ingests a list of foreign exchange rates.
+  * `POST /ingest/corporate-actions`: Ingests corporate action events (e.g., stock splits).
   * `GET /health`: Health check for the service.
 
 ### Read API (`query-service` @ `http://localhost:8001`)
 
-  * `GET /portfolios/{portfolio_id}/positions`: Retrieves the latest position for each security held in a portfolio, including valuation data if available.
-  * `GET /portfolios/{portfolio_id}/transactions`: Retrieves a paginated list of transactions, each with its associated cashflow if one exists.
+  * `GET /portfolios/{portfolio_id}/positions`: Retrieves the latest position for each security in a portfolio.
+  * `GET /portfolios/{portfolio_id}/transactions`: Retrieves a paginated list of transactions for a portfolio.
   * `GET /health`: Health check for the service.
 
 -----
 
-## 5\. Database Migrations (Alembic)
-
-Database schema changes are managed by **Alembic**. When you change a SQLAlchemy model in `libs/portfolio-common/database_models.py`, you must generate a new migration script and apply it.
-
-1.  **Ensure Postgres is Running**:
-    ```bash
-    docker compose up -d postgres
-    ```
-2.  **Generate a New Migration**: After changing a model, run this command. Alembic will compare your models to the database schema and create a new script in `allembic/versions/`.
-    ```bash
-    alembic revision --autogenerate -m "a descriptive message for your change"
-    ```
-3.  **Apply the Migration**: This command applies all pending migration scripts to the database.
-    ```bash
-    alembic upgrade head
-    ```
-
------
-
-## 6\. Directory Structure
-
-The project is organized as a monorepo with shared libraries and distinct microservices.
-
-```
-sgajbi-portfolio-analytics-system/
-├── alembic/                  # Database migration scripts
-├── libs/                     # Shared Python libraries
-│   ├── portfolio-common/     # Common DB models, events, and utilities
-│   └── financial-calculator-engine/ # Core financial calculation logic
-├── services/                 # Individual microservices
-│   ├── ingestion-service/    # The Write API
-│   ├── query-service/          # The Read API
-│   ├── persistence-service/    # Generic data persistence consumer
-│   └── calculators/
-│       ├── cost-calculator-service/ # Business logic for cost basis
-│       ├── cashflow-calculator-service/ # Business logic for cashflows
-│       ├── position-calculator-service/ # Business logic for positions
-│       └── position-valuation-calculator/ # Business logic for valuation
-├── tests/
-│   └── e2e/                    # End-to-end tests for the whole system
-├── docker-compose.yml        # Orchestrates all services for local development
-└── README.md                 # This file
-```
-
------
-
-## 7\. Local Development Setup
+## 5\. Local Development
 
 ### Prerequisites
 
-  * **Docker Desktop**: Ensure it's installed and running.
-  * **Python 3.11**: You must have a Python 3.11 interpreter installed locally.
+  * **Docker Desktop**: Must be installed and running.
+  * **Python 3.11**: A local interpreter is required for setup.
 
 ### Initial Setup
 
-1.  **Clone & Navigate**: `git clone <repo-url> && cd portfolio-analytics-system`
-2.  **Create `.env` file**: `cp .env.example .env`
-3.  **Create & Activate Venv**:
+1.  **Clone & Navigate**:
     ```bash
-    py -3.11 -m venv .venv
+    git clone <repo-url> && cd portfolio-analytics-system
+    ```
+2.  **Create `.env` file**:
+    ```bash
+    cp .env.example .env
+    ```
+3.  **Create & Activate Virtual Environment**:
+    ```bash
+    python -m venv .venv
     source .venv/Scripts/activate
     ```
-4.  **Install All Dependencies**:
+4.  **Install All Dependencies**: This command installs all shared libraries and services in "editable" mode for local development.
     ```bash
     pip install -e libs/financial-calculator-engine \
-            -e libs/portfolio-common \
-            -e services/ingestion-service \
-            -e services/persistence-service \
-            -e services/calculators/cost-calculator-service \
-            -e services/calculators/cashflow-calculator-service \
-            -e services/calculators/position-calculator \
-            -e services/calculators/position-valuation-calculator \
-            -e services/query-service
+                -e libs/portfolio-common \
+                -e services/ingestion-service \
+                -e services/persistence-service \
+                -e services/calculators/cost-calculator-service \
+                -e services/calculators/cashflow-calculator-service \
+                -e services/calculators/position-calculator \
+                -e services/calculators/position-valuation-calculator \
+                -e services/query-service \
+                -e services/timeseries-generator-service
     ```
 
 ### Running the System
 
-```bash
-# To start all services
-docker compose up --build -d
-
-# To check the status of services
-docker compose ps
-
-# To stop all services
-docker compose down -v
-```
+  * **Start all services**:
+    ```bash
+    docker compose up --build -d
+    ```
+  * **Check service status**:
+    ```bash
+    docker compose ps
+    ```
+  * **Stop all services**:
+    ```bash
+    docker compose down -v
+    ```
 
 -----
 
-## 8\. Testing
+## 6\. Testing
 
-### End-to-End Tests
-
-The project includes a suite of end-to-end tests that orchestrate the entire Docker environment to validate the full pipeline.
+The project includes a suite of end-to-end tests that validate the full data pipeline.
 
 1.  **Install Test Dependencies**:
     ```bash
@@ -209,6 +185,54 @@ The project includes a suite of end-to-end tests that orchestrate the entire Doc
     ```bash
     pytest tests/e2e/
     ```
+
+-----
+
+## 7\. Database Migrations
+
+Database schema changes are managed by **Alembic**.
+
+1.  **Ensure Postgres is Running**:
+    ```bash
+    docker compose up -d postgres
+    ```
+2.  **Generate a New Migration**: After changing a model in `libs/portfolio-common/portfolio_common/database_models.py`, run:
+    ```bash
+    alembic revision --autogenerate -m "feat: Describe your schema change"
+    ```
+3.  **Apply the Migration**:
+    ```bash
+    alembic upgrade head
+    ```
+
+-----
+
+## 8\. Directory Structure
+
+```
+sgajbi-portfolio-analytics-system/
+├── alembic/                  # Database migration scripts
+├── docker/
+│   └── base/                 # Base Docker image for Python services
+├── libs/                     # Shared Python libraries
+│   ├── portfolio-common/     # Common DB models, events, and utilities
+│   └── financial-calculator-engine/ # Core financial calculation logic
+├── services/                 # Individual microservices
+│   ├── ingestion-service/    # The Write API
+│   ├── persistence-service/  # Generic data persistence consumer
+│   ├── query-service/        # The Read API
+│   └── calculators/          # Business logic consumers
+│       ├── cost-calculator-service/
+│       ├── cashflow-calculator-service/
+│       ├── position-calculator-service/
+│       └── position-valuation-calculator/
+├── tests/
+│   ├── e2e/                  # End-to-end tests for the whole system
+│   ├── integration/
+│   └── unit/
+├── docker-compose.yml        # Orchestrates all services for local development
+└── README.md                 # This file
+```
 
 -----
 
