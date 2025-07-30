@@ -5,7 +5,7 @@ import psycopg2
 from testcontainers.compose import DockerCompose
 from decimal import Decimal
 
-def test_full_pipeline(docker_services: DockerCompose, db_connection):
+def test_full_pipeline(docker_services: DockerCompose, db_connection, clean_db):
     """
     Tests the full pipeline from ingestion to cost calculation and
     verifies the final API response from the query service.

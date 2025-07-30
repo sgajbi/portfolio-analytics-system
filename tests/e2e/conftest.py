@@ -32,7 +32,7 @@ def docker_services(request):
             
         yield compose
 
-@pytest.fixture(scope="module") # CORRECTED: Changed scope from "function" to "module"
+@pytest.fixture(scope="module")
 def db_connection(docker_services: DockerCompose):
     """
     A module-scoped fixture to provide a clean database connection for each test module.
@@ -43,3 +43,19 @@ def db_connection(docker_services: DockerCompose):
     conn = psycopg2.connect(url)
     yield conn
     conn.close()
+
+@pytest.fixture(scope="function")
+def clean_db(db_connection):
+    """
+    A function-scoped fixture that cleans all relevant tables before each test.
+    This ensures test idempotency.
+    """
+    with db_connection.cursor() as cursor:
+        cursor.execute("""
+            TRUNCATE TABLE corporate_actions, daily_position_snapshots, position_history, 
+                         cashflows, transaction_costs, transactions, instruments, 
+                         market_prices, fx_rates, portfolios, portfolio_timeseries, position_timeseries
+            RESTART IDENTITY;
+        """)
+    db_connection.commit()
+    yield
