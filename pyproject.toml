@@ -13,12 +13,12 @@ requires-python = ">=3.11"
 where = ["."]
 exclude = ["tests*", "deployment*"]
 
-# --- NEW: Pytest Configuration for PYTHONPATH ---
+# --- UPDATED: Pytest Configuration for PYTHONPATH and addopts ---
 [tool.pytest.ini_options]
 pythonpath = [
-    ".",
-    "services",
-    "libs"
+    ".", # Add the project root itself
+    "services", # Add the 'services' directory so 'services.persistence_service' etc. are discoverable
+    "libs" # Add the 'libs' directory so 'portfolio_common' is discoverable
 ]
-addopts = "--strict-markers --strict-paths"
-minversion = "6.0"
+addopts = "--strict-markers" # Removed --strict-paths
+minversion = "6.0" # Minimum pytest version supported by these options

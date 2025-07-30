@@ -4,18 +4,20 @@ from decimal import Decimal
 from sqlalchemy.orm import Session
 from psycopg2.errors import UniqueViolation # Import for specific error checks if needed, though UPSERT avoids this normally
 
-# Import database models and repository from their absolute paths relative to the project root
+# Import database models and event DTOs from portfolio_common
+# These imports are relative to the project root or rely on portfolio_common being on PYTHONPATH
 from portfolio_common.database_models import Instrument, Portfolio, MarketPrice, FxRate
 from portfolio_common.events import InstrumentEvent, PortfolioEvent, MarketPriceEvent, FxRateEvent
 from portfolio_common.db import get_db_session
 
-# Corrected Imports:
-# Assuming the project root is added to PYTHONPATH, we can import like this:
-from services.persistence_service.app.repositories.instrument_repository import InstrumentRepository
+# Corrected Local Import:
+# This import assumes that the pytest working directory is 'services/persistence-service'
+# so 'app' is a direct subdirectory.
+from app.repositories.instrument_repository import InstrumentRepository
 # Uncomment and correct these when adding tests for other repositories:
-# from services.persistence_service.app.repositories.portfolio_repository import PortfolioRepository
-# from services.persistence_service.app.repositories.market_price_repository import MarketPriceRepository
-# from services.persistence_service.app.repositories.fx_rate_repository import FxRateRepository
+# from app.repositories.portfolio_repository import PortfolioRepository
+# from app.repositories.market_price_repository import MarketPriceRepository
+# from app.repositories.fx_rate_repository import FxRateRepository
 
 
 # --- Fixtures for reusable data ---
