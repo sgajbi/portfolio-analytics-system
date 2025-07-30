@@ -2,6 +2,7 @@
 import structlog
 from fastapi import APIRouter, Depends, status, HTTPException
 from typing import List
+from pydantic import ValidationError # Import ValidationError
 
 from app.DTOs.transaction_dto import Transaction, TransactionIngestionRequest
 from app.services.ingestion_service import IngestionService, get_ingestion_service
@@ -29,16 +30,27 @@ async def ingest_transaction(
             "message": "Transaction received and queued for processing",
             "transaction_id": transaction.transaction_id
         }
+    except ValidationError as e:
+        logger.error(
+            "Validation error during single transaction ingestion.", 
+            transaction_id=transaction.transaction_id, 
+            error=str(e), 
+            exc_info=True
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid transaction data: {e.errors()}"
+        )
     except Exception as e:
         logger.error(
-            "Failed to publish transaction", 
+            "Failed to publish transaction due to an unexpected error.", 
             transaction_id=transaction.transaction_id, 
             error=str(e), 
             exc_info=True
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to publish transaction: {str(e)}"
+            detail="An unexpected error occurred while processing the transaction."
         )
 
 # NEW: Add a bulk ingestion endpoint
@@ -51,16 +63,22 @@ async def ingest_transactions(
     Ingests a list of financial transactions and publishes each to a Kafka topic.
     """
     num_transactions = len(request.transactions)
-    logger.info(f"Received request to ingest transactions.", num_transactions=num_transactions)
+    logger.info("Received request to ingest transactions.", num_transactions=num_transactions)
     try:
         await ingestion_service.publish_transactions(request.transactions)
-        logger.info(f"Transactions successfully queued.", num_transactions=num_transactions)
+        logger.info("Transactions successfully queued.", num_transactions=num_transactions)
         return {
             "message": f"Successfully queued {num_transactions} transactions for processing."
         }
+    except ValidationError as e:
+        logger.error("Validation error during bulk transactions ingestion.", num_transactions=num_transactions, error=str(e), exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid transactions data: {e.errors()}"
+        )
     except Exception as e:
-        logger.error("Failed to publish bulk transactions", error=str(e), exc_info=True)
+        logger.error("Failed to publish bulk transactions due to an unexpected error.", num_transactions=num_transactions, error=str(e), exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to publish bulk transactions: {str(e)}"
+            detail="An unexpected error occurred while processing transactions."
         )
