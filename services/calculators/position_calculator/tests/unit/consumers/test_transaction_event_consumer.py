@@ -10,7 +10,6 @@ from services.calculators.position_calculator.app.consumers.transaction_event_co
 
 @pytest.fixture
 def position_consumer():
-    """Provides an instance of the consumer with a mocked producer."""
     consumer = TransactionEventConsumer(
         bootstrap_servers="mock_server",
         topic="processed_transactions_completed",
@@ -22,12 +21,6 @@ def position_consumer():
 
 @pytest.mark.asyncio
 async def test_recalculate_for_back_dated_transaction(position_consumer: TransactionEventConsumer):
-    """
-    GIVEN an existing position history for Day 1 and Day 3
-    WHEN a new transaction for Day 2 arrives
-    THEN the consumer should delete history from Day 2 onwards and correctly replay to recreate
-    the history for Day 2 and Day 3.
-    """
     # 1. ARRANGE
     portfolio_id = "PORT_POS_01"
     security_id = "SEC_POS_01"
@@ -65,11 +58,17 @@ async def test_recalculate_for_back_dated_transaction(position_consumer: Transac
 
     mock_db_session = MagicMock()
     
-    committed_records_with_ids = [
-        PositionHistory(id=101, transaction_id="TXN_DAY_2", security_id=security_id, portfolio_id=portfolio_id, position_date=date(2025, 8, 2)),
-        PositionHistory(id=102, transaction_id="TXN_DAY_3", security_id=security_id, portfolio_id=portfolio_id, position_date=date(2025, 8, 3))
-    ]
-    mock_db_session.query.return_value.filter.return_value.all.return_value = committed_records_with_ids
+    # CORRECTED MOCK: The `flush` call needs to simulate ID generation.
+    # We can do this by assigning a side_effect to db.flush.
+    new_records = []
+    def save_records_side_effect(record):
+        new_records.append(record)
+    mock_db_session.add.side_effect = save_records_side_effect
+
+    def mock_flush():
+        for i, record in enumerate(new_records, 1):
+            record.id = i
+    mock_db_session.flush.side_effect = mock_flush
 
     # 2. ACT
     with patch("services.calculators.position_calculator.app.consumers.transaction_event_consumer.get_db_session", return_value=iter([mock_db_session])), \
@@ -78,7 +77,9 @@ async def test_recalculate_for_back_dated_transaction(position_consumer: Transac
         await position_consumer.process_message(mock_kafka_message)
 
     # 3. ASSERT
-    mock_db_session.add_all.assert_called_once()
+    assert mock_db_session.add.call_count == 2
+    mock_db_session.flush.assert_called_once()
     mock_db_session.commit.assert_called_once()
+    
     assert position_consumer._producer.publish_message.call_count == 2
     position_consumer._producer.flush.assert_called_once()

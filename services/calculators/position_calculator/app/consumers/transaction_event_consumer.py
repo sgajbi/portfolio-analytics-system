@@ -86,23 +86,20 @@ class TransactionEventConsumer(BaseConsumer):
                         quantity=current_state.quantity,
                         cost_basis=current_state.cost_basis
                     )
+                    db.add(new_record)
                     newly_created_records.append(new_record)
 
+                # Flush the session to send INSERTs to the DB and populate the IDs
+                # on our Python objects, without ending the transaction.
+                db.flush()
+
+                for record in newly_created_records:
+                    self._publish_persisted_event(record)
+                
                 if newly_created_records:
-                    # CORRECTED: Use add_all for a bulk insert
-                    db.add_all(newly_created_records)
-                    db.commit()
+                    self._producer.flush(timeout=5)
 
-                    committed_txn_ids = [rec.transaction_id for rec in newly_created_records]
-                    final_committed_records = db.query(PositionHistory).filter(
-                        PositionHistory.transaction_id.in_(committed_txn_ids)
-                    ).all()
-
-                    for record in final_committed_records:
-                        self._publish_persisted_event(record)
-
-                    if final_committed_records:
-                        self._producer.flush(timeout=5)
+                db.commit()
 
             except Exception as e:
                 db.rollback()
