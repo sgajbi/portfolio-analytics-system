@@ -46,17 +46,26 @@ def test_process_message_with_existing_history(cost_calculator_consumer: CostCal
     )
     mock_kafka_message = MagicMock()
     mock_kafka_message.value.return_value = new_sell_event.model_dump_json().encode('utf-8')
+    mock_kafka_message.headers.return_value = None
 
     # Mock the database session and its query results
     mock_db_session = MagicMock()
 
-    # CORRECTED MOCK: Use side_effect to handle the two separate filter calls
-    mock_query_chain = MagicMock()
-    # Configure the first call (.all()) to return the history
-    mock_query_chain.filter.return_value.all.return_value = [existing_buy_txn]
-    # Configure the second call (.first()) to return the object to be updated
-    mock_query_chain.filter.return_value.first.return_value = DBTransaction(**new_sell_event.model_dump())
-    mock_db_session.query.return_value = mock_query_chain
+    # CORRECTED MOCK: This robustly handles the two separate calls to .filter()
+    mock_query = mock_db_session.query.return_value
+    
+    # Configure the results for each specific query chain
+    mock_filter_result_for_history = MagicMock()
+    mock_filter_result_for_history.all.return_value = [existing_buy_txn]
+
+    mock_filter_result_for_update = MagicMock()
+    mock_filter_result_for_update.first.return_value = DBTransaction(**new_sell_event.model_dump())
+    
+    # When .filter() is called, return the history result first, then the update result
+    mock_query.filter.side_effect = [
+        mock_filter_result_for_history,
+        mock_filter_result_for_update
+    ]
 
     # 2. ACT
     with patch(
@@ -66,17 +75,14 @@ def test_process_message_with_existing_history(cost_calculator_consumer: CostCal
         cost_calculator_consumer._process_message(mock_kafka_message)
 
     # 3. ASSERT
-    # Assert that the filter method was called twice (once for history, once for update)
-    assert mock_query_chain.filter.call_count == 2
+    assert mock_query.filter.call_count == 2
 
     # Assert that the transaction in the session was updated with the gain/loss
-    updated_txn_in_session = mock_query_chain.filter.return_value.first.return_value
+    updated_txn_in_session = mock_filter_result_for_update.first.return_value
     assert updated_txn_in_session.realized_gain_loss == Decimal("250")
 
-    # Assert that the session was committed
     mock_db_session.commit.assert_called_once()
     
-    # Assert that the completion event was published
     mock_producer = cost_calculator_consumer._producer
     mock_producer.publish_message.assert_called_once()
 
