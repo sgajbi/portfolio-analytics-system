@@ -42,7 +42,8 @@ def upgrade() -> None:
     op.alter_column('position_history', 'transaction_id',
                existing_type=sa.VARCHAR(),
                nullable=False)
-    op.create_unique_constraint(None, 'position_history', ['transaction_id'])
+    # CORRECTED: Provide an explicit name for the constraint
+    op.create_unique_constraint('uq_position_history_transaction_id', 'position_history', ['transaction_id'])
     op.drop_column('position_history', 'market_value')
     op.drop_column('position_history', 'market_price')
     op.drop_column('position_history', 'unrealized_gain_loss')
@@ -56,7 +57,8 @@ def downgrade() -> None:
     op.add_column('position_history', sa.Column('unrealized_gain_loss', sa.NUMERIC(precision=18, scale=10), autoincrement=False, nullable=True))
     op.add_column('position_history', sa.Column('market_price', sa.NUMERIC(precision=18, scale=10), autoincrement=False, nullable=True))
     op.add_column('position_history', sa.Column('market_value', sa.NUMERIC(precision=18, scale=10), autoincrement=False, nullable=True))
-    op.drop_constraint(None, 'position_history', type_='unique')
+    # CORRECTED: Provide the explicit name to be dropped
+    op.drop_constraint('uq_position_history_transaction_id', 'position_history', type_='unique')
     op.alter_column('position_history', 'transaction_id',
                existing_type=sa.VARCHAR(),
                nullable=True)
