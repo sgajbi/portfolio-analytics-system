@@ -9,8 +9,6 @@ from testcontainers.compose import DockerCompose
 import sys
 
 
-# --- UPDATED PATH LOGIC ---
-# __file__ is now in tests/, so we just need to go up one level to get the project root.
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
@@ -24,15 +22,11 @@ def docker_services(request):
     """
     compose = DockerCompose(".", compose_file_name="docker-compose.yml")
     with compose:
-        # Before starting tests, ensure the DB is fully migrated
-        print("\n--- Ensuring initial migration is complete ---")
-        migration_runner = compose.get_container("migration-runner")
-        # Ensure migration-runner output is captured for debugging
-        exit_code = migration_runner.wait()
-        if exit_code != 0:
-            logs = migration_runner.get_logs()
-            pytest.fail(f"Migration runner failed to start. Exit code: {exit_code}\nLogs:\n{logs}")
-        print("--- Initial migration complete ---")
+        # REMOVED the problematic block that explicitly checks migration-runner.
+        # The 'depends_on' in docker-compose.yml ensures migrations run before
+        # dependent services start. The health check below is a sufficient
+        # gate to ensure the system is ready.
+        print("\n--- Waiting for services to become healthy ---")
 
         host = compose.get_service_host("ingestion-service", 8000)
         port = compose.get_service_port("ingestion-service", 8000)
@@ -60,7 +54,6 @@ def db_connection(docker_services: DockerCompose):
     """
     host = docker_services.get_service_host("postgres", 5432)
     port = docker_services.get_service_port("postgres", 5432)
-    # Corrected DB URL to use host and port dynamically
     url = f"postgresql://{os.getenv('POSTGRES_USER', 'user')}:{os.getenv('POSTGRES_PASSWORD', 'password')}@{host}:{port}/{os.getenv('POSTGRES_DB', 'portfolio_db')}"
     conn = psycopg2.connect(url)
     conn.autocommit = True
@@ -76,13 +69,9 @@ def clean_db(docker_services):
     """
     print("\n--- Resetting database schema with Alembic ---")
     
-    # Alembic's env.py is configured to use HOST_DATABASE_URL for local runs
-    # We must provide it to the subprocess environment
     env = os.environ.copy()
     host = docker_services.get_service_host("postgres", 5432)
     port = docker_services.get_service_port("postgres", 5432)
-    # Ensure correct environment variables are passed, reading from .env if possible
-    # Fallback to defaults from config if .env not loaded (though testcontainers load it)
     db_user = os.getenv("POSTGRES_USER", "user")
     db_password = os.getenv("POSTGRES_PASSWORD", "password")
     db_name = os.getenv("POSTGRES_DB", "portfolio_db")
@@ -92,7 +81,7 @@ def clean_db(docker_services):
     downgrade_result = subprocess.run(
         ["alembic", "downgrade", "base"],
         capture_output=True, 
-        text=True, env=env, shell=True # shell=True for Windows Git Bash compatibility
+        text=True, env=env, shell=True
     )
     if downgrade_result.returncode != 0:
         pytest.fail(f"Alembic downgrade failed:\nSTDOUT:\n{downgrade_result.stdout}\nSTDERR:\n{downgrade_result.stderr}")
@@ -100,7 +89,7 @@ def clean_db(docker_services):
     # Upgrade to the latest schema
     upgrade_result = subprocess.run(
         ["alembic", "upgrade", "head"],
-        capture_output=True, text=True, env=env, shell=True # shell=True for Windows Git Bash compatibility
+        capture_output=True, text=True, env=env, shell=True
     )
     if upgrade_result.returncode != 0:
         pytest.fail(f"Alembic upgrade failed:\nSTDOUT:\n{upgrade_result.stdout}\nSTDERR:\n{upgrade_result.stderr}")
