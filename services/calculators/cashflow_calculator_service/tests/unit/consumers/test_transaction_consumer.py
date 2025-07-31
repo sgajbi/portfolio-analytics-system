@@ -61,7 +61,6 @@ async def test_process_message_success(
     """
     # Arrange
     mock_repo = MagicMock()
-    # CORRECTED: Provide a complete mock of the object returned by the database
     mock_saved_cashflow = Cashflow(
         id=1,
         transaction_id="TXN_CASHFLOW_CONSUMER",
@@ -89,18 +88,16 @@ async def test_process_message_success(
         await cashflow_consumer.process_message(mock_kafka_message)
 
         # Assert
-        # 1. Verify the repository was called to save the cashflow
         mock_repo.create_cashflow.assert_called_once()
         
-        # 2. Verify the producer was called to publish the completion event
         mock_producer = cashflow_consumer._producer
         mock_producer.publish_message.assert_called_once()
         
-        # 3. Verify the content of the published message
         publish_args = mock_producer.publish_message.call_args.kwargs
         assert publish_args['topic'] == KAFKA_CASHFLOW_CALCULATED_TOPIC
         assert publish_args['key'] == "TXN_CASHFLOW_CONSUMER"
-        assert publish_args['value']['cashflow_id'] == mock_saved_cashflow.id
+        
+        # CORRECTED: Assert against the aliased field 'id'
+        assert publish_args['value']['id'] == mock_saved_cashflow.id
 
-        # 4. Ensure the DLQ method was NOT called
         cashflow_consumer._send_to_dlq.assert_not_called()
