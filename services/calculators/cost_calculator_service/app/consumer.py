@@ -1,4 +1,4 @@
-# services/cost-calculator-service/app/consumer.py
+# services/calculators/cost_calculator_service/app/consumer.py
 import json
 import logging
 from confluent_kafka import Consumer, Message
@@ -107,7 +107,8 @@ class CostCalculatorConsumer:
                     db_txn_to_update.gross_cost = result.gross_cost
                     db_txn_to_update.realized_gain_loss = result.realized_gain_loss
                     db.commit()
-                    db.refresh(db_txn_to_update)
+                    # REMOVED: This line is not needed and interferes with unit testing.
+                    # db.refresh(db_txn_to_update)
                     logger.info(f"Successfully updated transaction {result.transaction_id}.")
                     
                     # Publish the enriched transaction event
