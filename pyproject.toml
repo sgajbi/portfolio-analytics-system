@@ -24,3 +24,4 @@ pythonpath = [
 addopts = "--strict-markers"
 minversion = "6.0"
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
