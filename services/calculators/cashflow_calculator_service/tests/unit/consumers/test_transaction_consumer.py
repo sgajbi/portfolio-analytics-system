@@ -1,7 +1,7 @@
 # services/calculators/cashflow_calculator_service/tests/unit/consumers/test_transaction_consumer.py
 import pytest
 from unittest.mock import MagicMock, patch, AsyncMock
-from datetime import datetime
+from datetime import datetime, date
 from decimal import Decimal
 
 from portfolio_common.kafka_consumer import correlation_id_cv
@@ -61,8 +61,20 @@ async def test_process_message_success(
     """
     # Arrange
     mock_repo = MagicMock()
-    # Simulate the repository returning a saved object with an ID
-    mock_saved_cashflow = Cashflow(id=1, transaction_id="TXN_CASHFLOW_CONSUMER")
+    # CORRECTED: Provide a complete mock of the object returned by the database
+    mock_saved_cashflow = Cashflow(
+        id=1,
+        transaction_id="TXN_CASHFLOW_CONSUMER",
+        portfolio_id="PORT_CFC_01",
+        security_id="SEC_CFC_01",
+        cashflow_date=date(2025, 8, 1),
+        amount=Decimal("-1005.50"),
+        currency="USD",
+        classification="INVESTMENT_OUTFLOW",
+        timing="EOD",
+        level="POSITION",
+        calculation_type="NET"
+    )
     mock_repo.create_cashflow.return_value = mock_saved_cashflow
 
     correlation_id = 'corr-cf-789'
@@ -88,8 +100,6 @@ async def test_process_message_success(
         publish_args = mock_producer.publish_message.call_args.kwargs
         assert publish_args['topic'] == KAFKA_CASHFLOW_CALCULATED_TOPIC
         assert publish_args['key'] == "TXN_CASHFLOW_CONSUMER"
-        
-        # The published event is a CashflowCalculatedEvent, check one of its fields
         assert publish_args['value']['cashflow_id'] == mock_saved_cashflow.id
 
         # 4. Ensure the DLQ method was NOT called
