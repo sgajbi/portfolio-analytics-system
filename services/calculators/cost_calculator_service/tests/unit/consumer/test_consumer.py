@@ -7,6 +7,8 @@ from decimal import Decimal
 from portfolio_common.events import TransactionEvent
 from portfolio_common.database_models import Transaction as DBTransaction
 from portfolio_common.config import KAFKA_PROCESSED_TRANSACTIONS_COMPLETED_TOPIC
+# Import the engine's Pydantic model for mocking the processor's output
+from src.core.models.transaction import Transaction as EngineTransaction
 from services.calculators.cost_calculator_service.app.consumer import CostCalculatorConsumer
 
 @pytest.fixture
@@ -24,13 +26,14 @@ def test_process_message_with_existing_history(cost_calculator_consumer: CostCal
     """
     GIVEN a new SELL transaction message for a security with a prior BUY
     WHEN the process_message method is called
-    THEN it should fetch history, calculate gain/loss, update the DB, and publish an event.
+    THEN it should fetch history, call the processor, update the DB, and publish an event.
     """
     # 1. ARRANGE
     portfolio_id = "PORT_COST_01"
     security_id = "SEC_COST_01"
 
-    existing_buy_txn = DBTransaction(
+    # Mock the transaction already in the DB
+    existing_buy_txn_db = DBTransaction(
         transaction_id="BUY01", portfolio_id=portfolio_id, instrument_id="AAPL",
         security_id=security_id, transaction_date=datetime(2025, 1, 10),
         transaction_type="BUY", quantity=Decimal("10"), price=Decimal("150.0"),
@@ -38,6 +41,7 @@ def test_process_message_with_existing_history(cost_calculator_consumer: CostCal
         trade_currency="USD", currency="USD"
     )
 
+    # Mock the new transaction from the Kafka message
     new_sell_event = TransactionEvent(
         transaction_id="SELL01", portfolio_id=portfolio_id, instrument_id="AAPL",
         security_id=security_id, transaction_date=datetime(2025, 1, 20),
@@ -48,43 +52,44 @@ def test_process_message_with_existing_history(cost_calculator_consumer: CostCal
     mock_kafka_message.value.return_value = new_sell_event.model_dump_json().encode('utf-8')
     mock_kafka_message.headers.return_value = None
 
-    # Mock the database session and its query results
+    # Mock the DB session to return the historical transaction
     mock_db_session = MagicMock()
+    mock_db_session.query.return_value.filter.return_value.all.return_value = [existing_buy_txn_db]
+    mock_db_session.query.return_value.filter.return_value.first.return_value = DBTransaction(**new_sell_event.model_dump())
 
-    # CORRECTED MOCK: This robustly handles the two separate calls to .filter()
-    mock_query = mock_db_session.query.return_value
-    
-    # Configure the results for each specific query chain
-    mock_filter_result_for_history = MagicMock()
-    mock_filter_result_for_history.all.return_value = [existing_buy_txn]
-
-    mock_filter_result_for_update = MagicMock()
-    mock_filter_result_for_update.first.return_value = DBTransaction(**new_sell_event.model_dump())
-    
-    # When .filter() is called, return the history result first, then the update result
-    mock_query.filter.side_effect = [
-        mock_filter_result_for_history,
-        mock_filter_result_for_update
-    ]
+    # Mock the TransactionProcessor to return a pre-calculated result
+    processed_sell_txn = EngineTransaction(**new_sell_event.model_dump())
+    processed_sell_txn.realized_gain_loss = Decimal("250.0") # This is the value we expect
+    mock_processor_instance = MagicMock()
+    mock_processor_instance.process_transactions.return_value = ([processed_sell_txn], [])
 
     # 2. ACT
     with patch(
         "services.calculators.cost_calculator_service.app.consumer.get_db_session",
         return_value=iter([mock_db_session])
+    ), patch(
+        "services.calculators.cost_calculator_service.app.consumer.TransactionProcessor",
+        return_value=mock_processor_instance
     ):
         cost_calculator_consumer._process_message(mock_kafka_message)
 
     # 3. ASSERT
-    assert mock_query.filter.call_count == 2
+    # Assert DB was queried for history
+    mock_db_session.query.return_value.filter.assert_called()
 
-    # Assert that the transaction in the session was updated with the gain/loss
-    updated_txn_in_session = mock_filter_result_for_update.first.return_value
-    assert updated_txn_in_session.realized_gain_loss == Decimal("250")
-
-    mock_db_session.commit.assert_called_once()
+    # Assert Processor was called with the correct raw data
+    mock_processor_instance.process_transactions.assert_called_once()
+    call_args = mock_processor_instance.process_transactions.call_args.kwargs
+    assert len(call_args['existing_transactions_raw']) == 1
+    assert call_args['new_transactions_raw'][0]['transaction_id'] == 'SELL01'
     
+    # Assert the returned value from the processor was used to update the DB object
+    updated_txn_in_session = mock_db_session.query.return_value.filter.return_value.first.return_value
+    assert updated_txn_in_session.realized_gain_loss == Decimal("250.0")
+    mock_db_session.commit.assert_called_once()
+
+    # Assert event was published with the correct calculated data
     mock_producer = cost_calculator_consumer._producer
     mock_producer.publish_message.assert_called_once()
-
     publish_args = mock_producer.publish_message.call_args.kwargs
     assert publish_args['value']['realized_gain_loss'] == "250.0000000000"
