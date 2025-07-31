@@ -49,18 +49,24 @@ def test_process_message_with_existing_history(cost_calculator_consumer: CostCal
     mock_kafka_message.value.return_value = new_sell_event.model_dump_json().encode('utf-8')
     mock_kafka_message.headers.return_value = None
 
-    # Mock the database session and its query results
+    # Mock the database session
     mock_db_session = MagicMock()
     
-    # CORRECTED MOCK: This simpler mock correctly handles both .all() and .first() calls
+    # CORRECTED MOCK: Configure a mock object to act like a DBTransaction instance
+    # This is more robust than instantiating a raw SQLAlchemy model in a test.
+    object_to_update = MagicMock(spec=DBTransaction)
+    # Set attributes on the mock to match the data from the event
+    for key, value in new_sell_event.model_dump().items():
+        setattr(object_to_update, key, value)
+    # Ensure calculated fields start as None
+    object_to_update.realized_gain_loss = None
+    
     mock_filter_result = MagicMock()
     mock_filter_result.all.return_value = [existing_buy_txn_db]
-    # The object to be "updated" is the one returned by the second query
-    object_to_update = DBTransaction(**new_sell_event.model_dump())
     mock_filter_result.first.return_value = object_to_update
     mock_db_session.query.return_value.filter.return_value = mock_filter_result
     
-    # Mock the TransactionProcessor's return value
+    # Mock the TransactionProcessor to return a pre-calculated result
     processed_sell_txn = EngineTransaction(**new_sell_event.model_dump())
     processed_sell_txn.realized_gain_loss = Decimal("250.0")
     mock_processor_instance = MagicMock()
@@ -80,7 +86,7 @@ def test_process_message_with_existing_history(cost_calculator_consumer: CostCal
     # Assert Processor was called with the correct raw data
     mock_processor_instance.process_transactions.assert_called_once()
     
-    # Assert the returned value from the processor was used to update the DB object
+    # Assert the returned value from the processor was used to update the mock DB object
     assert object_to_update.realized_gain_loss == Decimal("250.0")
     mock_db_session.commit.assert_called_once()
 
