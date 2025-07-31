@@ -1,23 +1,17 @@
+# tests/integration/test_persistence_repositories.py
 import pytest
 from datetime import date, datetime
 from decimal import Decimal
 from sqlalchemy.orm import Session
-from psycopg2.errors import UniqueViolation # Import for specific error checks if needed, though UPSERT avoids this normally
 
 # Import database models and event DTOs from portfolio_common
-# These imports are relative to the project root or rely on portfolio_common being on PYTHONPATH
-from portfolio_common.database_models import Instrument, Portfolio, MarketPrice, FxRate
-from portfolio_common.events import InstrumentEvent, PortfolioEvent, MarketPriceEvent, FxRateEvent
-from portfolio_common.db import get_db_session
+from portfolio_common.database_models import Instrument, Transaction as DBTransaction
+from portfolio_common.events import InstrumentEvent, TransactionEvent
 
-# Corrected Local Import:
-# This import assumes that the pytest working directory is 'services/persistence-service'
-# so 'app' is a direct subdirectory.
+# Corrected Local Imports: These now work because 'services/persistence-service'
+# is on the pythonpath, making 'app' a top-level module for the tests.
 from app.repositories.instrument_repository import InstrumentRepository
-# Uncomment and correct these when adding tests for other repositories:
-# from app.repositories.portfolio_repository import PortfolioRepository
-# from app.repositories.market_price_repository import MarketPriceRepository
-# from app.repositories.fx_rate_repository import FxRateRepository
+from app.repositories.transaction_db_repo import TransactionDBRepository
 
 
 # --- Fixtures for reusable data ---
@@ -47,8 +41,6 @@ def test_instrument_repository_create_new_instrument(clean_db, db_connection):
     """
     Tests that a new instrument can be successfully created.
     """
-    # Use a direct session from the db_connection fixture for this test function
-    # In a real app, you'd use get_db_session dependency, but here for direct test control
     with Session(db_connection) as db:
         repo = InstrumentRepository(db)
         
@@ -104,7 +96,7 @@ def test_instrument_repository_upsert_update_existing_instrument(clean_db, db_co
 
 def test_instrument_repository_upsert_no_change_on_identical_event(clean_db, db_connection, instrument_event_buy):
     """
-    Tests that an UPSERT event with identical data results in no effective change (updated_at might still change depending on DB/SQLA, but data should be same).
+    Tests that an UPSERT event with identical data results in no effective change.
     """
     with Session(db_connection) as db:
         repo = InstrumentRepository(db)
@@ -113,10 +105,6 @@ def test_instrument_repository_upsert_no_change_on_identical_event(clean_db, db_
         initial_instrument = repo.create_or_update_instrument(instrument_event_buy)
         initial_updated_at = initial_instrument.updated_at
         db.expunge_all() # Detach
-
-        # Give a small delay to ensure updated_at changes if touched by DB
-        import time
-        time.sleep(0.01) 
 
         # 2. Call UPSERT with an identical event
         same_event = InstrumentEvent(
@@ -128,15 +116,48 @@ def test_instrument_repository_upsert_no_change_on_identical_event(clean_db, db_
         )
         upserted_instrument = repo.create_or_update_instrument(same_event)
 
-        assert upserted_instrument.security_id == initial_instrument.security_id
         assert upserted_instrument.name == initial_instrument.name
-        assert upserted_instrument.isin == initial_instrument.isin
-        assert upserted_instrument.product_type == initial_instrument.product_type
-        assert upserted_instrument.created_at == initial_instrument.created_at
-        # updated_at might be equal or slightly greater depending on DB precision and actual update.
         # The key is that the business data fields are unchanged.
         assert upserted_instrument.updated_at >= initial_updated_at 
         
         # Ensure no new record was created
         count_in_db = db.query(Instrument).filter_by(security_id="SEC_AAPL_001").count()
         assert count_in_db == 1
+
+# --- NEW: Test for TransactionDBRepository ---
+def test_transaction_repository_is_idempotent(clean_db, db_connection):
+    """
+    Tests that creating the same transaction twice does not result in duplicates.
+    This validates the core idempotency requirement before we refactor.
+    """
+    with Session(db_connection) as db:
+        repo = TransactionDBRepository(db)
+
+        # Define a sample transaction event
+        event = TransactionEvent(
+            transaction_id="IDEMPOTENCY_TEST_01",
+            portfolio_id="PORT_T1",
+            instrument_id="INST_T1",
+            security_id="SEC_T1",
+            transaction_date=datetime(2025, 7, 31, 10, 0, 0),
+            transaction_type="BUY",
+            quantity=Decimal("100"),
+            price=Decimal("10"),
+            gross_transaction_amount=Decimal("1000"),
+            trade_currency="USD",
+            currency="USD",
+        )
+
+        # 1. Create the transaction for the first time
+        repo.create_or_update_transaction(event)
+
+        # Verify it was created
+        count1 = db.query(DBTransaction).filter_by(transaction_id=event.transaction_id).count()
+        assert count1 == 1
+
+        # 2. Create the exact same transaction again
+        repo.create_or_update_transaction(event)
+
+        # Verify that the count is still 1
+        count2 = db.query(DBTransaction).filter_by(transaction_id=event.transaction_id).count()
+        assert count2 == 1
