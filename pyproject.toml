@@ -16,11 +16,14 @@ exclude = ["tests*", "deployment*"]
 
 # --- UPDATED: Pytest Configuration for PYTHONPATH and addopts ---
 [tool.pytest.ini_options]
+# Explicitly tell pytest where to find tests
+testpaths = [
+    "tests",
+    "services"
+]
 pythonpath = [
     ".", # Project root
-    "libs",
-    "services/ingestion-service",
-    "tests" # Explicitly add tests directory to path
+    "libs"
 ]
 addopts = "--strict-markers"
 minversion = "6.0"
