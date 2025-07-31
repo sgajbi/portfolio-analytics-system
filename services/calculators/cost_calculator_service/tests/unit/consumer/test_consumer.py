@@ -3,8 +3,6 @@ import pytest
 from unittest.mock import MagicMock, patch
 from datetime import datetime
 from decimal import Decimal
-# NEW: Import SimpleNamespace for a clean data object
-from types import SimpleNamespace
 
 from portfolio_common.events import TransactionEvent
 from portfolio_common.database_models import Transaction as DBTransaction
@@ -52,17 +50,9 @@ def test_process_message_with_existing_history(cost_calculator_consumer: CostCal
     mock_kafka_message.headers.return_value = None
 
     mock_db_session = MagicMock()
-    
-    # CORRECTED MOCK: Use a simple, standard object instead of a complex mock.
-    # This object acts as a plain data container.
-    object_to_update = SimpleNamespace(**new_sell_event.model_dump())
-    object_to_update.realized_gain_loss = None # Ensure it starts as None
-    
-    mock_filter_result = MagicMock()
-    mock_filter_result.all.return_value = [existing_buy_txn_db]
-    mock_filter_result.first.return_value = object_to_update
-    mock_db_session.query.return_value.filter.return_value = mock_filter_result
-    
+    mock_db_session.query.return_value.filter.return_value.all.return_value = [existing_buy_txn_db]
+    mock_db_session.query.return_value.filter.return_value.first.return_value = DBTransaction(**new_sell_event.model_dump())
+
     processed_sell_txn = EngineTransaction(**new_sell_event.model_dump())
     processed_sell_txn.realized_gain_loss = Decimal("250.0")
     mock_processor_instance = MagicMock()
@@ -78,7 +68,21 @@ def test_process_message_with_existing_history(cost_calculator_consumer: CostCal
         cost_calculator_consumer._process_message(mock_kafka_message)
 
     # 3. ASSERT
-    assert object_to_update.realized_gain_loss == Decimal("250.0")
+    # Assert that the processor was called with the correct data
+    mock_processor_instance.process_transactions.assert_called_once()
+    call_args = mock_processor_instance.process_transactions.call_args.kwargs
+    assert len(call_args['existing_transactions_raw']) == 1
+    assert call_args['new_transactions_raw'][0]['transaction_id'] == 'SELL01'
+
+    # Assert that the database session was committed
     mock_db_session.commit.assert_called_once()
+
+    # Assert that the producer was called to publish the completion event
     mock_producer = cost_calculator_consumer._producer
     mock_producer.publish_message.assert_called_once()
+
+    # Assert that the COMPLETION EVENT contains the correct calculated data
+    publish_args = mock_producer.publish_message.call_args.kwargs
+    assert publish_args['topic'] == KAFKA_PROCESSED_TRANSACTIONS_COMPLETED_TOPIC
+    assert publish_args['value']['transaction_id'] == 'SELL01'
+    assert publish_args['value']['realized_gain_loss'] == "250.0"
