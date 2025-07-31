@@ -4,12 +4,9 @@ from datetime import date, datetime
 from decimal import Decimal
 from sqlalchemy.orm import Session
 
-# Import database models and event DTOs from portfolio_common
 from portfolio_common.database_models import Instrument, Transaction as DBTransaction
 from portfolio_common.events import InstrumentEvent, TransactionEvent
 
-# Corrected Local Imports: These now work because the project root is on the
-# pythonpath and 'services' is a proper package.
 from services.persistence_service.app.repositories.instrument_repository import InstrumentRepository
 from services.persistence_service.app.repositories.transaction_db_repo import TransactionDBRepository
 
@@ -37,11 +34,11 @@ def instrument_event_update():
 
 # --- Integration Tests for InstrumentRepository ---
 
-def test_instrument_repository_create_new_instrument(clean_db, db_connection):
+def test_instrument_repository_create_new_instrument(clean_db, db_engine):
     """
     Tests that a new instrument can be successfully created.
     """
-    with Session(db_connection) as db:
+    with Session(db_engine) as db:
         repo = InstrumentRepository(db)
         
         event = InstrumentEvent(
@@ -63,11 +60,11 @@ def test_instrument_repository_create_new_instrument(clean_db, db_connection):
         assert fetched_instrument.name == "Test New Instrument"
 
 
-def test_instrument_repository_upsert_update_existing_instrument(clean_db, db_connection, instrument_event_buy, instrument_event_update):
+def test_instrument_repository_upsert_update_existing_instrument(clean_db, db_engine, instrument_event_buy, instrument_event_update):
     """
     Tests that an existing instrument is updated when an UPSERT event with the same security_id occurs.
     """
-    with Session(db_connection) as db:
+    with Session(db_engine) as db:
         repo = InstrumentRepository(db)
 
         # 1. Create the initial instrument
@@ -81,30 +78,30 @@ def test_instrument_repository_upsert_update_existing_instrument(clean_db, db_co
 
         assert updated_instrument is not None
         assert updated_instrument.security_id == "SEC_AAPL_001"
-        assert updated_instrument.name == "Apple Inc. (Updated)" # Should be updated
-        assert updated_instrument.product_type == "Equity_Updated" # Should be updated
-        assert updated_instrument.isin == "US0378331005_NEW" # Should be updated
+        assert updated_instrument.name == "Apple Inc. (Updated)"
+        assert updated_instrument.product_type == "Equity_Updated"
+        assert updated_instrument.isin == "US0378331005_NEW"
 
         # Verify by fetching directly from DB
         fetched_instrument = db.query(Instrument).filter_by(security_id="SEC_AAPL_001").first()
         assert fetched_instrument.name == "Apple Inc. (Updated)"
         assert fetched_instrument.product_type == "Equity_Updated"
         assert fetched_instrument.isin == "US0378331005_NEW"
-        assert fetched_instrument.created_at == initial_instrument.created_at # created_at should not change
-        assert fetched_instrument.updated_at > initial_instrument.updated_at # updated_at should change
+        assert fetched_instrument.created_at == initial_instrument.created_at
+        assert fetched_instrument.updated_at > initial_instrument.updated_at
 
 
-def test_instrument_repository_upsert_no_change_on_identical_event(clean_db, db_connection, instrument_event_buy):
+def test_instrument_repository_upsert_no_change_on_identical_event(clean_db, db_engine, instrument_event_buy):
     """
     Tests that an UPSERT event with identical data results in no effective change.
     """
-    with Session(db_connection) as db:
+    with Session(db_engine) as db:
         repo = InstrumentRepository(db)
 
         # 1. Create the initial instrument
         initial_instrument = repo.create_or_update_instrument(instrument_event_buy)
         initial_updated_at = initial_instrument.updated_at
-        db.expunge_all() # Detach
+        db.expunge_all()
 
         # 2. Call UPSERT with an identical event
         same_event = InstrumentEvent(
@@ -117,23 +114,19 @@ def test_instrument_repository_upsert_no_change_on_identical_event(clean_db, db_
         upserted_instrument = repo.create_or_update_instrument(same_event)
 
         assert upserted_instrument.name == initial_instrument.name
-        # The key is that the business data fields are unchanged.
         assert upserted_instrument.updated_at >= initial_updated_at 
         
-        # Ensure no new record was created
         count_in_db = db.query(Instrument).filter_by(security_id="SEC_AAPL_001").count()
         assert count_in_db == 1
 
-# --- NEW: Test for TransactionDBRepository ---
-def test_transaction_repository_is_idempotent(clean_db, db_connection):
+# --- Test for TransactionDBRepository ---
+def test_transaction_repository_is_idempotent(clean_db, db_engine):
     """
     Tests that creating the same transaction twice does not result in duplicates.
-    This validates the core idempotency requirement before we refactor.
     """
-    with Session(db_connection) as db:
+    with Session(db_engine) as db:
         repo = TransactionDBRepository(db)
 
-        # Define a sample transaction event
         event = TransactionEvent(
             transaction_id="IDEMPOTENCY_TEST_01",
             portfolio_id="PORT_T1",
@@ -151,13 +144,11 @@ def test_transaction_repository_is_idempotent(clean_db, db_connection):
         # 1. Create the transaction for the first time
         repo.create_or_update_transaction(event)
 
-        # Verify it was created
         count1 = db.query(DBTransaction).filter_by(transaction_id=event.transaction_id).count()
         assert count1 == 1
 
         # 2. Create the exact same transaction again
         repo.create_or_update_transaction(event)
 
-        # Verify that the count is still 1
         count2 = db.query(DBTransaction).filter_by(transaction_id=event.transaction_id).count()
         assert count2 == 1
