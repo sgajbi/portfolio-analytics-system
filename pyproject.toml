@@ -18,13 +18,12 @@ exclude = ["tests*", "deployment*"]
 [tool.pytest.ini_options]
 pythonpath = [
     ".", # Project root
-    "libs", # Shared libraries
-    "services/ingestion-service"
+    "libs",
+    "services/ingestion-service",
+    "tests" # Explicitly add tests directory to path
 ]
 addopts = "--strict-markers"
 minversion = "6.0"
-asyncio_mode = "auto"
-asyncio_default_fixture_loop_scope = "function"
 filterwarnings = [
     "ignore:Please use `import python_multipart` instead.:PendingDeprecationWarning"
 ]
