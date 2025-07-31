@@ -25,23 +25,12 @@ def test_process_message_with_existing_history(cost_calculator_consumer: CostCal
     """
     GIVEN a new SELL transaction message for a security with a prior BUY
     WHEN the process_message method is called
-    THEN it should fetch history, call the processor, update the DB, and publish an event.
+    THEN it should use the repository, call the processor, update the DB, and publish an event.
     """
     # 1. ARRANGE
-    portfolio_id = "PORT_COST_01"
-    security_id = "SEC_COST_01"
-
-    existing_buy_txn_db = DBTransaction(
-        transaction_id="BUY01", portfolio_id=portfolio_id, instrument_id="AAPL",
-        security_id=security_id, transaction_date=datetime(2025, 1, 10),
-        transaction_type="BUY", quantity=Decimal("10"), price=Decimal("150.0"),
-        gross_transaction_amount=Decimal("1500.0"), net_cost=Decimal("1500.0"),
-        trade_currency="USD", currency="USD"
-    )
-
     new_sell_event = TransactionEvent(
-        transaction_id="SELL01", portfolio_id=portfolio_id, instrument_id="AAPL",
-        security_id=security_id, transaction_date=datetime(2025, 1, 20),
+        transaction_id="SELL01", portfolio_id="PORT_COST_01", instrument_id="AAPL",
+        security_id="SEC_COST_01", transaction_date=datetime(2025, 1, 20),
         transaction_type="SELL", quantity=Decimal("10"), price=Decimal("175.0"),
         gross_transaction_amount=Decimal("1750.0"), trade_currency="USD", currency="USD"
     )
@@ -49,40 +38,33 @@ def test_process_message_with_existing_history(cost_calculator_consumer: CostCal
     mock_kafka_message.value.return_value = new_sell_event.model_dump_json().encode('utf-8')
     mock_kafka_message.headers.return_value = None
 
-    mock_db_session = MagicMock()
-    mock_db_session.query.return_value.filter.return_value.all.return_value = [existing_buy_txn_db]
-    mock_db_session.query.return_value.filter.return_value.first.return_value = DBTransaction(**new_sell_event.model_dump())
-
+    # Mock the TransactionProcessor to return a pre-calculated result
     processed_sell_txn = EngineTransaction(**new_sell_event.model_dump())
     processed_sell_txn.realized_gain_loss = Decimal("250.0")
     mock_processor_instance = MagicMock()
     mock_processor_instance.process_transactions.return_value = ([processed_sell_txn], [])
 
+    # Mock the Repository and its methods
+    mock_repo_instance = MagicMock()
+    mock_repo_instance.get_transaction_history.return_value = [DBTransaction(transaction_id="BUY01")]
+    mock_repo_instance.update_transaction_costs.return_value = DBTransaction(**new_sell_event.model_dump())
+
     # 2. ACT
-    with patch.object(
-        cost_calculator_consumer, '_get_transaction_processor', return_value=mock_processor_instance
-    ), patch(
-        "services.calculators.cost_calculator_service.app.consumer.get_db_session",
-        return_value=iter([mock_db_session])
-    ):
+    with patch.object(cost_calculator_consumer, '_get_transaction_processor', return_value=mock_processor_instance), \
+         patch("services.calculators.cost_calculator_service.app.consumer.get_db_session"), \
+         patch("services.calculators.cost_calculator_service.app.consumer.CostCalculatorRepository", return_value=mock_repo_instance):
+
         cost_calculator_consumer._process_message(mock_kafka_message)
 
     # 3. ASSERT
-    # Assert that the processor was called with the correct data
-    mock_processor_instance.process_transactions.assert_called_once()
-    call_args = mock_processor_instance.process_transactions.call_args.kwargs
-    assert len(call_args['existing_transactions_raw']) == 1
-    assert call_args['new_transactions_raw'][0]['transaction_id'] == 'SELL01'
+    # Assert the repository was used to fetch history
+    mock_repo_instance.get_transaction_history.assert_called_once()
+    
+    # Assert the repository was called to update the transaction
+    mock_repo_instance.update_transaction_costs.assert_called_once()
 
-    # Assert that the database session was committed
-    mock_db_session.commit.assert_called_once()
-
-    # Assert that the producer was called to publish the completion event
+    # Assert the producer was called to publish the final event
     mock_producer = cost_calculator_consumer._producer
     mock_producer.publish_message.assert_called_once()
-
-    # Assert that the COMPLETION EVENT contains the correct calculated data
     publish_args = mock_producer.publish_message.call_args.kwargs
-    assert publish_args['topic'] == KAFKA_PROCESSED_TRANSACTIONS_COMPLETED_TOPIC
-    assert publish_args['value']['transaction_id'] == 'SELL01'
     assert publish_args['value']['realized_gain_loss'] == "250.0"

@@ -4,12 +4,10 @@ import logging
 from confluent_kafka import Consumer, Message
 from pydantic import ValidationError
 
-from portfolio_common.config import KAFKA_BOOTSTRAP_SERVERS, KAFKA_PROCESSED_TRANSACTIONS_COMPLETED_TOPIC
+from portfolio_common.config import KAFKA_PROCESSED_TRANSACTIONS_COMPLETED_TOPIC
 from portfolio_common.db import get_db_session
-from portfolio_common.database_models import Transaction as DBTransaction
 from portfolio_common.events import TransactionEvent
 from portfolio_common.kafka_utils import get_kafka_producer
-
 from src.services.transaction_processor import TransactionProcessor
 from src.core.models.transaction import Transaction as EngineTransaction
 from src.logic.parser import TransactionParser
@@ -20,6 +18,8 @@ from src.logic.error_reporter import ErrorReporter
 from src.core.enums.cost_method import CostMethod
 from src.logic.cost_basis_strategies import FIFOBasisStrategy, AverageCostBasisStrategy
 from src.core.config.settings import Settings
+# NEW: Import the repository
+from .repository import CostCalculatorRepository
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -79,10 +79,12 @@ class CostCalculatorConsumer:
         processor = self._get_transaction_processor()
         
         with next(get_db_session()) as db:
-            existing_db_txns = db.query(DBTransaction).filter(
-                DBTransaction.portfolio_id == new_transaction_event.portfolio_id,
-                DBTransaction.security_id == new_transaction_event.security_id
-            ).all()
+            repo = CostCalculatorRepository(db)
+            
+            existing_db_txns = repo.get_transaction_history(
+                portfolio_id=new_transaction_event.portfolio_id,
+                security_id=new_transaction_event.security_id
+            )
 
             existing_txns_raw = [EngineTransaction.model_validate(t).model_dump(by_alias=True) for t in existing_db_txns]
             new_txn_raw = [new_transaction_event.model_dump()]
@@ -98,24 +100,16 @@ class CostCalculatorConsumer:
 
             if processed:
                 result = processed[0]
-                db_txn_to_update = db.query(DBTransaction).filter(DBTransaction.transaction_id == result.transaction_id).first()
+                db_txn_to_update = repo.update_transaction_costs(result)
 
                 if db_txn_to_update:
-                    logger.info(f"Updating transaction {result.transaction_id} with calculated costs.")
-                    db_txn_to_update.net_cost = result.net_cost
-                    db_txn_to_update.gross_cost = result.gross_cost
-                    db_txn_to_update.realized_gain_loss = result.realized_gain_loss
                     db.commit()
                     logger.info(f"Successfully updated transaction {result.transaction_id}.")
                     
-                    # CORRECTED LOGIC: Build the event from clean data sources.
-                    # Start with the original incoming event data.
                     event_data_to_publish = new_transaction_event.model_dump()
-                    # Add/overwrite the new fields calculated by the processor.
                     event_data_to_publish['net_cost'] = result.net_cost
                     event_data_to_publish['gross_cost'] = result.gross_cost
                     event_data_to_publish['realized_gain_loss'] = result.realized_gain_loss
-                    
                     completion_event = TransactionEvent.model_validate(event_data_to_publish)
                     
                     self._producer.publish_message(
