@@ -49,23 +49,12 @@ def test_process_message_with_existing_history(cost_calculator_consumer: CostCal
     mock_kafka_message.value.return_value = new_sell_event.model_dump_json().encode('utf-8')
     mock_kafka_message.headers.return_value = None
 
-    # Mock the database session
+    # Mock the database session and the object it will return
     mock_db_session = MagicMock()
-    
-    # CORRECTED MOCK: Configure a mock object to act like a DBTransaction instance
-    # This is more robust than instantiating a raw SQLAlchemy model in a test.
-    object_to_update = MagicMock(spec=DBTransaction)
-    # Set attributes on the mock to match the data from the event
-    for key, value in new_sell_event.model_dump().items():
-        setattr(object_to_update, key, value)
-    # Ensure calculated fields start as None
-    object_to_update.realized_gain_loss = None
-    
-    mock_filter_result = MagicMock()
-    mock_filter_result.all.return_value = [existing_buy_txn_db]
-    mock_filter_result.first.return_value = object_to_update
-    mock_db_session.query.return_value.filter.return_value = mock_filter_result
-    
+    object_to_update = DBTransaction(**new_sell_event.model_dump())
+    mock_db_session.query.return_value.filter.return_value.all.return_value = [existing_buy_txn_db]
+    mock_db_session.query.return_value.filter.return_value.first.return_value = object_to_update
+
     # Mock the TransactionProcessor to return a pre-calculated result
     processed_sell_txn = EngineTransaction(**new_sell_event.model_dump())
     processed_sell_txn.realized_gain_loss = Decimal("250.0")
@@ -73,12 +62,13 @@ def test_process_message_with_existing_history(cost_calculator_consumer: CostCal
     mock_processor_instance.process_transactions.return_value = ([processed_sell_txn], [])
 
     # 2. ACT
-    with patch(
+    # CORRECTED PATCH STRATEGY: Directly patch the method on the consumer instance
+    # that creates the processor. This is more direct and less brittle.
+    with patch.object(
+        cost_calculator_consumer, '_get_transaction_processor', return_value=mock_processor_instance
+    ), patch(
         "services.calculators.cost_calculator_service.app.consumer.get_db_session",
         return_value=iter([mock_db_session])
-    ), patch(
-        "services.calculators.cost_calculator_service.app.consumer.TransactionProcessor",
-        return_value=mock_processor_instance
     ):
         cost_calculator_consumer._process_message(mock_kafka_message)
 
@@ -86,7 +76,7 @@ def test_process_message_with_existing_history(cost_calculator_consumer: CostCal
     # Assert Processor was called with the correct raw data
     mock_processor_instance.process_transactions.assert_called_once()
     
-    # Assert the returned value from the processor was used to update the mock DB object
+    # Assert the returned value from the processor was used to update the DB object
     assert object_to_update.realized_gain_loss == Decimal("250.0")
     mock_db_session.commit.assert_called_once()
 
