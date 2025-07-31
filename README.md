@@ -148,9 +148,9 @@ The system relies on a well-defined sequence of events published to Kafka topics
             -e libs/portfolio-common \
             -e services/ingestion-service \
             -e services/persistence_service \
-            -e services/calculators/cost-calculator-service \
-            -e services/calculators/cashflow-calculator-service \
-            -e services/calculators/position-calculator \
+            -e services/calculators/cost_calculator_service \
+            -e services/calculators/cashflow_calculator_service \
+            -e services/calculators/position_calculator \
             -e services/calculators/position-valuation-calculator \
             -e services/query-service \
             -e services/timeseries-generator-service
