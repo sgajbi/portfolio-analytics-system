@@ -1,8 +1,8 @@
 # services/persistence_service/app/repositories/transaction_db_repo.py
 import logging
 from sqlalchemy.orm import Session
-from sqlalchemy import func
-from datetime import date
+# NEW IMPORT for UPSERT functionality
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from portfolio_common.database_models import Transaction as DBTransaction
 from portfolio_common.events import TransactionEvent
@@ -13,40 +13,36 @@ class TransactionDBRepository:
     def __init__(self, db: Session):
         self.db = db
 
-    def create_or_update_transaction(self, transaction_event: TransactionEvent) -> DBTransaction:
+    def create_or_update_transaction(self, event: TransactionEvent) -> DBTransaction:
         """
-        Idempotently creates a new transaction. If a transaction with the same
-        transaction_id already exists, it is returned without making changes.
-        
-        Note: This method does NOT commit the session. The caller is responsible
-        for transaction management.
+        Idempotently creates a new transaction or updates an existing one using
+        PostgreSQL's ON CONFLICT DO UPDATE (UPSERT) feature. This is more
+        performant and robust than a separate select-then-insert.
         """
-        # 1. Check for existence using the correct unique key.
-        existing_transaction = self.db.query(DBTransaction).filter_by(
-            transaction_id=transaction_event.transaction_id
-        ).first()
+        # Create a dictionary of values from the event Pydantic model.
+        insert_dict = event.model_dump()
 
-        if existing_transaction:
-            logger.info(f"Transaction {transaction_event.transaction_id} already exists. Skipping.")
-            return existing_transaction
-        
-        # 2. If it doesn't exist, create and add the new object to the session.
-        db_transaction = DBTransaction(
-            transaction_id=transaction_event.transaction_id,
-            portfolio_id=transaction_event.portfolio_id,
-            instrument_id=transaction_event.instrument_id,
-            security_id=transaction_event.security_id,
-            transaction_date=transaction_event.transaction_date,
-            transaction_type=transaction_event.transaction_type,
-            quantity=transaction_event.quantity,
-            price=transaction_event.price,
-            gross_transaction_amount=transaction_event.gross_transaction_amount,
-            trade_currency=transaction_event.trade_currency,
-            currency=transaction_event.currency,
-            trade_fee=transaction_event.trade_fee,
-            settlement_date=transaction_event.settlement_date
+        # Build the UPSERT statement.
+        stmt = pg_insert(DBTransaction).values(
+            **insert_dict
+        ).on_conflict_do_update(
+            # The conflict target is the unique 'transaction_id' column.
+            index_elements=['transaction_id'],
+            # If the transaction_id already exists, update all other fields.
+            # This handles cases where a corrected transaction event is sent.
+            set_={
+                key: value for key, value in insert_dict.items() if key != 'transaction_id'
+            }
         )
-        
-        self.db.add(db_transaction)
-        logger.info(f"Transaction {db_transaction.transaction_id} staged for insertion.")
-        return db_transaction
+
+        try:
+            # Execute the statement and commit is handled by the caller.
+            self.db.execute(stmt)
+            # Fetch the object back from the session to return it
+            result = self.db.query(DBTransaction).filter_by(transaction_id=event.transaction_id).one()
+            logger.info(f"Transaction '{result.transaction_id}' successfully upserted.")
+            return result
+        except Exception as e:
+            logger.error(f"Failed to upsert transaction '{event.transaction_id}': {e}", exc_info=True)
+            # Rollback is handled by the caller's session management.
+            raise
