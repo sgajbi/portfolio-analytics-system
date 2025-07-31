@@ -31,7 +31,6 @@ class TransactionEventConsumer(BaseConsumer):
             event_data = json.loads(value)
             incoming_event = TransactionEvent.model_validate(event_data)
             
-            logger.info(f"Processing transaction {incoming_event.transaction_id} dated {incoming_event.transaction_date}")
             self._recalculate_position_history(incoming_event)
 
         except (json.JSONDecodeError, ValidationError) as e:
@@ -74,7 +73,7 @@ class TransactionEventConsumer(BaseConsumer):
                     a_date=transaction_date_only
                 )
 
-                new_records_to_add = []
+                newly_created_records = []
                 for txn in txns_to_replay:
                     txn_event = TransactionEvent.model_validate(txn)
                     current_state = PositionCalculator.calculate_next_position(current_state, txn_event)
@@ -87,32 +86,31 @@ class TransactionEventConsumer(BaseConsumer):
                         quantity=current_state.quantity,
                         cost_basis=current_state.cost_basis
                     )
-                    new_records_to_add.append(new_record)
+                    newly_created_records.append(new_record)
 
-                if new_records_to_add:
-                    db.add_all(new_records_to_add)
+                if newly_created_records:
+                    # CORRECTED: Use add_all for a bulk insert
+                    db.add_all(newly_created_records)
                     db.commit()
 
-                    # After committing, the objects are stale. We need to get the
-                    # fresh records (with IDs) from the DB before publishing.
-                    # We can use the transaction IDs, which are unique per position record.
-                    committed_txn_ids = [rec.transaction_id for rec in new_records_to_add]
-                    committed_records = db.query(PositionHistory).filter(
+                    committed_txn_ids = [rec.transaction_id for rec in newly_created_records]
+                    final_committed_records = db.query(PositionHistory).filter(
                         PositionHistory.transaction_id.in_(committed_txn_ids)
                     ).all()
 
-                    for record in committed_records:
+                    for record in final_committed_records:
                         self._publish_persisted_event(record)
-                    self._producer.flush(timeout=5)
+
+                    if final_committed_records:
+                        self._producer.flush(timeout=5)
 
             except Exception as e:
                 db.rollback()
                 logger.error(f"Recalculation failed for transaction {incoming_event.transaction_id}: {e}", exc_info=True)
     
     def _publish_persisted_event(self, record: PositionHistory):
-        """Publishes a single, guaranteed-to-be-committed event."""
         if not record or not record.id:
-            logger.error(f"[{record.transaction_id}] Attempted to publish an invalid or uncommitted record.")
+            logger.error(f"[{getattr(record, 'transaction_id', 'Unknown TXN')}] Attempted to publish an invalid or uncommitted record.")
             return
         try:
             event = PositionHistoryPersistedEvent.model_validate(record)
