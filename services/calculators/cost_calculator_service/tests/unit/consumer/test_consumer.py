@@ -9,6 +9,7 @@ from portfolio_common.database_models import Transaction as DBTransaction
 from portfolio_common.config import KAFKA_PROCESSED_TRANSACTIONS_COMPLETED_TOPIC
 from src.core.models.transaction import Transaction as EngineTransaction
 from services.calculators.cost_calculator_service.app.consumer import CostCalculatorConsumer
+from services.calculators.cost_calculator_service.app.repository import CostCalculatorRepository
 
 @pytest.fixture
 def cost_calculator_consumer():
@@ -28,9 +29,21 @@ def test_process_message_with_existing_history(cost_calculator_consumer: CostCal
     THEN it should use the repository, call the processor, update the DB, and publish an event.
     """
     # 1. ARRANGE
+    portfolio_id = "PORT_COST_01"
+    security_id = "SEC_COST_01"
+
+    # CORRECTED: This mock DB object now has all the necessary fields
+    existing_buy_txn_db = DBTransaction(
+        transaction_id="BUY01", portfolio_id=portfolio_id, instrument_id="AAPL",
+        security_id=security_id, transaction_date=datetime(2025, 1, 10),
+        transaction_type="BUY", quantity=Decimal("10"), price=Decimal("150.0"),
+        gross_transaction_amount=Decimal("1500.0"), net_cost=Decimal("1500.0"),
+        trade_currency="USD", currency="USD"
+    )
+
     new_sell_event = TransactionEvent(
-        transaction_id="SELL01", portfolio_id="PORT_COST_01", instrument_id="AAPL",
-        security_id="SEC_COST_01", transaction_date=datetime(2025, 1, 20),
+        transaction_id="SELL01", portfolio_id=portfolio_id, instrument_id="AAPL",
+        security_id=security_id, transaction_date=datetime(2025, 1, 20),
         transaction_type="SELL", quantity=Decimal("10"), price=Decimal("175.0"),
         gross_transaction_amount=Decimal("1750.0"), trade_currency="USD", currency="USD"
     )
@@ -45,8 +58,8 @@ def test_process_message_with_existing_history(cost_calculator_consumer: CostCal
     mock_processor_instance.process_transactions.return_value = ([processed_sell_txn], [])
 
     # Mock the Repository and its methods
-    mock_repo_instance = MagicMock()
-    mock_repo_instance.get_transaction_history.return_value = [DBTransaction(transaction_id="BUY01")]
+    mock_repo_instance = MagicMock(spec=CostCalculatorRepository)
+    mock_repo_instance.get_transaction_history.return_value = [existing_buy_txn_db]
     mock_repo_instance.update_transaction_costs.return_value = DBTransaction(**new_sell_event.model_dump())
 
     # 2. ACT
