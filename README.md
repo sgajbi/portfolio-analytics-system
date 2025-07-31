@@ -145,15 +145,15 @@ The system relies on a well-defined sequence of events published to Kafka topics
 4.  **Install All Dependencies**: This command installs all shared libraries and services in "editable" mode for local development.
     ```bash
     pip install -e libs/financial-calculator-engine \
-                -e libs/portfolio-common \
-                -e services/ingestion-service \
-                -e services/persistence-service \
-                -e services/calculators/cost-calculator-service \
-                -e services/calculators/cashflow-calculator-service \
-                -e services/calculators/position-calculator \
-                -e services/calculators/position-valuation-calculator \
-                -e services/query-service \
-                -e services/timeseries-generator-service
+            -e libs/portfolio-common \
+            -e services/ingestion-service \
+            -e services/persistence_service \
+            -e services/calculators/cost-calculator-service \
+            -e services/calculators/cashflow-calculator-service \
+            -e services/calculators/position-calculator \
+            -e services/calculators/position-valuation-calculator \
+            -e services/query-service \
+            -e services/timeseries-generator-service
     ```
 
 ### Running the System
