@@ -73,7 +73,8 @@ def test_process_message_with_existing_history(cost_calculator_consumer: CostCal
     # 2. ACT
     with patch(
         "services.calculators.cost_calculator_service.app.consumer.get_db_session",
-        return_value=[mock_db_session] # Simulate the context manager yield
+        # CORRECTED: Return an iterator to correctly mock the generator
+        return_value=iter([mock_db_session])
     ):
         cost_calculator_consumer._process_message(mock_kafka_message)
 
