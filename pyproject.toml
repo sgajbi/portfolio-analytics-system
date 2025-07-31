@@ -23,3 +23,4 @@ pythonpath = [
 ]
 addopts = "--strict-markers"
 minversion = "6.0"
+asyncio_mode = "auto"

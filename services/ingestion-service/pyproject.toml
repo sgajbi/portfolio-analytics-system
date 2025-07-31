@@ -1,3 +1,4 @@
+# services/ingestion-service/pyproject.toml
 [build-system]
 requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
@@ -13,7 +14,8 @@ dependencies = [
     "pydantic==2.7.4",
     "confluent-kafka==2.4.0",
     "structlog==24.1.0",
-    "python-json-logger==2.0.7"
+    "python-json-logger==2.0.7",
+    "python-multipart"
 ]
 
 [tool.setuptools.packages.find]
