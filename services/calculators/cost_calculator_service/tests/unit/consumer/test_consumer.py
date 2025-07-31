@@ -3,6 +3,8 @@ import pytest
 from unittest.mock import MagicMock, patch
 from datetime import datetime
 from decimal import Decimal
+# NEW: Import SimpleNamespace for a clean data object
+from types import SimpleNamespace
 
 from portfolio_common.events import TransactionEvent
 from portfolio_common.database_models import Transaction as DBTransaction
@@ -49,21 +51,18 @@ def test_process_message_with_existing_history(cost_calculator_consumer: CostCal
     mock_kafka_message.value.return_value = new_sell_event.model_dump_json().encode('utf-8')
     mock_kafka_message.headers.return_value = None
 
-    # Mock the database session
     mock_db_session = MagicMock()
-
-    # CORRECTED MOCK: Use a MagicMock configured with a spec. This is the robust way.
-    object_to_update = MagicMock(spec=DBTransaction)
-    for key, value in new_sell_event.model_dump().items():
-        setattr(object_to_update, key, value)
+    
+    # CORRECTED MOCK: Use a simple, standard object instead of a complex mock.
+    # This object acts as a plain data container.
+    object_to_update = SimpleNamespace(**new_sell_event.model_dump())
     object_to_update.realized_gain_loss = None # Ensure it starts as None
-
+    
     mock_filter_result = MagicMock()
     mock_filter_result.all.return_value = [existing_buy_txn_db]
     mock_filter_result.first.return_value = object_to_update
     mock_db_session.query.return_value.filter.return_value = mock_filter_result
     
-    # Mock the TransactionProcessor to return a pre-calculated result
     processed_sell_txn = EngineTransaction(**new_sell_event.model_dump())
     processed_sell_txn.realized_gain_loss = Decimal("250.0")
     mock_processor_instance = MagicMock()
@@ -79,7 +78,6 @@ def test_process_message_with_existing_history(cost_calculator_consumer: CostCal
         cost_calculator_consumer._process_message(mock_kafka_message)
 
     # 3. ASSERT
-    # Assert the returned value from the processor was used to update the DB object
     assert object_to_update.realized_gain_loss == Decimal("250.0")
     mock_db_session.commit.assert_called_once()
     mock_producer = cost_calculator_consumer._producer
