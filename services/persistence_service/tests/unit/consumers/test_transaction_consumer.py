@@ -1,9 +1,8 @@
 # services/persistence_service/tests/unit/consumers/test_transaction_consumer.py
 import json
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch, AsyncMock
 
-# NEW: Import the context variable we need to set
 from portfolio_common.kafka_consumer import correlation_id_cv
 from portfolio_common.events import TransactionEvent
 from services.persistence_service.app.consumers.transaction_consumer import TransactionPersistenceConsumer
@@ -17,9 +16,13 @@ def transaction_consumer():
     consumer = TransactionPersistenceConsumer(
         bootstrap_servers="mock_server",
         topic="raw_transactions",
-        group_id="test_group"
+        group_id="test_group",
+        dlq_topic="persistence.dlq" # Enable DLQ for testing
     )
+    # Manually attach mock producer for unit testing
     consumer._producer = MagicMock()
+    # Mock the async DLQ method
+    consumer._send_to_dlq = AsyncMock()
     return consumer
 
 @pytest.fixture
@@ -46,8 +49,6 @@ def mock_kafka_message(valid_transaction_event: TransactionEvent):
     mock_message.value.return_value = valid_transaction_event.model_dump_json().encode('utf-8')
     mock_message.key.return_value = "test_key".encode('utf-8')
     mock_message.error.return_value = None
-    # Note: We no longer need to mock the headers on the *incoming* message for this test,
-    # as we are setting the context directly.
     return mock_message
 
 
@@ -60,12 +61,9 @@ async def test_process_message_success(
     GIVEN a valid transaction message
     WHEN the process_message method is called
     THEN it should call the repository to save the transaction
-    AND publish a completion event with the correct correlation ID.
+    AND publish a completion event.
     """
-    # Arrange: Mock the dependencies (database repository)
     mock_repo = MagicMock()
-
-    # Arrange: Set the correlation ID context to simulate the BaseConsumer.run() behavior.
     correlation_id = 'corr-id-123'
     correlation_id_cv.set(correlation_id)
 
@@ -74,22 +72,54 @@ async def test_process_message_success(
     ), patch(
         "services.persistence_service.app.consumers.transaction_consumer.TransactionDBRepository", return_value=mock_repo
     ):
-        # Act: Process the simulated Kafka message
         await transaction_consumer.process_message(mock_kafka_message)
 
-        # Assert
-        # 1. Verify the repository was called correctly
         mock_repo.create_or_update_transaction.assert_called_once()
         call_args = mock_repo.create_or_update_transaction.call_args[0][0]
         assert call_args.transaction_id == valid_transaction_event.transaction_id
 
-        # 2. Verify that the completion event was published
         mock_producer = transaction_consumer._producer
         mock_producer.publish_message.assert_called_once()
         
-        # 3. Verify the content of the published message
         publish_args = mock_producer.publish_message.call_args.kwargs
         assert publish_args['key'] == valid_transaction_event.portfolio_id
         assert publish_args['value']['transaction_id'] == valid_transaction_event.transaction_id
-        # 4. Verify correlation ID header was correctly created and passed through
         assert ('X-Correlation-ID', correlation_id.encode('utf-8')) in publish_args['headers']
+
+        # Ensure the DLQ method was NOT called
+        transaction_consumer._send_to_dlq.assert_not_called()
+
+
+async def test_process_message_sends_to_dlq_on_validation_error(
+    transaction_consumer: TransactionPersistenceConsumer
+):
+    """
+    GIVEN a message with an invalid transaction payload (missing required fields)
+    WHEN the process_message method is called
+    THEN it should call the _send_to_dlq method
+    AND NOT call the repository or the regular producer.
+    """
+    # Arrange: Create a message with an invalid payload
+    invalid_payload = {"portfolio_id": "PORT_BAD_01"} # Missing transaction_id, etc.
+    mock_invalid_message = MagicMock()
+    mock_invalid_message.value.return_value = json.dumps(invalid_payload).encode('utf-8')
+    mock_invalid_message.key.return_value = "bad_key".encode('utf-8')
+    mock_invalid_message.error.return_value = None
+
+    mock_repo = MagicMock()
+
+    # Act
+    with patch(
+        "services.persistence_service.app.consumers.transaction_consumer.get_db_session"
+    ), patch(
+        "services.persistence_service.app.consumers.transaction_consumer.TransactionDBRepository", return_value=mock_repo
+    ):
+        await transaction_consumer.process_message(mock_invalid_message)
+
+        # Assert
+        # 1. Verify the DLQ method was called
+        transaction_consumer._send_to_dlq.assert_awaited_once()
+
+        # 2. Verify that the main processing logic was NOT called
+        mock_repo.create_or_update_transaction.assert_not_called()
+        transaction_consumer._producer.publish_message.assert_not_called()
