@@ -4,7 +4,8 @@ from datetime import date, datetime
 from decimal import Decimal
 from sqlalchemy.orm import Session
 
-from portfolio_common.database_models import Instrument, Transaction as DBTransaction
+# CORRECTED IMPORT: Add Portfolio model
+from portfolio_common.database_models import Instrument, Transaction as DBTransaction, Portfolio
 from portfolio_common.events import InstrumentEvent, TransactionEvent
 
 from services.persistence_service.app.repositories.instrument_repository import InstrumentRepository
@@ -50,9 +51,7 @@ def test_instrument_repository_create_new_instrument(clean_db, db_engine):
         )
         
         repo.create_or_update_instrument(event)
-        # No commit in repo, so we don't need one here for this specific implementation (UPSERT)
         
-        # Verify by fetching directly from DB
         fetched_instrument = db.query(Instrument).filter_by(security_id="TEST_SEC_NEW").first()
         assert fetched_instrument.name == "Test New Instrument"
 
@@ -64,15 +63,12 @@ def test_instrument_repository_upsert_update_existing_instrument(clean_db, db_en
     with Session(db_engine) as db:
         repo = InstrumentRepository(db)
 
-        # 1. Create the initial instrument
         initial_instrument = repo.create_or_update_instrument(instrument_event_buy)
-        db.flush() # flush to get DB-generated fields like timestamps
+        db.flush()
         db.expunge(initial_instrument)
 
-        # 2. Update with the new event
         repo.create_or_update_instrument(instrument_event_update)
 
-        # Verify by fetching directly from DB
         fetched_instrument = db.query(Instrument).filter_by(security_id="SEC_AAPL_001").first()
         assert fetched_instrument.name == "Apple Inc. (Updated)"
         assert fetched_instrument.product_type == "Equity_Updated"
@@ -88,11 +84,9 @@ def test_instrument_repository_upsert_no_change_on_identical_event(clean_db, db_
     with Session(db_engine) as db:
         repo = InstrumentRepository(db)
 
-        # 1. Create the initial instrument
-        initial_instrument = repo.create_or_update_instrument(instrument_event_buy)
+        repo.create_or_update_instrument(instrument_event_buy)
         db.flush()
         
-        # 2. Call UPSERT with an identical event
         repo.create_or_update_instrument(instrument_event_buy)
         
         count_in_db = db.query(Instrument).filter_by(security_id="SEC_AAPL_001").count()
@@ -105,6 +99,20 @@ def test_transaction_repository_is_idempotent(clean_db, db_engine):
     """
     with Session(db_engine) as db:
         repo = TransactionDBRepository(db)
+
+        # CORRECTED: Create the prerequisite portfolio record first.
+        test_portfolio = Portfolio(
+            portfolio_id="PORT_T1",
+            base_currency="USD",
+            open_date=date(2024, 1, 1),
+            risk_exposure="High",
+            investment_time_horizon="Long",
+            portfolio_type="Discretionary",
+            booking_center="SG",
+            cif_id="CIF_123",
+            status="ACTIVE"
+        )
+        db.add(test_portfolio)
 
         event = TransactionEvent(
             transaction_id="IDEMPOTENCY_TEST_01",
@@ -122,14 +130,14 @@ def test_transaction_repository_is_idempotent(clean_db, db_engine):
 
         # 1. Create the transaction for the first time
         repo.create_or_update_transaction(event)
-        db.commit() # The caller (this test) is now responsible for commit
+        db.commit()
 
         count1 = db.query(DBTransaction).filter_by(transaction_id=event.transaction_id).count()
         assert count1 == 1
 
         # 2. Create the exact same transaction again
         repo.create_or_update_transaction(event)
-        db.commit() # Should commit nothing new
+        db.commit()
 
         count2 = db.query(DBTransaction).filter_by(transaction_id=event.transaction_id).count()
         assert count2 == 1
