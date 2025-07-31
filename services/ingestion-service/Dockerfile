@@ -1,33 +1,38 @@
 # services/ingestion-service/Dockerfile
-# Stage 1: Builder stage, using our new base image
-FROM portfolio-analytics/python-base:latest as builder
 
-# Set the Python path for the build context
+# Stage 1: Base image setup. This replaces the dependency on a pre-built image.
+FROM python:3.11-slim-bookworm as python-base
+
+ENV POETRY_VIRTUALENVS_CREATE=false \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PATH="/opt/venv/bin:$PATH"
+
+RUN useradd --create-home appuser
+RUN python -m venv /opt/venv && \
+    chown -R appuser:appuser /opt/venv
+
+WORKDIR /app
+
+# Stage 2: Builder stage
+FROM python-base as builder
+
 ENV PYTHONPATH="/app/libs/portfolio-common:/app/services/ingestion-service"
 
-# Install shared library first
 COPY ./libs/portfolio-common /app/libs/portfolio-common
 RUN pip install -e /app/libs/portfolio-common
 
-# Copy the application and install its dependencies
 COPY ./services/ingestion-service/pyproject.toml /app/services/ingestion-service/pyproject.toml
 COPY ./services/ingestion-service/app /app/services/ingestion-service/app
 RUN pip install /app/services/ingestion-service
 
-# Stage 2: Final production stage, also using our base image
-FROM portfolio-analytics/python-base:latest
+# Stage 3: Final production stage
+FROM python-base as final
 
-# Copy the virtual environment from the builder stage
 COPY --from=builder --chown=appuser:appuser /opt/venv /opt/venv
-
-# Copy only the necessary application code and shared libs from the builder stage
 COPY --from=builder --chown=appuser:appuser /app/services/ingestion-service/app /app/app
 COPY --from=builder --chown=appuser:appuser /app/libs /app/libs
 
 USER appuser
-
-# Expose the port FastAPI will run on
 EXPOSE 8000
-
-# Command to run the application using Uvicorn
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
