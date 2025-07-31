@@ -1,7 +1,7 @@
+# services/persistence_service/app/repositories/transaction_db_repo.py
 import logging
 from sqlalchemy.orm import Session
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy import func # <-- IMPORT func
+from sqlalchemy import func
 from datetime import date
 
 from portfolio_common.database_models import Transaction as DBTransaction
@@ -13,34 +13,24 @@ class TransactionDBRepository:
     def __init__(self, db: Session):
         self.db = db
 
-    def get_transaction_by_pk(self, transaction_id: str, portfolio_id: str, instrument_id: str, transaction_date: date):
-        """
-        Retrieves a transaction by its composite primary key using explicit filtering.
-        """
-        # --- THIS IS THE FINAL FIX ---
-        # Explicitly cast the stored datetime to a date for the comparison.
-        return self.db.query(DBTransaction).filter(
-            DBTransaction.transaction_id == transaction_id,
-            DBTransaction.portfolio_id == portfolio_id,
-            DBTransaction.instrument_id == instrument_id,
-            func.date(DBTransaction.transaction_date) == transaction_date
-        ).first()
-
     def create_or_update_transaction(self, transaction_event: TransactionEvent) -> DBTransaction:
         """
-        Creates a new transaction or returns the existing one if it already exists.
+        Idempotently creates a new transaction. If a transaction with the same
+        transaction_id already exists, it is returned without making changes.
+        
+        Note: This method does NOT commit the session. The caller is responsible
+        for transaction management.
         """
-        existing_transaction = self.get_transaction_by_pk(
-            transaction_id=transaction_event.transaction_id,
-            portfolio_id=transaction_event.portfolio_id,
-            instrument_id=transaction_event.instrument_id,
-            transaction_date=transaction_event.transaction_date
-        )
+        # 1. Check for existence using the correct unique key.
+        existing_transaction = self.db.query(DBTransaction).filter_by(
+            transaction_id=transaction_event.transaction_id
+        ).first()
 
         if existing_transaction:
             logger.info(f"Transaction {transaction_event.transaction_id} already exists. Skipping.")
             return existing_transaction
         
+        # 2. If it doesn't exist, create and add the new object to the session.
         db_transaction = DBTransaction(
             transaction_id=transaction_event.transaction_id,
             portfolio_id=transaction_event.portfolio_id,
@@ -57,18 +47,6 @@ class TransactionDBRepository:
             settlement_date=transaction_event.settlement_date
         )
         
-        try:
-            self.db.add(db_transaction)
-            self.db.commit()
-            self.db.refresh(db_transaction)
-            logger.info(f"Transaction {db_transaction.transaction_id} successfully inserted into DB.")
-            return db_transaction
-        except IntegrityError:
-            self.db.rollback()
-            logger.warning(f"Race condition: Transaction {transaction_event.transaction_id} was inserted by another process. Fetching existing.")
-            return self.get_transaction_by_pk(
-                transaction_id=transaction_event.transaction_id,
-                portfolio_id=transaction_event.portfolio_id,
-                instrument_id=transaction_event.instrument_id,
-                transaction_date=transaction_event.transaction_date
-            )
+        self.db.add(db_transaction)
+        logger.info(f"Transaction {db_transaction.transaction_id} staged for insertion.")
+        return db_transaction
