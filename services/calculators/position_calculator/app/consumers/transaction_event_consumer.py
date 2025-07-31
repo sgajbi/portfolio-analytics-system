@@ -86,28 +86,33 @@ class TransactionEventConsumer(BaseConsumer):
                         quantity=current_state.quantity,
                         cost_basis=current_state.cost_basis
                     )
-                    db.add(new_record)
                     newly_created_records.append(new_record)
 
-                # Flush the session to send INSERTs to the DB and populate the IDs
-                # on our Python objects, without ending the transaction.
-                db.flush()
-
-                for record in newly_created_records:
-                    self._publish_persisted_event(record)
-                
                 if newly_created_records:
-                    self._producer.flush(timeout=5)
+                    db.add_all(newly_created_records)
+                    # The commit finalizes the transaction and implicitly flushes,
+                    # which expires the state of our objects.
+                    db.commit()
 
-                db.commit()
+                    # The objects in newly_created_records are now "expired".
+                    # We must not use them. The _publish method will re-fetch.
+                    for record in newly_created_records:
+                        self._publish_persisted_event(db, record.transaction_id)
+                
+                    self._producer.flush(timeout=5)
 
             except Exception as e:
                 db.rollback()
                 logger.error(f"Recalculation failed for transaction {incoming_event.transaction_id}: {e}", exc_info=True)
     
-    def _publish_persisted_event(self, record: PositionHistory):
+    def _publish_persisted_event(self, db: Session, transaction_id: str):
+        """Fetches the committed record by transaction_id to ensure it has a PK before publishing."""
+        
+        # Re-fetch the record from the DB to ensure it's committed and has an ID
+        record = db.query(PositionHistory).filter(PositionHistory.transaction_id == transaction_id).first()
+
         if not record or not record.id:
-            logger.error(f"[{getattr(record, 'transaction_id', 'Unknown TXN')}] Attempted to publish an invalid or uncommitted record.")
+            logger.error(f"[{transaction_id}] Could not find committed record to publish.")
             return
         try:
             event = PositionHistoryPersistedEvent.model_validate(record)

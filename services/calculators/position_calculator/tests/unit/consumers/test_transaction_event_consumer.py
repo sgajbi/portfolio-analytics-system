@@ -58,17 +58,15 @@ async def test_recalculate_for_back_dated_transaction(position_consumer: Transac
 
     mock_db_session = MagicMock()
     
-    # CORRECTED MOCK: The `flush` call needs to simulate ID generation.
-    # We can do this by assigning a side_effect to db.flush.
-    new_records = []
-    def save_records_side_effect(record):
-        new_records.append(record)
-    mock_db_session.add.side_effect = save_records_side_effect
-
-    def mock_flush():
-        for i, record in enumerate(new_records, 1):
-            record.id = i
-    mock_db_session.flush.side_effect = mock_flush
+    # Mock the re-fetch query that happens inside _publish_persisted_event
+    # It will be called twice, once for each transaction id.
+    # We can use a side_effect to return the correct object for each call.
+    refetched_rec_1 = PositionHistory(id=101, transaction_id="TXN_DAY_2", security_id=security_id)
+    refetched_rec_2 = PositionHistory(id=102, transaction_id="TXN_DAY_3", security_id=security_id)
+    mock_db_session.query.return_value.filter.return_value.first.side_effect = [
+        refetched_rec_1,
+        refetched_rec_2
+    ]
 
     # 2. ACT
     with patch("services.calculators.position_calculator.app.consumers.transaction_event_consumer.get_db_session", return_value=iter([mock_db_session])), \
@@ -77,8 +75,8 @@ async def test_recalculate_for_back_dated_transaction(position_consumer: Transac
         await position_consumer.process_message(mock_kafka_message)
 
     # 3. ASSERT
-    assert mock_db_session.add.call_count == 2
-    mock_db_session.flush.assert_called_once()
+    mock_repo.delete_positions_from.assert_called_once()
+    assert mock_db_session.add_all.call_count == 1
     mock_db_session.commit.assert_called_once()
     
     assert position_consumer._producer.publish_message.call_count == 2
