@@ -23,7 +23,10 @@ testpaths = [
 ]
 pythonpath = [
     ".", # Project root
-    "libs"
+    "libs",
+    "services/ingestion-service",
+    "tests",
+    "libs/financial-calculator-engine" # Add path to the library
 ]
 addopts = "--strict-markers"
 minversion = "6.0"
