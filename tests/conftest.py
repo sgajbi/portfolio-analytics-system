@@ -1,3 +1,4 @@
+# tests/conftest.py
 import pytest
 import requests
 import time
@@ -5,10 +6,12 @@ import psycopg2
 import subprocess
 import os
 from testcontainers.compose import DockerCompose
-import sys # Import sys
+import sys
 
 
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+# --- UPDATED PATH LOGIC ---
+# __file__ is now in tests/, so we just need to go up one level to get the project root.
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
