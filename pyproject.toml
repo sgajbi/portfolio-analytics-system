@@ -19,8 +19,7 @@ exclude = ["tests*", "deployment*"]
 pythonpath = [
     ".", # Project root
     "libs", # Shared libraries
-    "services/ingestion-service", # Add service app root for test discovery
-    "services/persistence-service" # Add service app root for test discovery
+    "services/ingestion-service"
 ]
 addopts = "--strict-markers"
 minversion = "6.0"

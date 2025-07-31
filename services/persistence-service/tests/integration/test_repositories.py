@@ -1,4 +1,4 @@
-# tests/integration/test_persistence_repositories.py
+# services/persistence-service/tests/integration/test_repositories.py
 import pytest
 from datetime import date, datetime
 from decimal import Decimal
@@ -8,8 +8,8 @@ from sqlalchemy.orm import Session
 from portfolio_common.database_models import Instrument, Transaction as DBTransaction
 from portfolio_common.events import InstrumentEvent, TransactionEvent
 
-# Corrected Local Imports: These now work because 'services/persistence-service'
-# is on the pythonpath, making 'app' a top-level module for the tests.
+# Corrected Local Imports: These now work because pytest discovers the tests
+# inside the service directory, making 'app' a discoverable module.
 from app.repositories.instrument_repository import InstrumentRepository
 from app.repositories.transaction_db_repo import TransactionDBRepository
 
