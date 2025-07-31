@@ -5,22 +5,17 @@ from unittest.mock import AsyncMock, MagicMock
 
 from httpx import AsyncClient, ASGITransport
 
-# The following imports assume that the tests are run from the project root,
-# and the `pythonpath` in pyproject.toml is correctly configured.
-from app.main import app, get_producer_dependency
-from portfolio_common.kafka_utils import KafkaProducer
+from app.main import app
+# Correctly import the dependency that FastAPI resolves
+from portfolio_common.kafka_utils import KafkaProducer, get_kafka_producer
 
 
 @pytest.fixture
 def mock_kafka_producer() -> MagicMock:
     """
     A fixture that provides a mock of the KafkaProducer.
-    The publish_message method is replaced with an AsyncMock to allow
-    for awaiting in tests and to track calls.
     """
     mock = MagicMock(spec=KafkaProducer)
-    # The actual method is not async, so we use a standard MagicMock for the method
-    # The `await` was in the test, which was incorrect. The publish method is fire-and-forget.
     mock.publish_message = MagicMock()
     return mock
 
@@ -33,8 +28,8 @@ async def test_client(mock_kafka_producer: MagicMock) -> AsyncClient:
     to replace the real KafkaProducer with our mock producer for the
     duration of the test.
     """
-    # Override the dependency with our mock
-    app.dependency_overrides[get_producer_dependency] = lambda: mock_kafka_producer
+    # FIX: Override the correct base dependency 'get_kafka_producer'
+    app.dependency_overrides[get_kafka_producer] = lambda: mock_kafka_producer
 
     # Use ASGITransport to wrap the FastAPI app for httpx
     transport = ASGITransport(app=app)
