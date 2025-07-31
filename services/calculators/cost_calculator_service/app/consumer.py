@@ -10,7 +10,6 @@ from portfolio_common.database_models import Transaction as DBTransaction
 from portfolio_common.events import TransactionEvent
 from portfolio_common.kafka_utils import get_kafka_producer
 
-# Import the TransactionProcessor AND the engine's internal Transaction model
 from src.services.transaction_processor import TransactionProcessor
 from src.core.models.transaction import Transaction as EngineTransaction
 from src.logic.parser import TransactionParser
@@ -107,15 +106,21 @@ class CostCalculatorConsumer:
                     db_txn_to_update.gross_cost = result.gross_cost
                     db_txn_to_update.realized_gain_loss = result.realized_gain_loss
                     db.commit()
-                    # REMOVED: This line is not needed and interferes with unit testing.
-                    # db.refresh(db_txn_to_update)
                     logger.info(f"Successfully updated transaction {result.transaction_id}.")
                     
-                    # Publish the enriched transaction event
-                    completion_event = TransactionEvent.model_validate(db_txn_to_update)
+                    # CORRECTED LOGIC: Build the event from clean data sources.
+                    # Start with the original incoming event data.
+                    event_data_to_publish = new_transaction_event.model_dump()
+                    # Add/overwrite the new fields calculated by the processor.
+                    event_data_to_publish['net_cost'] = result.net_cost
+                    event_data_to_publish['gross_cost'] = result.gross_cost
+                    event_data_to_publish['realized_gain_loss'] = result.realized_gain_loss
+                    
+                    completion_event = TransactionEvent.model_validate(event_data_to_publish)
+                    
                     self._producer.publish_message(
                         topic=KAFKA_PROCESSED_TRANSACTIONS_COMPLETED_TOPIC,
-                        key=completion_event.portfolio_id, # <-- THE FINAL FIX
+                        key=completion_event.portfolio_id,
                         value=completion_event.model_dump(mode='json')
                     )
                     self._producer.flush(timeout=5)
