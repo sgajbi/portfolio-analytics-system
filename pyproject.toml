@@ -26,10 +26,14 @@ pythonpath = [
     "libs",
     "services/ingestion-service",
     "tests",
-    "libs/financial-calculator-engine" # Add path to the library
+    "libs/financial-calculator-engine"
 ]
 addopts = "--strict-markers"
 minversion = "6.0"
+# Add registration for the asyncio marker
+markers = [
+    "asyncio: mark a test as being an asyncio test",
+]
 filterwarnings = [
     "ignore:Please use `import python_multipart` instead.:PendingDeprecationWarning"
 ]
