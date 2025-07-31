@@ -1,1 +1,4 @@
+# services/ingestion-service/tests/requirements.txt
 pytest==8.2.2
+httpx
+pytest-asyncio
