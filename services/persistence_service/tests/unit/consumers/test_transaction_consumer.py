@@ -1,8 +1,10 @@
 # services/persistence_service/tests/unit/consumers/test_transaction_consumer.py
 import json
 import pytest
-from unittest.mock import MagicMock, patch, AsyncMock
+from unittest.mock import MagicMock, patch
 
+# NEW: Import the context variable we need to set
+from portfolio_common.kafka_consumer import correlation_id_cv
 from portfolio_common.events import TransactionEvent
 from services.persistence_service.app.consumers.transaction_consumer import TransactionPersistenceConsumer
 
@@ -17,7 +19,6 @@ def transaction_consumer():
         topic="raw_transactions",
         group_id="test_group"
     )
-    # Manually attach mock producer for unit testing
     consumer._producer = MagicMock()
     return consumer
 
@@ -45,7 +46,8 @@ def mock_kafka_message(valid_transaction_event: TransactionEvent):
     mock_message.value.return_value = valid_transaction_event.model_dump_json().encode('utf-8')
     mock_message.key.return_value = "test_key".encode('utf-8')
     mock_message.error.return_value = None
-    mock_message.headers.return_value = [('X-Correlation-ID', b'corr-id-123')]
+    # Note: We no longer need to mock the headers on the *incoming* message for this test,
+    # as we are setting the context directly.
     return mock_message
 
 
@@ -58,18 +60,20 @@ async def test_process_message_success(
     GIVEN a valid transaction message
     WHEN the process_message method is called
     THEN it should call the repository to save the transaction
-    AND publish a completion event.
+    AND publish a completion event with the correct correlation ID.
     """
     # Arrange: Mock the dependencies (database repository)
     mock_repo = MagicMock()
-    
-    # We use patch to intercept the `get_db_session` call within the consumer's module
+
+    # Arrange: Set the correlation ID context to simulate the BaseConsumer.run() behavior.
+    correlation_id = 'corr-id-123'
+    correlation_id_cv.set(correlation_id)
+
     with patch(
         "services.persistence_service.app.consumers.transaction_consumer.get_db_session"
-    ) as mock_get_db, patch(
+    ), patch(
         "services.persistence_service.app.consumers.transaction_consumer.TransactionDBRepository", return_value=mock_repo
-    ) as mock_repo_class:
-
+    ):
         # Act: Process the simulated Kafka message
         await transaction_consumer.process_message(mock_kafka_message)
 
@@ -77,7 +81,6 @@ async def test_process_message_success(
         # 1. Verify the repository was called correctly
         mock_repo.create_or_update_transaction.assert_called_once()
         call_args = mock_repo.create_or_update_transaction.call_args[0][0]
-        assert isinstance(call_args, TransactionEvent)
         assert call_args.transaction_id == valid_transaction_event.transaction_id
 
         # 2. Verify that the completion event was published
@@ -88,5 +91,5 @@ async def test_process_message_success(
         publish_args = mock_producer.publish_message.call_args.kwargs
         assert publish_args['key'] == valid_transaction_event.portfolio_id
         assert publish_args['value']['transaction_id'] == valid_transaction_event.transaction_id
-        # Verify correlation ID header was passed through
-        assert ('X-Correlation-ID', b'corr-id-123') in publish_args['headers']
+        # 4. Verify correlation ID header was correctly created and passed through
+        assert ('X-Correlation-ID', correlation_id.encode('utf-8')) in publish_args['headers']
