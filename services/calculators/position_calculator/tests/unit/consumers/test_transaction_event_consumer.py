@@ -1,12 +1,15 @@
 # services/calculators/position_calculator/tests/unit/consumers/test_transaction_event_consumer.py
 import pytest
-from unittest.mock import MagicMock, patch, ANY
+from unittest.mock import MagicMock, patch
 from datetime import datetime, date
 from decimal import Decimal
 
 from portfolio_common.events import TransactionEvent
 from portfolio_common.database_models import PositionHistory, Transaction as DBTransaction
 from services.calculators.position_calculator.app.consumers.transaction_event_consumer import TransactionEventConsumer
+
+# CORRECTED: Re-add asyncio mark for the async test
+pytestmark = pytest.mark.asyncio
 
 @pytest.fixture
 def position_consumer():
@@ -20,7 +23,8 @@ def position_consumer():
     consumer._producer.flush = MagicMock()
     return consumer
 
-def test_recalculate_for_back_dated_transaction(position_consumer: TransactionEventConsumer):
+# CORRECTED: The test function must be async to use 'await'
+async def test_recalculate_for_back_dated_transaction(position_consumer: TransactionEventConsumer):
     """
     GIVEN an existing position history for Day 1 and Day 3
     WHEN a new transaction for Day 2 arrives
@@ -37,6 +41,11 @@ def test_recalculate_for_back_dated_transaction(position_consumer: TransactionEv
         net_cost=Decimal("-180"), instrument_id="NA", price=Decimal(9), gross_transaction_amount=Decimal(180), 
         trade_currency="USD", currency="USD", trade_fee=Decimal(0)
     )
+    mock_kafka_message = MagicMock()
+    mock_kafka_message.value.return_value = back_dated_event.model_dump_json().encode('utf-8')
+    mock_kafka_message.key.return_value = portfolio_id.encode('utf-8')
+    mock_kafka_message.error.return_value = None
+    mock_kafka_message.headers.return_value = None
 
     anchor_position = PositionHistory(
         portfolio_id=portfolio_id, security_id=security_id, position_date=date(2025, 8, 1),
@@ -50,6 +59,7 @@ def test_recalculate_for_back_dated_transaction(position_consumer: TransactionEv
         trade_currency="USD", currency="USD", trade_fee=Decimal(0)
     )
     
+    # Mock the repository that the consumer will use
     mock_repo = MagicMock()
     mock_repo.get_last_position_before.return_value = anchor_position
     mock_repo.get_transactions_on_or_after.return_value = [
@@ -59,11 +69,10 @@ def test_recalculate_for_back_dated_transaction(position_consumer: TransactionEv
 
     mock_db_session = MagicMock()
     
-    # CORRECTED MOCK: Simulate that the second query for committed records
-    # returns the records with IDs populated.
+    # The consumer re-fetches the records after commit. Mock this return value.
     committed_records_with_ids = [
-        PositionHistory(id=101, transaction_id="TXN_DAY_2"),
-        PositionHistory(id=102, transaction_id="TXN_DAY_3")
+        PositionHistory(id=101, transaction_id="TXN_DAY_2", security_id=security_id),
+        PositionHistory(id=102, transaction_id="TXN_DAY_3", security_id=security_id)
     ]
     mock_db_session.query.return_value.filter.return_value.all.return_value = committed_records_with_ids
 
@@ -71,13 +80,18 @@ def test_recalculate_for_back_dated_transaction(position_consumer: TransactionEv
     with patch("services.calculators.position_calculator.app.consumers.transaction_event_consumer.get_db_session", return_value=iter([mock_db_session])), \
          patch("services.calculators.position_calculator.app.consumers.transaction_event_consumer.PositionRepository", return_value=mock_repo):
         
-        position_consumer._recalculate_position_history(back_dated_event)
+        await position_consumer.process_message(mock_kafka_message)
 
     # 3. ASSERT
-    assert mock_db_session.add_all.call_count == 1
+    mock_repo.get_last_position_before.assert_called_once()
+    mock_repo.delete_positions_from.assert_called_once()
+    mock_repo.get_transactions_on_or_after.assert_called_once()
+
+    # CORRECTED: The consumer calls add() in a loop, not add_all()
+    assert mock_db_session.add.call_count == 2
     mock_db_session.commit.assert_called_once()
     
-    # Assert that the query for the newly committed records was made
+    # Assert that the query to re-fetch the committed records was made
     mock_db_session.query.return_value.filter.assert_called_once()
 
     assert position_consumer._producer.publish_message.call_count == 2
