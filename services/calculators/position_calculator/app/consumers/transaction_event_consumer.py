@@ -1,3 +1,4 @@
+# services/calculators/position_calculator/app/consumers/transaction_event_consumer.py
 import logging
 import json
 from pydantic import ValidationError
@@ -5,7 +6,6 @@ from decimal import Decimal
 
 from confluent_kafka import Message
 from sqlalchemy.orm import Session
-from sqlalchemy.exc import InvalidRequestError 
 from portfolio_common.kafka_consumer import BaseConsumer
 from portfolio_common.events import TransactionEvent, PositionHistoryPersistedEvent
 from portfolio_common.db import get_db_session
@@ -68,15 +68,13 @@ class TransactionEventConsumer(BaseConsumer):
                 if not txns_to_replay:
                     return
 
-                # Delete old records
                 repo.delete_positions_from(
                     portfolio_id=incoming_event.portfolio_id,
                     security_id=incoming_event.security_id,
                     a_date=transaction_date_only
                 )
 
-                # Create and stage new records
-                newly_created_records = []
+                new_records_to_add = []
                 for txn in txns_to_replay:
                     txn_event = TransactionEvent.model_validate(txn)
                     current_state = PositionCalculator.calculate_next_position(current_state, txn_event)
@@ -89,21 +87,26 @@ class TransactionEventConsumer(BaseConsumer):
                         quantity=current_state.quantity,
                         cost_basis=current_state.cost_basis
                     )
-                    db.add(new_record)
-                    newly_created_records.append(new_record)
+                    new_records_to_add.append(new_record)
 
-                # Commit all changes at once
-                db.commit()
+                if new_records_to_add:
+                    db.add_all(new_records_to_add)
+                    db.commit()
 
-                # After the transaction is successfully committed, publish events
-                for record in newly_created_records:
-                    self._publish_persisted_event(record)
+                    # After committing, the objects are stale. We need to get the
+                    # fresh records (with IDs) from the DB before publishing.
+                    # We can use the transaction IDs, which are unique per position record.
+                    committed_txn_ids = [rec.transaction_id for rec in new_records_to_add]
+                    committed_records = db.query(PositionHistory).filter(
+                        PositionHistory.transaction_id.in_(committed_txn_ids)
+                    ).all()
 
-                if newly_created_records:
+                    for record in committed_records:
+                        self._publish_persisted_event(record)
                     self._producer.flush(timeout=5)
 
             except Exception as e:
-                db.rollback() # Rollback on any exception
+                db.rollback()
                 logger.error(f"Recalculation failed for transaction {incoming_event.transaction_id}: {e}", exc_info=True)
     
     def _publish_persisted_event(self, record: PositionHistory):
@@ -112,10 +115,6 @@ class TransactionEventConsumer(BaseConsumer):
             logger.error(f"[{record.transaction_id}] Attempted to publish an invalid or uncommitted record.")
             return
         try:
-            db = Session.object_session(record)
-            if db:
-                db.refresh(record)
-
             event = PositionHistoryPersistedEvent.model_validate(record)
             self._producer.publish_message(
                 topic=KAFKA_POSITION_HISTORY_PERSISTED_TOPIC,

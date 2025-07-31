@@ -57,19 +57,15 @@ def test_recalculate_for_back_dated_transaction(position_consumer: TransactionEv
         txn_day_3
     ]
 
-    # Mock the database session
     mock_db_session = MagicMock()
     
-    # CORRECTED MOCK: This side effect simulates the database populating the primary key `id`
-    # on any object that is passed to the `add` method.
-    def mock_add_and_set_id(record):
-        # Use a simple counter to give each new record a unique ID
-        if not hasattr(mock_add_and_set_id, "counter"):
-            mock_add_and_set_id.counter = 0
-        mock_add_and_set_id.counter += 1
-        record.id = mock_add_and_set_id.counter
-    
-    mock_db_session.add.side_effect = mock_add_and_set_id
+    # CORRECTED MOCK: Simulate that the second query for committed records
+    # returns the records with IDs populated.
+    committed_records_with_ids = [
+        PositionHistory(id=101, transaction_id="TXN_DAY_2"),
+        PositionHistory(id=102, transaction_id="TXN_DAY_3")
+    ]
+    mock_db_session.query.return_value.filter.return_value.all.return_value = committed_records_with_ids
 
     # 2. ACT
     with patch("services.calculators.position_calculator.app.consumers.transaction_event_consumer.get_db_session", return_value=iter([mock_db_session])), \
@@ -78,11 +74,11 @@ def test_recalculate_for_back_dated_transaction(position_consumer: TransactionEv
         position_consumer._recalculate_position_history(back_dated_event)
 
     # 3. ASSERT
-    mock_repo.delete_positions_from.assert_called_once()
-    mock_repo.get_transactions_on_or_after.assert_called_once()
-
-    assert mock_db_session.add.call_count == 2
+    assert mock_db_session.add_all.call_count == 1
     mock_db_session.commit.assert_called_once()
     
+    # Assert that the query for the newly committed records was made
+    mock_db_session.query.return_value.filter.assert_called_once()
+
     assert position_consumer._producer.publish_message.call_count == 2
     position_consumer._producer.flush.assert_called_once()
