@@ -1,3 +1,4 @@
+# pyproject.toml
 [build-system]
 requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
@@ -16,9 +17,9 @@ exclude = ["tests*", "deployment*"]
 # --- UPDATED: Pytest Configuration for PYTHONPATH and addopts ---
 [tool.pytest.ini_options]
 pythonpath = [
-    ".", # Add the project root itself
-    "services", # Add the 'services' directory so 'services.persistence_service' etc. are discoverable
-    "libs" # Add the 'libs' directory so 'portfolio_common' is discoverable
+    ".", # Project root
+    "libs", # Shared libraries
+    "services/ingestion-service" # Add service app root for test discovery
 ]
-addopts = "--strict-markers" # Removed --strict-paths
-minversion = "6.0" # Minimum pytest version supported by these options
+addopts = "--strict-markers"
+minversion = "6.0"
