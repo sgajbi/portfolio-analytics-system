@@ -157,7 +157,7 @@ services:
   cost-calculator-service:
     build:
       context: .
-      dockerfile: ./services/calculators/cost-calculator-service/Dockerfile
+      dockerfile: ./services/calculators/cost_calculator_service/Dockerfile
     hostname: cost-calculator-service
     container_name: cost-calculator-service
     environment:
@@ -171,7 +171,7 @@ services:
       migration-runner:
         condition: service_completed_successfully
     volumes:
-      - ./services/calculators/cost-calculator-service/app:/app/app
+      - ./services/calculators/cost_calculator_service/app:/app/app
       - ./libs/portfolio-common:/app/libs/portfolio-common
       - ./libs/financial-calculator-engine:/app/libs/financial-calculator-engine
     command: ["python", "app/main.py"]
