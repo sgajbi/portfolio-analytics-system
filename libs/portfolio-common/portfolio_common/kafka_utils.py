@@ -41,15 +41,16 @@ class KafkaProducer:
                 if err is not None:
                     logger.error(f"Message delivery failed for topic {msg.topic()} key {msg.key()}: {err}")
                 else:
-                    logger.info(f"Message delivered to topic '{msg.topic()}' "
-                                f"[{msg.partition()}] @ offset {msg.offset()} "
-                                f"with key '{msg.key().decode('utf-8')}'")
+                    # Use standard logging for consistency
+                    log_extra = {"topic": msg.topic(), "partition": msg.partition(), "offset": msg.offset()}
+                    logger.info(f"Message delivered with key '{msg.key().decode('utf-8')}'", extra=log_extra)
+
 
             self.producer.produce(
                 topic,
                 key=key.encode('utf-8'),
                 value=json_value.encode('utf-8'),
-                headers=headers,
+                headers=headers, # Pass headers to the underlying producer
                 callback=delivery_report
             )
             self.producer.poll(0)

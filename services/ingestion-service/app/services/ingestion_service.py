@@ -15,7 +15,7 @@ from portfolio_common.config import (
     KAFKA_FX_RATES_TOPIC,
     KAFKA_RAW_PORTFOLIOS_TOPIC
 )
-from ..context import correlation_id_cv # --- Updated Import ---
+from portfolio_common.logging_utils import correlation_id_var # NEW IMPORT
 
 class IngestionService:
     def __init__(self, kafka_producer: KafkaProducer):
@@ -23,9 +23,9 @@ class IngestionService:
 
     def _get_headers(self):
         """Constructs Kafka headers with the current correlation ID."""
-        corr_id = correlation_id_cv.get()
+        corr_id = correlation_id_var.get()
         if corr_id:
-            return [('X-Correlation-ID', corr_id.encode('utf-8'))]
+            return [('correlation_id', corr_id.encode('utf-8'))]
         return None
 
     async def publish_portfolios(self, portfolios: List[Portfolio]) -> None:
