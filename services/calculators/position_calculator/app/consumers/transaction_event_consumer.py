@@ -86,17 +86,20 @@ class TransactionEventConsumer(BaseConsumer):
                         quantity=current_state.quantity,
                         cost_basis=current_state.cost_basis
                     )
+                    db.add(new_record)
                     newly_created_records.append(new_record)
 
-                if newly_created_records:
-                    db.add_all(newly_created_records)
-                    # Use expire_on_commit=False to keep generated IDs after commit
-                    db.commit()
+                # Flush the session to send INSERTs to the DB and populate the IDs
+                # on our Python objects, without ending the transaction.
+                db.flush()
 
-                    for record in newly_created_records:
-                        self._publish_persisted_event(record)
+                for record in newly_created_records:
+                    self._publish_persisted_event(record)
                 
+                if newly_created_records:
                     self._producer.flush(timeout=5)
+
+                db.commit()
 
             except Exception as e:
                 db.rollback()

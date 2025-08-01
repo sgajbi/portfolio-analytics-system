@@ -58,13 +58,16 @@ async def test_recalculate_for_back_dated_transaction(position_consumer: Transac
 
     mock_db_session = MagicMock()
     
-    # CORRECTED MOCK: Simulate the commit populating the IDs on the objects
-    def mock_commit():
-        # Get all objects that were passed to `db.add()`
-        added_records = [c.args[0] for c in mock_db_session.add.call_args_list]
-        for i, record in enumerate(added_records, 1):
+    # Simulate the flush() call populating the IDs on the objects
+    new_records = []
+    def save_records_side_effect(record):
+        new_records.append(record)
+    mock_db_session.add.side_effect = save_records_side_effect
+
+    def mock_flush():
+        for i, record in enumerate(new_records, 1):
             record.id = i
-    mock_db_session.commit.side_effect = mock_commit
+    mock_db_session.flush.side_effect = mock_flush
 
     # 2. ACT
     with patch("services.calculators.position_calculator.app.consumers.transaction_event_consumer.get_db_session", return_value=iter([mock_db_session])), \
@@ -74,6 +77,8 @@ async def test_recalculate_for_back_dated_transaction(position_consumer: Transac
 
     # 3. ASSERT
     assert mock_db_session.add.call_count == 2
+    mock_db_session.flush.assert_called_once()
     mock_db_session.commit.assert_called_once()
+    
     assert position_consumer._producer.publish_message.call_count == 2
     position_consumer._producer.flush.assert_called_once()
