@@ -86,17 +86,15 @@ class TransactionEventConsumer(BaseConsumer):
                         quantity=current_state.quantity,
                         cost_basis=current_state.cost_basis
                     )
-                    db.add(new_record)
                     newly_created_records.append(new_record)
 
-                # Flush the session to send INSERTs to the DB and populate the IDs
-                # on our Python objects, without ending the transaction.
-                db.flush()
-
-                for record in newly_created_records:
-                    self._publish_persisted_event(record)
-                
                 if newly_created_records:
+                    repo.save_positions(newly_created_records)
+                    db.flush()
+
+                    for record in newly_created_records:
+                        self._publish_persisted_event(record)
+                
                     self._producer.flush(timeout=5)
 
                 db.commit()
