@@ -2,8 +2,8 @@ import pytest
 from decimal import Decimal
 from datetime import datetime
 
-from app.core.position_logic import PositionCalculator
-from app.core.position_models import PositionState
+from services.calculators.position_calculator.app.core.position_logic import PositionCalculator
+from services.calculators.position_calculator.app.core.position_models import PositionState
 from portfolio_common.events import TransactionEvent
 
 @pytest.fixture

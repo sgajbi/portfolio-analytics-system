@@ -189,3 +189,12 @@ class PortfolioTimeseries(Base):
     fees = Column(Numeric(18, 10), nullable=False)
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+
+class ProcessedEvent(Base):
+    __tablename__ = "processed_events"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    event_id = Column(String, nullable=False, unique=True)
+    portfolio_id = Column(String, nullable=False)
+    service_name = Column(String, nullable=False)
+    processed_at = Column(DateTime, server_default=func.now())

@@ -3,6 +3,8 @@ import json
 from pydantic import ValidationError
 from decimal import Decimal
 
+from portfolio_common.database_models import PositionHistory
+
 from confluent_kafka import Message
 from sqlalchemy.orm import Session
 from sqlalchemy import text
