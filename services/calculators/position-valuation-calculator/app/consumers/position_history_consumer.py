@@ -68,7 +68,7 @@ class PositionHistoryConsumer(BaseConsumer):
                     else:
                         logger.warning(f"No market price for {position.security_id} on or before {position.position_date}. Creating un-valued snapshot.")
                     
-                    snapshot = DailyPositionSnapshot(
+                    snapshot_to_save = DailyPositionSnapshot(
                         portfolio_id=position.portfolio_id,
                         security_id=position.security_id,
                         date=position.position_date,
@@ -79,20 +79,12 @@ class PositionHistoryConsumer(BaseConsumer):
                         unrealized_gain_loss=unrealized_gain_loss
                     )
                     
-                    repo.upsert_daily_snapshot(snapshot)
+                    # SIMPLIFIED: Get the returned object directly from the upsert method
+                    persisted_snapshot = repo.upsert_daily_snapshot(snapshot_to_save)
                     idempotency_repo.mark_event_processed(event_id, position.portfolio_id, SERVICE_NAME)
-
-                # Fetch the upserted record back to get its ID for publishing
-                persisted_snapshot = db.query(DailyPositionSnapshot).filter_by(
-                    portfolio_id=snapshot.portfolio_id,
-                    security_id=snapshot.security_id,
-                    date=snapshot.date
-                ).first()
 
             # Publish event after the transaction commits
             if self._producer and persisted_snapshot:
-                # CORRECTED: Create a dict from the ORM object before validation
-                # This makes the code more robust against mocking issues.
                 snapshot_data = {
                     "id": persisted_snapshot.id,
                     "portfolio_id": persisted_snapshot.portfolio_id,

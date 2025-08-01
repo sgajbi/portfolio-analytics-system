@@ -6,7 +6,7 @@ from decimal import Decimal
 
 from sqlalchemy.orm import Session
 from app.consumers.position_history_consumer import PositionHistoryConsumer
-from portfolio_common.events import PositionHistoryPersistedEvent, DailyPositionSnapshotPersistedEvent
+from portfolio_common.events import PositionHistoryPersistedEvent
 from portfolio_common.database_models import PositionHistory, MarketPrice, DailyPositionSnapshot
 
 pytestmark = pytest.mark.asyncio
@@ -53,7 +53,7 @@ async def test_process_message_success(consumer: PositionHistoryConsumer, mock_k
     THEN it should create a valued snapshot, mark as processed, and publish a completion event.
     """
     # Arrange
-    mock_db_session = MagicMock()
+    mock_db_session = MagicMock(spec=Session)
     mock_transaction_context = MagicMock()
     mock_transaction_context.__enter__.return_value = None
     mock_transaction_context.__exit__.return_value = (None, None, None)
@@ -62,16 +62,18 @@ async def test_process_message_success(consumer: PositionHistoryConsumer, mock_k
     mock_idempotency_repo = MagicMock()
     mock_idempotency_repo.is_event_processed.return_value = False
 
+    mock_position_history = PositionHistory(id=123, quantity=Decimal(100), cost_basis=Decimal(10000), security_id="SEC_VAL_01", portfolio_id="PORT_VAL_01", position_date=date(2025, 8, 1))
+    
+    # This is the object our mock repository will now return
+    mock_returned_snapshot = DailyPositionSnapshot(id=1, portfolio_id="PORT_VAL_01", security_id="SEC_VAL_01", date=date(2025, 8, 1))
+
     mock_valuation_repo = MagicMock()
     mock_valuation_repo.get_latest_price_for_position.return_value = MarketPrice(price=Decimal("150"))
+    # SIMPLIFIED: Mock the return value of the method that is now called
+    mock_valuation_repo.upsert_daily_snapshot.return_value = mock_returned_snapshot
 
-    mock_position_history = PositionHistory(id=123, quantity=Decimal(100), cost_basis=Decimal(10000), security_id="SEC_VAL_01", portfolio_id="PORT_VAL_01", position_date=date(2025, 8, 1))
-    mock_persisted_snapshot = DailyPositionSnapshot(id=1, portfolio_id="PORT_VAL_01", security_id="SEC_VAL_01", date=date(2025, 8, 1))
-
-    # FINAL FIX: Configure the mock query object directly and simply.
-    query_mock = mock_db_session.query.return_value
-    query_mock.get.return_value = mock_position_history
-    query_mock.filter_by.return_value.first.return_value = mock_persisted_snapshot
+    # Mock only the first query to get the position
+    mock_db_session.query.return_value.get.return_value = mock_position_history
 
 
     with patch('app.consumers.position_history_consumer.get_db_session', return_value=iter([mock_db_session])), \
@@ -95,7 +97,7 @@ async def test_process_message_skips_processed_event(consumer: PositionHistoryCo
     THEN it should skip all business logic.
     """
     # Arrange
-    mock_db_session = MagicMock()
+    mock_db_session = MagicMock(spec=Session)
     mock_transaction_context = MagicMock()
     mock_transaction_context.__enter__.return_value = None
     mock_transaction_context.__exit__.return_value = (None, None, None)

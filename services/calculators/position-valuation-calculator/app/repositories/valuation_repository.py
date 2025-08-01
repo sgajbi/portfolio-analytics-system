@@ -37,9 +37,9 @@ class ValuationRepository:
             PositionHistory.position_date <= a_date
         ).order_by(PositionHistory.position_date.desc(), PositionHistory.id.desc()).first()
 
-    def upsert_daily_snapshot(self, snapshot: DailyPositionSnapshot):
+    def upsert_daily_snapshot(self, snapshot: DailyPositionSnapshot) -> DailyPositionSnapshot:
         """
-        Idempotently stages an insert or update for a daily position snapshot.
+        Idempotently inserts or updates a daily position snapshot and returns the result.
         This method does NOT commit the transaction.
         """
         try:
@@ -50,10 +50,11 @@ class ValuationRepository:
             ).on_conflict_do_update(
                 index_elements=['portfolio_id', 'security_id', 'date'],
                 set_={k: v for k, v in insert_dict.items() if k not in ['portfolio_id', 'security_id', 'date']}
-            )
-            self.db.execute(stmt)
+            ).returning(DailyPositionSnapshot) # Use .returning() to get the object back
+
+            result = self.db.execute(stmt).scalar_one()
             logger.info(f"Staged upsert for daily snapshot for {snapshot.security_id} on {snapshot.date}")
+            return result
         except Exception as e:
-            # Rollback will be handled by the caller's transaction manager
             logger.error(f"Failed to stage upsert for daily snapshot: {e}", exc_info=True)
             raise
