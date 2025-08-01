@@ -1,3 +1,4 @@
+# services/calculators/position_calculator/app/consumer_manager.py
 import logging
 import signal
 import asyncio
@@ -20,7 +21,8 @@ class ConsumerManager:
             TransactionEventConsumer(
                 bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
                 topic=KAFKA_PROCESSED_TRANSACTIONS_COMPLETED_TOPIC,
-                group_id="position_calculator_group"
+                group_id="position_calculator_group",
+                service_prefix="POS"
             )
         )
         logger.info(f"ConsumerManager initialized with {len(self.consumers)} consumer(s).")

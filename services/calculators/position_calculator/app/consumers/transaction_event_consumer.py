@@ -2,9 +2,11 @@
 import logging
 import json
 from pydantic import ValidationError
+from typing import Optional
 
 from confluent_kafka import Message
 from portfolio_common.kafka_consumer import BaseConsumer
+from portfolio_common.logging_utils import correlation_id_var
 from portfolio_common.events import TransactionEvent, PositionHistoryPersistedEvent
 from portfolio_common.db import get_db_session
 from portfolio_common.kafka_utils import get_kafka_producer
@@ -27,6 +29,7 @@ class TransactionEventConsumer(BaseConsumer):
     async def process_message(self, msg: Message):
         key = msg.key().decode('utf-8') if msg.key() else "NoKey"
         event_id = f"{msg.topic()}-{msg.partition()}-{msg.offset()}"
+        correlation_id = correlation_id_var.get() # Get correlation ID
         new_positions = []
 
         try:
@@ -50,7 +53,7 @@ class TransactionEventConsumer(BaseConsumer):
                     # The calculate method stages all DB changes (deletes and inserts)
                     new_positions = PositionCalculator.calculate(event, db, repo=position_repo)
 
-                    idempotency_repo.mark_event_processed(event_id, event.portfolio_id, SERVICE_NAME)
+                    idempotency_repo.mark_event_processed(event_id, event.portfolio_id, SERVICE_NAME, correlation_id)
                 
                 # The transaction is now committed.
                 # If new_positions were created, refresh them to get DB-assigned IDs
@@ -62,7 +65,7 @@ class TransactionEventConsumer(BaseConsumer):
                     logger.info(f"Successfully processed and saved {len(new_positions)} position records.")
                     
                     for record in new_positions:
-                        self._publish_persisted_event(record)
+                        self._publish_persisted_event(record, correlation_id)
                     
                     self._producer.flush(timeout=5)
                     logger.info(f"[{event.transaction_id}] Published {len(new_positions)} PositionHistoryPersistedEvents.")
@@ -72,13 +75,16 @@ class TransactionEventConsumer(BaseConsumer):
             await self._send_to_dlq(msg, e)
             return
 
-    def _publish_persisted_event(self, record: PositionHistory):
+    def _publish_persisted_event(self, record: PositionHistory, correlation_id: Optional[str]):
         try:
             event = PositionHistoryPersistedEvent.model_validate(record)
+            headers = [('correlation_id', correlation_id.encode('utf-8'))] if correlation_id else None
+            
             self._producer.publish_message(
                 topic=KAFKA_POSITION_HISTORY_PERSISTED_TOPIC,
                 key=event.security_id,
-                value=event.model_dump(mode='json', by_alias=True)
+                value=event.model_dump(mode='json', by_alias=True),
+                headers=headers
             )
         except Exception as e:
             logger.error(f"[{record.transaction_id}] Failed to publish PositionHistoryPersistedEvent: {e}", exc_info=True)
