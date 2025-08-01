@@ -1,11 +1,10 @@
-# services/cost-calculator-service/app/main.py
 import logging
 from app.consumer import CostCalculatorConsumer
 from portfolio_common.config import KAFKA_BOOTSTRAP_SERVERS, KAFKA_RAW_TRANSACTIONS_COMPLETED_TOPIC
-from portfolio_common.logging_utils import setup_logger
+from portfolio_common.logging_utils import setup_logging
 
-SERVICE_NAME = "cost-calculator-service"
-logger = setup_logger(SERVICE_NAME)
+setup_logging()
+logger = logging.getLogger(__name__)
 
 def main():
     logger.info("Cost Calculator Service starting up...")

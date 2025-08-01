@@ -1,11 +1,10 @@
-# services/calculators/position_calculator/app/main.py
 import logging
 import asyncio
 from app.consumer_manager import ConsumerManager
-from portfolio_common.logging_utils import setup_logger
+from portfolio_common.logging_utils import setup_logging
 
-SERVICE_NAME = "position-calculator-service"
-logger = setup_logger(SERVICE_NAME)
+setup_logging()
+logger = logging.getLogger(__name__)
 
 async def main():
     """

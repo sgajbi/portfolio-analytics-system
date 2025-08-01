@@ -1,12 +1,12 @@
 # services/query-service/app/main.py
 import logging
 from fastapi import FastAPI, Request
-from portfolio_common.logging_utils import setup_logger, correlation_id_var, generate_correlation_id
+from portfolio_common.logging_utils import setup_logging, correlation_id_var, generate_correlation_id
 from .routers import positions, transactions, instruments, prices, fx_rates, portfolios
 
-SERVICE_NAME = "query-service"
 SERVICE_PREFIX = "QRY"
-logger = setup_logger(SERVICE_NAME)
+setup_logging()
+logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="Query Service",
@@ -33,6 +33,7 @@ async def add_correlation_id_middleware(request: Request, call_next):
     
     return response
 
+# Register the API routers
 app.include_router(portfolios.router)
 app.include_router(positions.router)
 app.include_router(transactions.router)

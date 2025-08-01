@@ -2,11 +2,11 @@
 import logging
 import asyncio
 
-from portfolio_common.logging_utils import setup_logger
+from portfolio_common.logging_utils import setup_logging
 from .consumer_manager import ConsumerManager
 
-SERVICE_NAME = "persistence-service"
-logger = setup_logger(SERVICE_NAME) 
+setup_logging()
+logger = logging.getLogger(__name__)
 
 async def main():
     """
