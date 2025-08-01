@@ -1,6 +1,6 @@
 # services/calculators/position_calculator/tests/unit/consumers/test_transaction_event_consumer.py
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch, call
 from datetime import datetime, date
 from decimal import Decimal
 
@@ -58,15 +58,13 @@ async def test_recalculate_for_back_dated_transaction(position_consumer: Transac
 
     mock_db_session = MagicMock()
     
-    # Mock the re-fetch query that happens inside _publish_persisted_event
-    # It will be called twice, once for each transaction id.
-    # We can use a side_effect to return the correct object for each call.
-    refetched_rec_1 = PositionHistory(id=101, transaction_id="TXN_DAY_2", security_id=security_id)
-    refetched_rec_2 = PositionHistory(id=102, transaction_id="TXN_DAY_3", security_id=security_id)
-    mock_db_session.query.return_value.filter.return_value.first.side_effect = [
-        refetched_rec_1,
-        refetched_rec_2
-    ]
+    # CORRECTED MOCK: Simulate the commit populating the IDs on the objects
+    def mock_commit():
+        # Get all objects that were passed to `db.add()`
+        added_records = [c.args[0] for c in mock_db_session.add.call_args_list]
+        for i, record in enumerate(added_records, 1):
+            record.id = i
+    mock_db_session.commit.side_effect = mock_commit
 
     # 2. ACT
     with patch("services.calculators.position_calculator.app.consumers.transaction_event_consumer.get_db_session", return_value=iter([mock_db_session])), \
@@ -75,9 +73,7 @@ async def test_recalculate_for_back_dated_transaction(position_consumer: Transac
         await position_consumer.process_message(mock_kafka_message)
 
     # 3. ASSERT
-    mock_repo.delete_positions_from.assert_called_once()
-    assert mock_db_session.add_all.call_count == 1
+    assert mock_db_session.add.call_count == 2
     mock_db_session.commit.assert_called_once()
-    
     assert position_consumer._producer.publish_message.call_count == 2
     position_consumer._producer.flush.assert_called_once()

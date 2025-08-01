@@ -90,14 +90,11 @@ class TransactionEventConsumer(BaseConsumer):
 
                 if newly_created_records:
                     db.add_all(newly_created_records)
-                    # The commit finalizes the transaction and implicitly flushes,
-                    # which expires the state of our objects.
+                    # Use expire_on_commit=False to keep generated IDs after commit
                     db.commit()
 
-                    # The objects in newly_created_records are now "expired".
-                    # We must not use them. The _publish method will re-fetch.
                     for record in newly_created_records:
-                        self._publish_persisted_event(db, record.transaction_id)
+                        self._publish_persisted_event(record)
                 
                     self._producer.flush(timeout=5)
 
@@ -105,14 +102,9 @@ class TransactionEventConsumer(BaseConsumer):
                 db.rollback()
                 logger.error(f"Recalculation failed for transaction {incoming_event.transaction_id}: {e}", exc_info=True)
     
-    def _publish_persisted_event(self, db: Session, transaction_id: str):
-        """Fetches the committed record by transaction_id to ensure it has a PK before publishing."""
-        
-        # Re-fetch the record from the DB to ensure it's committed and has an ID
-        record = db.query(PositionHistory).filter(PositionHistory.transaction_id == transaction_id).first()
-
+    def _publish_persisted_event(self, record: PositionHistory):
         if not record or not record.id:
-            logger.error(f"[{transaction_id}] Could not find committed record to publish.")
+            logger.error(f"[{getattr(record, 'transaction_id', 'Unknown TXN')}] Attempted to publish an invalid or uncommitted record.")
             return
         try:
             event = PositionHistoryPersistedEvent.model_validate(record)
