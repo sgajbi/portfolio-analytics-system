@@ -26,10 +26,15 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 def get_db_session():
     """
     Dependency to get a SQLAlchemy database session.
-    Yields a session that is automatically closed after use.
+    Yields a session that is automatically committed on success,
+    rolled back on error, and closed regardless.
     """
     db = SessionLocal()
     try:
         yield db
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
     finally:
         db.close()
