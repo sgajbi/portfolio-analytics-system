@@ -5,15 +5,15 @@ from decimal import Decimal
 
 from confluent_kafka import Message
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 from portfolio_common.kafka_consumer import BaseConsumer
-from portfolio_common.events import TransactionEvent, PositionHistoryPersistedEvent
+from portfolio_common.events import TransactionEvent
 from portfolio_common.db import get_db_session
-from portfolio_common.database_models import PositionHistory
+from portfolio_common.database_models import ProcessedEvent
 from portfolio_common.kafka_utils import get_kafka_producer
 from portfolio_common.config import KAFKA_POSITION_HISTORY_PERSISTED_TOPIC
 from ..repositories.position_repository import PositionRepository
 from ..core.position_logic import PositionCalculator
-from ..core.position_models import PositionState
 
 logger = logging.getLogger(__name__)
 
@@ -24,19 +24,35 @@ class TransactionEventConsumer(BaseConsumer):
 
     async def process_message(self, msg: Message):
         key = msg.key().decode('utf-8') if msg.key() else "NoKey"
-        value = msg.value().decode('utf-8')
+        event_id = f"{key}_{msg.timestamp()[1]}"  
 
         try:
-            event_data = json.loads(value)
-            incoming_event = TransactionEvent.model_validate(event_data)
-            self._recalculate_position_history(incoming_event)
+            event_data = json.loads(msg.value().decode('utf-8'))
+            event = TransactionEvent(**event_data)
+        except ValidationError as e:
+            logger.error(f"[Validation Error] {e}")
+            return
+        except json.JSONDecodeError as e:
+            logger.error(f"[JSON Decode Error] {e}")
+            return
 
-        except (json.JSONDecodeError, ValidationError) as e:
-            logger.error(f"Message validation failed for key '{key}': {e}. Value: '{value}'")
-            await self._send_to_dlq(msg, e)
-        except Exception as e:
-            logger.error(f"Unexpected error processing message with key '{key}': {e}", exc_info=True)
-            await self._send_to_dlq(msg, e)
+        with get_db_session() as db_session:
+            exists = db_session.query(ProcessedEvent).filter_by(event_id=event_id).first()
+            if exists:
+                logger.info(f"[Idempotent Skip] Event {event_id} already processed for portfolio {event.portfolio_id}")
+                return
+            
+            PositionCalculator.calculate(event, db_session)
+
+            processed_event = ProcessedEvent(
+                event_id=event_id,
+                portfolio_id=event.portfolio_id,
+                service_name="position-calculator"
+            )
+            db_session.add(processed_event)
+            db_session.commit()
+            logger.info(f"[Processed] Event {event_id} stored in processed_events")
+
 
     def _recalculate_position_history(self, incoming_event: TransactionEvent):
         with next(get_db_session()) as db:
