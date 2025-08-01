@@ -42,6 +42,7 @@ class CashflowCalculatorConsumer(BaseConsumer):
         value = msg.value().decode('utf-8')
         event_id = f"{msg.topic()}-{msg.partition()}-{msg.offset()}"
         correlation_id = correlation_id_var.get()
+        saved_cashflow = None
 
         try:
             event_data = json.loads(value)
@@ -49,6 +50,7 @@ class CashflowCalculatorConsumer(BaseConsumer):
 
             with next(get_db_session()) as db:
                 idempotency_repo = IdempotencyRepository(db)
+                cashflow_repo = CashflowRepository(db) # Define repo here
 
                 with db.begin():
                     if idempotency_repo.is_event_processed(event_id, SERVICE_NAME):
@@ -68,6 +70,7 @@ class CashflowCalculatorConsumer(BaseConsumer):
                         return
 
                     cashflow_to_save = CashflowLogic.calculate(transaction_event, rule)
+                    # FIX: This line is now inside the correct scope
                     saved_cashflow = cashflow_repo.create_cashflow(cashflow_to_save)
                     idempotency_repo.mark_event_processed(event_id, transaction_event.portfolio_id, SERVICE_NAME, correlation_id)
 
@@ -86,8 +89,6 @@ class CashflowCalculatorConsumer(BaseConsumer):
         except (json.JSONDecodeError, ValidationError) as e:
             logger.error(f"Message validation failed for key '{key}': {e}. Sending to DLQ.", exc_info=True)
             await self._send_to_dlq(msg, e)
-            # Do not re-raise validation errors, as they won't succeed on retry
         except Exception as e:
             logger.error(f"Unexpected error processing message with key '{key}', will retry: {e}", exc_info=True)
-            # Re-raise the exception to trigger tenacity's retry mechanism
             raise

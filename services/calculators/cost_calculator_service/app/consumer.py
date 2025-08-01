@@ -84,7 +84,6 @@ class CostCalculatorConsumer:
 
                 except Exception as e:
                     logger.error(f"Error processing message after retries: {e}", exc_info=True)
-                    # Here you would typically send to a DLQ, but this consumer doesn't have one set up
                 finally:
                     if token:
                         correlation_id_var.reset(token)
@@ -97,9 +96,6 @@ class CostCalculatorConsumer:
         before=before_log(logger, logging.INFO)
     )
     def _process_message_with_retry(self, msg: Message):
-        """
-        Wrapper for the processing logic to apply retry behavior.
-        """
         self._process_message(msg)
 
     def _process_message(self, msg: Message):
@@ -112,7 +108,6 @@ class CostCalculatorConsumer:
             new_transaction_event = TransactionEvent.model_validate(data)
         except (json.JSONDecodeError, ValidationError):
             logger.error("Failed to parse message into TransactionEvent model.", exc_info=True)
-            # Don't re-raise validation errors, as they won't succeed on retry
             return
 
         processor = self._get_transaction_processor()
@@ -127,16 +122,15 @@ class CostCalculatorConsumer:
                     return
 
                 repo = CostCalculatorRepository(db)
+                # FIX: Fetch history EXCLUDING the current transaction to avoid the race condition
                 existing_db_txns = repo.get_transaction_history(
                     portfolio_id=new_transaction_event.portfolio_id,
-                    security_id=new_transaction_event.security_id
+                    security_id=new_transaction_event.security_id,
+                    exclude_id=new_transaction_event.transaction_id
                 )
-                
-                # This check is now crucial for the retry logic
-                if not existing_db_txns:
-                    raise Exception(f"Transaction history for {new_transaction_event.security_id} not found in DB, will retry.")
 
                 existing_txns_raw = [EngineTransaction.model_validate(t).model_dump(by_alias=True) for t in existing_db_txns]
+                # FIX: Use the transaction from the event, which we trust is now in the DB
                 new_txn_raw = [new_transaction_event.model_dump()]
 
                 processed, errored = processor.process_transactions(
@@ -158,7 +152,8 @@ class CostCalculatorConsumer:
                         logger.info(f"Successfully calculated costs for transaction {processed_result.transaction_id}.")
                         idempotency_repo.mark_event_processed(event_id, new_transaction_event.portfolio_id, SERVICE_NAME, correlation_id)
                     else:
-                        logger.error(f"Failed to find transaction {processed_result.transaction_id} in DB to update, will retry.")
+                        # This error is now more serious and should cause a retry
+                        logger.error(f"Failed to find transaction {processed_result.transaction_id} in DB to update.")
                         raise Exception(f"Could not find transaction {processed_result.transaction_id} to update.")
 
         if db_txn_to_update and processed_result:
