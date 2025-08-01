@@ -37,8 +37,8 @@ class TransactionEventConsumer(BaseConsumer):
             await self._send_to_dlq(msg, e)
             return
 
-        with next(get_db_session()) as db:
-            try:
+        try:
+            with next(get_db_session()) as db:
                 # Atomically check, calculate, and mark as processed
                 with db.begin():
                     idempotency_repo = IdempotencyRepository(db)
@@ -47,27 +47,30 @@ class TransactionEventConsumer(BaseConsumer):
                         return
 
                     position_repo = PositionRepository(db)
+                    # The calculate method stages all DB changes (deletes and inserts)
                     new_positions = PositionCalculator.calculate(event, db, repo=position_repo)
 
                     idempotency_repo.mark_event_processed(event_id, event.portfolio_id, SERVICE_NAME)
                 
                 # The transaction is now committed.
-                # Refresh objects to get DB-assigned IDs before publishing.
-                for pos in new_positions:
-                    db.refresh(pos)
+                # If new_positions were created, refresh them to get DB-assigned IDs
+                # and then publish the events. This must happen AFTER the commit.
+                if new_positions:
+                    for pos in new_positions:
+                        db.refresh(pos)
+                    
+                    logger.info(f"Successfully processed and saved {len(new_positions)} position records.")
+                    
+                    for record in new_positions:
+                        self._publish_persisted_event(record)
+                    
+                    self._producer.flush(timeout=5)
+                    logger.info(f"[{event.transaction_id}] Published {len(new_positions)} PositionHistoryPersistedEvents.")
 
-            except Exception as e:
-                logger.error(f"Failed during DB transaction for event {event_id}: {e}", exc_info=True)
-                # Let the BaseConsumer handle potential DLQ logic for unexpected errors
-                await self._send_to_dlq(msg, e)
-                return
-
-        # Publish events only after the transaction is successfully committed
-        if new_positions:
-            for record in new_positions:
-                self._publish_persisted_event(record)
-            self._producer.flush(timeout=5)
-            logger.info(f"[{event.transaction_id}] Published {len(new_positions)} PositionHistoryPersistedEvents.")
+        except Exception as e:
+            logger.error(f"Unexpected failure during processing for event {event_id}: {e}", exc_info=True)
+            await self._send_to_dlq(msg, e)
+            return
 
     def _publish_persisted_event(self, record: PositionHistory):
         try:
