@@ -3,8 +3,6 @@ import logging
 import json
 import traceback
 import asyncio
-import contextvars
-import uuid
 from datetime import datetime, timezone
 from abc import ABC, abstractmethod
 from typing import Optional
@@ -12,11 +10,9 @@ from confluent_kafka import Consumer, KafkaException, Message
 
 from .kafka_utils import get_kafka_producer
 from tenacity import retry, stop_after_attempt, wait_fixed, before_log
+from .logging_utils import correlation_id_var, generate_correlation_id # NEW IMPORTS
 
 logger = logging.getLogger(__name__)
-
-# --- New: ContextVar for Correlation ID ---
-correlation_id_cv = contextvars.ContextVar('correlation_id', default=None)
 
 
 class BaseConsumer(ABC):
@@ -24,9 +20,17 @@ class BaseConsumer(ABC):
     An abstract base class for creating robust, retrying Kafka consumers
     with Dead-Letter Queue (DLQ) support.
     """
-    def __init__(self, bootstrap_servers: str, topic: str, group_id: str, dlq_topic: Optional[str] = None):
+    def __init__(
+        self,
+        bootstrap_servers: str,
+        topic: str,
+        group_id: str,
+        dlq_topic: Optional[str] = None,
+        service_prefix: str = "SVC" # NEW: Add a service prefix for generating IDs
+    ):
         self.topic = topic
         self.dlq_topic = dlq_topic
+        self.service_prefix = service_prefix # NEW: Store the prefix
         self._consumer = None
         self._producer = None
         self._consumer_config = {
@@ -34,7 +38,7 @@ class BaseConsumer(ABC):
             'group.id': group_id,
             'auto.offset.reset': 'earliest',
             'enable.auto.commit': False,
-            'session.timeout.ms': 30000,  # Increased from 10000 to 30000
+            'session.timeout.ms': 30000,
             'heartbeat.interval.ms': 3000
         }
         self._running = True
@@ -59,8 +63,8 @@ class BaseConsumer(ABC):
             return
 
         try:
-            # --- New: Include correlation ID in DLQ payload ---
-            correlation_id = correlation_id_cv.get() or "not-set"
+            # Include correlation ID in DLQ payload for better debugging
+            correlation_id = correlation_id_var.get()
             
             dlq_payload = {
                 "correlation_id": correlation_id,
@@ -72,8 +76,7 @@ class BaseConsumer(ABC):
                 "error_traceback": traceback.format_exc()
             }
             
-            # --- New: Pass original headers to DLQ message ---
-            dlq_headers = msg.headers() if msg.headers() else []
+            dlq_headers = msg.headers() or []
             dlq_headers.append(('X-Original-Topic', msg.topic().encode('utf-8')))
 
             self._producer.publish_message(
@@ -118,27 +121,34 @@ class BaseConsumer(ABC):
                     logger.warning(f"Non-fatal consumer error on topic {self.topic}: {msg.error()}.")
                     continue
             
-            # --- New: Set correlation ID context for this message ---
-            correlation_id = None
-            if msg.headers():
-                for key, value in msg.headers():
-                    if key == 'X-Correlation-ID':
-                        correlation_id = value.decode('utf-8')
-                        break
-            
-            if not correlation_id:
-                correlation_id = str(uuid.uuid4())
-                logger.warning(f"No correlation ID found in message from topic '{msg.topic()}'. Generated new ID: {correlation_id}")
-
-            token = correlation_id_cv.set(correlation_id)
-            # --- End New ---
-            
+            # --- Correlation ID Handling ---
+            token = None
             try:
+                corr_id = None
+                if msg.headers():
+                    # Kafka headers are a list of (key, value) tuples
+                    for key, value in msg.headers():
+                        if key == 'correlation_id':
+                            corr_id = value.decode('utf-8') if value else None
+                            break
+                
+                if not corr_id:
+                    corr_id = generate_correlation_id(self.service_prefix)
+                    logger.warning(f"No correlation ID in message from topic '{msg.topic()}'. Generated new ID: {corr_id}")
+
+                token = correlation_id_var.set(corr_id)
+                # --- End Correlation ID Handling ---
+                
                 await self.process_message(msg)
                 self._consumer.commit(message=msg, asynchronous=False)
+
+            except Exception as e:
+                # This is a safety net. The _send_to_dlq should be called inside process_message
+                logger.error(f"Unhandled exception in consumer loop for topic {self.topic}: {e}", exc_info=True)
+                await self._send_to_dlq(msg, e)
             finally:
-                # --- New: Reset context after processing is complete ---
-                correlation_id_cv.reset(token)
+                if token:
+                    correlation_id_var.reset(token)
         
         self.shutdown()
 
