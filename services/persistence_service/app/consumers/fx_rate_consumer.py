@@ -1,4 +1,5 @@
-import structlog
+# services/persistence_service/app/consumers/fx_rate_consumer.py
+import logging
 import json
 from pydantic import ValidationError
 from confluent_kafka import Message
@@ -8,7 +9,7 @@ from portfolio_common.events import FxRateEvent
 from portfolio_common.db import get_db_session
 from ..repositories.fx_rate_repository import FxRateRepository
 
-logger = structlog.get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 class FxRateConsumer(BaseConsumer):
     """
@@ -26,9 +27,11 @@ class FxRateConsumer(BaseConsumer):
             event = FxRateEvent.model_validate(fx_rate_data)
             logger.info(
                 "Successfully validated event for FX rate", 
-                from_currency=event.from_currency,
-                to_currency=event.to_currency,
-                rate_date=event.rate_date
+                extra={
+                    "from_currency": event.from_currency,
+                    "to_currency": event.to_currency,
+                    "rate_date": event.rate_date
+                }
             )
 
             with next(get_db_session()) as db:
@@ -36,5 +39,5 @@ class FxRateConsumer(BaseConsumer):
                 repo.create_fx_rate(event)
             
         except (json.JSONDecodeError, ValidationError) as e:
-            logger.error("Message validation failed. Sending to DLQ.", key=key, error=str(e))
+            logger.error("Message validation failed. Sending to DLQ.", extra={"key": key}, exc_info=True)
             await self._send_to_dlq(msg, e)

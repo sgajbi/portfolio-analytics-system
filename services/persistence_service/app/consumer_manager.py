@@ -1,5 +1,5 @@
 # services/persistence-service/app/consumer_manager.py
-import structlog
+import logging
 import signal
 import asyncio
 from portfolio_common.config import (
@@ -8,16 +8,16 @@ from portfolio_common.config import (
     KAFKA_INSTRUMENTS_TOPIC,
     KAFKA_MARKET_PRICES_TOPIC,
     KAFKA_FX_RATES_TOPIC,
-    KAFKA_RAW_PORTFOLIOS_TOPIC, # NEW IMPORT
+    KAFKA_RAW_PORTFOLIOS_TOPIC,
     KAFKA_PERSISTENCE_DLQ_TOPIC
 )
 from .consumers.transaction_consumer import TransactionPersistenceConsumer
 from .consumers.instrument_consumer import InstrumentConsumer
 from .consumers.market_price_consumer import MarketPriceConsumer
 from .consumers.fx_rate_consumer import FxRateConsumer
-from .consumers.portfolio_consumer import PortfolioConsumer # NEW IMPORT
+from .consumers.portfolio_consumer import PortfolioConsumer
 
-logger = structlog.get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 class ConsumerManager:
     """
@@ -30,13 +30,15 @@ class ConsumerManager:
         self._shutdown_event = asyncio.Event()
         
         dlq_topic = KAFKA_PERSISTENCE_DLQ_TOPIC
+        service_prefix = "PST"
         
         self.consumers.append(
             PortfolioConsumer(
                 bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
                 topic=KAFKA_RAW_PORTFOLIOS_TOPIC,
                 group_id="persistence_group_portfolios",
-                dlq_topic=dlq_topic
+                dlq_topic=dlq_topic,
+                service_prefix=service_prefix
             )
         )
         self.consumers.append(
@@ -44,7 +46,8 @@ class ConsumerManager:
                 bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
                 topic=KAFKA_RAW_TRANSACTIONS_TOPIC,
                 group_id="persistence_group_transactions",
-                dlq_topic=dlq_topic
+                dlq_topic=dlq_topic,
+                service_prefix=service_prefix
             )
         )
         self.consumers.append(
@@ -52,7 +55,8 @@ class ConsumerManager:
                 bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
                 topic=KAFKA_INSTRUMENTS_TOPIC,
                 group_id="persistence_group_instruments",
-                dlq_topic=dlq_topic
+                dlq_topic=dlq_topic,
+                service_prefix=service_prefix
             )
         )
         self.consumers.append(
@@ -60,7 +64,8 @@ class ConsumerManager:
                 bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
                 topic=KAFKA_MARKET_PRICES_TOPIC,
                 group_id="persistence_group_market_prices",
-                dlq_topic=dlq_topic
+                dlq_topic=dlq_topic,
+                service_prefix=service_prefix
             )
         )
         self.consumers.append(
@@ -68,15 +73,16 @@ class ConsumerManager:
                 bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
                 topic=KAFKA_FX_RATES_TOPIC,
                 group_id="persistence_group_fx_rates",
-                dlq_topic=dlq_topic
+                dlq_topic=dlq_topic,
+                service_prefix=service_prefix
             )
         )
 
-        logger.info("ConsumerManager initialized", num_consumers=len(self.consumers))
+        logger.info("ConsumerManager initialized", extra={"num_consumers": len(self.consumers)})
 
     def _signal_handler(self, signum, frame):
         """Sets the shutdown event when a signal is received."""
-        logger.info("Shutdown signal received", signal=signal.Signals(signum).name)
+        logger.info("Shutdown signal received", extra={"signal": signal.Signals(signum).name})
         self._shutdown_event.set()
 
     async def run(self):

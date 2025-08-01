@@ -1,4 +1,5 @@
-import structlog
+# services/persistence_service/app/consumers/portfolio_consumer.py
+import logging
 import json
 from pydantic import ValidationError
 from confluent_kafka import Message
@@ -8,7 +9,7 @@ from portfolio_common.events import PortfolioEvent
 from portfolio_common.db import get_db_session
 from ..repositories.portfolio_repository import PortfolioRepository
 
-logger = structlog.get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 class PortfolioConsumer(BaseConsumer):
     """
@@ -24,17 +25,17 @@ class PortfolioConsumer(BaseConsumer):
         try:
             portfolio_data = json.loads(value)
             event = PortfolioEvent.model_validate(portfolio_data)
-            logger.info("Successfully validated event", portfolio_id=event.portfolio_id)
+            logger.info("Successfully validated event", extra={"portfolio_id": event.portfolio_id})
 
             with next(get_db_session()) as db:
                 repo = PortfolioRepository(db)
                 repo.create_or_update_portfolio(event)
 
-            logger.info("Successfully persisted", portfolio_id=event.portfolio_id)
+            logger.info("Successfully persisted", extra={"portfolio_id": event.portfolio_id})
 
         except (json.JSONDecodeError, ValidationError) as e:
-            logger.error("Message validation failed. Sending to DLQ.", key=key, error=str(e))
+            logger.error("Message validation failed. Sending to DLQ.", extra={"key": key}, exc_info=True)
             await self._send_to_dlq(msg, e)
         except Exception as e:
-            logger.error("Unexpected error processing message. Sending to DLQ.", key=key, error=str(e), exc_info=True)
+            logger.error("Unexpected error processing message. Sending to DLQ.", extra={"key": key}, exc_info=True)
             await self._send_to_dlq(msg, e)

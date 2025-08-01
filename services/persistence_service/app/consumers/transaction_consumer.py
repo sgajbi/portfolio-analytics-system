@@ -1,16 +1,17 @@
 # services/persistence-service/app/consumers/transaction_consumer.py
-import structlog
+import logging
 import json
 from pydantic import ValidationError
 from confluent_kafka import Message
 
-from portfolio_common.kafka_consumer import BaseConsumer, correlation_id_cv # Import correlation_id_cv
+from portfolio_common.kafka_consumer import BaseConsumer
+from portfolio_common.logging_utils import correlation_id_var
 from portfolio_common.events import TransactionEvent
 from portfolio_common.db import get_db_session
 from portfolio_common.config import KAFKA_RAW_TRANSACTIONS_COMPLETED_TOPIC
 from ..repositories.transaction_db_repo import TransactionDBRepository
 
-logger = structlog.get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 class TransactionPersistenceConsumer(BaseConsumer):
     """
@@ -29,22 +30,22 @@ class TransactionPersistenceConsumer(BaseConsumer):
             # 1. Validate the incoming message
             transaction_data = json.loads(value)
             event = TransactionEvent.model_validate(transaction_data)
-            logger.info("Successfully validated event", transaction_id=event.transaction_id)
+            logger.info("Successfully validated event", extra={"transaction_id": event.transaction_id})
 
             # 2. Persist to the database
             with next(get_db_session()) as db:
                 repo = TransactionDBRepository(db)
                 repo.create_or_update_transaction(event)
             
-            logger.info("Successfully persisted transaction", transaction_id=event.transaction_id)
+            logger.info("Successfully persisted transaction", extra={"transaction_id": event.transaction_id})
 
             # 3. Publish completion event
             if self._producer:
                 partition_key = event.portfolio_id
                 
-                # --- FIX: Get correlation ID from context and create headers ---
-                corr_id = correlation_id_cv.get()
-                headers = [('X-Correlation-ID', corr_id.encode('utf-8'))] if corr_id else None
+                # Get correlation ID from context and create headers
+                corr_id = correlation_id_var.get()
+                headers = [('correlation_id', corr_id.encode('utf-8'))] if corr_id else None
                 
                 self._producer.publish_message(
                     topic=KAFKA_RAW_TRANSACTIONS_COMPLETED_TOPIC,
@@ -54,11 +55,13 @@ class TransactionPersistenceConsumer(BaseConsumer):
                 )
                 logger.info(
                     "Published completion event", 
-                    transaction_id=event.transaction_id, 
-                    partition_key=partition_key
+                    extra={
+                        "transaction_id": event.transaction_id,
+                        "partition_key": partition_key
+                    }
                 )
                 self._producer.flush(timeout=5)
 
         except (json.JSONDecodeError, ValidationError) as e:
-            logger.error("Message validation failed. Sending to DLQ.", key=key, error=str(e))
+            logger.error("Message validation failed. Sending to DLQ.", extra={"key": key}, exc_info=True)
             await self._send_to_dlq(msg, e)
