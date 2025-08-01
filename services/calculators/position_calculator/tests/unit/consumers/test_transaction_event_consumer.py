@@ -8,7 +8,7 @@ from services.calculators.position_calculator.app.consumers.transaction_event_co
 from services.calculators.position_calculator.app.core.position_logic import PositionCalculator
 from portfolio_common.events import TransactionEvent, PositionHistoryPersistedEvent
 from portfolio_common.database_models import PositionHistory
-from portfolio_common.config import KAFA_POSITION_HISTORY_PERSISTED_TOPIC
+from portfolio_common.config import KAFKA_POSITION_HISTORY_PERSISTED_TOPIC # CORRECTED TYPO
 
 pytestmark = pytest.mark.asyncio
 
@@ -99,7 +99,7 @@ async def test_process_message_success(position_consumer: TransactionEventConsum
         # Verify downstream events were published
         assert position_consumer._producer.publish_message.call_count == len(new_positions)
         first_call_args = position_consumer._producer.publish_message.call_args_list[0].kwargs
-        assert first_call_args['topic'] == KAFA_POSITION_HISTORY_PERSISTED_TOPIC
+        assert first_call_args['topic'] == KAFKA_POSITION_HISTORY_PERSISTED_TOPIC
         assert first_call_args['value']['id'] == 101 # Check that the refreshed ID is used
 
 async def test_process_message_skips_processed_event(position_consumer: TransactionEventConsumer, mock_kafka_message: MagicMock):
