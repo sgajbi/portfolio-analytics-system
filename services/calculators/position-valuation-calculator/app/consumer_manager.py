@@ -1,3 +1,4 @@
+# services/calculators/position-valuation-calculator/app/consumer_manager.py
 import logging
 import signal
 import asyncio
@@ -23,19 +24,22 @@ class ConsumerManager:
         self._shutdown_event = asyncio.Event()
         
         group_id = "position_valuation_group"
+        service_prefix = "VAL"
         
         self.consumers.append(
             PositionHistoryConsumer(
                 bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
                 topic=KAFKA_POSITION_HISTORY_PERSISTED_TOPIC,
-                group_id=f"{group_id}_positions" # Unique group ID for this consumer
+                group_id=f"{group_id}_positions",
+                service_prefix=service_prefix 
             )
         )
         self.consumers.append(
             MarketPriceConsumer(
                 bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
                 topic=KAFKA_MARKET_PRICE_PERSISTED_TOPIC,
-                group_id=f"{group_id}_prices" # Unique group ID for this consumer
+                group_id=f"{group_id}_prices",
+                service_prefix=service_prefix 
             )
         )
 
@@ -48,7 +52,8 @@ class ConsumerManager:
 
     async def run(self):
         """
-        The main execution function. Sets up signal handling and runs consumer tasks.
+        The main execution function.
+        Sets up signal handling and runs consumer tasks.
         """
         signal.signal(signal.SIGINT, self._signal_handler)
         signal.signal(signal.SIGTERM, self._signal_handler)

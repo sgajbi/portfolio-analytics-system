@@ -5,6 +5,7 @@ from pydantic import ValidationError
 
 from confluent_kafka import Message
 from portfolio_common.kafka_consumer import BaseConsumer
+from portfolio_common.logging_utils import correlation_id_var # NEW IMPORT
 from portfolio_common.events import MarketPriceEvent, DailyPositionSnapshotPersistedEvent
 from portfolio_common.db import get_db_session
 from portfolio_common.config import KAFKA_DAILY_POSITION_SNAPSHOT_PERSISTED_TOPIC
@@ -19,20 +20,22 @@ SERVICE_NAME = "position-valuation-calculator-from-price"
 class MarketPriceConsumer(BaseConsumer):
     """
     Consumes market price events and creates or updates daily position snapshots
-    for all affected portfolios with the new valuation. This process is idempotent.
+    for all affected portfolios with the new valuation.
+    This process is idempotent.
     """
 
     async def process_message(self, msg: Message):
         key = msg.key().decode('utf-8') if msg.key() else "NoKey"
         value = msg.value().decode('utf-8')
         event_id = f"{msg.topic()}-{msg.partition()}-{msg.offset()}"
+        correlation_id = correlation_id_var.get() # Get correlation ID
         updated_snapshots = []
 
         try:
             event_data = json.loads(value)
             price_event = MarketPriceEvent.model_validate(event_data)
             
-            logger.info(f"Processing market price for {price_event.security_id} on {price_event.price_date}", extra={"event_id": event_id})
+            logger.info(f"Processing market price for {price_event.security_id} on {price_event.price_date}")
             
             with next(get_db_session()) as db:
                 with db.begin():
@@ -43,20 +46,21 @@ class MarketPriceConsumer(BaseConsumer):
 
                     repo = ValuationRepository(db)
                     
-                    # SIMPLIFIED: Call the single repository method to do all the work
                     updated_snapshots = repo.update_snapshots_for_market_price(price_event)
                     
-                    # Mark the single incoming price event as processed
-                    idempotency_repo.mark_event_processed(event_id, "N/A", SERVICE_NAME)
+                    idempotency_repo.mark_event_processed(event_id, "N/A", SERVICE_NAME, correlation_id)
 
             if self._producer and updated_snapshots:
                 logger.info(f"Publishing {len(updated_snapshots)} snapshot events for price event {event_id}")
+                headers = [('correlation_id', correlation_id.encode('utf-8'))] if correlation_id else None
+                
                 for snapshot in updated_snapshots:
                     completion_event = DailyPositionSnapshotPersistedEvent.model_validate(snapshot)
                     self._producer.publish_message(
                         topic=KAFKA_DAILY_POSITION_SNAPSHOT_PERSISTED_TOPIC,
                         key=completion_event.security_id,
-                        value=completion_event.model_dump(mode='json')
+                        value=completion_event.model_dump(mode='json'),
+                        headers=headers
                     )
                 self._producer.flush(timeout=5)
 

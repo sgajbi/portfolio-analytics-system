@@ -1,14 +1,11 @@
+# services/calculators/position-valuation-calculator/app/main.py
 import logging
 import asyncio
 from app.consumer_manager import ConsumerManager
+from portfolio_common.logging_utils import setup_logger
 
-# Configure logging for the service
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
-)
-logger = logging.getLogger(__name__)
+SERVICE_NAME = "position-valuation-calculator-service"
+logger = setup_logger(SERVICE_NAME)
 
 async def main():
     """
