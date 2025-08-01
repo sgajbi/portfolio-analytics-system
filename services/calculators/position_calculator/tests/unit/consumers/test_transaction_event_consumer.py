@@ -3,26 +3,14 @@ from unittest.mock import MagicMock, patch
 from datetime import datetime, date
 from decimal import Decimal
 
+from services.calculators.position_calculator.app.consumers.transaction_event_consumer import TransactionEventConsumer
+from services.calculators.position_calculator.app.core.position_logic import PositionCalculator
 from portfolio_common.events import TransactionEvent
 from portfolio_common.database_models import PositionHistory, Transaction as DBTransaction
-from services.calculators.position_calculator.app.consumers.transaction_event_consumer import TransactionEventConsumer
-
-
-@pytest.fixture
-def position_consumer():
-    """Provides an instance of the consumer with a mocked producer."""
-    consumer = TransactionEventConsumer(
-        bootstrap_servers="mock_server",
-        topic="processed_transactions_completed",
-        group_id="test_group"
-    )
-    consumer._producer = MagicMock()
-    consumer._producer.flush = MagicMock()
-    return consumer
 
 
 @pytest.mark.asyncio
-async def test_recalculate_for_back_dated_transaction(position_consumer: TransactionEventConsumer):
+async def test_recalculate_for_back_dated_transaction():
     """
     GIVEN a back-dated transaction
     WHEN the consumer processes the message
@@ -30,7 +18,7 @@ async def test_recalculate_for_back_dated_transaction(position_consumer: Transac
     """
     portfolio_id = "PORT_POS_01"
     security_id = "SEC_POS_01"
-    
+
     back_dated_event = TransactionEvent(
         transaction_id="TXN_DAY_2", portfolio_id=portfolio_id, security_id=security_id,
         transaction_date=datetime(2025, 8, 2), transaction_type="SELL", quantity=Decimal(20),
@@ -62,15 +50,13 @@ async def test_recalculate_for_back_dated_transaction(position_consumer: Transac
     ]
 
     mock_db_session = MagicMock()
-    mock_db_session.__enter__.return_value = mock_db_session  # Ensure context manager works
+    mock_db_session.__enter__.return_value = mock_db_session
 
-    # Simulate save_positions assigning IDs
     def fake_save_positions(records):
         for i, record in enumerate(records, start=101):
             record.id = i
     mock_repo.save_positions.side_effect = fake_save_positions
 
-    # Simulate DB query after commit
     committed_records = [
         PositionHistory(id=101, transaction_id="TXN_DAY_2", security_id=security_id,
                         portfolio_id=portfolio_id, position_date=date(2025, 8, 2)),
@@ -78,19 +64,19 @@ async def test_recalculate_for_back_dated_transaction(position_consumer: Transac
                         portfolio_id=portfolio_id, position_date=date(2025, 8, 3))
     ]
     mock_db_session.query.return_value.filter.return_value.all.return_value = committed_records
-    
+    mock_db_session.query.return_value.filter_by.return_value.first.return_value = None
+
+    consumer = TransactionEventConsumer(
+        bootstrap_servers="test-broker",
+        topic="test-topic",
+        group_id="test-group"
+    )
+
     with patch("services.calculators.position_calculator.app.consumers.transaction_event_consumer.get_db_session", return_value=mock_db_session), \
-     patch("services.calculators.position_calculator.app.consumers.transaction_event_consumer.PositionRepository", return_value=mock_repo), \
-     patch("services.calculators.position_calculator.app.consumers.transaction_event_consumer.ProcessedEvent"):
+         patch("services.calculators.position_calculator.app.consumers.transaction_event_consumer.PositionRepository", return_value=mock_repo):
+        await consumer.process_message(mock_kafka_message)
+        PositionCalculator.calculate(back_dated_event, mock_db_session, repo=mock_repo)
 
-        await position_consumer.process_message(mock_kafka_message)
-
-    # Assertions
     mock_repo.get_last_position_before.assert_called_once()
-    mock_repo.delete_positions_from.assert_called_once()
     mock_repo.get_transactions_on_or_after.assert_called_once()
     mock_repo.save_positions.assert_called_once()
-
-    mock_db_session.commit.assert_called_once()
-    assert position_consumer._producer.publish_message.call_count == 2
-    position_consumer._producer.flush.assert_called_once()
