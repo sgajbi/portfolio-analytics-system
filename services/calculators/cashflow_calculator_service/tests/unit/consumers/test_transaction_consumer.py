@@ -1,6 +1,6 @@
 # services/calculators/cashflow_calculator_service/tests/unit/consumers/test_transaction_consumer.py
 import pytest
-from unittest.mock import MagicMock, patch, AsyncMock
+from unittest.mock import MagicMock, patch, AsyncMock, ANY
 from datetime import datetime, date
 from decimal import Decimal
 
@@ -43,24 +43,29 @@ def mock_kafka_message():
         trade_currency="USD",
         currency="USD",
     )
-    mock_message = MagicMock()
-    mock_message.value.return_value = event.model_dump_json().encode('utf-8')
-    mock_message.key.return_value = event.portfolio_id.encode('utf-8')
-    mock_message.error.return_value = None
-    return mock_message
+    mock_msg = MagicMock()
+    mock_msg.value.return_value = event.model_dump_json().encode('utf-8')
+    mock_msg.key.return_value = event.portfolio_id.encode('utf-8')
+    mock_msg.topic.return_value = "raw_transactions_completed"
+    mock_msg.partition.return_value = 0
+    mock_msg.offset.return_value = 123
+    mock_msg.error.return_value = None
+    return mock_msg
 
 async def test_process_message_success(
     cashflow_consumer: CashflowCalculatorConsumer,
     mock_kafka_message: MagicMock
 ):
     """
-    GIVEN a valid transaction message for a BUY
+    GIVEN a valid new transaction message
     WHEN the process_message method is called
-    THEN it should call the repository to save the calculated cashflow
-    AND publish a cashflow_calculated event.
+    THEN it should check for idempotency, call the repository, mark as processed, and publish an event.
     """
     # Arrange
-    mock_repo = MagicMock()
+    mock_cashflow_repo = MagicMock()
+    mock_idempotency_repo = MagicMock()
+    mock_idempotency_repo.is_event_processed.return_value = False # Simulate new event
+
     mock_saved_cashflow = Cashflow(
         id=1,
         transaction_id="TXN_CASHFLOW_CONSUMER",
@@ -74,30 +79,73 @@ async def test_process_message_success(
         level="POSITION",
         calculation_type="NET"
     )
-    mock_repo.create_cashflow.return_value = mock_saved_cashflow
+    mock_cashflow_repo.create_cashflow.return_value = mock_saved_cashflow
 
-    correlation_id = 'corr-cf-789'
-    correlation_id_cv.set(correlation_id)
+    mock_db_session = MagicMock()
+    mock_db_session.begin.return_value.__enter__.return_value = None # Mock the transaction context
 
     with patch(
-        "services.calculators.cashflow_calculator_service.app.consumers.transaction_consumer.get_db_session"
+        "services.calculators.cashflow_calculator_service.app.consumers.transaction_consumer.get_db_session",
+        return_value=iter([mock_db_session])
     ), patch(
-        "services.calculators.cashflow_calculator_service.app.consumers.transaction_consumer.CashflowRepository", return_value=mock_repo
+        "services.calculators.cashflow_calculator_service.app.consumers.transaction_consumer.CashflowRepository",
+        return_value=mock_cashflow_repo
+    ), patch(
+        "services.calculators.cashflow_calculator_service.app.consumers.transaction_consumer.IdempotencyRepository",
+        return_value=mock_idempotency_repo
     ):
         # Act
         await cashflow_consumer.process_message(mock_kafka_message)
 
         # Assert
-        mock_repo.create_cashflow.assert_called_once()
-        
+        mock_idempotency_repo.is_event_processed.assert_called_once_with("raw_transactions_completed-0-123", "cashflow-calculator")
+        mock_cashflow_repo.create_cashflow.assert_called_once()
+        mock_idempotency_repo.mark_event_processed.assert_called_once()
+
         mock_producer = cashflow_consumer._producer
         mock_producer.publish_message.assert_called_once()
-        
+
         publish_args = mock_producer.publish_message.call_args.kwargs
         assert publish_args['topic'] == KAFKA_CASHFLOW_CALCULATED_TOPIC
-        assert publish_args['key'] == "TXN_CASHFLOW_CONSUMER"
-        
-        # CORRECTED: Assert against the aliased field 'id'
         assert publish_args['value']['id'] == mock_saved_cashflow.id
 
+        cashflow_consumer._send_to_dlq.assert_not_called()
+
+async def test_process_message_skips_processed_event(
+    cashflow_consumer: CashflowCalculatorConsumer,
+    mock_kafka_message: MagicMock
+):
+    """
+    GIVEN a transaction message that has already been processed
+    WHEN the process_message method is called
+    THEN it should skip all business logic and publishing.
+    """
+    # Arrange
+    mock_cashflow_repo = MagicMock()
+    mock_idempotency_repo = MagicMock()
+    mock_idempotency_repo.is_event_processed.return_value = True # Simulate processed event
+
+    mock_db_session = MagicMock()
+    mock_db_session.begin.return_value.__enter__.return_value = None
+
+    with patch(
+        "services.calculators.cashflow_calculator_service.app.consumers.transaction_consumer.get_db_session",
+        return_value=iter([mock_db_session])
+    ), patch(
+        "services.calculators.cashflow_calculator_service.app.consumers.transaction_consumer.CashflowRepository",
+        return_value=mock_cashflow_repo
+    ), patch(
+        "services.calculators.cashflow_calculator_service.app.consumers.transaction_consumer.IdempotencyRepository",
+        return_value=mock_idempotency_repo
+    ):
+        # Act
+        await cashflow_consumer.process_message(mock_kafka_message)
+
+        # Assert
+        mock_idempotency_repo.is_event_processed.assert_called_once_with("raw_transactions_completed-0-123", "cashflow-calculator")
+
+        # Verify that no business logic was executed
+        mock_cashflow_repo.create_cashflow.assert_not_called()
+        mock_idempotency_repo.mark_event_processed.assert_not_called()
+        cashflow_consumer._producer.publish_message.assert_not_called()
         cashflow_consumer._send_to_dlq.assert_not_called()
