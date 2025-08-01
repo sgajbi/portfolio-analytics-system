@@ -1,3 +1,4 @@
+# services/calculators/position_calculator/app/repositories/position_repository.py
 import logging
 from datetime import date, datetime
 from typing import List, Optional
@@ -46,6 +47,7 @@ class PositionRepository:
             .filter(
                 Transaction.portfolio_id == portfolio_id,
                 Transaction.security_id == security_id,
+                # Cast the datetime field to a date for comparison
                 func.date(Transaction.transaction_date) >= a_date
             )
             .order_by(Transaction.transaction_date.asc(), Transaction.id.asc())
@@ -77,30 +79,16 @@ class PositionRepository:
         )
         return deleted_count
 
-def save_positions(self, positions: List[PositionHistory]):
-    """
-    Bulk saves new position history records.
-    Skips records that already exist to ensure idempotency.
-    """
-    if not positions:
-        logger.debug("No positions to save.")
-        return
+    def save_positions(self, positions: List[PositionHistory]):
+        """
+        Bulk saves new position history records.
+        This method does not commit; it only stages the objects in the session.
+        """
+        if not positions:
+            logger.debug("No new positions to save.")
+            return
 
-    # Get existing transaction_ids already in PositionHistory
-    txn_ids = [pos.transaction_id for pos in positions]
-    existing_ids = {
-        r.transaction_id
-        for r in self.db.query(PositionHistory.transaction_id)
-                        .filter(PositionHistory.transaction_id.in_(txn_ids))
-                        .all()
-    }
-
-    # Filter only new records
-    new_positions = [pos for pos in positions if pos.transaction_id not in existing_ids]
-
-    if not new_positions:
-        logger.info("All positions already persisted. Skipping insert.")
-        return
-
-    self.db.bulk_save_objects(new_positions)
-    logger.info(f"Bulk saved {len(new_positions)} new position records (skipped {len(existing_ids)} duplicates).")
+        # This method assumes the caller is managing the session and commit.
+        # It simply adds the new position objects to be persisted.
+        self.db.add_all(positions)
+        logger.info(f"Staged {len(positions)} new position records for saving.")
