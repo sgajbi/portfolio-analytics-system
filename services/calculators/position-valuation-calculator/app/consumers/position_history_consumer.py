@@ -9,13 +9,13 @@ from portfolio_common.events import PositionHistoryPersistedEvent, DailyPosition
 from portfolio_common.db import get_db_session
 from portfolio_common.database_models import DailyPositionSnapshot, PositionHistory
 from portfolio_common.config import KAFKA_DAILY_POSITION_SNAPSHOT_PERSISTED_TOPIC
-from portfolio_common.idempotency_repository import IdempotencyRepository # NEW IMPORT
+from portfolio_common.idempotency_repository import IdempotencyRepository
 from ..repositories.valuation_repository import ValuationRepository
 from ..logic.valuation_logic import ValuationLogic
 
 logger = logging.getLogger(__name__)
 
-SERVICE_NAME = "position-valuation-calculator-from-position" # NEW: Unique service name
+SERVICE_NAME = "position-valuation-calculator-from-position"
 
 class PositionHistoryConsumer(BaseConsumer):
     """
@@ -79,7 +79,7 @@ class PositionHistoryConsumer(BaseConsumer):
                         unrealized_gain_loss=unrealized_gain_loss
                     )
                     
-                    repo.upsert_daily_snapshot(snapshot) # This method no longer commits
+                    repo.upsert_daily_snapshot(snapshot)
                     idempotency_repo.mark_event_processed(event_id, position.portfolio_id, SERVICE_NAME)
 
                 # Fetch the upserted record back to get its ID for publishing
@@ -91,7 +91,15 @@ class PositionHistoryConsumer(BaseConsumer):
 
             # Publish event after the transaction commits
             if self._producer and persisted_snapshot:
-                completion_event = DailyPositionSnapshotPersistedEvent.model_validate(persisted_snapshot)
+                # CORRECTED: Create a dict from the ORM object before validation
+                # This makes the code more robust against mocking issues.
+                snapshot_data = {
+                    "id": persisted_snapshot.id,
+                    "portfolio_id": persisted_snapshot.portfolio_id,
+                    "security_id": persisted_snapshot.security_id,
+                    "date": persisted_snapshot.date
+                }
+                completion_event = DailyPositionSnapshotPersistedEvent.model_validate(snapshot_data)
                 self._producer.publish_message(
                     topic=KAFKA_DAILY_POSITION_SNAPSHOT_PERSISTED_TOPIC,
                     key=completion_event.security_id,
