@@ -4,11 +4,13 @@ from unittest.mock import MagicMock, patch, AsyncMock
 from datetime import datetime, date
 from decimal import Decimal
 
+from sqlalchemy.orm import Session # Import Session for spec
+
 from services.calculators.position_calculator.app.consumers.transaction_event_consumer import TransactionEventConsumer
 from services.calculators.position_calculator.app.core.position_logic import PositionCalculator
 from portfolio_common.events import TransactionEvent, PositionHistoryPersistedEvent
 from portfolio_common.database_models import PositionHistory
-from portfolio_common.config import KAFKA_POSITION_HISTORY_PERSISTED_TOPIC # CORRECTED TYPO
+from portfolio_common.config import KAFKA_POSITION_HISTORY_PERSISTED_TOPIC
 
 pytestmark = pytest.mark.asyncio
 
@@ -59,18 +61,20 @@ async def test_process_message_success(position_consumer: TransactionEventConsum
     THEN it should perform the calculation, save results, mark the event as processed, and publish completion events.
     """
     # Arrange
-    # Mock the list of new positions that the calculator will return
     new_positions = [
         PositionHistory(id=101, transaction_id="TXN_POS_CALC_01", security_id="SEC_POS_CALC_01", portfolio_id="PORT_POS_CALC_01", position_date=date(2025, 8, 5)),
         PositionHistory(id=102, transaction_id="TXN_POS_CALC_02", security_id="SEC_POS_CALC_01", portfolio_id="PORT_POS_CALC_01", position_date=date(2025, 8, 6))
     ]
 
-    mock_db_session = MagicMock()
-    mock_db_session.begin.return_value.__enter__.return_value = None # Mock transaction context
+    # CORRECTED: Create a more robust mock for the session and its transaction
+    mock_db_session = MagicMock(spec=Session)
+    mock_transaction_context = MagicMock()
+    mock_transaction_context.__enter__.return_value = None
+    mock_transaction_context.__exit__.return_value = (None, None, None) # Simulate successful exit
+    mock_db_session.begin.return_value = mock_transaction_context
 
-    # Mock repositories and logic
     mock_idempotency_repo = MagicMock()
-    mock_idempotency_repo.is_event_processed.return_value = False # New event
+    mock_idempotency_repo.is_event_processed.return_value = False
 
     with patch(
         "services.calculators.position_calculator.app.consumers.transaction_event_consumer.get_db_session", return_value=iter([mock_db_session])
@@ -78,29 +82,25 @@ async def test_process_message_success(position_consumer: TransactionEventConsum
         "services.calculators.position_calculator.app.consumers.transaction_event_consumer.IdempotencyRepository", return_value=mock_idempotency_repo
     ), patch(
         "services.calculators.position_calculator.app.consumers.transaction_event_consumer.PositionRepository"
-    ) as MockPositionRepo, patch(
+    ), patch(
         "services.calculators.position_calculator.app.consumers.transaction_event_consumer.PositionCalculator.calculate", return_value=new_positions
     ) as mock_calculate:
-        
+
         # Act
         await position_consumer.process_message(mock_kafka_message)
 
         # Assert
-        # Verify idempotency check and marking
         mock_idempotency_repo.is_event_processed.assert_called_once_with("processed_transactions_completed-0-200", "position-calculator")
         mock_idempotency_repo.mark_event_processed.assert_called_once()
-
-        # Verify business logic was called
         mock_calculate.assert_called_once()
-
-        # Verify that refresh was called to get IDs before publishing
+        
+        # This assertion should now pass
         assert mock_db_session.refresh.call_count == len(new_positions)
 
-        # Verify downstream events were published
         assert position_consumer._producer.publish_message.call_count == len(new_positions)
         first_call_args = position_consumer._producer.publish_message.call_args_list[0].kwargs
         assert first_call_args['topic'] == KAFKA_POSITION_HISTORY_PERSISTED_TOPIC
-        assert first_call_args['value']['id'] == 101 # Check that the refreshed ID is used
+        assert first_call_args['value']['id'] == 101
 
 async def test_process_message_skips_processed_event(position_consumer: TransactionEventConsumer, mock_kafka_message: MagicMock):
     """
@@ -109,9 +109,12 @@ async def test_process_message_skips_processed_event(position_consumer: Transact
     THEN it should skip all logic and not publish any events.
     """
     # Arrange
-    mock_db_session = MagicMock()
-    mock_db_session.begin.return_value.__enter__.return_value = None
-    
+    mock_db_session = MagicMock(spec=Session)
+    mock_transaction_context = MagicMock()
+    mock_transaction_context.__enter__.return_value = None
+    mock_transaction_context.__exit__.return_value = (None, None, None)
+    mock_db_session.begin.return_value = mock_transaction_context
+
     mock_idempotency_repo = MagicMock()
     mock_idempotency_repo.is_event_processed.return_value = True # DUPLICATE event
 
