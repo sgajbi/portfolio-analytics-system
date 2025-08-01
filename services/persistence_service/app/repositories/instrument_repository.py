@@ -1,7 +1,5 @@
 import logging
 from sqlalchemy.orm import Session
-from sqlalchemy.dialects.postgresql import insert as pg_insert
-
 from portfolio_common.database_models import Instrument as DBInstrument
 from portfolio_common.events import InstrumentEvent
 
@@ -16,35 +14,26 @@ class InstrumentRepository:
 
     def create_or_update_instrument(self, event: InstrumentEvent) -> DBInstrument:
         """
-        Idempotently creates a new instrument or updates an existing one based on security_id.
-        This operation leverages PostgreSQL's ON CONFLICT DO UPDATE (UPSERT).
+        Idempotently creates or updates an instrument using a
+        get-then-update/create pattern based on security_id.
         """
-        insert_dict = {
-            "security_id": event.security_id,
-            "name": event.name,
-            "isin": event.isin,
-            "currency": event.currency,
-            "product_type": event.product_type,
-        }
-
-        stmt = pg_insert(DBInstrument).values(**insert_dict)
-        
-        on_conflict_stmt = stmt.on_conflict_do_update(
-            index_elements=['security_id'],
-            set_={
-                'name': stmt.excluded.name,
-                'isin': stmt.excluded.isin,
-                'currency': stmt.excluded.currency,
-                'product_type': stmt.excluded.product_type,
-                'updated_at': stmt.excluded.updated_at
-            }
-        ).returning(DBInstrument)
-
         try:
-            result = self.db.execute(on_conflict_stmt).scalar_one()
-            # COMMIT AND ROLLBACK REMOVED
-            logger.info(f"Instrument '{result.security_id}' successfully staged for upsert.")
-            return result
+            db_instrument = self.db.query(DBInstrument).filter(DBInstrument.security_id == event.security_id).first()
+            
+            if db_instrument:
+                # Update existing
+                db_instrument.name = event.name
+                db_instrument.isin = event.isin
+                db_instrument.currency = event.currency
+                db_instrument.product_type = event.product_type
+                logger.info(f"Instrument '{event.security_id}' found, staging for update.")
+            else:
+                # Create new
+                db_instrument = DBInstrument(**event.model_dump(by_alias=True))
+                self.db.add(db_instrument)
+                logger.info(f"Instrument '{event.security_id}' not found, staging for creation.")
+
+            return db_instrument
         except Exception as e:
             logger.error(f"Failed to stage upsert for instrument '{event.security_id}': {e}", exc_info=True)
             raise

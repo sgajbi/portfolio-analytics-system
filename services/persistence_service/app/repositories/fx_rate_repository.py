@@ -1,7 +1,5 @@
 import logging
 from sqlalchemy.orm import Session
-from sqlalchemy.dialects.postgresql import insert as pg_insert
-
 from portfolio_common.database_models import FxRate as DBFxRate
 from portfolio_common.events import FxRateEvent
 
@@ -16,34 +14,27 @@ class FxRateRepository:
 
     def create_fx_rate(self, event: FxRateEvent) -> DBFxRate:
         """
-        Idempotently creates a new FX rate or updates an existing one.
-        Uses PostgreSQL's ON CONFLICT DO UPDATE to handle potential duplicates.
+        Idempotently creates or updates an FX rate using a
+        get-then-update/create pattern.
         """
-        insert_dict = {
-            "from_currency": event.from_currency,
-            "to_currency": event.to_currency,
-            "rate_date": event.rate_date,
-            "rate": event.rate,
-        }
-
-        stmt = pg_insert(DBFxRate).values(**insert_dict)
-        
-        on_conflict_stmt = stmt.on_conflict_do_update(
-            index_elements=['from_currency', 'to_currency', 'rate_date'],
-            set_={
-                'rate': stmt.excluded.rate,
-                'updated_at': stmt.excluded.updated_at
-            }
-        ).returning(DBFxRate)
-
         try:
-            result = self.db.execute(on_conflict_stmt).scalar_one()
-            # COMMIT AND ROLLBACK REMOVED
-            logger.info(
-                f"FX rate for '{result.from_currency}-{result.to_currency}' on "
-                f"'{result.rate_date}' successfully staged for upsert."
-            )
-            return result
+            db_rate = self.db.query(DBFxRate).filter(
+                DBFxRate.from_currency == event.from_currency,
+                DBFxRate.to_currency == event.to_currency,
+                DBFxRate.rate_date == event.rate_date
+            ).first()
+
+            if db_rate:
+                # Update existing
+                db_rate.rate = event.rate
+                logger.info(f"FX Rate for '{event.from_currency}-{event.to_currency}' on {event.rate_date} found, staging for update.")
+            else:
+                # Create new
+                db_rate = DBFxRate(**event.model_dump(by_alias=True))
+                self.db.add(db_rate)
+                logger.info(f"FX Rate for '{event.from_currency}-{event.to_currency}' on {event.rate_date} not found, staging for creation.")
+
+            return db_rate
         except Exception as e:
             logger.error(f"Failed to stage upsert for FX rate for '{event.from_currency}-{event.to_currency}' on '{event.rate_date}': {e}", exc_info=True)
             raise

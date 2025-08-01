@@ -1,7 +1,5 @@
 import logging
 from sqlalchemy.orm import Session
-from sqlalchemy.dialects.postgresql import insert as pg_insert
-
 from portfolio_common.database_models import Portfolio as DBPortfolio
 from portfolio_common.events import PortfolioEvent
 
@@ -16,52 +14,35 @@ class PortfolioRepository:
 
     def create_or_update_portfolio(self, event: PortfolioEvent) -> DBPortfolio:
         """
-        Idempotently creates a new portfolio or updates an existing one based on portfolio_id.
-        This operation leverages PostgreSQL's ON CONFLICT DO UPDATE (UPSERT).
+        Idempotently creates a new portfolio or updates an existing one
+        using a get-then-update/create pattern.
         """
-        insert_dict = {
-            "portfolio_id": event.portfolio_id,
-            "base_currency": event.base_currency,
-            "open_date": event.open_date,
-            "close_date": event.close_date,
-            "risk_exposure": event.risk_exposure,
-            "investment_time_horizon": event.investment_time_horizon,
-            "portfolio_type": event.portfolio_type,
-            "objective": event.objective,
-            "booking_center": event.booking_center,
-            "cif_id": event.cif_id,
-            "is_leverage_allowed": event.is_leverage_allowed,
-            "advisor_id": event.advisor_id,
-            "status": event.status,
-        }
-
-        stmt = pg_insert(DBPortfolio).values(**insert_dict)
-        
-        on_conflict_stmt = stmt.on_conflict_do_update(
-            index_elements=['portfolio_id'],
-            set_={
-                'base_currency': stmt.excluded.base_currency,
-                'open_date': stmt.excluded.open_date,
-                'close_date': stmt.excluded.close_date,
-                'risk_exposure': stmt.excluded.risk_exposure,
-                'investment_time_horizon': stmt.excluded.investment_time_horizon,
-                'portfolio_type': stmt.excluded.portfolio_type,
-                'objective': stmt.excluded.objective,
-                'booking_center': stmt.excluded.booking_center,
-                'cif_id': stmt.excluded.cif_id,
-                'is_leverage_allowed': stmt.excluded.is_leverage_allowed,
-                'advisor_id': stmt.excluded.advisor_id,
-                'status': stmt.excluded.status,
-                'updated_at': stmt.excluded.updated_at
-            }
-        ).returning(DBPortfolio)
-
         try:
-            result = self.db.execute(on_conflict_stmt).scalar_one()
-            # COMMIT AND ROLLBACK REMOVED - Handled by the service layer.
-            logger.info(f"Portfolio '{result.portfolio_id}' successfully staged for upsert.")
-            return result
+            # Attempt to get the existing record
+            db_portfolio = self.db.query(DBPortfolio).filter(DBPortfolio.portfolio_id == event.portfolio_id).first()
+
+            if db_portfolio:
+                # Update existing record
+                db_portfolio.base_currency = event.base_currency
+                db_portfolio.open_date = event.open_date
+                db_portfolio.close_date = event.close_date
+                db_portfolio.risk_exposure = event.risk_exposure
+                db_portfolio.investment_time_horizon = event.investment_time_horizon
+                db_portfolio.portfolio_type = event.portfolio_type
+                db_portfolio.objective = event.objective
+                db_portfolio.booking_center = event.booking_center
+                db_portfolio.cif_id = event.cif_id
+                db_portfolio.is_leverage_allowed = event.is_leverage_allowed
+                db_portfolio.advisor_id = event.advisor_id
+                db_portfolio.status = event.status
+                logger.info(f"Portfolio '{event.portfolio_id}' found, staging for update.")
+            else:
+                # Create new record
+                db_portfolio = DBPortfolio(**event.model_dump())
+                self.db.add(db_portfolio)
+                logger.info(f"Portfolio '{event.portfolio_id}' not found, staging for creation.")
+            
+            return db_portfolio
         except Exception as e:
-            # Rollback is handled by the service layer's context manager.
             logger.error(f"Failed to stage upsert for portfolio '{event.portfolio_id}': {e}", exc_info=True)
             raise
