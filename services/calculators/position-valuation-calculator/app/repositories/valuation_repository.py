@@ -1,3 +1,4 @@
+# services/calculators/position-valuation-calculator/app/repositories/valuation_repository.py
 import logging
 from datetime import date
 from typing import List, Optional
@@ -38,7 +39,8 @@ class ValuationRepository:
 
     def upsert_daily_snapshot(self, snapshot: DailyPositionSnapshot):
         """
-        Idempotently inserts or updates a daily position snapshot.
+        Idempotently stages an insert or update for a daily position snapshot.
+        This method does NOT commit the transaction.
         """
         try:
             insert_dict = {c.name: getattr(snapshot, c.name) for c in snapshot.__table__.columns if c.name != 'id'}
@@ -50,9 +52,8 @@ class ValuationRepository:
                 set_={k: v for k, v in insert_dict.items() if k not in ['portfolio_id', 'security_id', 'date']}
             )
             self.db.execute(stmt)
-            self.db.commit()
-            logger.info(f"Upserted daily snapshot for {snapshot.security_id} on {snapshot.date}")
+            logger.info(f"Staged upsert for daily snapshot for {snapshot.security_id} on {snapshot.date}")
         except Exception as e:
-            self.db.rollback()
-            logger.error(f"Failed to upsert daily snapshot: {e}", exc_info=True)
+            # Rollback will be handled by the caller's transaction manager
+            logger.error(f"Failed to stage upsert for daily snapshot: {e}", exc_info=True)
             raise
