@@ -1,3 +1,4 @@
+# services/calculators/cashflow_calculator_service/app/consumer_manager.py
 import logging
 import signal
 import asyncio
@@ -25,7 +26,8 @@ class ConsumerManager:
                 bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
                 topic=KAFKA_RAW_TRANSACTIONS_COMPLETED_TOPIC,
                 group_id="cashflow_calculator_group",
-                dlq_topic=KAFKA_PERSISTENCE_DLQ_TOPIC # Re-use persistence DLQ for now
+                dlq_topic=KAFKA_PERSISTENCE_DLQ_TOPIC,
+                service_prefix="CFLOW"
             )
         )
         logger.info(f"ConsumerManager initialized with {len(self.consumers)} consumer(s).")

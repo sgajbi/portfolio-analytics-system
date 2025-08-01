@@ -5,10 +5,11 @@ from pydantic import ValidationError
 from confluent_kafka import Message
 
 from portfolio_common.kafka_consumer import BaseConsumer
+from portfolio_common.logging_utils import correlation_id_var
 from portfolio_common.events import TransactionEvent, CashflowCalculatedEvent
 from portfolio_common.db import get_db_session
 from portfolio_common.config import KAFKA_CASHFLOW_CALCULATED_TOPIC
-from portfolio_common.idempotency_repository import IdempotencyRepository # NEW IMPORT
+from portfolio_common.idempotency_repository import IdempotencyRepository
 
 from ..core.cashflow_config import get_rule_for_transaction
 from ..core.cashflow_logic import CashflowLogic
@@ -16,7 +17,7 @@ from ..repositories.cashflow_repository import CashflowRepository
 
 logger = logging.getLogger(__name__)
 
-SERVICE_NAME = "cashflow-calculator" # NEW: Define service name for idempotency
+SERVICE_NAME = "cashflow-calculator"
 
 class CashflowCalculatorConsumer(BaseConsumer):
     """
@@ -31,8 +32,8 @@ class CashflowCalculatorConsumer(BaseConsumer):
         """
         key = msg.key().decode('utf-8') if msg.key() else "NoKey"
         value = msg.value().decode('utf-8')
-        # Generate a unique, deterministic ID for the event
         event_id = f"{msg.topic()}-{msg.partition()}-{msg.offset()}"
+        correlation_id = correlation_id_var.get() # Get correlation ID from context
 
         try:
             # 1. Validate the incoming message early
@@ -59,7 +60,7 @@ class CashflowCalculatorConsumer(BaseConsumer):
                             extra={"transaction_id": transaction_event.transaction_id}
                         )
                         # Mark as processed even if skipped to prevent re-evaluation
-                        idempotency_repo.mark_event_processed(event_id, transaction_event.portfolio_id, SERVICE_NAME)
+                        idempotency_repo.mark_event_processed(event_id, transaction_event.portfolio_id, SERVICE_NAME, correlation_id)
                         return
 
                     # 4. Apply the logic to calculate the cashflow
@@ -69,16 +70,21 @@ class CashflowCalculatorConsumer(BaseConsumer):
                     cashflow_repo = CashflowRepository(db)
                     saved_cashflow = cashflow_repo.create_cashflow(cashflow_to_save)
 
-                    # 6. Mark the event as processed
-                    idempotency_repo.mark_event_processed(event_id, transaction_event.portfolio_id, SERVICE_NAME)
+                    # 6. Mark the event as processed, now including the correlation ID
+                    idempotency_repo.mark_event_processed(event_id, transaction_event.portfolio_id, SERVICE_NAME, correlation_id)
 
             # 7. Publish completion event if persistence was successful (after DB transaction commits)
             if saved_cashflow and self._producer:
                 completion_event = CashflowCalculatedEvent.model_validate(saved_cashflow)
+                
+                # Create headers for the outbound message
+                headers = [('correlation_id', correlation_id.encode('utf-8'))] if correlation_id else None
+                
                 self._producer.publish_message(
                     topic=KAFKA_CASHFLOW_CALCULATED_TOPIC,
                     key=completion_event.transaction_id,
-                    value=completion_event.model_dump(mode='json', by_alias=True)
+                    value=completion_event.model_dump(mode='json', by_alias=True),
+                    headers=headers
                 )
                 self._producer.flush(timeout=5)
 
