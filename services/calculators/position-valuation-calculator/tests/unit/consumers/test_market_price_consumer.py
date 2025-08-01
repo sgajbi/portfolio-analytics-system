@@ -7,7 +7,7 @@ from decimal import Decimal
 from sqlalchemy.orm import Session
 from app.consumers.market_price_consumer import MarketPriceConsumer
 from portfolio_common.events import MarketPriceEvent
-from portfolio_common.database_models import PositionHistory, DailyPositionSnapshot
+from portfolio_common.database_models import DailyPositionSnapshot
 
 pytestmark = pytest.mark.asyncio
 
@@ -62,14 +62,13 @@ async def test_process_message_success(consumer: MarketPriceConsumer, mock_kafka
     mock_idempotency_repo = MagicMock()
     mock_idempotency_repo.is_event_processed.return_value = False
 
-    # Mock the repo to return two portfolios holding the security
+    # SIMPLIFIED: Mock the single high-level repository method
     mock_valuation_repo = MagicMock()
-    mock_valuation_repo.get_latest_position_on_or_before.return_value = PositionHistory(quantity=10, cost_basis=1000)
-    mock_valuation_repo.upsert_daily_snapshot.return_value = DailyPositionSnapshot(id=1, security_id="SEC_PRICE_01")
-
-    # Mock the query that finds which portfolios hold the security
-    portfolios_holding_security = [("PORT_A",), ("PORT_B",)]
-    mock_db_session.query.return_value.filter.return_value.distinct.return_value.all.return_value = portfolios_holding_security
+    updated_snapshots = [
+        DailyPositionSnapshot(id=1, security_id="SEC_PRICE_01", portfolio_id="PORT_A", date=date(2025,8,5)),
+        DailyPositionSnapshot(id=2, security_id="SEC_PRICE_01", portfolio_id="PORT_B", date=date(2025,8,5))
+    ]
+    mock_valuation_repo.update_snapshots_for_market_price.return_value = updated_snapshots
     
     with patch('app.consumers.market_price_consumer.get_db_session', return_value=iter([mock_db_session])), \
          patch('app.consumers.market_price_consumer.IdempotencyRepository', return_value=mock_idempotency_repo), \
@@ -80,10 +79,10 @@ async def test_process_message_success(consumer: MarketPriceConsumer, mock_kafka
 
         # Assert
         mock_idempotency_repo.is_event_processed.assert_called_once()
-        # Should be called once for each portfolio
-        assert mock_valuation_repo.upsert_daily_snapshot.call_count == 2
+        # Assert that our new high-level method was called
+        mock_valuation_repo.update_snapshots_for_market_price.assert_called_once_with(mock_event)
         mock_idempotency_repo.mark_event_processed.assert_called_once()
-        # Should publish one event per updated snapshot
+        # Should publish one event per returned snapshot
         assert consumer._producer.publish_message.call_count == 2
         consumer._send_to_dlq.assert_not_called()
 
@@ -114,7 +113,7 @@ async def test_process_message_skips_processed_event(consumer: MarketPriceConsum
 
         # Assert
         mock_idempotency_repo.is_event_processed.assert_called_once()
-        mock_valuation_repo.upsert_daily_snapshot.assert_not_called()
+        mock_valuation_repo.update_snapshots_for_market_price.assert_not_called()
         mock_idempotency_repo.mark_event_processed.assert_not_called()
         consumer._producer.publish_message.assert_not_called()
         consumer._send_to_dlq.assert_not_called()

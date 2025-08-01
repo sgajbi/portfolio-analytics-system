@@ -7,6 +7,9 @@ from sqlalchemy.orm import Session
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from portfolio_common.database_models import PositionHistory, MarketPrice, DailyPositionSnapshot
+from portfolio_common.events import MarketPriceEvent # NEW IMPORT
+from ..logic.valuation_logic import ValuationLogic # NEW IMPORT
+
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +53,7 @@ class ValuationRepository:
             ).on_conflict_do_update(
                 index_elements=['portfolio_id', 'security_id', 'date'],
                 set_={k: v for k, v in insert_dict.items() if k not in ['portfolio_id', 'security_id', 'date']}
-            ).returning(DailyPositionSnapshot) # Use .returning() to get the object back
+            ).returning(DailyPositionSnapshot)
 
             result = self.db.execute(stmt).scalar_one()
             logger.info(f"Staged upsert for daily snapshot for {snapshot.security_id} on {snapshot.date}")
@@ -58,3 +61,51 @@ class ValuationRepository:
         except Exception as e:
             logger.error(f"Failed to stage upsert for daily snapshot: {e}", exc_info=True)
             raise
+
+    def update_snapshots_for_market_price(self, price_event: MarketPriceEvent) -> List[DailyPositionSnapshot]:
+        """
+        Finds all positions affected by a market price update, recalculates their
+        valuation, and upserts their daily snapshots. Does NOT commit.
+
+        Returns:
+            A list of the updated DailyPositionSnapshot objects.
+        """
+        updated_snapshots = []
+        
+        portfolios_with_security = self.db.query(PositionHistory.portfolio_id).filter(
+            PositionHistory.security_id == price_event.security_id
+        ).distinct().all()
+
+        for portfolio_tuple in portfolios_with_security:
+            portfolio_id = portfolio_tuple[0]
+            
+            latest_position = self.get_latest_position_on_or_before(
+                portfolio_id=portfolio_id,
+                security_id=price_event.security_id,
+                a_date=price_event.price_date
+            )
+
+            if not latest_position or latest_position.quantity.is_zero():
+                continue
+
+            market_value, unrealized_gain_loss = ValuationLogic.calculate(
+                quantity=latest_position.quantity,
+                cost_basis=latest_position.cost_basis,
+                market_price=price_event.price
+            )
+
+            snapshot_to_save = DailyPositionSnapshot(
+                portfolio_id=portfolio_id,
+                security_id=price_event.security_id,
+                date=price_event.price_date,
+                quantity=latest_position.quantity,
+                cost_basis=latest_position.cost_basis,
+                market_price=price_event.price,
+                market_value=market_value,
+                unrealized_gain_loss=unrealized_gain_loss
+            )
+            
+            persisted_snapshot = self.upsert_daily_snapshot(snapshot_to_save)
+            updated_snapshots.append(persisted_snapshot)
+            
+        return updated_snapshots
