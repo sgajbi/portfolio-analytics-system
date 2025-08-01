@@ -4,13 +4,13 @@ from contextlib import asynccontextmanager
 import logging
 
 # NEW: Import shared logging utility
-from portfolio_common.logging_utils import setup_logger, correlation_id_var, generate_correlation_id
+from portfolio_common.logging_utils import setup_logging, correlation_id_var, generate_correlation_id
 from portfolio_common.kafka_utils import get_kafka_producer, KafkaProducer
 from app.routers import transactions, instruments, market_prices, fx_rates, portfolios
 
-SERVICE_NAME = "ingestion-service"
 SERVICE_PREFIX = "ING"
-logger = setup_logger(SERVICE_NAME)
+setup_logging()
+logger = logging.getLogger(__name__)
 
 # Application state
 app_state = {}

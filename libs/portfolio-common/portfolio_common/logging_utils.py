@@ -26,23 +26,20 @@ class CorrelationIdFilter(logging.Filter):
         record.correlation_id = correlation_id_var.get()
         return True
 
-def setup_logger(service_name: str) -> logging.Logger:
+def setup_logging():
     """
-    Configures and returns a standardized logger for a given service.
-
-    Args:
-        service_name: The name of the service (e.g., 'ingestion-service').
-
-    Returns:
-        A configured Logger instance.
+    Configures the root logger for standardized, correlation-ID-aware logging.
+    This ensures all loggers within an application (including libraries)
+    will inherit this configuration.
     """
-    logger = logging.getLogger(service_name)
+    # Get the root logger
+    root_logger = logging.getLogger()
     
-    # Prevent duplicate handlers if the function is called multiple times
-    if logger.hasHandlers():
-        logger.handlers.clear()
+    # Clear any existing handlers to prevent duplicate logs
+    if root_logger.hasHandlers():
+        root_logger.handlers.clear()
         
-    logger.setLevel(logging.INFO)
+    root_logger.setLevel(logging.INFO)
 
     handler = logging.StreamHandler(sys.stdout)
     
@@ -53,24 +50,7 @@ def setup_logger(service_name: str) -> logging.Logger:
     
     handler.setFormatter(formatter)
     
-    # Add our custom filter to the handler
     handler.addFilter(CorrelationIdFilter())
 
-    logger.addHandler(handler)
+    root_logger.addHandler(handler)
     
-    # Prevent the log from propagating to the root logger
-    logger.propagate = False
-    
-    return logger
-
-def generate_correlation_id(prefix: str) -> str:
-    """
-    Generates a new correlation ID with a service-specific prefix.
-    
-    Args:
-        prefix: A short code for the service (e.g., 'ING').
-
-    Returns:
-        A formatted correlation ID string.
-    """
-    return f"{prefix}:{uuid.uuid4()}"
