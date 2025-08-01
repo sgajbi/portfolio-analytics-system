@@ -14,39 +14,25 @@ class CashflowRepository:
 
     def create_cashflow(self, cashflow: Cashflow) -> Cashflow | None:
         """
-        Saves a new Cashflow record to the database.
-
-        This operation is idempotent. If a cashflow for the given transaction_id
-        already exists, the database's unique constraint will raise an
-        IntegrityError, which is caught and handled gracefully.
-
-        Args:
-            cashflow: The Cashflow object to be persisted.
-
-        Returns:
-            The persisted Cashflow object (either newly created or the
-            existing one), or None if an unexpected error occurs.
+        Saves a new Cashflow record to the database within a managed transaction.
         """
         try:
             self.db.add(cashflow)
-            self.db.commit()
+            self.db.flush() # Flushes the change to the DB to get IDs, etc.
             self.db.refresh(cashflow)
-            logger.info(f"Successfully inserted cashflow record for transaction_id: {cashflow.transaction_id}")
+            logger.info(f"Successfully staged cashflow record for transaction_id: {cashflow.transaction_id}")
             return cashflow
         except IntegrityError:
-            self.db.rollback()
+            # This handles the case where the cashflow might already exist due to a retry.
+            # The transaction will be rolled back by the consumer's context manager.
             logger.warning(
-                f"Cashflow for transaction_id '{cashflow.transaction_id}' already exists. "
-                "Skipping creation due to unique constraint."
+                f"A cashflow for transaction_id '{cashflow.transaction_id}' may already exist. "
+                "The transaction will be rolled back."
             )
-            # Query and return the existing one to fulfill the return contract
-            return self.db.query(Cashflow).filter(
-                Cashflow.transaction_id == cashflow.transaction_id
-            ).first()
+            raise # Re-raise for the context manager to handle
         except Exception as e:
-            self.db.rollback()
             logger.error(
-                f"An unexpected error occurred while saving cashflow for txn {cashflow.transaction_id}: {e}",
+                f"An unexpected error occurred while staging cashflow for txn {cashflow.transaction_id}: {e}",
                 exc_info=True
             )
-            return None
+            raise 

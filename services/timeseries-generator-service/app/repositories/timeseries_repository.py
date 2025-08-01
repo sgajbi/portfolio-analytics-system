@@ -80,11 +80,11 @@ class TimeseriesRepository:
                 set_=update_dict
             )
             self.db.execute(stmt)
-            self.db.commit()
-            logger.info(f"Upserted position time series for {timeseries_record.security_id} on {timeseries_record.date}")
+            # COMMIT REMOVED
+            logger.info(f"Staged upsert for position time series for {timeseries_record.security_id} on {timeseries_record.date}")
         except Exception as e:
-            self.db.rollback()
-            logger.error(f"Failed to upsert position time series: {e}", exc_info=True)
+            # ROLLBACK REMOVED
+            logger.error(f"Failed to stage upsert for position time series: {e}", exc_info=True)
             raise
     
     def upsert_portfolio_timeseries(self, timeseries_record: PortfolioTimeseries):
@@ -100,9 +100,9 @@ class TimeseriesRepository:
                 set_=update_dict
             )
             self.db.execute(stmt)
-            self.db.commit()
-            logger.info(f"Upserted portfolio time series for {timeseries_record.portfolio_id} on {timeseries_record.date}")
+            # COMMIT REMOVED
+            logger.info(f"Staged upsert for portfolio time series for {timeseries_record.portfolio_id} on {timeseries_record.date}")
         except Exception as e:
-            self.db.rollback()
-            logger.error(f"Failed to upsert portfolio time series: {e}", exc_info=True)
+            # ROLLBACK REMOVED
+            logger.error(f"Failed to stage upsert for portfolio time series: {e}", exc_info=True)
             raise

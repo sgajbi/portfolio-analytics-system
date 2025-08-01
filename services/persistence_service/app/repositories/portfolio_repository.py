@@ -1,6 +1,6 @@
 import logging
 from sqlalchemy.orm import Session
-from sqlalchemy.dialects.postgresql import insert as pg_insert # Import pg_insert
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from portfolio_common.database_models import Portfolio as DBPortfolio
 from portfolio_common.events import PortfolioEvent
@@ -35,11 +35,8 @@ class PortfolioRepository:
             "status": event.status,
         }
 
-        # The unique constraint for Portfolio is 'portfolio_id'.
         stmt = pg_insert(DBPortfolio).values(**insert_dict)
         
-        # Define what to update if a conflict on 'portfolio_id' occurs.
-        # We update all fields that might change from an incoming event.
         on_conflict_stmt = stmt.on_conflict_do_update(
             index_elements=['portfolio_id'],
             set_={
@@ -55,16 +52,16 @@ class PortfolioRepository:
                 'is_leverage_allowed': stmt.excluded.is_leverage_allowed,
                 'advisor_id': stmt.excluded.advisor_id,
                 'status': stmt.excluded.status,
-                'updated_at': stmt.excluded.updated_at # Ensure updated_at is refreshed
+                'updated_at': stmt.excluded.updated_at
             }
-        ).returning(DBPortfolio) # Return the inserted or updated row
+        ).returning(DBPortfolio)
 
         try:
             result = self.db.execute(on_conflict_stmt).scalar_one()
-            self.db.commit()
-            logger.info(f"Portfolio '{result.portfolio_id}' successfully upserted into DB.")
+            # COMMIT AND ROLLBACK REMOVED - Handled by the service layer.
+            logger.info(f"Portfolio '{result.portfolio_id}' successfully staged for upsert.")
             return result
         except Exception as e:
-            self.db.rollback()
-            logger.error(f"Failed to upsert portfolio '{event.portfolio_id}': {e}", exc_info=True)
+            # Rollback is handled by the service layer's context manager.
+            logger.error(f"Failed to stage upsert for portfolio '{event.portfolio_id}': {e}", exc_info=True)
             raise
