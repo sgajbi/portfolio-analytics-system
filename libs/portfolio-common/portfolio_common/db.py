@@ -1,8 +1,10 @@
+# libs/portfolio-common/portfolio_common/db.py
 import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from .config import POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_HOST, POSTGRES_PORT, POSTGRES_DB
-from .database_models import Base
+# CORRECTED: Import Base from the new, non-circular file
+from .db_base import Base
 
 def get_database_url():
     """

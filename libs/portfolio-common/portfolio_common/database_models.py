@@ -1,155 +1,191 @@
-import logging
-import json
-import time
-from pydantic import ValidationError
-from decimal import Decimal
-from confluent_kafka import Message
-from sqlalchemy.orm import Session
-from sqlalchemy.exc import OperationalError
-from portfolio_common.kafka_consumer import BaseConsumer
-from portfolio_common.events import TransactionEvent, PositionHistoryPersistedEvent
-from portfolio_common.db import get_db_session
-from portfolio_common.database_models import PositionHistory, Transaction
-from portfolio_common.kafka_utils import get_kafka_producer
-from portfolio_common.config import KAFKA_POSITION_HISTORY_PERSISTED_TOPIC
-from ..repositories.position_repository import PositionRepository
-from ..core.position_logic import PositionCalculator
-from ..core.position_models import PositionState
+# libs/portfolio-common/portfolio_common/database_models.py
+from sqlalchemy import (
+    Column, Integer, String, Numeric, DateTime, Date, func, 
+    ForeignKey, UniqueConstraint, Boolean
+)
+from sqlalchemy.orm import relationship
 
-logger = logging.getLogger(__name__)
+# CORRECTED: Import Base from the new, non-circular file
+from .db_base import Base
 
-class TransactionEventConsumer(BaseConsumer):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._producer = get_kafka_producer()
+class Portfolio(Base):
+    __tablename__ = 'portfolios'
 
-    async def process_message(self, msg: Message):
-        key = msg.key().decode("utf-8") if msg.key() else "NoKey"
-        value = msg.value().decode("utf-8")
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    portfolio_id = Column(String, unique=True, index=True, nullable=False)
+    base_currency = Column(String(3), nullable=False)
+    # ... (rest of the file is unchanged)
+    # I am providing the full file content for completeness based on the last known version.
+    open_date = Column(Date, nullable=False)
+    close_date = Column(Date, nullable=True)
+    risk_exposure = Column(String, nullable=False)
+    investment_time_horizon = Column(String, nullable=False)
+    portfolio_type = Column(String, nullable=False)
+    objective = Column(String, nullable=True)
+    booking_center = Column(String, nullable=False)
+    cif_id = Column(String, index=True, nullable=False)
+    is_leverage_allowed = Column(Boolean, default=False, nullable=False)
+    advisor_id = Column(String, nullable=True)
+    status = Column(String, nullable=False)
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 
-        try:
-            event_data = json.loads(value)
-            incoming_event = TransactionEvent.model_validate(event_data)
-            self._recalculate_position_history(incoming_event)
+class PositionHistory(Base):
+    __tablename__ = 'position_history'
 
-        except (json.JSONDecodeError, ValidationError) as e:
-            logger.error(f"[{key}] Validation failed: {e} | Payload: {value}")
-            await self._send_to_dlq(msg, e)
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    portfolio_id = Column(String, ForeignKey('portfolios.portfolio_id'), index=True, nullable=False)
+    security_id = Column(String, index=True, nullable=False)
+    transaction_id = Column(String, ForeignKey('transactions.transaction_id'), nullable=False)
+    position_date = Column(Date, index=True, nullable=False)
+    quantity = Column(Numeric(18, 10), nullable=False)
+    cost_basis = Column(Numeric(18, 10), nullable=False)
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 
-        except Exception as e:
-            logger.error(f"[{key}] Unexpected error: {e}", exc_info=True)
-            await self._send_to_dlq(msg, e)
+class DailyPositionSnapshot(Base):
+    __tablename__ = 'daily_position_snapshots'
 
-    def _recalculate_position_history(self, incoming_event: TransactionEvent):
-        retry_attempts = 3
-        backoff = 2
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    portfolio_id = Column(String, ForeignKey('portfolios.portfolio_id'), index=True, nullable=False)
+    security_id = Column(String, index=True, nullable=False)
+    date = Column(Date, index=True, nullable=False)
+    quantity = Column(Numeric(18, 10), nullable=False)
+    cost_basis = Column(Numeric(18, 10), nullable=False)
+    market_price = Column(Numeric(18, 10), nullable=True)
+    market_value = Column(Numeric(18, 10), nullable=True)
+    unrealized_gain_loss = Column(Numeric(18, 10), nullable=True)
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 
-        for attempt in range(retry_attempts):
-            try:
-                with next(get_db_session()) as db:
-                    self._process_recalculation(db, incoming_event)
-                break  # success, exit retry loop
+    __table_args__ = (UniqueConstraint('portfolio_id', 'security_id', 'date', name='_portfolio_security_date_uc'),)
 
-            except OperationalError as oe:
-                logger.warning(
-                    f"[{incoming_event.transaction_id}] DB operational error: {oe}, retry {attempt+1}/{retry_attempts}"
-                )
-                time.sleep(backoff ** attempt)
-            except Exception as e:
-                logger.error(
-                    f"[{incoming_event.transaction_id}] Recalculation failed: {e}",
-                    exc_info=True
-                )
-                break  # fail fast for non-transient error
 
-    def _process_recalculation(self, db: Session, incoming_event: TransactionEvent):
-        repo = PositionRepository(db)
-        txn_date_only = incoming_event.transaction_date.date()
+class FxRate(Base):
+    __tablename__ = 'fx_rates'
 
-        # Optional advisory lock for concurrency safety
-        # (This can be a DB-level lock or a distributed lock)
-        lock_key = f"{incoming_event.portfolio_id}:{incoming_event.security_id}"
-        logger.debug(f"Acquiring lock for {lock_key}...")
-        # lock_acquire(lock_key)  # <-- Hook for future distributed lock
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    from_currency = Column(String(3), nullable=False)
+    to_currency = Column(String(3), nullable=False)
+    rate_date = Column(Date, nullable=False)
+    rate = Column(Numeric(18, 10), nullable=False)
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 
-        anchor_position = repo.get_last_position_before(
-            portfolio_id=incoming_event.portfolio_id,
-            security_id=incoming_event.security_id,
-            a_date=txn_date_only
-        )
+    __table_args__ = (UniqueConstraint('from_currency', 'to_currency', 'rate_date', name='_currency_pair_date_uc'),)
 
-        current_state = PositionState(
-            quantity=anchor_position.quantity if anchor_position else Decimal(0),
-            cost_basis=anchor_position.cost_basis if anchor_position else Decimal(0)
-        )
 
-        db_txns = repo.get_transactions_on_or_after(
-            portfolio_id=incoming_event.portfolio_id,
-            security_id=incoming_event.security_id,
-            a_date=txn_date_only
-        )
+class MarketPrice(Base):
+    __tablename__ = 'market_prices'
 
-        txns_to_replay = sorted(db_txns, key=lambda t: t.transaction_date)
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    security_id = Column(String, index=True, nullable=False)
+    price_date = Column(Date, nullable=False)
+    price = Column(Numeric(18, 10), nullable=False)
+    currency = Column(String, nullable=False)
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 
-        if not txns_to_replay:
-            logger.debug(f"[{incoming_event.transaction_id}] No transactions to replay.")
-            return
+    __table_args__ = (UniqueConstraint('security_id', 'price_date', name='_security_price_date_uc'),)
 
-        repo.delete_positions_from(
-            portfolio_id=incoming_event.portfolio_id,
-            security_id=incoming_event.security_id,
-            a_date=txn_date_only
-        )
 
-        new_records = []
-        for txn in txns_to_replay:
-            txn_event = TransactionEvent.model_validate(txn)
-            current_state = PositionCalculator.calculate_next_position(current_state, txn_event)
+class Instrument(Base):
+    __tablename__ = 'instruments'
 
-            new_records.append(PositionHistory(
-                portfolio_id=txn.portfolio_id,
-                security_id=txn.security_id,
-                transaction_id=txn.transaction_id,
-                position_date=txn.transaction_date.date(),
-                quantity=current_state.quantity,
-                cost_basis=current_state.cost_basis
-            ))
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    security_id = Column(String, unique=True, index=True, nullable=False)
+    name = Column(String, nullable=False)
+    isin = Column(String, unique=True, nullable=False)
+    currency = Column(String, nullable=False)
+    product_type = Column(String, nullable=False)
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 
-        if new_records:
-            repo.save_positions(new_records)
-            db.commit()
+class Transaction(Base):
+    __tablename__ = 'transactions'
 
-            committed_ids = [rec.transaction_id for rec in new_records]
-            persisted = db.query(PositionHistory).filter(
-                PositionHistory.transaction_id.in_(committed_ids)
-            ).all()
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    transaction_id = Column(String, unique=True, index=True, nullable=False)
+    portfolio_id = Column(String, ForeignKey('portfolios.portfolio_id'), nullable=False)
+    instrument_id = Column(String, nullable=False)
+    security_id = Column(String, nullable=False)
+    transaction_type = Column(String, nullable=False)
+    quantity = Column(Numeric(18, 10), nullable=False)
+    price = Column(Numeric(18, 10), nullable=False)
+    gross_transaction_amount = Column(Numeric(18, 10), nullable=False)
+    trade_currency = Column(String, nullable=False)
+    currency = Column(String, nullable=False)
+    transaction_date = Column(DateTime, nullable=False)
+    settlement_date = Column(DateTime, nullable=True)
+    trade_fee = Column(Numeric(18, 10), nullable=True)
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+    gross_cost = Column(Numeric(18, 10), nullable=True)
+    net_cost = Column(Numeric(18, 10), nullable=True)
+    realized_gain_loss = Column(Numeric(18, 10), nullable=True)
 
-            for record in persisted:
-                self._publish_persisted_event(record)
+    costs = relationship("TransactionCost", back_populates="transaction", cascade="all, delete-orphan")
+    cashflow = relationship("Cashflow", uselist=False, back_populates="transaction", cascade="all, delete-orphan")
 
-            self._producer.flush(timeout=5)
-            logger.info(
-                f"[{incoming_event.transaction_id}] Recalculation completed and persisted {len(new_records)} positions."
-            )
+class TransactionCost(Base):
+    __tablename__ = 'transaction_costs'
 
-        # lock_release(lock_key)  # <-- Hook for future distributed lock
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    transaction_id = Column(String, ForeignKey('transactions.transaction_id'), nullable=False)
+    fee_type = Column(String, nullable=False)
+    amount = Column(Numeric(18, 10), nullable=False)
+    currency = Column(String, nullable=False)
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 
-    def _publish_persisted_event(self, record: PositionHistory):
-        if not record or not record.id:
-            logger.error(f"[TXN:{getattr(record, 'transaction_id', 'Unknown')}] Cannot publish invalid record.")
-            return
+    transaction = relationship("Transaction", back_populates="costs")
 
-        try:
-            event = PositionHistoryPersistedEvent.model_validate(record)
-            self._producer.publish_message(
-                topic=KAFKA_POSITION_HISTORY_PERSISTED_TOPIC,
-                key=event.security_id,
-                value=event.model_dump(mode="json", by_alias=True)
-            )
-            logger.debug(f"[TXN:{record.transaction_id}] Published PositionHistoryPersistedEvent ID={record.id}")
+class Cashflow(Base):
+    __tablename__ = 'cashflows'
 
-        except Exception as e:
-            logger.error(
-                f"[TXN:{record.transaction_id}] Publish failed for position_history_id={record.id}: {e}",
-                exc_info=True
-            )
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    transaction_id = Column(String, ForeignKey('transactions.transaction_id'), nullable=False)
+    portfolio_id = Column(String, ForeignKey('portfolios.portfolio_id'), index=True, nullable=False)
+    security_id = Column(String, index=True, nullable=True)
+    cashflow_date = Column(Date, index=True, nullable=False)
+    amount = Column(Numeric(18, 10), nullable=False)
+    currency = Column(String(3), nullable=False)
+    classification = Column(String, nullable=False)
+    timing = Column(String, nullable=False)
+    level = Column(String, nullable=False)
+    calculation_type = Column(String, nullable=False)
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+    
+    transaction = relationship("Transaction", back_populates="cashflow")
+
+    __table_args__ = (UniqueConstraint('transaction_id', name='_transaction_id_uc'),)
+
+class PositionTimeseries(Base):
+    __tablename__ = 'position_timeseries'
+
+    portfolio_id = Column(String, ForeignKey('portfolios.portfolio_id'), primary_key=True)
+    security_id = Column(String, ForeignKey('instruments.security_id'), primary_key=True)
+    date = Column(Date, primary_key=True)
+    bod_market_value = Column(Numeric(18, 10), nullable=False)
+    bod_cashflow = Column(Numeric(18, 10), nullable=False)
+    eod_cashflow = Column(Numeric(18, 10), nullable=False)
+    eod_market_value = Column(Numeric(18, 10), nullable=False)
+    fees = Column(Numeric(18, 10), default=0, nullable=False)
+    quantity = Column(Numeric(18, 10), nullable=False)
+    cost = Column(Numeric(18, 10), nullable=False)
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+
+class PortfolioTimeseries(Base):
+    __tablename__ = 'portfolio_timeseries'
+
+    portfolio_id = Column(String, ForeignKey('portfolios.portfolio_id'), primary_key=True)
+    date = Column(Date, primary_key=True)
+    bod_market_value = Column(Numeric(18, 10), nullable=False)
+    bod_cashflow = Column(Numeric(18, 10), nullable=False)
+    eod_cashflow = Column(Numeric(18, 10), nullable=False)
+    eod_market_value = Column(Numeric(18, 10), nullable=False)
+    fees = Column(Numeric(18, 10), nullable=False)
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
