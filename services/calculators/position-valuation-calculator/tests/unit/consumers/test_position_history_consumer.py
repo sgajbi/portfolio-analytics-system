@@ -65,11 +65,16 @@ async def test_process_message_success(consumer: PositionHistoryConsumer, mock_k
     mock_valuation_repo = MagicMock()
     mock_valuation_repo.get_latest_price_for_position.return_value = MarketPrice(price=Decimal("150"))
 
-    # Define the real data objects to be returned by the mocks
     mock_position_history = PositionHistory(id=123, quantity=Decimal(100), cost_basis=Decimal(10000), security_id="SEC_VAL_01", portfolio_id="PORT_VAL_01", position_date=date(2025, 8, 1))
-    mock_persisted_snapshot = DailyPositionSnapshot(id=1, portfolio_id="PORT_VAL_01", security_id="SEC_VAL_01", date=date(2025, 8, 1))
+    
+    # FINAL FIX: Create a mock that has real data attributes to satisfy Pydantic
+    mock_persisted_snapshot = MagicMock(spec=DailyPositionSnapshot)
+    mock_persisted_snapshot.id = 1
+    mock_persisted_snapshot.portfolio_id = "PORT_VAL_01"
+    mock_persisted_snapshot.security_id = "SEC_VAL_01"
+    mock_persisted_snapshot.date = date(2025, 8, 1)
 
-    # CORRECTED: Set up a side_effect to handle different query calls
+
     def query_side_effect(model):
         if model == PositionHistory:
             query_mock = MagicMock()
