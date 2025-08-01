@@ -3,6 +3,7 @@ import json
 import logging
 from confluent_kafka import Consumer, Message
 from pydantic import ValidationError
+from tenacity import retry, stop_after_attempt, wait_fixed, before_log
 
 from portfolio_common.config import KAFKA_PROCESSED_TRANSACTIONS_COMPLETED_TOPIC
 from portfolio_common.db import get_db_session
@@ -40,7 +41,7 @@ class CostCalculatorConsumer:
         self.consumer.subscribe([self.topic])
         self._producer = get_kafka_producer()
         logger.info(f"Consumer subscribed to topic: {self.topic}")
-        self._running = True # Add running flag for graceful shutdown
+        self._running = True
 
     def _get_transaction_processor(self) -> TransactionProcessor:
         settings = Settings()
@@ -62,7 +63,6 @@ class CostCalculatorConsumer:
                 msg = self.consumer.poll(timeout=1.0)
                 if not msg or msg.error(): continue
 
-                # NEW: Correlation ID handling moved from BaseConsumer
                 token = None
                 try:
                     corr_id = None
@@ -73,36 +73,46 @@ class CostCalculatorConsumer:
                                 break
                     
                     if not corr_id:
-                        # Use a utility function if available, otherwise manual generation
                         from portfolio_common.logging_utils import generate_correlation_id
                         corr_id = generate_correlation_id(self.service_prefix)
                         logger.warning(f"No correlation ID in message from topic '{msg.topic()}'. Generated new ID: {corr_id}")
 
                     token = correlation_id_var.set(corr_id)
-                    # --- End Correlation ID Handling ---
                     
-                    self._process_message(msg)
+                    self._process_message_with_retry(msg)
                     self.consumer.commit(asynchronous=False)
 
                 except Exception as e:
-                    logger.error(f"Error processing message: {e}", exc_info=True)
+                    logger.error(f"Error processing message after retries: {e}", exc_info=True)
+                    # Here you would typically send to a DLQ, but this consumer doesn't have one set up
                 finally:
                     if token:
                         correlation_id_var.reset(token)
-
         finally:
             self.consumer.close()
+
+    @retry(
+        wait=wait_fixed(2),
+        stop=stop_after_attempt(3),
+        before=before_log(logger, logging.INFO)
+    )
+    def _process_message_with_retry(self, msg: Message):
+        """
+        Wrapper for the processing logic to apply retry behavior.
+        """
+        self._process_message(msg)
 
     def _process_message(self, msg: Message):
         message_value = msg.value().decode('utf-8')
         event_id = f"{msg.topic()}-{msg.partition()}-{msg.offset()}"
-        correlation_id = correlation_id_var.get() # Get ID from context
+        correlation_id = correlation_id_var.get()
 
         try:
             data = json.loads(message_value)
             new_transaction_event = TransactionEvent.model_validate(data)
-        except (json.JSONDecodeError, ValidationError) as e:
-            logger.error(f"Failed to parse message into TransactionEvent model: {e}", exc_info=True)
+        except (json.JSONDecodeError, ValidationError):
+            logger.error("Failed to parse message into TransactionEvent model.", exc_info=True)
+            # Don't re-raise validation errors, as they won't succeed on retry
             return
 
         processor = self._get_transaction_processor()
@@ -111,7 +121,6 @@ class CostCalculatorConsumer:
 
         with next(get_db_session()) as db:
             idempotency_repo = IdempotencyRepository(db)
-
             with db.begin():
                 if idempotency_repo.is_event_processed(event_id, SERVICE_NAME):
                     logger.warning(f"Event {event_id} has already been processed. Skipping.")
@@ -122,6 +131,10 @@ class CostCalculatorConsumer:
                     portfolio_id=new_transaction_event.portfolio_id,
                     security_id=new_transaction_event.security_id
                 )
+                
+                # This check is now crucial for the retry logic
+                if not existing_db_txns:
+                    raise Exception(f"Transaction history for {new_transaction_event.security_id} not found in DB, will retry.")
 
                 existing_txns_raw = [EngineTransaction.model_validate(t).model_dump(by_alias=True) for t in existing_db_txns]
                 new_txn_raw = [new_transaction_event.model_dump()]
@@ -145,7 +158,8 @@ class CostCalculatorConsumer:
                         logger.info(f"Successfully calculated costs for transaction {processed_result.transaction_id}.")
                         idempotency_repo.mark_event_processed(event_id, new_transaction_event.portfolio_id, SERVICE_NAME, correlation_id)
                     else:
-                        logger.error(f"Failed to find transaction {processed_result.transaction_id} in DB to update.")
+                        logger.error(f"Failed to find transaction {processed_result.transaction_id} in DB to update, will retry.")
+                        raise Exception(f"Could not find transaction {processed_result.transaction_id} to update.")
 
         if db_txn_to_update and processed_result:
             event_data_to_publish = new_transaction_event.model_dump()

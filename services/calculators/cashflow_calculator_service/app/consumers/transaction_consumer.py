@@ -3,6 +3,7 @@ import logging
 import json
 from pydantic import ValidationError
 from confluent_kafka import Message
+from tenacity import retry, stop_after_attempt, wait_fixed, before_log
 
 from portfolio_common.kafka_consumer import BaseConsumer
 from portfolio_common.logging_utils import correlation_id_var
@@ -23,28 +24,33 @@ class CashflowCalculatorConsumer(BaseConsumer):
     """
     Consumes raw transaction completion events, calculates the corresponding
     cashflow, persists it, and publishes a completion event.
-    This process is idempotent.
+    This process is idempotent and retries on transient DB errors.
     """
 
+    @retry(
+        wait=wait_fixed(2),
+        stop=stop_after_attempt(3),
+        before=before_log(logger, logging.INFO)
+    )
     async def process_message(self, msg: Message):
         """
         Processes a single transaction message from Kafka, ensuring idempotency.
+        Retries if a transient database error (like a foreign key violation
+        due to replication lag) occurs.
         """
         key = msg.key().decode('utf-8') if msg.key() else "NoKey"
         value = msg.value().decode('utf-8')
         event_id = f"{msg.topic()}-{msg.partition()}-{msg.offset()}"
-        correlation_id = correlation_id_var.get() # Get correlation ID from context
+        correlation_id = correlation_id_var.get()
 
         try:
-            # 1. Validate the incoming message early
             event_data = json.loads(value)
             transaction_event = TransactionEvent.model_validate(event_data)
 
             with next(get_db_session()) as db:
                 idempotency_repo = IdempotencyRepository(db)
 
-                # 2. Check if the event has already been processed in an atomic transaction
-                with db.begin(): # Start a transaction
+                with db.begin():
                     if idempotency_repo.is_event_processed(event_id, SERVICE_NAME):
                         logger.warning(
                             f"Event {event_id} has already been processed by {SERVICE_NAME}. Skipping.",
@@ -52,32 +58,21 @@ class CashflowCalculatorConsumer(BaseConsumer):
                         )
                         return
 
-                    # 3. Get the business rule for this transaction type
                     rule = get_rule_for_transaction(transaction_event.transaction_type)
                     if not rule:
                         logger.info(
                             f"No cashflow rule for type '{transaction_event.transaction_type}'. Skipping.",
                             extra={"transaction_id": transaction_event.transaction_id}
                         )
-                        # Mark as processed even if skipped to prevent re-evaluation
                         idempotency_repo.mark_event_processed(event_id, transaction_event.portfolio_id, SERVICE_NAME, correlation_id)
                         return
 
-                    # 4. Apply the logic to calculate the cashflow
                     cashflow_to_save = CashflowLogic.calculate(transaction_event, rule)
-
-                    # 5. Persist to the database
-                    cashflow_repo = CashflowRepository(db)
                     saved_cashflow = cashflow_repo.create_cashflow(cashflow_to_save)
-
-                    # 6. Mark the event as processed, now including the correlation ID
                     idempotency_repo.mark_event_processed(event_id, transaction_event.portfolio_id, SERVICE_NAME, correlation_id)
 
-            # 7. Publish completion event if persistence was successful (after DB transaction commits)
             if saved_cashflow and self._producer:
                 completion_event = CashflowCalculatedEvent.model_validate(saved_cashflow)
-                
-                # Create headers for the outbound message
                 headers = [('correlation_id', correlation_id.encode('utf-8'))] if correlation_id else None
                 
                 self._producer.publish_message(
@@ -91,6 +86,8 @@ class CashflowCalculatorConsumer(BaseConsumer):
         except (json.JSONDecodeError, ValidationError) as e:
             logger.error(f"Message validation failed for key '{key}': {e}. Sending to DLQ.", exc_info=True)
             await self._send_to_dlq(msg, e)
+            # Do not re-raise validation errors, as they won't succeed on retry
         except Exception as e:
-            logger.error(f"Unexpected error processing message with key '{key}': {e}", exc_info=True)
-            await self._send_to_dlq(msg, e)
+            logger.error(f"Unexpected error processing message with key '{key}', will retry: {e}", exc_info=True)
+            # Re-raise the exception to trigger tenacity's retry mechanism
+            raise
