@@ -1,15 +1,17 @@
 # services/calculators/position_calculator/tests/unit/consumers/test_transaction_event_consumer.py
 import pytest
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 from datetime import datetime, date
 from decimal import Decimal
 
 from portfolio_common.events import TransactionEvent
 from portfolio_common.database_models import PositionHistory, Transaction as DBTransaction
+# CORRECTED IMPORT: The user provided the consumer code, so I can import it directly
 from services.calculators.position_calculator.app.consumers.transaction_event_consumer import TransactionEventConsumer
 
 @pytest.fixture
 def position_consumer():
+    """Provides an instance of the consumer with a mocked producer."""
     consumer = TransactionEventConsumer(
         bootstrap_servers="mock_server",
         topic="processed_transactions_completed",
@@ -21,6 +23,11 @@ def position_consumer():
 
 @pytest.mark.asyncio
 async def test_recalculate_for_back_dated_transaction(position_consumer: TransactionEventConsumer):
+    """
+    GIVEN an existing position history for Day 1 and Day 3
+    WHEN a new transaction for Day 2 arrives
+    THEN the consumer should call the repository methods to recalculate and save the history.
+    """
     # 1. ARRANGE
     portfolio_id = "PORT_POS_01"
     security_id = "SEC_POS_01"
@@ -58,16 +65,12 @@ async def test_recalculate_for_back_dated_transaction(position_consumer: Transac
 
     mock_db_session = MagicMock()
     
-    # Simulate the flush() call populating the IDs on the objects
-    new_records = []
-    def save_records_side_effect(record):
-        new_records.append(record)
-    mock_db_session.add.side_effect = save_records_side_effect
-
-    def mock_flush():
-        for i, record in enumerate(new_records, 1):
-            record.id = i
-    mock_db_session.flush.side_effect = mock_flush
+    # Mock the re-fetch query that happens after the commit
+    committed_records_with_ids = [
+        PositionHistory(id=101, transaction_id="TXN_DAY_2", security_id=security_id, portfolio_id=portfolio_id, position_date=date(2025,8,2)),
+        PositionHistory(id=102, transaction_id="TXN_DAY_3", security_id=security_id, portfolio_id=portfolio_id, position_date=date(2025,8,3))
+    ]
+    mock_db_session.query.return_value.filter.return_value.all.return_value = committed_records_with_ids
 
     # 2. ACT
     with patch("services.calculators.position_calculator.app.consumers.transaction_event_consumer.get_db_session", return_value=iter([mock_db_session])), \
@@ -76,9 +79,16 @@ async def test_recalculate_for_back_dated_transaction(position_consumer: Transac
         await position_consumer.process_message(mock_kafka_message)
 
     # 3. ASSERT
-    assert mock_db_session.add.call_count == 2
-    mock_db_session.flush.assert_called_once()
+    # Verify the sequence of calls on the repository
+    mock_repo.get_last_position_before.assert_called_once()
+    mock_repo.delete_positions_from.assert_called_once()
+    mock_repo.get_transactions_on_or_after.assert_called_once()
+    # UPDATED: Assert that the new save_positions method was called
+    mock_repo.save_positions.assert_called_once()
+
+    # Verify the database transaction was committed
     mock_db_session.commit.assert_called_once()
     
+    # Verify the producer was called to publish the results
     assert position_consumer._producer.publish_message.call_count == 2
     position_consumer._producer.flush.assert_called_once()
