@@ -1,13 +1,11 @@
+# services/timeseries-generator-service/app/main.py
 import logging
 import asyncio
 from .consumer_manager import ConsumerManager
+from portfolio_common.logging_utils import setup_logger
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
-)
-logger = logging.getLogger(__name__)
+SERVICE_NAME = "timeseries-generator-service"
+logger = setup_logger(SERVICE_NAME)
 
 async def main():
     """

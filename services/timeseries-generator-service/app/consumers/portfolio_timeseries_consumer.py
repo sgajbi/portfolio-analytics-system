@@ -1,13 +1,14 @@
+# services/timeseries-generator-service/app/consumers/portfolio_timeseries_consumer.py
 import logging
 import json
 import asyncio
 from pydantic import ValidationError
 from datetime import date
-from collections import defaultdict
-from typing import Dict, Set
+from typing import Dict, Tuple, Optional
 
 from confluent_kafka import Message
 from portfolio_common.kafka_consumer import BaseConsumer
+from portfolio_common.logging_utils import correlation_id_var
 from portfolio_common.events import PositionTimeseriesGeneratedEvent, PortfolioTimeseriesGeneratedEvent
 from portfolio_common.db import get_db_session
 from portfolio_common.database_models import Instrument
@@ -26,23 +27,25 @@ class PortfolioTimeseriesConsumer(BaseConsumer):
     """
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._batch: Set[tuple] = set()
+        # The batch is now a dictionary to store the latest correlation ID for each task
+        self._batch: Dict[Tuple[str, date], str] = {}
         self._batch_lock = asyncio.Lock()
         self._processing_interval = 5  # seconds
 
     async def process_message(self, msg: Message):
         """
-        Instead of processing immediately, adds the key of the work to a batch.
+        Instead of processing immediately, adds the work to a batch, storing
+        the latest correlation ID for the task.
         """
         try:
             event_data = json.loads(msg.value().decode('utf-8'))
             event = PositionTimeseriesGeneratedEvent.model_validate(event_data)
+            correlation_id = correlation_id_var.get()
             
-            # Add the unique (portfolio, date) tuple to the batch
+            # Use a dict to store the latest correlation ID for a given (portfolio, date) pair
             async with self._batch_lock:
-                self._batch.add((event.portfolio_id, event.date))
+                self._batch[(event.portfolio_id, event.date)] = correlation_id
             
-            # Commit the message offset now, as we've accepted the work
             self._consumer.commit(message=msg, asynchronous=False)
 
         except (json.JSONDecodeError, ValidationError) as e:
@@ -59,18 +62,18 @@ class PortfolioTimeseriesConsumer(BaseConsumer):
             async with self._batch_lock:
                 if not self._batch:
                     continue
-                # Copy the current batch and clear the shared one
                 current_work = self._batch.copy()
                 self._batch.clear()
 
             logger.info(f"Processing batch of {len(current_work)} portfolio-date aggregations.")
-            for portfolio_id, a_date in current_work:
+            for (portfolio_id, a_date), correlation_id in current_work.items():
                 try:
-                    self._aggregate_for_portfolio_date(portfolio_id, a_date)
+                    # Pass the correlation ID to the aggregation logic
+                    self._aggregate_for_portfolio_date(portfolio_id, a_date, correlation_id)
                 except Exception as e:
                     logger.error(f"Failed to process aggregation for {portfolio_id} on {a_date}: {e}", exc_info=True)
 
-    def _aggregate_for_portfolio_date(self, portfolio_id: str, a_date: date):
+    def _aggregate_for_portfolio_date(self, portfolio_id: str, a_date: date, correlation_id: Optional[str]):
         """
         Contains the full aggregation logic for a single portfolio and date.
         """
@@ -109,10 +112,13 @@ class PortfolioTimeseriesConsumer(BaseConsumer):
 
             if self._producer:
                 completion_event = PortfolioTimeseriesGeneratedEvent.model_validate(new_portfolio_record)
+                headers = [('correlation_id', correlation_id.encode('utf-8'))] if correlation_id else None
+                
                 self._producer.publish_message(
                     topic=KAFKA_PORTFOLIO_TIMESERIES_GENERATED_TOPIC,
                     key=completion_event.portfolio_id,
-                    value=completion_event.model_dump(mode='json')
+                    value=completion_event.model_dump(mode='json'),
+                    headers=headers
                 )
                 self._producer.flush(timeout=5)
 
@@ -124,7 +130,6 @@ class PortfolioTimeseriesConsumer(BaseConsumer):
         self._initialize_consumer()
         loop = asyncio.get_running_loop()
         
-        # Start the background batch processing task
         batch_processor_task = loop.create_task(self._process_batch())
         logger.info(f"Started background batch processor with a {self._processing_interval}s window.")
 
@@ -144,9 +149,7 @@ class PortfolioTimeseriesConsumer(BaseConsumer):
                     logger.warning(f"Non-fatal consumer error: {msg.error()}.")
                     continue
             
-            # Delegate message handling to add to the batch
             await self.process_message(msg)
         
-        # Clean shutdown
         batch_processor_task.cancel()
         self.shutdown()

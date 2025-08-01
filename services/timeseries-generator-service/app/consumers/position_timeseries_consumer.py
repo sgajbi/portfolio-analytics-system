@@ -1,3 +1,4 @@
+# services/timeseries-generator-service/app/consumers/position_timeseries_consumer.py
 import logging
 import json
 from pydantic import ValidationError
@@ -6,6 +7,7 @@ from datetime import date, timedelta
 
 from confluent_kafka import Message
 from portfolio_common.kafka_consumer import BaseConsumer
+from portfolio_common.logging_utils import correlation_id_var
 from portfolio_common.events import DailyPositionSnapshotPersistedEvent, PositionTimeseriesGeneratedEvent
 from portfolio_common.db import get_db_session
 from portfolio_common.database_models import DailyPositionSnapshot, Cashflow
@@ -26,11 +28,11 @@ class PositionTimeseriesConsumer(BaseConsumer):
         try:
             event_data = json.loads(msg.value().decode('utf-8'))
             event = DailyPositionSnapshotPersistedEvent.model_validate(event_data)
+            correlation_id = correlation_id_var.get() 
 
             logger.info(f"Processing position snapshot for {event.security_id} on {event.date}")
 
             with next(get_db_session()) as db:
-                # 1. Fetch all required data for the calculation
                 repo = TimeseriesRepository(db)
 
                 current_snapshot = db.query(DailyPositionSnapshot).get(event.id)
@@ -44,7 +46,6 @@ class PositionTimeseriesConsumer(BaseConsumer):
                     a_date=event.date
                 )
 
-                # Fetch position-level cashflows for the specific day
                 cashflows = db.query(Cashflow).filter(
                     Cashflow.portfolio_id == event.portfolio_id,
                     Cashflow.security_id == event.security_id,
@@ -54,7 +55,6 @@ class PositionTimeseriesConsumer(BaseConsumer):
                 bod_cashflow = sum(cf.amount for cf in cashflows if cf.timing == 'BOD')
                 eod_cashflow = sum(cf.amount for cf in cashflows if cf.timing == 'EOD')
 
-                # 2. Call the stateless logic to calculate the new record
                 new_timeseries_record = PositionTimeseriesLogic.calculate_daily_record(
                     current_snapshot=current_snapshot,
                     previous_timeseries=previous_timeseries,
@@ -62,16 +62,17 @@ class PositionTimeseriesConsumer(BaseConsumer):
                     eod_cashflow=eod_cashflow
                 )
 
-                # 3. Persist the result using an idempotent upsert
                 repo.upsert_position_timeseries(new_timeseries_record)
 
-                # 4. Publish completion event
                 if self._producer:
                     completion_event = PositionTimeseriesGeneratedEvent.model_validate(new_timeseries_record)
+                    headers = [('correlation_id', correlation_id.encode('utf-8'))] if correlation_id else None
+                    
                     self._producer.publish_message(
                         topic=KAFKA_POSITION_TIMESERIES_GENERATED_TOPIC,
                         key=f"{completion_event.portfolio_id}:{completion_event.security_id}",
-                        value=completion_event.model_dump(mode='json')
+                        value=completion_event.model_dump(mode='json'),
+                        headers=headers
                     )
                     self._producer.flush(timeout=5)
 

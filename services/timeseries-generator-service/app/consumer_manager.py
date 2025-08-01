@@ -1,10 +1,11 @@
+# services/timeseries-generator-service/app/consumer_manager.py
 import logging
 import signal
 import asyncio
 
 from portfolio_common.config import (
     KAFKA_BOOTSTRAP_SERVERS,
-    KAFKA_DAILY_POSITION_SNAPSHOT_PERSISTED_TOPIC, # CORRECTED: Listen to the new, correct topic
+    KAFKA_DAILY_POSITION_SNAPSHOT_PERSISTED_TOPIC,
     KAFKA_POSITION_TIMESERIES_GENERATED_TOPIC,
     KAFKA_PERSISTENCE_DLQ_TOPIC
 )
@@ -23,24 +24,25 @@ class ConsumerManager:
         self._shutdown_event = asyncio.Event()
 
         dlq_topic = KAFKA_PERSISTENCE_DLQ_TOPIC
+        service_prefix = "TS"
         
-        # Stage 1 Consumer - Now listening to the correct snapshot event
         self.consumers.append(
             PositionTimeseriesConsumer(
                 bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
                 topic=KAFKA_DAILY_POSITION_SNAPSHOT_PERSISTED_TOPIC,
                 group_id="timeseries_generator_group_positions",
-                dlq_topic=dlq_topic 
+                dlq_topic=dlq_topic,
+                service_prefix=service_prefix
             )
         )
 
-        # Stage 2 Consumer
         self.consumers.append(
             PortfolioTimeseriesConsumer(
                 bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
                 topic=KAFKA_POSITION_TIMESERIES_GENERATED_TOPIC,
                 group_id="timeseries_generator_group_portfolios",
-                dlq_topic=dlq_topic
+                dlq_topic=dlq_topic,
+                service_prefix=service_prefix
             )
         )
 
