@@ -53,7 +53,7 @@ async def test_process_message_success(consumer: PositionHistoryConsumer, mock_k
     THEN it should create a valued snapshot, mark as processed, and publish a completion event.
     """
     # Arrange
-    mock_db_session = MagicMock(spec=Session)
+    mock_db_session = MagicMock()
     mock_transaction_context = MagicMock()
     mock_transaction_context.__enter__.return_value = None
     mock_transaction_context.__exit__.return_value = (None, None, None)
@@ -66,27 +66,12 @@ async def test_process_message_success(consumer: PositionHistoryConsumer, mock_k
     mock_valuation_repo.get_latest_price_for_position.return_value = MarketPrice(price=Decimal("150"))
 
     mock_position_history = PositionHistory(id=123, quantity=Decimal(100), cost_basis=Decimal(10000), security_id="SEC_VAL_01", portfolio_id="PORT_VAL_01", position_date=date(2025, 8, 1))
-    
-    # FINAL FIX: Create a mock that has real data attributes to satisfy Pydantic
-    mock_persisted_snapshot = MagicMock(spec=DailyPositionSnapshot)
-    mock_persisted_snapshot.id = 1
-    mock_persisted_snapshot.portfolio_id = "PORT_VAL_01"
-    mock_persisted_snapshot.security_id = "SEC_VAL_01"
-    mock_persisted_snapshot.date = date(2025, 8, 1)
+    mock_persisted_snapshot = DailyPositionSnapshot(id=1, portfolio_id="PORT_VAL_01", security_id="SEC_VAL_01", date=date(2025, 8, 1))
 
-
-    def query_side_effect(model):
-        if model == PositionHistory:
-            query_mock = MagicMock()
-            query_mock.get.return_value = mock_position_history
-            return query_mock
-        elif model == DailyPositionSnapshot:
-            query_mock = MagicMock()
-            query_mock.filter_by.return_value.first.return_value = mock_persisted_snapshot
-            return query_mock
-        return MagicMock()
-
-    mock_db_session.query.side_effect = query_side_effect
+    # FINAL FIX: Configure the mock query object directly and simply.
+    query_mock = mock_db_session.query.return_value
+    query_mock.get.return_value = mock_position_history
+    query_mock.filter_by.return_value.first.return_value = mock_persisted_snapshot
 
 
     with patch('app.consumers.position_history_consumer.get_db_session', return_value=iter([mock_db_session])), \
@@ -110,7 +95,7 @@ async def test_process_message_skips_processed_event(consumer: PositionHistoryCo
     THEN it should skip all business logic.
     """
     # Arrange
-    mock_db_session = MagicMock(spec=Session)
+    mock_db_session = MagicMock()
     mock_transaction_context = MagicMock()
     mock_transaction_context.__enter__.return_value = None
     mock_transaction_context.__exit__.return_value = (None, None, None)
