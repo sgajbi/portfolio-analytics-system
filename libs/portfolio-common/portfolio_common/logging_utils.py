@@ -50,7 +50,19 @@ def setup_logging():
     
     handler.setFormatter(formatter)
     
+    # Add our custom filter to the handler
     handler.addFilter(CorrelationIdFilter())
 
     root_logger.addHandler(handler)
+
+def generate_correlation_id(prefix: str) -> str:
+    """
+    Generates a new correlation ID with a service-specific prefix.
     
+    Args:
+        prefix: A short code for the service (e.g., 'ING').
+
+    Returns:
+        A formatted correlation ID string.
+    """
+    return f"{prefix}:{uuid.uuid4()}"
