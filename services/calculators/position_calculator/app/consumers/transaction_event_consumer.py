@@ -8,8 +8,9 @@ from portfolio_common.kafka_consumer import BaseConsumer
 from portfolio_common.events import TransactionEvent, PositionHistoryPersistedEvent
 from portfolio_common.db import get_db_session
 from portfolio_common.kafka_utils import get_kafka_producer
-from portfolio_common.config import KAFKA_POSITION_HISTORY_PERSISTED_TOPIC # CORRECTED
+from portfolio_common.config import KAFKA_POSITION_HISTORY_PERSISTED_TOPIC
 from portfolio_common.idempotency_repository import IdempotencyRepository
+from portfolio_common.database_models import PositionHistory
 
 from ..repositories.position_repository import PositionRepository
 from ..core.position_logic import PositionCalculator
@@ -72,7 +73,7 @@ class TransactionEventConsumer(BaseConsumer):
         try:
             event = PositionHistoryPersistedEvent.model_validate(record)
             self._producer.publish_message(
-                topic=KAFKA_POSITION_HISTORY_PERSISTED_TOPIC, # CORRECTED TYPO
+                topic=KAFKA_POSITION_HISTORY_PERSISTED_TOPIC,
                 key=event.security_id,
                 value=event.model_dump(mode='json', by_alias=True)
             )
