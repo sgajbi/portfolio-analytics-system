@@ -197,4 +197,5 @@ class ProcessedEvent(Base):
     event_id = Column(String, nullable=False, unique=True)
     portfolio_id = Column(String, nullable=False)
     service_name = Column(String, nullable=False)
+    correlation_id = Column(String, nullable=True) # NEW COLUMN
     processed_at = Column(DateTime, server_default=func.now())
