@@ -80,7 +80,8 @@ async def test_recalculate_for_back_dated_transaction(position_consumer: Transac
     mock_db_session.query.return_value.filter.return_value.all.return_value = committed_records
     
     with patch("services.calculators.position_calculator.app.consumers.transaction_event_consumer.get_db_session", return_value=mock_db_session), \
-         patch("services.calculators.position_calculator.app.consumers.transaction_event_consumer.PositionRepository", return_value=mock_repo):
+     patch("services.calculators.position_calculator.app.consumers.transaction_event_consumer.PositionRepository", return_value=mock_repo), \
+     patch("services.calculators.position_calculator.app.consumers.transaction_event_consumer.ProcessedEvent"):
 
         await position_consumer.process_message(mock_kafka_message)
 
