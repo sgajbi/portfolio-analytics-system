@@ -10,7 +10,8 @@ from portfolio_common.kafka_consumer import BaseConsumer
 from portfolio_common.logging_utils import correlation_id_var
 from portfolio_common.events import TransactionEvent
 from portfolio_common.db import get_db_session
-from portfolio_common.config import KAFA_RAW_TRANSACTIONS_COMPLETED_TOPIC
+# CORRECTED IMPORT
+from portfolio_common.config import KAFKA_RAW_TRANSACTIONS_COMPLETED_TOPIC
 from ..repositories.transaction_db_repo import TransactionDBRepository
 from portfolio_common.outbox_repository import OutboxRepository
 
@@ -60,7 +61,7 @@ class TransactionPersistenceConsumer(BaseConsumer):
                         aggregate_type='Transaction',
                         aggregate_id=event.transaction_id,
                         event_type='TransactionPersisted',
-                        topic=KAFA_RAW_TRANSACTIONS_COMPLETED_TOPIC,
+                        topic=KAFKA_RAW_TRANSACTIONS_COMPLETED_TOPIC,
                         payload=event.model_dump(mode='json'),
                         correlation_id=correlation_id
                     )
@@ -82,6 +83,6 @@ class TransactionPersistenceConsumer(BaseConsumer):
             # Re-raise the exception to trigger the tenacity retry
             raise
         except Exception as e:
-            logger.error(f"An unexpected error occurred for transaction {event.transaction_id}. Sending to DLQ.", exc_info=True)
+            logger.error(f"An unexpected error occurred for transaction {getattr(event, 'transaction_id', 'UNKNOWN')}. Sending to DLQ.", exc_info=True)
             await self._send_to_dlq(msg, e)
             raise
