@@ -1,7 +1,7 @@
 # libs/portfolio-common/portfolio_common/database_models.py
 from sqlalchemy import (
     Column, Integer, String, Numeric, DateTime, Date, func, 
-    ForeignKey, UniqueConstraint, Boolean
+    ForeignKey, UniqueConstraint, Boolean, JSON
 )
 from sqlalchemy.orm import relationship
 
@@ -197,5 +197,19 @@ class ProcessedEvent(Base):
     event_id = Column(String, nullable=False, unique=True)
     portfolio_id = Column(String, nullable=False)
     service_name = Column(String, nullable=False)
-    correlation_id = Column(String, nullable=True) # NEW COLUMN
+    correlation_id = Column(String, nullable=True)
     processed_at = Column(DateTime, server_default=func.now())
+
+# NEW MODEL: OutboxEvent for the Transactional Outbox Pattern
+class OutboxEvent(Base):
+    __tablename__ = 'outbox_events'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    aggregate_type = Column(String, nullable=False, index=True)
+    aggregate_id = Column(String, nullable=False, index=True)
+    event_type = Column(String, nullable=False)
+    payload = Column(JSON, nullable=False)
+    topic = Column(String, nullable=False)
+    status = Column(String, default='PENDING', nullable=False, index=True)
+    created_at = Column(DateTime, default=func.now(), nullable=False)
+    processed_at = Column(DateTime, nullable=True)
