@@ -208,7 +208,8 @@ services:
       - ./services/calculators/cost_calculator_service/app:/app/app
       - ./libs/portfolio-common:/app/libs/portfolio-common
       - ./libs/financial-calculator-engine:/app/libs/financial-calculator-engine
-    command: ["python", "app/main.py"]
+    # THE FIX: Run as a module (-m) so Python recognizes the 'app' package
+    command: ["python", "-m", "app.main"]
     networks:
       - app_network
 
