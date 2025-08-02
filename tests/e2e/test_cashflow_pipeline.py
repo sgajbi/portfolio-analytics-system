@@ -2,8 +2,10 @@ import pytest
 import requests
 import time
 from decimal import Decimal
+from sqlalchemy.orm import Session
+from sqlalchemy import text
 
-def test_cashflow_pipeline(docker_services, db_connection, clean_db):
+def test_cashflow_pipeline(docker_services, db_engine, clean_db):
     """
     Tests the full pipeline from ingestion to cashflow calculation.
     It ingests a BUY transaction and verifies that a corresponding
@@ -25,7 +27,7 @@ def test_cashflow_pipeline(docker_services, db_connection, clean_db):
         "portfolio_id": portfolio_id, 
         "instrument_id": "CSHFLW", 
         "security_id": "SEC_CSHFLW", 
-        "transaction_date": "2025-07-28", 
+        "transaction_date": "2025-07-28T00:00:00Z", 
         "transaction_type": "BUY", 
         "quantity": 10, 
         "price": 100.0, 
@@ -40,18 +42,15 @@ def test_cashflow_pipeline(docker_services, db_connection, clean_db):
     assert response.status_code == 202
 
     # 4. Poll the cashflows table to verify the result
-    with db_connection.cursor() as cursor:
+    with Session(db_engine) as session:
         start_time = time.time()
         timeout = 45 # seconds
         while time.time() - start_time < timeout:
-            cursor.execute(
-                """
+            query = text("""
                 SELECT amount, currency, classification, timing, level, calculation_type
-                FROM cashflows WHERE transaction_id = %s
-                """,
-                (transaction_id,)
-            )
-            result = cursor.fetchone()
+                FROM cashflows WHERE transaction_id = :txn_id
+            """)
+            result = session.execute(query, {"txn_id": transaction_id}).fetchone()
             if result:
                 break
             time.sleep(1)
