@@ -1,6 +1,6 @@
 # libs/portfolio-common/portfolio_common/database_models.py
 from sqlalchemy import (
-    Column, Integer, String, Numeric, DateTime, Date, func, 
+    Column, Integer, String, Numeric, DateTime, Date, func,
     ForeignKey, UniqueConstraint, Boolean, JSON
 )
 from sqlalchemy.orm import relationship
@@ -14,8 +14,6 @@ class Portfolio(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     portfolio_id = Column(String, unique=True, index=True, nullable=False)
     base_currency = Column(String(3), nullable=False)
-    # ... (rest of the file is unchanged)
-    # I am providing the full file content for completeness based on the last known version.
     open_date = Column(Date, nullable=False)
     close_date = Column(Date, nullable=True)
     risk_exposure = Column(String, nullable=False)
@@ -194,13 +192,16 @@ class ProcessedEvent(Base):
     __tablename__ = "processed_events"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    event_id = Column(String, nullable=False, unique=True)
+    event_id = Column(String, nullable=False)
     portfolio_id = Column(String, nullable=False)
     service_name = Column(String, nullable=False)
     correlation_id = Column(String, nullable=True)
     processed_at = Column(DateTime, server_default=func.now())
 
-# NEW MODEL: OutboxEvent for the Transactional Outbox Pattern
+    __table_args__ = (
+        UniqueConstraint('event_id', 'service_name', name='_event_service_uc'),
+    )
+
 class OutboxEvent(Base):
     __tablename__ = 'outbox_events'
 
@@ -211,8 +212,8 @@ class OutboxEvent(Base):
     payload = Column(JSON, nullable=False)
     topic = Column(String, nullable=False)
     status = Column(String, default='PENDING', nullable=False, index=True)
-    correlation_id = Column(String, nullable=True) # NEW
-    retry_count = Column(Integer, default=0, nullable=False) # NEW
-    last_attempted_at = Column(DateTime, nullable=True) # NEW
+    correlation_id = Column(String, nullable=True)
+    retry_count = Column(Integer, default=0, nullable=False)
+    last_attempted_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=func.now(), nullable=False)
     processed_at = Column(DateTime, nullable=True)
