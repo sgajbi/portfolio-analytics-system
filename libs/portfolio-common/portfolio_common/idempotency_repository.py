@@ -31,6 +31,7 @@ class IdempotencyRepository:
         Returns:
             True if the event has been processed, False otherwise.
         """
+        # CORRECTED: Query uses both event_id and service_name
         query = self.db.query(
             exists().where(
                 ProcessedEvent.event_id == event_id,
@@ -49,7 +50,6 @@ class IdempotencyRepository:
         """
         Marks an event as processed by inserting its details into the
         processed_events table.
-
         Args:
             event_id: The unique identifier of the event.
             portfolio_id: The portfolio ID associated with the event.
@@ -60,7 +60,7 @@ class IdempotencyRepository:
             event_id=event_id,
             portfolio_id=portfolio_id,
             service_name=service_name,
-            correlation_id=correlation_id # NEW: Set the correlation_id
+            correlation_id=correlation_id
         )
         self.db.add(processed_event)
         logger.debug(

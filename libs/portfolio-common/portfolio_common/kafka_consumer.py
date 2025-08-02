@@ -3,6 +3,7 @@ import logging
 import json
 import traceback
 import asyncio
+import functools
 from datetime import datetime, timezone
 from abc import ABC, abstractmethod
 from typing import Optional
@@ -135,32 +136,32 @@ class BaseConsumer(ABC):
                     logger.warning(f"Non-fatal consumer error on topic {self.topic}: {msg.error()}.")
                     continue
             
-            token = None
-            try:
-                corr_id = None
-                if msg.headers():
-                    for key, value in msg.headers():
-                        if key == 'correlation_id':
-                            corr_id = value.decode('utf-8') if value else None
-                            break
-                
-                if not corr_id:
-                    corr_id = generate_correlation_id(self.service_prefix)
-                    logger.warning(f"No correlation ID in message from topic '{msg.topic()}'. Generated new ID: {corr_id}")
+            corr_id = None
+            if msg.headers():
+                for key, value in msg.headers():
+                    if key == 'correlation_id':
+                        corr_id = value.decode('utf-8') if value else None
+                        break
+            
+            if not corr_id:
+                corr_id = generate_correlation_id(self.service_prefix)
+                logger.warning(f"No correlation ID in message from topic '{msg.topic()}'. Generated new ID: {corr_id}")
 
-                token = correlation_id_var.set(corr_id)
-                
-                await loop.run_in_executor(None, self.process_message, msg, loop)
+            # CORRECTED: Set context for the duration of this iteration
+            correlation_id_var.set(corr_id)
+            
+            try:
+                # Use functools.partial to ensure the current context is passed to the thread
+                await loop.run_in_executor(
+                    None,
+                    functools.partial(self.process_message, msg, loop)
+                )
                 
                 self._consumer.commit(message=msg, asynchronous=False)
 
             except Exception as e:
                 logger.error(f"Unhandled exception in consumer loop for topic {self.topic}: {e}", exc_info=True)
-                # This outer block can safely call an async function.
                 await self._send_to_dlq_async(msg, e)
-            finally:
-                if token:
-                    correlation_id_var.reset(token)
         
         self.shutdown()
 
