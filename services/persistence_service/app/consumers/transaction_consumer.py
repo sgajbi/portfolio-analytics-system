@@ -28,6 +28,7 @@ class TransactionPersistenceConsumer(BaseConsumer):
         """
         key = msg.key().decode('utf-8') if msg.key() else "NoKey"
         value = msg.value().decode('utf-8')
+        correlation_id = correlation_id_var.get()
         
         try:
             # 1. Validate the incoming message
@@ -45,14 +46,15 @@ class TransactionPersistenceConsumer(BaseConsumer):
                     # a. Persist the business data (transaction)
                     repo.create_or_update_transaction(event)
             
-                    # b. Create the outbox event
+                    # b. Create the outbox event, now with correlation ID
                     outbox_repo.create_outbox_event(
                         db_session=db,
                         aggregate_type='Transaction',
                         aggregate_id=event.transaction_id,
                         event_type='TransactionPersisted',
                         topic=KAFKA_RAW_TRANSACTIONS_COMPLETED_TOPIC,
-                        payload=event.model_dump(mode='json')
+                        payload=event.model_dump(mode='json'),
+                        correlation_id=correlation_id
                     )
 
             logger.info(

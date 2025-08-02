@@ -1,7 +1,7 @@
 # libs/portfolio-common/portfolio_common/outbox_repository.py
 import logging
 from sqlalchemy.orm import Session
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 from .database_models import OutboxEvent
 
@@ -22,6 +22,7 @@ class OutboxRepository:
         event_type: str,
         topic: str,
         payload: Dict[str, Any],
+        correlation_id: Optional[str] = None,
     ) -> OutboxEvent:
         """
         Creates an OutboxEvent instance and adds it to the provided database session.
@@ -33,6 +34,7 @@ class OutboxRepository:
             event_type: The specific type of the event (e.g., 'TransactionPersisted').
             topic: The Kafka topic to which this event should be published.
             payload: The JSON-serializable event payload.
+            correlation_id: The optional correlation ID for tracing.
 
         Returns:
             The created OutboxEvent instance.
@@ -44,7 +46,8 @@ class OutboxRepository:
                 event_type=event_type,
                 topic=topic,
                 payload=payload,
-                status='PENDING'
+                status='PENDING',
+                correlation_id=correlation_id,
             )
             db_session.add(outbox_event)
             logger.info(
@@ -53,6 +56,7 @@ class OutboxRepository:
                     "topic": topic,
                     "aggregate_id": aggregate_id,
                     "event_type": event_type,
+                    "correlation_id": correlation_id,
                 },
             )
             return outbox_event

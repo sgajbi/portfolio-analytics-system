@@ -211,5 +211,8 @@ class OutboxEvent(Base):
     payload = Column(JSON, nullable=False)
     topic = Column(String, nullable=False)
     status = Column(String, default='PENDING', nullable=False, index=True)
+    correlation_id = Column(String, nullable=True) # NEW
+    retry_count = Column(Integer, default=0, nullable=False) # NEW
+    last_attempted_at = Column(DateTime, nullable=True) # NEW
     created_at = Column(DateTime, default=func.now(), nullable=False)
     processed_at = Column(DateTime, nullable=True)
