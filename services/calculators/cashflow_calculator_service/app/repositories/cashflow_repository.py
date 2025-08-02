@@ -18,21 +18,19 @@ class CashflowRepository:
         """
         try:
             self.db.add(cashflow)
-            self.db.flush() # Flushes the change to the DB to get IDs, etc.
-            self.db.refresh(cashflow)
+            self.db.flush() # Flushes to assign DB-generated defaults like 'id'
+            self.db.refresh(cashflow) # <-- THE FIX: Refresh the object to load all columns
             logger.info(f"Successfully staged cashflow record for transaction_id: {cashflow.transaction_id}")
             return cashflow
         except IntegrityError:
-            # This handles the case where the cashflow might already exist due to a retry.
-            # The transaction will be rolled back by the consumer's context manager.
             logger.warning(
                 f"A cashflow for transaction_id '{cashflow.transaction_id}' may already exist. "
                 "The transaction will be rolled back."
             )
-            raise # Re-raise for the context manager to handle
+            raise 
         except Exception as e:
             logger.error(
                 f"An unexpected error occurred while staging cashflow for txn {cashflow.transaction_id}: {e}",
                 exc_info=True
             )
-            raise 
+            raise
