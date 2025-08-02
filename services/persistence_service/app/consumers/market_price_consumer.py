@@ -1,8 +1,11 @@
 # services/persistence_service/app/consumers/market_price_consumer.py
 import logging
 import json
+import asyncio
 from pydantic import ValidationError
 from confluent_kafka import Message
+from sqlalchemy.exc import IntegrityError
+from tenacity import retry, stop_after_attempt, wait_fixed
 
 from portfolio_common.kafka_consumer import BaseConsumer
 from portfolio_common.logging_utils import correlation_id_var
@@ -18,12 +21,15 @@ class MarketPriceConsumer(BaseConsumer):
     A concrete consumer for validating and persisting market price events.
     Publishes a completion event on success.
     """
-    async def process_message(self, msg: Message):
-        """
-        Processes a single market price message from Kafka.
-        """
+    def process_message(self, msg: Message, loop: asyncio.AbstractEventLoop):
+        """Wrapper to call the retryable logic."""
+        self._process_message_with_retry(msg, loop)
+    
+    @retry(wait=wait_fixed(2), stop=stop_after_attempt(3))
+    def _process_message_with_retry(self, msg: Message, loop: asyncio.AbstractEventLoop):
         key = msg.key().decode('utf-8') if msg.key() else "NoKey"
         value = msg.value().decode('utf-8')
+        event = None
         logger.info("MarketPriceConsumer received message", extra={"key": key})
 
         try:
@@ -32,14 +38,13 @@ class MarketPriceConsumer(BaseConsumer):
             logger.info("Successfully validated event", extra={"security_id": event.security_id, "price_date": event.price_date})
 
             with next(get_db_session()) as db:
-                with db.begin(): # Use a transactional block for atomicity
+                with db.begin():
                     repo = MarketPriceRepository(db)
                     repo.create_market_price(event)
             
             logger.info("Database transaction for market price was successful.")
             
             if self._producer:
-                # Get correlation ID from context and create headers
                 corr_id = correlation_id_var.get()
                 headers = [('correlation_id', corr_id.encode('utf-8'))] if corr_id else None
 
@@ -47,7 +52,7 @@ class MarketPriceConsumer(BaseConsumer):
                     topic=KAFKA_MARKET_PRICE_PERSISTED_TOPIC,
                     key=event.security_id,
                     value=event.model_dump(mode='json'),
-                    headers=headers # Pass headers to the producer
+                    headers=headers
                 )
                 logger.info("Published market_price_persisted event", extra={"security_id": event.security_id})
                 self._producer.flush(timeout=5)
@@ -56,7 +61,10 @@ class MarketPriceConsumer(BaseConsumer):
 
         except (json.JSONDecodeError, ValidationError) as e:
             logger.error("Message validation failed. Sending to DLQ.", extra={"key": key}, exc_info=True)
-            await self._send_to_dlq(msg, e)
+            self._send_to_dlq_sync(msg, e, loop)
+        except IntegrityError:
+            logger.warning(f"Caught IntegrityError for price {getattr(event, 'security_id', 'UNKNOWN')}. Will retry...")
+            raise
         except Exception as e:
-            logger.error("An unexpected error occurred. Sending to DLQ.", extra={"key": key}, exc_info=True)
-            await self._send_to_dlq(msg, e)
+            logger.error(f"An unexpected error occurred for price {getattr(event, 'security_id', 'UNKNOWN')}. Sending to DLQ.", extra={"key": key}, exc_info=True)
+            self._send_to_dlq_sync(msg, e, loop)
