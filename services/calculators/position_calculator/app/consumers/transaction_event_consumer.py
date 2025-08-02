@@ -1,6 +1,7 @@
 # services/calculators/position_calculator/app/consumers/transaction_event_consumer.py
 import logging
 import json
+import asyncio
 from pydantic import ValidationError
 from typing import Optional
 
@@ -26,38 +27,34 @@ class TransactionEventConsumer(BaseConsumer):
         super().__init__(*args, **kwargs)
         self._producer = get_kafka_producer()
 
-    async def process_message(self, msg: Message):
+    def process_message(self, msg: Message, loop: asyncio.AbstractEventLoop):
         key = msg.key().decode('utf-8') if msg.key() else "NoKey"
         event_id = f"{msg.topic()}-{msg.partition()}-{msg.offset()}"
-        correlation_id = correlation_id_var.get() # Get correlation ID
+        correlation_id = correlation_id_var.get()
         new_positions = []
+        event = None
 
         try:
             event_data = json.loads(msg.value().decode('utf-8'))
             event = TransactionEvent.model_validate(event_data)
         except (ValidationError, json.JSONDecodeError) as e:
-            logger.error(f"Validation error for event {event_id}: {e}", exc_info=True)
-            await self._send_to_dlq(msg, e)
+            logger.error(f"Validation error for event {event_id}: {e}. Sending to DLQ.", exc_info=True)
+            self._send_to_dlq_sync(msg, e, loop)
             return
 
         try:
             with next(get_db_session()) as db:
-                # Atomically check, calculate, and mark as processed
                 with db.begin():
                     idempotency_repo = IdempotencyRepository(db)
+                
                     if idempotency_repo.is_event_processed(event_id, SERVICE_NAME):
                         logger.warning(f"Event {event_id} already processed. Skipping.")
                         return
 
                     position_repo = PositionRepository(db)
-                    # The calculate method stages all DB changes (deletes and inserts)
                     new_positions = PositionCalculator.calculate(event, db, repo=position_repo)
-
                     idempotency_repo.mark_event_processed(event_id, event.portfolio_id, SERVICE_NAME, correlation_id)
                 
-                # The transaction is now committed.
-                # If new_positions were created, refresh them to get DB-assigned IDs
-                # and then publish the events. This must happen AFTER the commit.
                 if new_positions:
                     for pos in new_positions:
                         db.refresh(pos)
@@ -66,13 +63,13 @@ class TransactionEventConsumer(BaseConsumer):
                     
                     for record in new_positions:
                         self._publish_persisted_event(record, correlation_id)
-                    
+            
                     self._producer.flush(timeout=5)
                     logger.info(f"[{event.transaction_id}] Published {len(new_positions)} PositionHistoryPersistedEvents.")
 
         except Exception as e:
-            logger.error(f"Unexpected failure during processing for event {event_id}: {e}", exc_info=True)
-            await self._send_to_dlq(msg, e)
+            logger.error(f"Unexpected failure during processing for event {event_id}: {e}. Sending to DLQ.", exc_info=True)
+            self._send_to_dlq_sync(msg, e, loop)
             return
 
     def _publish_persisted_event(self, record: PositionHistory, correlation_id: Optional[str]):
