@@ -30,8 +30,10 @@ class PortfolioConsumer(BaseConsumer):
             logger.info("Successfully validated event", extra={"portfolio_id": event.portfolio_id})
 
             with next(get_db_session()) as db:
-                repo = PortfolioRepository(db)
-                repo.create_or_update_portfolio(event)
+                # This block now explicitly manages the transaction.
+                with db.begin():
+                    repo = PortfolioRepository(db)
+                    repo.create_or_update_portfolio(event)
 
             logger.info("Successfully persisted", extra={"portfolio_id": event.portfolio_id})
 
