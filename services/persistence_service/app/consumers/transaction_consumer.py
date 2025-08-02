@@ -1,6 +1,7 @@
 # services/persistence_service/app/consumers/transaction_consumer.py
 import logging
 import json
+import asyncio
 from pydantic import ValidationError
 from confluent_kafka import Message
 from sqlalchemy.exc import IntegrityError
@@ -24,19 +25,26 @@ class TransactionPersistenceConsumer(BaseConsumer):
     - On validation failure, it publishes the message to a DLQ.
     - It retries on database integrity errors to handle race conditions.
     """
+    def process_message(self, msg: Message, loop: asyncio.AbstractEventLoop):
+        """
+        Wrapper method to satisfy the abstract base class.
+        It calls the actual processing logic which is decorated with tenacity.
+        """
+        self._process_message_with_retry(msg, loop)
+
     @retry(
         wait=wait_fixed(2),
         stop=stop_after_attempt(3),
         before=before_log(logger, logging.INFO),
-        retry_error_callback=lambda retry_state: retry_state.outcome.exception(),
     )
-    def process_message(self, msg: Message):
+    def _process_message_with_retry(self, msg: Message, loop: asyncio.AbstractEventLoop):
         """
         Processes a single raw transaction message from Kafka.
         """
         key = msg.key().decode('utf-8') if msg.key() else "NoKey"
         value = msg.value().decode('utf-8')
         correlation_id = correlation_id_var.get()
+        event = None
         
         try:
             # 1. Validate the incoming message
@@ -51,10 +59,8 @@ class TransactionPersistenceConsumer(BaseConsumer):
                     repo = TransactionDBRepository(db)
                     outbox_repo = OutboxRepository()
 
-                    # a. Persist the business data (transaction)
                     repo.create_or_update_transaction(event)
             
-                    # b. Create the outbox event, now with correlation ID
                     outbox_repo.create_outbox_event(
                         db_session=db,
                         aggregate_type='Transaction',
@@ -71,17 +77,14 @@ class TransactionPersistenceConsumer(BaseConsumer):
             )
 
         except (json.JSONDecodeError, ValidationError) as e:
-            logger.error("Message validation failed. Cannot be retried.", extra={"key": key}, exc_info=True)
-            # This is a fatal error for this message, so we don't re-raise
-            asyncio.run(self._send_to_dlq(msg, e))
-
-        except IntegrityError as e:
+            logger.error("Message validation failed. Sending to DLQ.", extra={"key": key}, exc_info=True)
+            self._send_to_dlq_sync(msg, e, loop)
+        except IntegrityError:
             logger.warning(
                 "Caught IntegrityError, likely a race condition. Will retry...",
                 extra={"transaction_id": getattr(event, 'transaction_id', 'UNKNOWN')},
-                exc_info=True
             )
             raise
         except Exception as e:
-            logger.error(f"An unexpected error occurred for transaction {getattr(event, 'transaction_id', 'UNKNOWN')}. Cannot be retried.", exc_info=True)
-            asyncio.run(self._send_to_dlq(msg, e))
+            logger.error(f"An unexpected error occurred for transaction {getattr(event, 'transaction_id', 'UNKNOWN')}. Sending to DLQ.", exc_info=True)
+            self._send_to_dlq_sync(msg, e, loop)

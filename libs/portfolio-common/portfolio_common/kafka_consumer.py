@@ -55,7 +55,22 @@ class BaseConsumer(ABC):
         self._consumer.subscribe([self.topic])
         logger.info(f"Consumer successfully subscribed to topic '{self.topic}'.")
 
-    async def _send_to_dlq(self, msg: Message, error: Exception):
+    def _send_to_dlq_sync(self, msg: Message, error: Exception, loop: asyncio.AbstractEventLoop):
+        """
+        Schedules the async _send_to_dlq method to run on the main event loop.
+        """
+        if not loop or not self._running:
+            return
+        
+        future = asyncio.run_coroutine_threadsafe(
+            self._send_to_dlq_async(msg, error), loop
+        )
+        try:
+            future.result(timeout=10)
+        except Exception as e:
+            logger.error(f"FATAL: Could not schedule message to DLQ. Error: {e}", exc_info=True)
+
+    async def _send_to_dlq_async(self, msg: Message, error: Exception):
         """
         Sends a message that failed processing to the Dead-Letter Queue.
         """
@@ -90,7 +105,7 @@ class BaseConsumer(ABC):
             logger.error(f"FATAL: Could not send message to DLQ. Error: {e}", exc_info=True)
 
     @abstractmethod
-    def process_message(self, msg: Message):
+    def process_message(self, msg: Message, loop: asyncio.AbstractEventLoop):
         """
         Abstract method to be implemented by subclasses. This method contains
         synchronous, blocking business logic for processing a single message.
@@ -135,14 +150,14 @@ class BaseConsumer(ABC):
 
                 token = correlation_id_var.set(corr_id)
                 
-                # *** THE FIX: Run the blocking process_message in an executor ***
-                await loop.run_in_executor(None, self.process_message, msg)
+                await loop.run_in_executor(None, self.process_message, msg, loop)
                 
                 self._consumer.commit(message=msg, asynchronous=False)
 
             except Exception as e:
                 logger.error(f"Unhandled exception in consumer loop for topic {self.topic}: {e}", exc_info=True)
-                await self._send_to_dlq(msg, e)
+                # This outer block can safely call an async function.
+                await self._send_to_dlq_async(msg, e)
             finally:
                 if token:
                     correlation_id_var.reset(token)

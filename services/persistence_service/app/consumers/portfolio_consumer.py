@@ -16,7 +16,7 @@ class PortfolioConsumer(BaseConsumer):
     """
     A concrete consumer for validating and persisting portfolio events.
     """
-    def process_message(self, msg: Message):
+    def process_message(self, msg: Message, loop: asyncio.AbstractEventLoop):
         """
         Processes a single portfolio message from Kafka.
         """
@@ -37,7 +37,7 @@ class PortfolioConsumer(BaseConsumer):
 
         except (json.JSONDecodeError, ValidationError) as e:
             logger.error("Message validation failed. Sending to DLQ.", extra={"key": key}, exc_info=True)
-            asyncio.run(self._send_to_dlq(msg, e))
+            self._send_to_dlq_sync(msg, e, loop)
         except Exception as e:
             logger.error(f"Unexpected error processing message for portfolio {getattr(event, 'portfolio_id', 'UNKNOWN')}. Sending to DLQ.", extra={"key": key}, exc_info=True)
-            asyncio.run(self._send_to_dlq(msg, e))
+            self._send_to_dlq_sync(msg, e, loop)
