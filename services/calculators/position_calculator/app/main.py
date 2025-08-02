@@ -1,3 +1,5 @@
+
+# services/calculators/position_calculator/app/main.py
 import logging
 import asyncio
 from app.consumer_manager import ConsumerManager
