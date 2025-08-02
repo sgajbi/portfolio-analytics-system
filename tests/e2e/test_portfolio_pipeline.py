@@ -2,8 +2,10 @@ import pytest
 import requests
 import time
 from decimal import Decimal
+from sqlalchemy.orm import Session
+from sqlalchemy import text
 
-def test_portfolio_ingestion_pipeline(docker_services, db_connection, clean_db):
+def test_portfolio_ingestion_pipeline(docker_services, db_engine, clean_db):
     """
     Tests the full pipeline for portfolio ingestion.
     It ingests a new portfolio and verifies that the record is created
@@ -33,15 +35,12 @@ def test_portfolio_ingestion_pipeline(docker_services, db_connection, clean_db):
     assert response.status_code == 202
 
     # 4. Poll the portfolios table to verify the result
-    with db_connection.cursor() as cursor:
+    with Session(db_engine) as session:
         start_time = time.time()
         timeout = 30 # seconds
         while time.time() - start_time < timeout:
-            cursor.execute(
-                "SELECT portfolio_id, base_currency, status FROM portfolios WHERE portfolio_id = %s",
-                (portfolio_id,)
-            )
-            result = cursor.fetchone()
+            query = text("SELECT portfolio_id, base_currency, status FROM portfolios WHERE portfolio_id = :portfolio_id")
+            result = session.execute(query, {"portfolio_id": portfolio_id}).fetchone()
             if result:
                 break
             time.sleep(1)

@@ -4,8 +4,10 @@ import time
 import psycopg2
 from testcontainers.compose import DockerCompose
 from decimal import Decimal
+from sqlalchemy.orm import Session
+from sqlalchemy import text
 
-def test_full_pipeline(docker_services: DockerCompose, db_connection, clean_db):
+def test_full_pipeline(docker_services: DockerCompose, db_engine, clean_db):
     """
     Tests the full pipeline from ingestion to cost calculation and
     verifies the final API response from the query service.
@@ -22,13 +24,13 @@ def test_full_pipeline(docker_services: DockerCompose, db_connection, clean_db):
     portfolio_id = "E2E_TEST_PORT_01"
     buy_payload = { "transactions": [{
         "transaction_id": "E2E_BUY_01", "portfolio_id": portfolio_id, "instrument_id": "APPL", 
-        "security_id": "SEC_APPL", "transaction_date": "2025-01-10", "transaction_type": "BUY", 
+        "security_id": "SEC_APPL", "transaction_date": "2025-01-10T00:00:00Z", "transaction_type": "BUY", 
         "quantity": 10, "price": 150.0, "gross_transaction_amount": 1500.0, 
         "trade_currency": "USD", "currency": "USD"
     }]}
     sell_payload = { "transactions": [{
         "transaction_id": "E2E_SELL_01", "portfolio_id": portfolio_id, "instrument_id": "APPL", 
-        "security_id": "SEC_APPL", "transaction_date": "2025-01-20", "transaction_type": "SELL", 
+        "security_id": "SEC_APPL", "transaction_date": "2025-01-20T00:00:00Z", "transaction_type": "SELL", 
         "quantity": 10, "price": 175.0, "gross_transaction_amount": 1750.0, 
         "trade_currency": "USD", "currency": "USD"
     }]}
@@ -41,16 +43,12 @@ def test_full_pipeline(docker_services: DockerCompose, db_connection, clean_db):
     assert sell_response.status_code == 202
 
     # 4. Poll the database to verify the processing is complete
-    with db_connection.cursor() as cursor:
+    with Session(db_engine) as session:
         start_time = time.time()
-        # --- FIX: Increase timeout for slower test environments ---
         timeout = 60
         while time.time() - start_time < timeout:
-            cursor.execute(
-                "SELECT t.transaction_id FROM transactions t JOIN cashflows c ON t.transaction_id = c.transaction_id WHERE t.portfolio_id = %s",
-                (portfolio_id,)
-            )
-            results = cursor.fetchall()
+            query = text("SELECT t.transaction_id FROM transactions t JOIN cashflows c ON t.transaction_id = c.transaction_id WHERE t.portfolio_id = :portfolio_id")
+            results = session.execute(query, {"portfolio_id": portfolio_id}).fetchall()
             # Wait until both transactions have been processed by all calculators
             if len(results) == 2:
                 break

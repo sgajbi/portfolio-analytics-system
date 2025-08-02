@@ -2,24 +2,23 @@ import pytest
 import requests
 import time
 from decimal import Decimal
+from sqlalchemy.orm import Session
+from sqlalchemy import text
 
-def wait_for_portfolio_timeseries(db_connection, portfolio_id, expected_date, timeout=120):
+def wait_for_portfolio_timeseries(db_engine, portfolio_id, expected_date, timeout=120):
     """Helper function to poll the database until a portfolio time series record for a specific date is found."""
     start_time = time.time()
     while time.time() - start_time < timeout:
-        with db_connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT date FROM portfolio_timeseries WHERE portfolio_id = %s AND date = %s",
-                (portfolio_id, expected_date)
-            )
-            result = cursor.fetchone()
+        with Session(db_engine) as session:
+            query = text("SELECT date FROM portfolio_timeseries WHERE portfolio_id = :portfolio_id AND date = :expected_date")
+            result = session.execute(query, {"portfolio_id": portfolio_id, "expected_date": expected_date}).fetchone()
             if result:
                 return
         time.sleep(2)
     pytest.fail(f"Portfolio time series for {portfolio_id} on {expected_date} not found within {timeout} seconds.")
 
 @pytest.fixture(scope="module")
-def setup_timeseries_data(docker_services, db_connection):
+def setup_timeseries_data(docker_services, db_engine):
     """A module-scoped fixture to ingest all necessary data for the time series tests."""
     ingestion_host = docker_services.get_service_host("ingestion-service", 8000)
     ingestion_port = docker_services.get_service_port("ingestion-service", 8000)
@@ -46,25 +45,24 @@ def setup_timeseries_data(docker_services, db_connection):
     post_data("/ingest/transactions", {"transactions": [{"transaction_id": "TS_FEE_01", "portfolio_id": "E2E_TS_PORT", "instrument_id": "CASH", "security_id": "CASH", "transaction_date": "2025-07-29T00:00:00Z", "transaction_type": "FEE", "quantity": 1, "price": 25, "gross_transaction_amount": 25, "trade_currency": "USD", "currency": "USD"}]})
     post_data("/ingest/market-prices", {"market_prices": [{"securityId": "SEC_EUR_STOCK", "priceDate": "2025-07-29", "price": 55, "currency": "EUR"}]})
 
+    
     # Give services a moment to process before polling
     time.sleep(10)
 
     # Wait for the final day's processing to complete
-    wait_for_portfolio_timeseries(db_connection, "E2E_TS_PORT", "2025-07-29")
+    wait_for_portfolio_timeseries(db_engine, "E2E_TS_PORT", "2025-07-29")
     
     return {
         "query_host": docker_services.get_service_host("query-service", 8001),
-        "query_port": docker_services.get_service_port("query-service", 8001)
+        "query_port": docker_services.get_service_port("query-service", 8001),
+        "db_engine": db_engine
     }
 
-def test_timeseries_day_1(setup_timeseries_data, db_connection):
+def test_timeseries_day_1(setup_timeseries_data):
     """Verify the portfolio time series record for the first day."""
-    with db_connection.cursor() as cursor:
-        cursor.execute(
-            "SELECT bod_market_value, bod_cashflow, eod_cashflow, eod_market_value, fees FROM portfolio_timeseries WHERE portfolio_id = %s AND date = %s",
-            ("E2E_TS_PORT", "2025-07-28")
-        )
-        result = cursor.fetchone()
+    with Session(setup_timeseries_data["db_engine"]) as session:
+        query = text("SELECT bod_market_value, bod_cashflow, eod_cashflow, eod_market_value, fees FROM portfolio_timeseries WHERE portfolio_id = :portfolio_id AND date = :date")
+        result = session.execute(query, {"portfolio_id": "E2E_TS_PORT", "date": "2025-07-28"}).fetchone()
 
     bod_mv, bod_cf, eod_cf, eod_mv, fees = result
     
@@ -74,14 +72,11 @@ def test_timeseries_day_1(setup_timeseries_data, db_connection):
     assert eod_mv == Decimal("5720.0000000000")
     assert fees == Decimal("0.0000000000")
 
-def test_timeseries_day_2(setup_timeseries_data, db_connection):
+def test_timeseries_day_2(setup_timeseries_data):
     """Verify the portfolio time series record for the second day."""
-    with db_connection.cursor() as cursor:
-        cursor.execute(
-            "SELECT bod_market_value, bod_cashflow, eod_cashflow, eod_market_value, fees FROM portfolio_timeseries WHERE portfolio_id = %s AND date = %s",
-            ("E2E_TS_PORT", "2025-07-29")
-        )
-        result = cursor.fetchone()
+    with Session(setup_timeseries_data["db_engine"]) as session:
+        query = text("SELECT bod_market_value, bod_cashflow, eod_cashflow, eod_market_value, fees FROM portfolio_timeseries WHERE portfolio_id = :portfolio_id AND date = :date")
+        result = session.execute(query, {"portfolio_id": "E2E_TS_PORT", "date": "2025-07-29"}).fetchone()
 
     bod_mv, bod_cf, eod_cf, eod_mv, fees = result
 

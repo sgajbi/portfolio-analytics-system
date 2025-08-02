@@ -1,21 +1,23 @@
 import pytest
 import requests
 import time
+from sqlalchemy.orm import Session
+from sqlalchemy import text
 
-def wait_for_portfolios_in_db(db_connection, expected_count, timeout=30):
+def wait_for_portfolios_in_db(db_engine, expected_count, timeout=30):
     """Helper function to poll the database until a certain number of portfolios are found."""
     start_time = time.time()
     while time.time() - start_time < timeout:
-        with db_connection.cursor() as cursor:
-            cursor.execute("SELECT COUNT(*) FROM portfolios")
-            count = cursor.fetchone()[0]
+        with Session(db_engine) as session:
+            query = text("SELECT COUNT(*) FROM portfolios")
+            count = session.execute(query).scalar_one()
             if count >= expected_count:
                 return
         time.sleep(1)
     pytest.fail(f"Expected {expected_count} portfolios in the database, but found {count} after {timeout} seconds.")
 
 @pytest.fixture(scope="module")
-def setup_portfolio_data(docker_services, db_connection):
+def setup_portfolio_data(docker_services, db_engine):
     """A module-scoped fixture to ingest portfolio data once for all tests in this file."""
     host = docker_services.get_service_host("ingestion-service", 8000)
     port = docker_services.get_service_port("ingestion-service", 8000)
@@ -43,7 +45,7 @@ def setup_portfolio_data(docker_services, db_connection):
     assert response.status_code == 202
 
     # Wait for the data to be persisted before running tests
-    wait_for_portfolios_in_db(db_connection, 3)
+    wait_for_portfolios_in_db(db_engine, 3)
 
     return {
         "query_host": docker_services.get_service_host("query-service", 8001),
