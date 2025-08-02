@@ -9,12 +9,16 @@ from portfolio_common.config import (
     KAFKA_PERSISTENCE_DLQ_TOPIC
 )
 from .consumers.transaction_consumer import CashflowCalculatorConsumer
+# NEW IMPORTS
+from portfolio_common.kafka_utils import get_kafka_producer
+from portfolio_common.outbox_dispatcher import OutboxDispatcher
 
 logger = logging.getLogger(__name__)
 
 class ConsumerManager:
     """
-    Manages the lifecycle of Kafka consumers for the cashflow calculator.
+    Manages the lifecycle of Kafka consumers and the outbox dispatcher
+    for the cashflow calculator.
     """
     def __init__(self):
         self.consumers = []
@@ -30,6 +34,11 @@ class ConsumerManager:
                 service_prefix="CFLOW"
             )
         )
+
+        # NEW: Instantiate the dispatcher
+        kafka_producer = get_kafka_producer()
+        self.dispatcher = OutboxDispatcher(kafka_producer=kafka_producer)
+
         logger.info(f"ConsumerManager initialized with {len(self.consumers)} consumer(s).")
 
     def _signal_handler(self, signum, frame):
@@ -40,15 +49,20 @@ class ConsumerManager:
         signal.signal(signal.SIGINT, self._signal_handler)
         signal.signal(signal.SIGTERM, self._signal_handler)
 
-        logger.info("Starting all consumer tasks...")
+        logger.info("Starting all consumer tasks and the outbox dispatcher...")
         self.tasks = [asyncio.create_task(c.run()) for c in self.consumers]
+        # NEW: Start the outbox dispatcher as a background task
+        self.tasks.append(asyncio.create_task(self.dispatcher.run()))
 
         logger.info("ConsumerManager is running. Press Ctrl+C to exit.")
         await self._shutdown_event.wait()
 
-        logger.info("Shutdown event received. Stopping all consumers...")
+        logger.info("Shutdown event received. Stopping all consumers and the dispatcher...")
         for consumer in self.consumers:
             consumer.shutdown()
+        
+        # NEW: Stop the dispatcher
+        self.dispatcher.stop()
 
         await asyncio.gather(*self.tasks, return_exceptions=True)
-        logger.info("All consumer tasks have been successfully shut down.")
+        logger.info("All consumer and dispatcher tasks have been successfully shut down.")
