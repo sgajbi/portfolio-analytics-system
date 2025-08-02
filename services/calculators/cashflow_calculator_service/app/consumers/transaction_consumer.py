@@ -13,6 +13,7 @@ from portfolio_common.events import TransactionEvent, CashflowCalculatedEvent
 from portfolio_common.db import get_db_session
 from portfolio_common.config import KAFKA_CASHFLOW_CALCULATED_TOPIC
 from portfolio_common.idempotency_repository import IdempotencyRepository
+from portfolio_common.outbox_repository import OutboxRepository
 
 from ..core.cashflow_config import get_rule_for_transaction
 from ..core.cashflow_logic import CashflowLogic
@@ -25,8 +26,7 @@ SERVICE_NAME = "cashflow-calculator"
 class CashflowCalculatorConsumer(BaseConsumer):
     """
     Consumes raw transaction completion events, calculates the corresponding
-    cashflow, persists it, and publishes a completion event.
-    This process is idempotent and retries on transient DB errors.
+    cashflow, persists it, and writes a completion event to the outbox.
     """
     def process_message(self, msg: Message, loop: asyncio.AbstractEventLoop):
         """Wrapper to call the retryable logic."""
@@ -42,7 +42,6 @@ class CashflowCalculatorConsumer(BaseConsumer):
         value = msg.value().decode('utf-8')
         event_id = f"{msg.topic()}-{msg.partition()}-{msg.offset()}"
         correlation_id = correlation_id_var.get()
-        saved_cashflow = None
         event = None
 
         try:
@@ -52,39 +51,38 @@ class CashflowCalculatorConsumer(BaseConsumer):
             with next(get_db_session()) as db:
                 idempotency_repo = IdempotencyRepository(db)
                 cashflow_repo = CashflowRepository(db)
+                outbox_repo = OutboxRepository() # Instantiate the outbox repo
 
                 with db.begin():
                     if idempotency_repo.is_event_processed(event_id, SERVICE_NAME):
-                        logger.warning(
-                            f"Event {event_id} has already been processed by {SERVICE_NAME}. Skipping.",
-                            extra={"event_id": event_id, "service_name": SERVICE_NAME}
-                        )
+                        logger.warning(f"Event {event_id} already processed. Skipping.")
                         return
 
                     rule = get_rule_for_transaction(event.transaction_type)
                     if not rule:
-                        logger.info(
-                            f"No cashflow rule for type '{event.transaction_type}'. Skipping.",
-                            extra={"transaction_id": event.transaction_id}
-                        )
                         idempotency_repo.mark_event_processed(event_id, event.portfolio_id, SERVICE_NAME, correlation_id)
                         return
 
                     cashflow_to_save = CashflowLogic.calculate(event, rule)
                     saved_cashflow = cashflow_repo.create_cashflow(cashflow_to_save)
+                    
+                    # Create the Pydantic event model from the saved object
+                    completion_event = CashflowCalculatedEvent.model_validate(saved_cashflow)
+                    
+                    # Write the completion event to the outbox
+                    outbox_repo.create_outbox_event(
+                        db_session=db,
+                        aggregate_type='Cashflow',
+                        aggregate_id=saved_cashflow.transaction_id,
+                        event_type='CashflowCalculated',
+                        topic=KAFKA_CASHFLOW_CALCULATED_TOPIC,
+                        payload=completion_event.model_dump(mode='json', by_alias=True),
+                        correlation_id=correlation_id
+                    )
+
                     idempotency_repo.mark_event_processed(event_id, event.portfolio_id, SERVICE_NAME, correlation_id)
 
-            if saved_cashflow and self._producer:
-                completion_event = CashflowCalculatedEvent.model_validate(saved_cashflow)
-                headers = [('correlation_id', correlation_id.encode('utf-8'))] if correlation_id else None
-                
-                self._producer.publish_message(
-                    topic=KAFKA_CASHFLOW_CALCULATED_TOPIC,
-                    key=completion_event.transaction_id,
-                    value=completion_event.model_dump(mode='json', by_alias=True),
-                    headers=headers
-                )
-                self._producer.flush(timeout=5)
+            # The direct Kafka publishing block has been removed.
 
         except (json.JSONDecodeError, ValidationError) as e:
             logger.error(f"Message validation failed for key '{key}': {e}. Sending to DLQ.", exc_info=True)
