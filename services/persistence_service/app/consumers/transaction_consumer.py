@@ -3,14 +3,15 @@ import logging
 import json
 from pydantic import ValidationError
 from confluent_kafka import Message
+from sqlalchemy.exc import IntegrityError
+from tenacity import retry, stop_after_attempt, wait_fixed, before_log
 
 from portfolio_common.kafka_consumer import BaseConsumer
 from portfolio_common.logging_utils import correlation_id_var
 from portfolio_common.events import TransactionEvent
 from portfolio_common.db import get_db_session
-from portfolio_common.config import KAFKA_RAW_TRANSACTIONS_COMPLETED_TOPIC
+from portfolio_common.config import KAFA_RAW_TRANSACTIONS_COMPLETED_TOPIC
 from ..repositories.transaction_db_repo import TransactionDBRepository
-# NEW: Import the OutboxRepository
 from portfolio_common.outbox_repository import OutboxRepository
 
 
@@ -21,7 +22,14 @@ class TransactionPersistenceConsumer(BaseConsumer):
     A concrete consumer for validating and persisting raw transaction events.
     - On success, it writes a completion event to the outbox table.
     - On validation failure, it publishes the message to a DLQ.
+    - It retries on database integrity errors to handle race conditions.
     """
+    @retry(
+        wait=wait_fixed(2),
+        stop=stop_after_attempt(3),
+        before=before_log(logger, logging.INFO),
+        retry_error_callback=lambda retry_state: retry_state.outcome.exception(),
+    )
     async def process_message(self, msg: Message):
         """
         Processes a single raw transaction message from Kafka.
@@ -52,7 +60,7 @@ class TransactionPersistenceConsumer(BaseConsumer):
                         aggregate_type='Transaction',
                         aggregate_id=event.transaction_id,
                         event_type='TransactionPersisted',
-                        topic=KAFKA_RAW_TRANSACTIONS_COMPLETED_TOPIC,
+                        topic=KAFA_RAW_TRANSACTIONS_COMPLETED_TOPIC,
                         payload=event.model_dump(mode='json'),
                         correlation_id=correlation_id
                     )
@@ -61,8 +69,19 @@ class TransactionPersistenceConsumer(BaseConsumer):
                 "Successfully persisted transaction and staged outbox event.",
                 extra={"transaction_id": event.transaction_id}
             )
-            
 
         except (json.JSONDecodeError, ValidationError) as e:
             logger.error("Message validation failed. Sending to DLQ.", extra={"key": key}, exc_info=True)
             await self._send_to_dlq(msg, e)
+        except IntegrityError as e:
+            logger.warning(
+                "Caught IntegrityError, likely a race condition. Will retry...",
+                extra={"transaction_id": event.transaction_id},
+                exc_info=True
+            )
+            # Re-raise the exception to trigger the tenacity retry
+            raise
+        except Exception as e:
+            logger.error(f"An unexpected error occurred for transaction {event.transaction_id}. Sending to DLQ.", exc_info=True)
+            await self._send_to_dlq(msg, e)
+            raise
