@@ -16,6 +16,8 @@ from .consumers.instrument_consumer import InstrumentConsumer
 from .consumers.market_price_consumer import MarketPriceConsumer
 from .consumers.fx_rate_consumer import FxRateConsumer
 from .consumers.portfolio_consumer import PortfolioConsumer
+from portfolio_common.kafka_utils import get_kafka_producer
+from portfolio_common.outbox_dispatcher import OutboxDispatcher
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +80,10 @@ class ConsumerManager:
             )
         )
 
+        # NEW: Instantiate the dispatcher
+        kafka_producer = get_kafka_producer()
+        self.dispatcher = OutboxDispatcher(kafka_producer=kafka_producer)
+
         logger.info("ConsumerManager initialized", extra={"num_consumers": len(self.consumers)})
 
     def _signal_handler(self, signum, frame):
@@ -88,21 +94,27 @@ class ConsumerManager:
     async def run(self):
         """
         The main execution function.
-        Sets up signal handling and runs consumer tasks.
+        Sets up signal handling and runs consumer and dispatcher tasks.
         """
         signal.signal(signal.SIGINT, self._signal_handler)
         signal.signal(signal.SIGTERM, self._signal_handler)
 
-        logger.info("Starting all consumer tasks...")
+        logger.info("Starting all consumer tasks and the outbox dispatcher...")
+        # Start all message consumers
         self.tasks = [asyncio.create_task(c.run()) for c in self.consumers]
+        # NEW: Start the outbox dispatcher as a background task
+        self.tasks.append(asyncio.create_task(self.dispatcher.run()))
         
         logger.info("ConsumerManager is running. Press Ctrl+C to exit.")
         await self._shutdown_event.wait()
         
-        logger.info("Shutdown event received. Stopping all consumers...")
+        logger.info("Shutdown event received. Stopping all consumers and the dispatcher...")
         for consumer in self.consumers:
             consumer.shutdown() # Tell each consumer to stop its loop
         
+        # NEW: Stop the dispatcher
+        self.dispatcher.stop()
+
         # Wait for all tasks to complete
         await asyncio.gather(*self.tasks, return_exceptions=True)
-        logger.info("All consumer tasks have been successfully shut down.")
+        logger.info("All consumer and dispatcher tasks have been successfully shut down.")
