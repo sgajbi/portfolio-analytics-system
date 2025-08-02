@@ -1,5 +1,6 @@
 # libs/portfolio-common/portfolio_common/outbox_repository.py
 import logging
+import json
 from sqlalchemy.orm import Session
 from typing import Dict, Any, Optional
 
@@ -33,19 +34,22 @@ class OutboxRepository:
             aggregate_id: The unique identifier of the entity instance.
             event_type: The specific type of the event (e.g., 'TransactionPersisted').
             topic: The Kafka topic to which this event should be published.
-            payload: The JSON-serializable event payload.
+            payload: The dictionary event payload.
             correlation_id: The optional correlation ID for tracing.
 
         Returns:
             The created OutboxEvent instance.
         """
         try:
+            # Explicitly serialize the payload to a JSON string before storing
+            payload_str = json.dumps(payload, default=str)
+
             outbox_event = OutboxEvent(
                 aggregate_type=aggregate_type,
                 aggregate_id=aggregate_id,
                 event_type=event_type,
                 topic=topic,
-                payload=payload,
+                payload=payload_str,
                 status='PENDING',
                 correlation_id=correlation_id,
             )

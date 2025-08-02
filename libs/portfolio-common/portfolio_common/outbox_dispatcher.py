@@ -38,6 +38,7 @@ class OutboxDispatcher:
         Uses 'SELECT FOR UPDATE SKIP LOCKED' to prevent race conditions if multiple
         dispatcher instances are running.
         """
+        events_to_process = []
         try:
             with self._session_factory() as db:
                 with db.begin():
@@ -52,46 +53,59 @@ class OutboxDispatcher:
                     )
 
                     if not events_to_process:
-                        return
+                        return # Nothing to do
 
-                    logger.info(f"Found {len(events_to_process)} pending events to dispatch.")
-                    
-                    processed_ids = []
-                    failed_events = {}
-
+                    # Detach events from the session so we can update them later
+                    # in a new session if needed, without transaction conflicts.
                     for event in events_to_process:
-                        try:
-                            headers = []
-                            if event.correlation_id:
-                                headers.append(('correlation_id', event.correlation_id.encode('utf-8')))
-                            
-                            # The payload is already a JSON string from the repository
-                            payload_dict = json.loads(event.payload) if isinstance(event.payload, str) else event.payload
+                        db.expunge(event)
+        except Exception as e:
+            logger.error("OutboxDispatcher: Failed to fetch batch from database.", exc_info=True)
+            return # Abort this cycle
 
-                            self._producer.publish_message(
-                                topic=event.topic,
-                                key=event.aggregate_id,
-                                value=payload_dict,
-                                headers=headers
-                            )
-                            processed_ids.append(event.id)
-                        except Exception as e:
-                            logger.error(f"Failed to publish event {event.id} to Kafka.", exc_info=True)
-                            failed_events[event.id] = e
+        logger.info(f"OutboxDispatcher: Found {len(events_to_process)} pending events to dispatch.")
+        
+        processed_ids = []
+        
+        for event in events_to_process:
+            try:
+                headers = []
+                if event.correlation_id:
+                    headers.append(('correlation_id', event.correlation_id.encode('utf-8')))
+                
+                # The payload is now guaranteed to be a JSON string, so we load it.
+                payload_dict = json.loads(event.payload)
 
-                    # Flush all messages to Kafka before updating the database
-                    self._producer.flush(timeout=10)
+                self._producer.publish_message(
+                    topic=event.topic,
+                    key=event.aggregate_id,
+                    value=payload_dict,
+                    headers=headers
+                )
+                processed_ids.append(event.id)
+            except Exception:
+                logger.error(f"OutboxDispatcher: Failed to publish event {event.id} to Kafka.", exc_info=True)
+                # In a real scenario, we would add retry/failure logic here.
+                # For now, we will leave it to be picked up in the next poll.
+        
+        # Flush all messages to Kafka before updating the database
+        if processed_ids:
+            try:
+                self._producer.flush(timeout=10)
+                logger.info(f"OutboxDispatcher: Successfully flushed {len(processed_ids)} events to Kafka.")
 
-                    # Update status for successfully processed events
-                    if processed_ids:
+                # Update status for successfully processed events
+                with self._session_factory() as db:
+                    with db.begin():
                         db.execute(
                             update(OutboxEvent)
                             .where(OutboxEvent.id.in_(processed_ids))
                             .values(status='PROCESSED', processed_at=datetime.now(timezone.utc))
                         )
-                        logger.info(f"Marked {len(processed_ids)} events as PROCESSED.")
-        except Exception as e:
-            logger.error("An error occurred during the outbox batch processing.", exc_info=True)
+                        logger.info(f"OutboxDispatcher: Marked {len(processed_ids)} events as PROCESSED in DB.")
+            except Exception:
+                logger.error(f"OutboxDispatcher: CRITICAL - Flushed messages to Kafka but failed to update database status for IDs {processed_ids}.", exc_info=True)
+
 
     async def run(self):
         """The main loop for the dispatcher task."""
