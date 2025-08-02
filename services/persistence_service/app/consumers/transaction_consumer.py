@@ -1,4 +1,4 @@
-# services/persistence-service/app/consumers/transaction_consumer.py
+# services/persistence_service/app/consumers/transaction_consumer.py
 import logging
 import json
 from pydantic import ValidationError
@@ -10,7 +10,6 @@ from portfolio_common.kafka_consumer import BaseConsumer
 from portfolio_common.logging_utils import correlation_id_var
 from portfolio_common.events import TransactionEvent
 from portfolio_common.db import get_db_session
-# CORRECTED IMPORT
 from portfolio_common.config import KAFKA_RAW_TRANSACTIONS_COMPLETED_TOPIC
 from ..repositories.transaction_db_repo import TransactionDBRepository
 from portfolio_common.outbox_repository import OutboxRepository
@@ -31,7 +30,7 @@ class TransactionPersistenceConsumer(BaseConsumer):
         before=before_log(logger, logging.INFO),
         retry_error_callback=lambda retry_state: retry_state.outcome.exception(),
     )
-    async def process_message(self, msg: Message):
+    def process_message(self, msg: Message):
         """
         Processes a single raw transaction message from Kafka.
         """
@@ -72,17 +71,17 @@ class TransactionPersistenceConsumer(BaseConsumer):
             )
 
         except (json.JSONDecodeError, ValidationError) as e:
-            logger.error("Message validation failed. Sending to DLQ.", extra={"key": key}, exc_info=True)
-            await self._send_to_dlq(msg, e)
+            logger.error("Message validation failed. Cannot be retried.", extra={"key": key}, exc_info=True)
+            # This is a fatal error for this message, so we don't re-raise
+            asyncio.run(self._send_to_dlq(msg, e))
+
         except IntegrityError as e:
             logger.warning(
                 "Caught IntegrityError, likely a race condition. Will retry...",
-                extra={"transaction_id": event.transaction_id},
+                extra={"transaction_id": getattr(event, 'transaction_id', 'UNKNOWN')},
                 exc_info=True
             )
-            # Re-raise the exception to trigger the tenacity retry
             raise
         except Exception as e:
-            logger.error(f"An unexpected error occurred for transaction {getattr(event, 'transaction_id', 'UNKNOWN')}. Sending to DLQ.", exc_info=True)
-            await self._send_to_dlq(msg, e)
-            raise
+            logger.error(f"An unexpected error occurred for transaction {getattr(event, 'transaction_id', 'UNKNOWN')}. Cannot be retried.", exc_info=True)
+            asyncio.run(self._send_to_dlq(msg, e))

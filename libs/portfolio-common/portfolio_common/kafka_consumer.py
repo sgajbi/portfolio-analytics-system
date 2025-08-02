@@ -10,7 +10,7 @@ from confluent_kafka import Consumer, KafkaException, Message
 
 from .kafka_utils import get_kafka_producer
 from tenacity import retry, stop_after_attempt, wait_fixed, before_log
-from .logging_utils import correlation_id_var, generate_correlation_id # NEW IMPORTS
+from .logging_utils import correlation_id_var, generate_correlation_id
 
 logger = logging.getLogger(__name__)
 
@@ -26,11 +26,11 @@ class BaseConsumer(ABC):
         topic: str,
         group_id: str,
         dlq_topic: Optional[str] = None,
-        service_prefix: str = "SVC" # NEW: Add a service prefix for generating IDs
+        service_prefix: str = "SVC"
     ):
         self.topic = topic
         self.dlq_topic = dlq_topic
-        self.service_prefix = service_prefix # NEW: Store the prefix
+        self.service_prefix = service_prefix
         self._consumer = None
         self._producer = None
         self._consumer_config = {
@@ -63,7 +63,6 @@ class BaseConsumer(ABC):
             return
 
         try:
-            # Include correlation ID in DLQ payload for better debugging
             correlation_id = correlation_id_var.get()
             
             dlq_payload = {
@@ -77,7 +76,7 @@ class BaseConsumer(ABC):
             }
             
             dlq_headers = msg.headers() or []
-            dlq_headers.append(('X-Original-Topic', msg.topic().encode('utf-8')))
+            dlq_headers.append(('correlation_id', (correlation_id or "").encode('utf-8')))
 
             self._producer.publish_message(
                 topic=self.dlq_topic,
@@ -91,17 +90,17 @@ class BaseConsumer(ABC):
             logger.error(f"FATAL: Could not send message to DLQ. Error: {e}", exc_info=True)
 
     @abstractmethod
-    async def process_message(self, msg: Message):
+    def process_message(self, msg: Message):
         """
-        Abstract method to be implemented by subclasses.
-        This contains the business logic for processing a single Kafka message.
+        Abstract method to be implemented by subclasses. This method contains
+        synchronous, blocking business logic for processing a single message.
         """
         pass
 
     async def run(self):
         """
-        The main consumer loop.
-        Polls for messages, processes them, and commits offsets.
+        The main consumer loop. Polls for messages, processes them in a thread
+        pool executor to avoid blocking the event loop, and commits offsets.
         """
         self._initialize_consumer()
         loop = asyncio.get_running_loop()
@@ -121,12 +120,10 @@ class BaseConsumer(ABC):
                     logger.warning(f"Non-fatal consumer error on topic {self.topic}: {msg.error()}.")
                     continue
             
-            # --- Correlation ID Handling ---
             token = None
             try:
                 corr_id = None
                 if msg.headers():
-                    # Kafka headers are a list of (key, value) tuples
                     for key, value in msg.headers():
                         if key == 'correlation_id':
                             corr_id = value.decode('utf-8') if value else None
@@ -137,13 +134,13 @@ class BaseConsumer(ABC):
                     logger.warning(f"No correlation ID in message from topic '{msg.topic()}'. Generated new ID: {corr_id}")
 
                 token = correlation_id_var.set(corr_id)
-                # --- End Correlation ID Handling ---
                 
-                await self.process_message(msg)
+                # *** THE FIX: Run the blocking process_message in an executor ***
+                await loop.run_in_executor(None, self.process_message, msg)
+                
                 self._consumer.commit(message=msg, asynchronous=False)
 
             except Exception as e:
-                # This is a safety net. The _send_to_dlq should be called inside process_message
                 logger.error(f"Unhandled exception in consumer loop for topic {self.topic}: {e}", exc_info=True)
                 await self._send_to_dlq(msg, e)
             finally:
