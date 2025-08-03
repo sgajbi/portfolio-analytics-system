@@ -3,7 +3,7 @@ import pytest
 import asyncio
 import json
 import uuid
-from unittest.mock import MagicMock, SideEffect
+from unittest.mock import MagicMock
 from sqlalchemy.orm import Session
 from sqlalchemy import text, create_engine
 
