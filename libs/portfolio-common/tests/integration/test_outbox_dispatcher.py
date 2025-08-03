@@ -3,7 +3,7 @@ import pytest
 import asyncio
 import json
 import uuid
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, SideEffect
 from sqlalchemy.orm import Session
 from sqlalchemy import text, create_engine
 
@@ -73,3 +73,58 @@ async def test_dispatcher_processes_and_updates_pending_events(
         query = text("SELECT status FROM outbox_events WHERE aggregate_id = :agg_id")
         result = session.execute(query, {"agg_id": aggregate_id}).scalar_one()
         assert result == "PROCESSED"
+
+async def test_dispatcher_handles_kafka_publish_failure(
+    db_engine, clean_db, mock_kafka_producer
+):
+    """
+    GIVEN a pending event in the outbox
+    WHEN the dispatcher runs but Kafka publishing fails
+    THEN the event status should remain PENDING, and it should be processed on the next successful run.
+    """
+    # ARRANGE
+    aggregate_id = f"agg-id-{uuid.uuid4()}"
+    event_payload = {"message": "transient failure test"}
+    
+    # Configure the mock producer to fail once, then succeed
+    mock_kafka_producer.flush.side_effect = [Exception("Kafka is down!"), None]
+    
+    with Session(db_engine) as session:
+        with session.begin():
+            session.add(OutboxEvent(
+                aggregate_type="TestResilience",
+                aggregate_id=aggregate_id,
+                event_type="TestEvent",
+                payload=json.dumps(event_payload),
+                topic="resilience.topic",
+                status="PENDING"
+            ))
+
+    dispatcher = OutboxDispatcher(kafka_producer=mock_kafka_producer, poll_interval=1)
+
+    # ACT 1: First run fails
+    dispatcher_task_fail = asyncio.create_task(dispatcher.run())
+    await asyncio.sleep(2) # Allow time for the first poll
+    
+    # ASSERT 1: The event is still pending
+    with Session(db_engine) as session:
+        query = text("SELECT status FROM outbox_events WHERE aggregate_id = :agg_id")
+        status_after_fail = session.execute(query, {"agg_id": aggregate_id}).scalar_one()
+        assert status_after_fail == "PENDING"
+        # The publish was attempted, but the flush failed
+        mock_kafka_producer.publish_message.assert_called_once()
+        mock_kafka_producer.flush.assert_called_once()
+
+    # ACT 2: Second run succeeds
+    await asyncio.sleep(2) # Allow time for the second poll
+    dispatcher.stop()
+    await dispatcher_task_fail
+
+    # ASSERT 2: The event is now processed
+    with Session(db_engine) as session:
+        query = text("SELECT status FROM outbox_events WHERE aggregate_id = :agg_id")
+        status_after_success = session.execute(query, {"agg_id": aggregate_id}).scalar_one()
+        assert status_after_success == "PROCESSED"
+        # Publish was called again, and the second flush succeeded
+        assert mock_kafka_producer.publish_message.call_count == 2
+        assert mock_kafka_producer.flush.call_count == 2
