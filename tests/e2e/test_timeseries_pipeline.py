@@ -17,9 +17,9 @@ def wait_for_portfolio_timeseries(db_engine, portfolio_id, expected_date, timeou
         time.sleep(2)
     pytest.fail(f"Portfolio time series for {portfolio_id} on {expected_date} not found within {timeout} seconds.")
 
-@pytest.fixture(scope="module")
-def setup_timeseries_data(docker_services, db_engine):
-    """A module-scoped fixture to ingest all necessary data for the time series tests."""
+@pytest.fixture(scope="function")
+def setup_timeseries_data(docker_services, db_engine, clean_db):
+    """A function-scoped fixture to ingest all necessary data for the time series tests."""
     ingestion_host = docker_services.get_service_host("ingestion-service", 8000)
     ingestion_port = docker_services.get_service_port("ingestion-service", 8000)
 
@@ -64,11 +64,14 @@ def test_timeseries_day_1(setup_timeseries_data):
         query = text("SELECT bod_market_value, bod_cashflow, eod_cashflow, eod_market_value, fees FROM portfolio_timeseries WHERE portfolio_id = :portfolio_id AND date = :date")
         result = session.execute(query, {"portfolio_id": "E2E_TS_PORT", "date": "2025-07-28"}).fetchone()
 
+    assert result is not None, "Time series record for day 1 was not found."
     bod_mv, bod_cf, eod_cf, eod_mv, fees = result
     
     assert bod_mv == Decimal("0.0000000000")
     assert bod_cf == Decimal("0.0000000000")
+    # Corrected Expected: BUY of 5000 EUR @ 1.1 FX = -5500 USD
     assert eod_cf == Decimal("-5500.0000000000")
+    # Corrected Expected: 100 shares * 52 EUR/share * 1.1 FX = 5720 USD
     assert eod_mv == Decimal("5720.0000000000")
     assert fees == Decimal("0.0000000000")
 
@@ -78,10 +81,14 @@ def test_timeseries_day_2(setup_timeseries_data):
         query = text("SELECT bod_market_value, bod_cashflow, eod_cashflow, eod_market_value, fees FROM portfolio_timeseries WHERE portfolio_id = :portfolio_id AND date = :date")
         result = session.execute(query, {"portfolio_id": "E2E_TS_PORT", "date": "2025-07-29"}).fetchone()
 
+    assert result is not None, "Time series record for day 2 was not found."
     bod_mv, bod_cf, eod_cf, eod_mv, fees = result
 
+    # BOD MV from Day 1 EOD MV
     assert bod_mv == Decimal("5720.0000000000")
     assert bod_cf == Decimal("0.0000000000")
+    # EOD CF from FEE transaction
     assert eod_cf == Decimal("-25.0000000000")
+    # Corrected Expected: 100 shares * 55 EUR/share * 1.2 FX = 6600 USD
     assert eod_mv == Decimal("6600.0000000000")
     assert fees == Decimal("25.0000000000")

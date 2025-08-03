@@ -16,9 +16,9 @@ def wait_for_portfolios_in_db(db_engine, expected_count, timeout=30):
         time.sleep(1)
     pytest.fail(f"Expected {expected_count} portfolios in the database, but found {count} after {timeout} seconds.")
 
-@pytest.fixture(scope="module")
-def setup_portfolio_data(docker_services, db_engine):
-    """A module-scoped fixture to ingest portfolio data once for all tests in this file."""
+@pytest.fixture(scope="function")
+def setup_portfolio_data(docker_services, db_engine, clean_db):
+    """A function-scoped fixture to ingest portfolio data once for each test."""
     host = docker_services.get_service_host("ingestion-service", 8000)
     port = docker_services.get_service_port("ingestion-service", 8000)
     api_url = f"http://{host}:{port}/ingest/portfolios"
