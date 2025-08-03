@@ -15,12 +15,18 @@ pytestmark = pytest.mark.asyncio
 
 @pytest.fixture
 def mock_kafka_producer() -> MagicMock:
+    """Provides a mock of the KafkaProducer for testing."""
     mock = MagicMock(spec=KafkaProducer)
     mock.publish_message = MagicMock()
     mock.flush = MagicMock()
     return mock
 
 async def test_dispatcher_processes_and_updates_pending_events(db_engine, clean_db, mock_kafka_producer):
+    """
+    GIVEN a pending event in the outbox_events table
+    WHEN the OutboxDispatcher runs
+    THEN it should publish the event to Kafka and update its status to PROCESSED.
+    """
     correlation_id = f"corr-id-{uuid.uuid4()}"
     aggregate_id = f"agg-id-{uuid.uuid4()}"
     event_payload = {"message": "hello world"}
@@ -52,6 +58,11 @@ async def test_dispatcher_processes_and_updates_pending_events(db_engine, clean_
         assert result == "PROCESSED"
 
 async def test_dispatcher_handles_kafka_publish_failure(db_engine, clean_db, mock_kafka_producer):
+    """
+    GIVEN a pending event and a failing Kafka producer
+    WHEN the dispatcher runs
+    THEN it should retry multiple times and eventually succeed.
+    """
     aggregate_id = f"agg-id-{uuid.uuid4()}"
     event_payload = {"message": "transient failure test"}
 
@@ -66,34 +77,27 @@ async def test_dispatcher_handles_kafka_publish_failure(db_engine, clean_db, moc
                 status="PENDING"
             ))
 
-    # Phase 1: Simulate Kafka Failure
-    mock_kafka_producer.flush.side_effect = Exception("Kafka is down!")
-    dispatcher_fail = OutboxDispatcher(kafka_producer=mock_kafka_producer, poll_interval=1)
-    task_fail = asyncio.create_task(dispatcher_fail.run())
-    await asyncio.sleep(2)
-    dispatcher_fail.stop()
-    await task_fail
+    # Simulate Kafka being down for 2 attempts, then recovering
+    mock_kafka_producer.flush.side_effect = [
+        Exception("Kafka is down! Attempt 1"),
+        Exception("Kafka is down! Attempt 2"),
+        None # Success on the 3rd attempt
+    ]
+    
+    dispatcher = OutboxDispatcher(kafka_producer=mock_kafka_producer, poll_interval=10)
 
-    with Session(db_engine) as session:
-        status_after_fail = session.execute(
-            text("SELECT status FROM outbox_events WHERE aggregate_id = :agg_id"),
-            {"agg_id": aggregate_id}
-        ).scalar_one()
-        assert status_after_fail == "PENDING"
+    # ACT: Run the dispatcher. Tenacity will handle the retries internally.
+    task = asyncio.create_task(dispatcher.run())
+    # Wait long enough for the initial attempt + tenacity's exponential backoff retries
+    await asyncio.sleep(8) # <-- INCREASED WAIT TIME
+    dispatcher.stop()
+    await task
 
-    # Phase 2: Simulate Kafka Recovery
-    mock_kafka_producer.flush.side_effect = None
-    mock_kafka_producer.flush.return_value = None
-    mock_kafka_producer.publish_message.reset_mock()
-    mock_kafka_producer.flush.reset_mock()
+    # ASSERT
+    # 1. Verify flush was called 3 times (2 failures, 1 success)
+    assert mock_kafka_producer.flush.call_count == 3
 
-    dispatcher_recover = OutboxDispatcher(kafka_producer=mock_kafka_producer, poll_interval=1)
-    task_recover = asyncio.create_task(dispatcher_recover.run())
-    await asyncio.sleep(2)
-    dispatcher_recover.stop()
-    await task_recover
-
-    mock_kafka_producer.publish_message.assert_called_once()
+    # 2. Verify the event is now processed
     with Session(db_engine) as session:
         status_after_success = session.execute(
             text("SELECT status FROM outbox_events WHERE aggregate_id = :agg_id"),
@@ -102,6 +106,11 @@ async def test_dispatcher_handles_kafka_publish_failure(db_engine, clean_db, moc
         assert status_after_success == "PROCESSED"
 
 async def test_dispatcher_is_concurrent_safe(db_engine, clean_db, mock_kafka_producer):
+    """
+    GIVEN multiple pending events in the outbox
+    WHEN two dispatchers run concurrently
+    THEN each event should be processed exactly once.
+    """
     num_events = 10
     events = []
     for i in range(num_events):
@@ -166,10 +175,7 @@ async def test_dispatcher_respects_batch_size(db_engine, clean_db, mock_kafka_pr
     dispatcher._process_batch_sync()
 
     # ASSERT
-    # 1. Verify that only one batch was published
     assert mock_kafka_producer.publish_message.call_count == batch_size
-
-    # 2. Verify the correct number of events were processed in the DB
     with Session(db_engine) as session:
         processed_count = session.execute(
             text("SELECT count(*) FROM outbox_events WHERE status = 'PROCESSED'")
