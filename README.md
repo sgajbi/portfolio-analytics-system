@@ -148,12 +148,12 @@ The system relies on a well-defined sequence of events published to Kafka topics
     python -m venv .venv
     source .venv/Scripts/activate
     ```
-4.  **Install All Dependencies**: This command installs all shared libraries and services in "editable" mode for local development.
+4.  **Install All Dependencies**: This single command will install all core tools and then install all local libraries and services in "editable" mode.
     ```bash
-    pip install -e libs/financial-calculator-engine \
+    pip install -r tests/requirements.txt && pip install -e libs/financial-calculator-engine \
             -e libs/portfolio-common \
             -e services/ingestion-service \
-            -e services/persistence-service \
+            -e services/persistence_service \
             -e services/calculators/cost_calculator_service \
             -e services/calculators/cashflow_calculator_service \
             -e services/calculators/position_calculator \
