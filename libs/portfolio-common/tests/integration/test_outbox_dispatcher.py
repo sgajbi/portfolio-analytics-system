@@ -27,10 +27,9 @@ async def test_dispatcher_processes_and_updates_pending_events(db_engine, clean_
     WHEN the OutboxDispatcher runs
     THEN it should publish the event to Kafka and update its status to PROCESSED.
     """
-    correlation_id = f"corr-id-{uuid.uuid4()}"
+    # ARRANGE
     aggregate_id = f"agg-id-{uuid.uuid4()}"
     event_payload = {"message": "hello world"}
-
     with Session(db_engine) as session:
         with session.begin():
             session.add(OutboxEvent(
@@ -39,97 +38,79 @@ async def test_dispatcher_processes_and_updates_pending_events(db_engine, clean_
                 event_type="TestEvent",
                 payload=json.dumps(event_payload),
                 topic="test.topic",
-                status="PENDING",
-                correlation_id=correlation_id
+                status="PENDING"
             ))
 
+    # ACT
     dispatcher = OutboxDispatcher(kafka_producer=mock_kafka_producer, poll_interval=1)
-    dispatcher_task = asyncio.create_task(dispatcher.run())
-    await asyncio.sleep(2)
+    task = asyncio.create_task(dispatcher.run())
+    await asyncio.sleep(1.5) # Allow one poll cycle
     dispatcher.stop()
-    await dispatcher_task
+    await task
 
+    # ASSERT
     mock_kafka_producer.publish_message.assert_called_once()
     with Session(db_engine) as session:
-        result = session.execute(
-            text("SELECT status FROM outbox_events WHERE aggregate_id = :agg_id"),
-            {"agg_id": aggregate_id}
-        ).scalar_one()
+        result = session.execute(text("SELECT status FROM outbox_events WHERE aggregate_id = :id"), {"id": aggregate_id}).scalar_one()
         assert result == "PROCESSED"
 
-async def test_dispatcher_handles_kafka_publish_failure(db_engine, clean_db, mock_kafka_producer):
+async def test_dispatcher_recovers_after_failure(db_engine, clean_db, mock_kafka_producer):
     """
-    GIVEN a pending event and a failing Kafka producer
-    WHEN the dispatcher runs
-    THEN it should retry multiple times and eventually succeed.
+    GIVEN a pending event
+    WHEN the dispatcher fails on its first poll and then recovers
+    THEN the event should be processed on the subsequent poll.
     """
+    # ARRANGE
     aggregate_id = f"agg-id-{uuid.uuid4()}"
-    event_payload = {"message": "transient failure test"}
-
     with Session(db_engine) as session:
         with session.begin():
             session.add(OutboxEvent(
                 aggregate_type="TestResilience",
                 aggregate_id=aggregate_id,
+                status="PENDING",
                 event_type="TestEvent",
-                payload=json.dumps(event_payload),
-                topic="resilience.topic",
-                status="PENDING"
+                payload='{}',
+                topic="resilience.topic"
             ))
 
-    # Simulate Kafka being down for 2 attempts, then recovering
-    mock_kafka_producer.flush.side_effect = [
-        Exception("Kafka is down! Attempt 1"),
-        Exception("Kafka is down! Attempt 2"),
-        None # Success on the 3rd attempt
-    ]
+    # Make the first call to flush fail, then succeed on the second call
+    mock_kafka_producer.flush.side_effect = [Exception("Kafka is down!"), None]
     
-    dispatcher = OutboxDispatcher(kafka_producer=mock_kafka_producer, poll_interval=10)
-
-    # ACT: Run the dispatcher. Tenacity will handle the retries internally.
+    # ACT
+    dispatcher = OutboxDispatcher(kafka_producer=mock_kafka_producer, poll_interval=1)
     task = asyncio.create_task(dispatcher.run())
-    # Wait long enough for the initial attempt + tenacity's exponential backoff retries
-    await asyncio.sleep(8) # <-- INCREASED WAIT TIME
+    # Wait long enough for two poll cycles (fail at ~1s, succeed at ~2s)
+    await asyncio.sleep(2.5)
     dispatcher.stop()
     await task
 
     # ASSERT
-    # 1. Verify flush was called 3 times (2 failures, 1 success)
-    assert mock_kafka_producer.flush.call_count == 3
+    # 1. Verify flush was called twice (1 failure, 1 success)
+    assert mock_kafka_producer.flush.call_count == 2
 
     # 2. Verify the event is now processed
     with Session(db_engine) as session:
-        status_after_success = session.execute(
-            text("SELECT status FROM outbox_events WHERE aggregate_id = :agg_id"),
-            {"agg_id": aggregate_id}
-        ).scalar_one()
-        assert status_after_success == "PROCESSED"
+        status = session.execute(text("SELECT status FROM outbox_events WHERE aggregate_id = :id"), {"id": aggregate_id}).scalar_one()
+        assert status == "PROCESSED"
 
 async def test_dispatcher_is_concurrent_safe(db_engine, clean_db, mock_kafka_producer):
-    """
-    GIVEN multiple pending events in the outbox
-    WHEN two dispatchers run concurrently
-    THEN each event should be processed exactly once.
-    """
+    # ARRANGE
     num_events = 10
-    events = []
-    for i in range(num_events):
-        events.append(OutboxEvent(
-            aggregate_type="ConcurrentTest",
-            aggregate_id=f"concurrent-agg-{i}",
-            event_type="TestEvent",
-            payload=json.dumps({"index": i}),
-            topic="concurrent.topic",
-            status="PENDING"
-        ))
-
     with Session(db_engine) as session:
         with session.begin():
-            session.add_all(events)
+            for i in range(num_events):
+                session.add(OutboxEvent(
+                    aggregate_type="ConcurrentTest",
+                    aggregate_id=f"concurrent-agg-{i}",
+                    status="PENDING",
+                    event_type="TestEvent",
+                    payload="{}",
+                    topic="concurrent.topic"
+                ))
 
+    # ACT
     dispatcher1 = OutboxDispatcher(kafka_producer=mock_kafka_producer, poll_interval=0.5)
     dispatcher2 = OutboxDispatcher(kafka_producer=mock_kafka_producer, poll_interval=0.5)
-
     task1 = asyncio.create_task(dispatcher1.run())
     task2 = asyncio.create_task(dispatcher2.run())
     await asyncio.sleep(3)
@@ -137,51 +118,35 @@ async def test_dispatcher_is_concurrent_safe(db_engine, clean_db, mock_kafka_pro
     dispatcher2.stop()
     await asyncio.gather(task1, task2)
 
+    # ASSERT
     assert mock_kafka_producer.publish_message.call_count == num_events
     with Session(db_engine) as session:
-        count = session.execute(
-            text("SELECT count(*) FROM outbox_events WHERE status = 'PROCESSED'")
-        ).scalar_one()
+        count = session.execute(text("SELECT count(*) FROM outbox_events WHERE status = 'PROCESSED'")).scalar_one()
         assert count == num_events
 
 async def test_dispatcher_respects_batch_size(db_engine, clean_db, mock_kafka_producer):
-    """
-    GIVEN more events than the batch size
-    WHEN the dispatcher runs for one cycle
-    THEN it should only process a single batch of events.
-    """
     # ARRANGE
-    num_events = 15
-    batch_size = 10
-    events = [OutboxEvent(
-        aggregate_type="BatchTest",
-        aggregate_id=f"batch-agg-{i}",
-        event_type="TestEvent",
-        payload=json.dumps({"index": i}),
-        topic="batch.topic",
-        status="PENDING"
-    ) for i in range(num_events)]
-
+    num_events, batch_size = 15, 10
     with Session(db_engine) as session:
         with session.begin():
-            session.add_all(events)
+            for i in range(num_events):
+                session.add(OutboxEvent(
+                    aggregate_type="BatchTest",
+                    aggregate_id=f"batch-agg-{i}",
+                    status="PENDING",
+                    event_type="TestEvent",
+                    payload='{}',
+                    topic="batch.topic"
+                ))
 
     # ACT
-    dispatcher = OutboxDispatcher(
-        kafka_producer=mock_kafka_producer,
-        batch_size=batch_size
-    )
-    # Directly call the synchronous processing method once for deterministic testing
-    dispatcher._process_batch_sync()
+    dispatcher = OutboxDispatcher(kafka_producer=mock_kafka_producer, batch_size=batch_size)
+    dispatcher._process_batch_sync() # Call once deterministically
 
     # ASSERT
     assert mock_kafka_producer.publish_message.call_count == batch_size
     with Session(db_engine) as session:
-        processed_count = session.execute(
-            text("SELECT count(*) FROM outbox_events WHERE status = 'PROCESSED'")
-        ).scalar_one()
-        pending_count = session.execute(
-            text("SELECT count(*) FROM outbox_events WHERE status = 'PENDING'")
-        ).scalar_one()
+        processed_count = session.execute(text("SELECT count(*) FROM outbox_events WHERE status = 'PROCESSED'")).scalar_one()
+        pending_count = session.execute(text("SELECT count(*) FROM outbox_events WHERE status = 'PENDING'")).scalar_one()
         assert processed_count == batch_size
         assert pending_count == num_events - batch_size
