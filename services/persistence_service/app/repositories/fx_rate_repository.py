@@ -7,17 +7,10 @@ from portfolio_common.events import FxRateEvent
 logger = logging.getLogger(__name__)
 
 class FxRateRepository:
-    """
-    Handles database operations for the FxRate model.
-    """
     def __init__(self, db: Session):
         self.db = db
 
     def create_fx_rate(self, event: FxRateEvent) -> DBFxRate:
-        """
-        Idempotently creates or updates an FX rate using a
-        get-then-update/create pattern.
-        """
         try:
             db_rate = self.db.query(DBFxRate).filter(
                 DBFxRate.from_currency == event.from_currency,
@@ -28,12 +21,10 @@ class FxRateRepository:
             fx_rate_data = event.model_dump()
 
             if db_rate:
-                # Update existing
                 for key, value in fx_rate_data.items():
                     setattr(db_rate, key, value)
                 logger.info(f"FX Rate for '{event.from_currency}-{event.to_currency}' on {event.rate_date} found, staging for update.")
             else:
-                # Create new
                 db_rate = DBFxRate(**fx_rate_data)
                 self.db.add(db_rate)
                 logger.info(f"FX Rate for '{event.from_currency}-{event.to_currency}' on {event.rate_date} not found, staging for creation.")
