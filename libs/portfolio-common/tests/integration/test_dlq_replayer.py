@@ -6,7 +6,7 @@ import uuid
 import os
 from unittest.mock import MagicMock, patch
 
-from portfolio_common.kafka_utils import get_kafka_producer
+from portfolio_common.kafka_utils import KafkaProducer
 from tools.dlq_replayer import DLQReplayConsumer
 
 pytestmark = pytest.mark.asyncio
@@ -26,6 +26,9 @@ async def test_dlq_replayer_consumes_and_republishes(docker_services, mock_kafka
     THEN it should parse the message and republish it to the original topic.
     """
     # ARRANGE
+    # Define the correct Kafka address for the host machine
+    kafka_bootstrap_host = "localhost:9092"
+
     # 1. Define the original message that supposedly failed
     original_topic = "raw_transactions"
     original_key = f"txn-{uuid.uuid4()}"
@@ -43,8 +46,7 @@ async def test_dlq_replayer_consumes_and_republishes(docker_services, mock_kafka
     }
 
     # 3. Use a real producer to publish this message to the test DLQ topic
-    # This producer is separate from the mock one used for assertions
-    setup_producer = get_kafka_producer()
+    setup_producer = KafkaProducer(bootstrap_servers=kafka_bootstrap_host)
     setup_producer.publish_message(
         topic=dlq_topic,
         key="dlq_test_key",
@@ -52,19 +54,17 @@ async def test_dlq_replayer_consumes_and_republishes(docker_services, mock_kafka
         headers=[('correlation_id', correlation_id.encode('utf-8'))]
     )
     setup_producer.flush()
+    await asyncio.sleep(2) # Give Kafka a moment to process the message
 
     # ACT
-    # 4. Patch `get_kafka_producer` so the consumer uses our MOCK producer
+    # 4. Patch `get_kafka_producer` so the consumer uses our MOCK producer for replaying
     with patch('tools.dlq_replayer.get_kafka_producer', return_value=mock_kafka_producer):
-        # Instantiate the consumer to process just one message from our test DLQ
         consumer = DLQReplayConsumer(
-            bootstrap_servers=os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9093"),
+            bootstrap_servers=kafka_bootstrap_host,
             topic=dlq_topic,
             group_id=f"test-replayer-group-{uuid.uuid4()}", # Unique group to read from start
             limit=1
         )
-        
-        # Run the consumer until it hits the limit and stops
         await consumer.run()
 
     # ASSERT
