@@ -16,7 +16,7 @@ from portfolio_common.outbox_repository import OutboxRepository
 from portfolio_common.logging_utils import correlation_id_var
 
 # CORRECTED IMPORTS: Import directly from the library's packages, not from 'src'
-from core.services.transaction_processor import TransactionProcessor
+from services.transaction_processor import TransactionProcessor
 from core.models.transaction import Transaction as EngineTransaction
 from logic.parser import TransactionParser
 from logic.sorter import TransactionSorter
