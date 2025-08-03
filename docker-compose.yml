@@ -36,13 +36,26 @@ services:
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9093,PLAINTEXT_HOST://localhost:9092
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
-      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false" # <-- UPDATED
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
     healthcheck:
       test: ["CMD-SHELL", "kafka-topics --bootstrap-server kafka:9093 --list || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 10
       start_period: 30s
+    networks:
+      - app_network
+
+  kafka-topic-creator:
+    build:
+      context: .
+      dockerfile: ./services/persistence_service/Dockerfile
+    hostname: kafka-topic-creator
+    container_name: kafka-topic-creator
+    depends_on:
+      kafka:
+        condition: service_healthy
+    command: ["python", "-m", "tools.kafka_setup"]
     networks:
       - app_network
 
@@ -74,13 +87,10 @@ services:
     container_name: migration-runner
     environment:
       DATABASE_URL: postgresql://user:password@postgres:5432/portfolio_db
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: 5432
     depends_on:
       postgres:
         condition: service_healthy
-    entrypoint: ["/opt/venv/bin/alembic"]
-    command: ["upgrade", "head"]
+    command: ["alembic", "upgrade", "head"]
     networks:
       - app_network
 
@@ -95,13 +105,9 @@ services:
     environment:
       PYTHONPATH: "/app:/app/libs/portfolio-common"
       KAFKA_BOOTSTRAP_SERVERS: kafka:9093
-      KAFKA_RAW_TRANSACTIONS_TOPIC: raw_transactions
-      KAFKA_MARKET_PRICES_TOPIC: market_prices
-      KAFKA_FX_RATES_TOPIC: fx_rates
-      KAFKA_INSTRUMENTS_TOPIC: instruments
     depends_on:
-      kafka:
-        condition: service_healthy
+      kafka-topic-creator:
+        condition: service_completed_successfully
     volumes:
       - ./services/ingestion-service/app:/app/app
       - ./libs/portfolio-common:/app/libs/portfolio-common
@@ -121,7 +127,6 @@ services:
     environment:
       PYTHONPATH: "/app"
       DATABASE_URL: postgresql://user:password@postgres:5432/portfolio_db
-      HOST_DATABASE_URL: ""
     depends_on:
       migration-runner:
         condition: service_completed_successfully
@@ -142,10 +147,9 @@ services:
       PYTHONPATH: "/app"
       KAFKA_BOOTSTRAP_SERVERS: kafka:9093
       DATABASE_URL: postgresql://user:password@postgres:5432/portfolio_db
-      HOST_DATABASE_URL: ""
     depends_on:
-      kafka:
-        condition: service_healthy
+      kafka-topic-creator:
+        condition: service_completed_successfully
       migration-runner:
         condition: service_completed_successfully
     volumes:
@@ -164,11 +168,9 @@ services:
     environment:
       PYTHONPATH: "/app:/app/libs/portfolio-common:/app/libs/financial-calculator-engine/src"
       KAFKA_BOOTSTRAP_SERVERS: kafka:9093
-      KAFKA_RAW_TRANSACTIONS_COMPLETED_TOPIC: raw_transactions_completed
-      DATABASE_URL: postgresql://user:password@postgres:5432/portfolio_db
     depends_on:
-      kafka:
-        condition: service_healthy
+      kafka-topic-creator:
+        condition: service_completed_successfully
       migration-runner:
         condition: service_completed_successfully
     volumes:
@@ -190,8 +192,8 @@ services:
       KAFKA_BOOTSTRAP_SERVERS: kafka:9093
       DATABASE_URL: postgresql://user:password@postgres:5432/portfolio_db
     depends_on:
-      kafka:
-        condition: service_healthy
+      kafka-topic-creator:
+        condition: service_completed_successfully
       migration-runner:
         condition: service_completed_successfully
     volumes:
@@ -211,10 +213,9 @@ services:
       PYTHONPATH: "/app"
       KAFKA_BOOTSTRAP_SERVERS: kafka:9093
       DATABASE_URL: postgresql://user:password@postgres:5432/portfolio_db
-      HOST_DATABASE_URL: ""
     depends_on:
-      kafka:
-        condition: service_healthy
+      kafka-topic-creator:
+        condition: service_completed_successfully
       migration-runner:
         condition: service_completed_successfully
     volumes:
@@ -234,10 +235,9 @@ services:
       PYTHONPATH: "/app"
       KAFKA_BOOTSTRAP_SERVERS: kafka:9093
       DATABASE_URL: postgresql://user:password@postgres:5432/portfolio_db
-      HOST_DATABASE_URL: ""
     depends_on:
-      kafka:
-        condition: service_healthy
+      kafka-topic-creator:
+        condition: service_completed_successfully
       migration-runner:
         condition: service_completed_successfully
     volumes:
@@ -258,8 +258,8 @@ services:
       KAFKA_BOOTSTRAP_SERVERS: kafka:9093
       DATABASE_URL: postgresql://user:password@postgres:5432/portfolio_db
     depends_on:
-      kafka:
-        condition: service_healthy
+      kafka-topic-creator:
+        condition: service_completed_successfully
       migration-runner:
         condition: service_completed_successfully
     volumes:
