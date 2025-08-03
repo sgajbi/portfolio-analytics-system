@@ -36,12 +36,13 @@ class OutboxDispatcher:
     def _process_batch_sync(self):
         """
         This is a synchronous, blocking method that performs the entire outbox
-        processing cycle. It is designed to be run in a thread pool executor.
+        processing cycle within a single atomic database transaction.
         """
-        events_to_process = []
+        processed_ids = []
         try:
             with self._session_factory() as db:
-                with db.begin():
+                with db.begin(): # Starts a single transaction
+                    # 1. Lock and fetch a batch of pending events
                     events_to_process = (
                         db.query(OutboxEvent)
                         .filter(OutboxEvent.status == 'PENDING')
@@ -50,51 +51,46 @@ class OutboxDispatcher:
                         .with_for_update(skip_locked=True)
                         .all()
                     )
+
                     if not events_to_process:
-                        return
-                    # Detach events to release the lock quickly
+                        return # No work to do, transaction will roll back harmlessly
+
+                    logger.info(f"OutboxDispatcher: Found {len(events_to_process)} pending events to dispatch.")
+
+                    # 2. Stage messages for publishing
                     for event in events_to_process:
-                        db.expunge(event)
-        except Exception:
-            logger.error("OutboxDispatcher: Failed to fetch batch from database.", exc_info=True)
-            return
+                        headers = [('correlation_id', event.correlation_id.encode('utf-8'))] if event.correlation_id else []
+                        # The payload is already a JSON string in the DB
+                        payload_dict = json.loads(event.payload) 
+                        self._producer.publish_message(
+                            topic=event.topic,
+                            key=event.aggregate_id,
+                            value=payload_dict,
+                            headers=headers
+                        )
+                        processed_ids.append(event.id)
 
-        if not events_to_process:
-            return
+                    # 3. Attempt to publish to Kafka. If this fails, the ENTIRE transaction rolls back.
+                    self._producer.flush(timeout=10)
+                    logger.info(f"OutboxDispatcher: Successfully flushed {len(processed_ids)} events to Kafka.")
 
-        logger.info(f"OutboxDispatcher: Found {len(events_to_process)} pending events to dispatch.")
-        
-        processed_ids = []
-        for event in events_to_process:
-            try:
-                headers = [('correlation_id', event.correlation_id.encode('utf-8'))] if event.correlation_id else []
-                payload_dict = json.loads(event.payload)
-                self._producer.publish_message(
-                    topic=event.topic,
-                    key=event.aggregate_id,
-                    value=payload_dict,
-                    headers=headers
-                )
-                processed_ids.append(event.id)
-            except Exception:
-                logger.error(f"OutboxDispatcher: Failed to stage event {event.id} for Kafka.", exc_info=True)
-
-        if not processed_ids:
-            return
-
-        try:
-            self._producer.flush(timeout=10)
-            logger.info(f"OutboxDispatcher: Successfully flushed {len(processed_ids)} events to Kafka.")
-            with self._session_factory() as db:
-                with db.begin():
+                    # 4. If publishing succeeds, update the events to PROCESSED
                     db.execute(
                         update(OutboxEvent)
                         .where(OutboxEvent.id.in_(processed_ids))
                         .values(status='PROCESSED', processed_at=datetime.now(timezone.utc))
                     )
                     logger.info(f"OutboxDispatcher: Marked {len(processed_ids)} events as PROCESSED in DB.")
+                # 5. The transaction commits here if all steps succeeded
         except Exception:
-            logger.critical(f"OutboxDispatcher: CRITICAL - Flushed messages to Kafka but failed to update database status for IDs {processed_ids}.", exc_info=True)
+            # If flush() or any other step fails, the `db.begin()` context manager
+            # will automatically roll back the transaction. The lock is released,
+            # and the event statuses remain PENDING.
+            logger.error(
+                "OutboxDispatcher: Failed to process batch. Transaction rolled back.", 
+                exc_info=True
+            )
+            # We don't re-raise, allowing the dispatcher to continue polling.
 
     async def run(self):
         """The main async loop for the dispatcher task."""
