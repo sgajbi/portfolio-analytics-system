@@ -19,11 +19,13 @@ exclude = ["tests*", "deployment*"]
 # Explicitly tell pytest where to find tests
 testpaths = [
     "tests",
-    "services"
+    "services",
+    "libs/portfolio-common/tests"
 ]
 pythonpath = [
     ".", # Project root
     "libs",
+    "libs/portfolio-common", # <-- ADDED
     "services/ingestion-service",
     "tests",
     "libs/financial-calculator-engine"
