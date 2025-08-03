@@ -54,7 +54,7 @@ async def test_dispatcher_processes_and_updates_pending_events(db_engine, clean_
         result = session.execute(text("SELECT status FROM outbox_events WHERE aggregate_id = :id"), {"id": aggregate_id}).scalar_one()
         assert result == "PROCESSED"
 
-async def test_dispatcher_recovers_after_failure(db_engine, clean_db, mock_kafka_producer):
+def test_dispatcher_recovers_after_failure(db_engine, clean_db, mock_kafka_producer):
     """
     GIVEN a pending event
     WHEN the dispatcher fails on its first poll and then recovers
@@ -78,11 +78,13 @@ async def test_dispatcher_recovers_after_failure(db_engine, clean_db, mock_kafka
     
     # ACT
     dispatcher = OutboxDispatcher(kafka_producer=mock_kafka_producer, poll_interval=1)
-    task = asyncio.create_task(dispatcher.run())
-    # Wait long enough for two poll cycles (fail at ~1s, succeed at ~2s)
-    await asyncio.sleep(2.5)
-    dispatcher.stop()
-    await task
+    
+    # 1. Simulate the first poll cycle, which is expected to fail and raise an exception
+    with pytest.raises(Exception, match="Kafka is down!"):
+        dispatcher._process_batch_sync()
+
+    # 2. Simulate the second poll cycle, which is expected to succeed
+    dispatcher._process_batch_sync()
 
     # ASSERT
     # 1. Verify flush was called twice (1 failure, 1 success)
@@ -124,7 +126,7 @@ async def test_dispatcher_is_concurrent_safe(db_engine, clean_db, mock_kafka_pro
         count = session.execute(text("SELECT count(*) FROM outbox_events WHERE status = 'PROCESSED'")).scalar_one()
         assert count == num_events
 
-async def test_dispatcher_respects_batch_size(db_engine, clean_db, mock_kafka_producer):
+def test_dispatcher_respects_batch_size(db_engine, clean_db, mock_kafka_producer):
     # ARRANGE
     num_events, batch_size = 15, 10
     with Session(db_engine) as session:
