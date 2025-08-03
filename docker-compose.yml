@@ -36,46 +36,13 @@ services:
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9093,PLAINTEXT_HOST://localhost:9092
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
-      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false" # <-- UPDATED
     healthcheck:
       test: ["CMD-SHELL", "kafka-topics --bootstrap-server kafka:9093 --list || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 10
       start_period: 30s
-    networks:
-      - app_network
-
-  kafka-setup:
-    image: confluentinc/cp-kafka:7.5.0
-    hostname: kafka-setup
-    container_name: kafka-setup
-    depends_on:
-      kafka:
-        condition: service_healthy
-    entrypoint: [ '/bin/sh', '-c' ]
-    command: |
-      "
-      # Block until the broker is reachable
-      kafka-topics --bootstrap-server kafka:9093 --list
-      
-      echo -e 'Creating Kafka topics...'
-      kafka-topics --bootstrap-server kafka:9093 --create --if-not-exists --topic raw_portfolios --partitions 1 --replication-factor 1
-      kafka-topics --bootstrap-server kafka:9093 --create --if-not-exists --topic raw_transactions --partitions 1 --replication-factor 1
-      kafka-topics --bootstrap-server kafka:9093 --create --if-not-exists --topic instruments --partitions 1 --replication-factor 1
-      kafka-topics --bootstrap-server kafka:9093 --create --if-not-exists --topic market_prices --partitions 1 --replication-factor 1
-      kafka-topics --bootstrap-server kafka:9093 --create --if-not-exists --topic fx_rates --partitions 1 --replication-factor 1
-      kafka-topics --bootstrap-server kafka:9093 --create --if-not-exists --topic raw_transactions_completed --partitions 1 --replication-factor 1
-      kafka-topics --bootstrap-server kafka:9093 --create --if-not-exists --topic market_price_persisted --partitions 1 --replication-factor 1
-      kafka-topics --bootstrap-server kafka:9093 --create --if-not-exists --topic processed_transactions_completed --partitions 1 --replication-factor 1
-      kafka-topics --bootstrap-server kafka:9093 --create --if-not-exists --topic position_history_persisted --partitions 1 --replication-factor 1
-      kafka-topics --bootstrap-server kafka:9093 --create --if-not-exists --topic daily_position_snapshot_persisted --partitions 1 --replication-factor 1
-      kafka-topics --bootstrap-server kafka:9093 --create --if-not-exists --topic position_timeseries_generated --partitions 1 --replication-factor 1
-      kafka-topics --bootstrap-server kafka:9093 --create --if-not-exists --topic portfolio_timeseries_generated --partitions 1 --replication-factor 1
-      kafka-topics --bootstrap-server kafka:9093 --create --if-not-exists --topic cashflow_calculated --partitions 1 --replication-factor 1
-
-      echo -e 'Successfully created Kafka topics.'
-      "
     networks:
       - app_network
 
@@ -133,8 +100,8 @@ services:
       KAFKA_FX_RATES_TOPIC: fx_rates
       KAFKA_INSTRUMENTS_TOPIC: instruments
     depends_on:
-      kafka-setup:
-        condition: service_completed_successfully
+      kafka:
+        condition: service_healthy
     volumes:
       - ./services/ingestion-service/app:/app/app
       - ./libs/portfolio-common:/app/libs/portfolio-common
@@ -177,8 +144,8 @@ services:
       DATABASE_URL: postgresql://user:password@postgres:5432/portfolio_db
       HOST_DATABASE_URL: ""
     depends_on:
-      kafka-setup:
-        condition: service_completed_successfully
+      kafka:
+        condition: service_healthy
       migration-runner:
         condition: service_completed_successfully
     volumes:
@@ -200,15 +167,14 @@ services:
       KAFKA_RAW_TRANSACTIONS_COMPLETED_TOPIC: raw_transactions_completed
       DATABASE_URL: postgresql://user:password@postgres:5432/portfolio_db
     depends_on:
-      kafka-setup:
-        condition: service_completed_successfully
+      kafka:
+        condition: service_healthy
       migration-runner:
         condition: service_completed_successfully
     volumes:
       - ./services/calculators/cost_calculator_service/app:/app/app
       - ./libs/portfolio-common:/app/libs/portfolio-common
       - ./libs/financial-calculator-engine:/app/libs/financial-calculator-engine
-    # THE FIX: Run as a module (-m) so Python recognizes the 'app' package
     command: ["python", "-m", "app.main"]
     networks:
       - app_network
@@ -224,8 +190,8 @@ services:
       KAFKA_BOOTSTRAP_SERVERS: kafka:9093
       DATABASE_URL: postgresql://user:password@postgres:5432/portfolio_db
     depends_on:
-      kafka-setup:
-        condition: service_completed_successfully
+      kafka:
+        condition: service_healthy
       migration-runner:
         condition: service_completed_successfully
     volumes:
@@ -247,8 +213,8 @@ services:
       DATABASE_URL: postgresql://user:password@postgres:5432/portfolio_db
       HOST_DATABASE_URL: ""
     depends_on:
-      kafka-setup:
-        condition: service_completed_successfully
+      kafka:
+        condition: service_healthy
       migration-runner:
         condition: service_completed_successfully
     volumes:
@@ -270,8 +236,8 @@ services:
       DATABASE_URL: postgresql://user:password@postgres:5432/portfolio_db
       HOST_DATABASE_URL: ""
     depends_on:
-      kafka-setup:
-        condition: service_completed_successfully
+      kafka:
+        condition: service_healthy
       migration-runner:
         condition: service_completed_successfully
     volumes:
@@ -292,8 +258,8 @@ services:
       KAFKA_BOOTSTRAP_SERVERS: kafka:9093
       DATABASE_URL: postgresql://user:password@postgres:5432/portfolio_db
     depends_on:
-      kafka-setup:
-        condition: service_completed_successfully
+      kafka:
+        condition: service_healthy
       migration-runner:
         condition: service_completed_successfully
     volumes:
