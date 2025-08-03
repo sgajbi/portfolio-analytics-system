@@ -5,6 +5,7 @@ import json
 import logging
 import sys
 import os
+import time
 from typing import Optional
 
 # Ensure the script can find the portfolio-common library
@@ -39,25 +40,23 @@ class DLQReplayConsumer(BaseConsumer):
         try:
             dlq_data = json.loads(msg.value().decode('utf-8'))
             
-            # Extract original message details from the DLQ wrapper
             original_topic = dlq_data.get("original_topic")
             original_key = dlq_data.get("original_key")
             original_value_str = dlq_data.get("original_value")
-            original_value = json.loads(original_value_str) # Re-parse the nested JSON
+            original_value = json.loads(original_value_str)
             correlation_id = dlq_data.get("correlation_id")
 
             if not all([original_topic, original_key, original_value]):
-                logger.error("DLQ message is missing required original message fields. Skipping.", extra={"dlq_key": msg.key()})
+                logger.error("DLQ message is missing required fields. Skipping.", extra={"dlq_key": msg.key()})
                 return
 
             logger.info(
-                f"Replaying message from DLQ. Original Key: {original_key}, Original Topic: {original_topic}",
+                f"Replaying message from DLQ. Key: {original_key}, Topic: {original_topic}",
                 extra={"correlation_id": correlation_id}
             )
 
             headers = [('correlation_id', (correlation_id or "").encode('utf-8'))]
 
-            # Republish to the original topic
             self._producer.publish_message(
                 topic=original_topic,
                 key=original_key,
@@ -67,38 +66,55 @@ class DLQReplayConsumer(BaseConsumer):
             self._producer.flush(timeout=5)
             logger.info(f"Successfully replayed message for key '{original_key}'.")
 
-            # Commit the offset in the DLQ so it's not replayed again
             self._consumer.commit(message=msg, asynchronous=False)
 
         except json.JSONDecodeError:
-            logger.error("Failed to parse DLQ message value as JSON. Skipping.", extra={"dlq_key": msg.key()}, exc_info=True)
+            logger.error("Failed to parse DLQ message value. Skipping.", extra={"dlq_key": msg.key()}, exc_info=True)
         except Exception:
-            logger.error("An unexpected error occurred during replay. Message will not be committed.", extra={"dlq_key": msg.key()}, exc_info=True)
+            logger.error("Unexpected error during replay. Message not committed.", extra={"dlq_key": msg.key()}, exc_info=True)
         finally:
             self._processed_count += 1
             if self._limit and self._processed_count >= self._limit:
                 logger.info(f"Reached processing limit of {self._limit}. Shutting down.")
                 self.shutdown()
 
+    async def run(self):
+        """
+        Overrides the base consumer's run loop to include a timeout, making
+        it suitable for a script that should not run indefinitely.
+        """
+        self._initialize_consumer()
+        loop = asyncio.get_running_loop()
+        
+        timeout = 15  # seconds
+        start_time = time.time()
+        
+        logger.info(f"Polling topic '{self.topic}' with a {timeout}s timeout...")
+        
+        while self._running and (time.time() - start_time) < timeout:
+            msg = await loop.run_in_executor(None, self._consumer.poll, 1.0)
+
+            if msg is None:
+                continue
+            if msg.error():
+                logger.error(f"Kafka consumer error: {msg.error()}")
+                continue
+
+            # This is a synchronous call within the executor
+            await loop.run_in_executor(None, self.process_message, msg, loop)
+        
+        if self._processed_count == 0:
+            logger.warning(f"No messages found on topic '{self.topic}' within the timeout period.")
+
+        self.shutdown()
+
 async def main():
     parser = argparse.ArgumentParser(description="Kafka DLQ Replayer Tool")
-    parser.add_argument(
-        "--dlq-topic",
-        required=True,
-        help="The Dead Letter Queue topic to consume from."
-    )
-    parser.add_argument(
-        "--limit",
-        type=int,
-        default=None,
-        help="The maximum number of messages to process in one run."
-    )
+    parser.add_argument("--dlq-topic", required=True, help="The DLQ topic to consume from.")
+    parser.add_argument("--limit", type=int, default=None, help="Max number of messages to process.")
     args = parser.parse_args()
 
     logger.info(f"Starting DLQ Replayer for topic: {args.dlq_topic} with a limit of {args.limit or 'unlimited'}")
-
-    # Use a unique group_id for each run to ensure it starts from the beginning
-    # In a real scenario, you might want a persistent group_id to track progress
     group_id = f"dlq-replayer-{os.getpid()}"
 
     consumer = DLQReplayConsumer(

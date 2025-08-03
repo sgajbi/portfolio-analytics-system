@@ -2,7 +2,7 @@
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pathlib import Path
-from src.core.enums.cost_method import CostMethod
+from core.enums.cost_method import CostMethod
 
 class Settings(BaseSettings):
     """

@@ -2,7 +2,7 @@
 from typing import List, Optional
 from sqlalchemy.orm import Session
 from portfolio_common.database_models import Transaction as DBTransaction
-from src.core.models.transaction import Transaction as EngineTransaction
+from core.models.transaction import Transaction as EngineTransaction
 
 class CostCalculatorRepository:
     def __init__(self, db: Session):

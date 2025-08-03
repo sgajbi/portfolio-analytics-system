@@ -7,7 +7,7 @@ from decimal import Decimal
 from portfolio_common.events import TransactionEvent
 from portfolio_common.database_models import Transaction as DBTransaction
 from portfolio_common.config import KAFKA_PROCESSED_TRANSACTIONS_COMPLETED_TOPIC
-from src.core.models.transaction import Transaction as EngineTransaction
+from core.models.transaction import Transaction as EngineTransaction
 from services.calculators.cost_calculator_service.app.consumer import CostCalculatorConsumer
 from services.calculators.cost_calculator_service.app.repository import CostCalculatorRepository
 from portfolio_common.idempotency_repository import IdempotencyRepository # NEW IMPORT
