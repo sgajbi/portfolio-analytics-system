@@ -1,4 +1,4 @@
-from datetime import date, datetime # <-- IMPORT DATETIME
+from datetime import date, datetime
 from typing import Optional
 from pydantic import BaseModel, Field, ConfigDict
 from decimal import Decimal
@@ -55,7 +55,7 @@ class TransactionEvent(BaseModel):
     portfolio_id: str
     instrument_id: str
     security_id: str
-    transaction_date: datetime # <-- CORRECTED TYPE
+    transaction_date: datetime
     transaction_type: str
     quantity: Decimal
     price: Decimal
@@ -63,8 +63,9 @@ class TransactionEvent(BaseModel):
     trade_currency: str
     currency: str
     trade_fee: Decimal = Field(default=Decimal(0))
-    settlement_date: Optional[datetime] = None # <-- CORRECTED TYPE
+    settlement_date: Optional[datetime] = None
     net_cost: Optional[Decimal] = None
+    gross_cost: Optional[Decimal] = None
     realized_gain_loss: Optional[Decimal] = None
 
 class PositionHistoryPersistedEvent(BaseModel):

@@ -1,11 +1,12 @@
 # services/calculators/position-valuation-calculator/app/consumers/market_price_consumer.py
 import logging
 import json
+import asyncio
 from pydantic import ValidationError
 
 from confluent_kafka import Message
 from portfolio_common.kafka_consumer import BaseConsumer
-from portfolio_common.logging_utils import correlation_id_var # NEW IMPORT
+from portfolio_common.logging_utils import correlation_id_var
 from portfolio_common.events import MarketPriceEvent, DailyPositionSnapshotPersistedEvent
 from portfolio_common.db import get_db_session
 from portfolio_common.config import KAFKA_DAILY_POSITION_SNAPSHOT_PERSISTED_TOPIC
@@ -20,15 +21,14 @@ SERVICE_NAME = "position-valuation-calculator-from-price"
 class MarketPriceConsumer(BaseConsumer):
     """
     Consumes market price events and creates or updates daily position snapshots
-    for all affected portfolios with the new valuation.
-    This process is idempotent.
+    for all affected portfolios with the new valuation. This process is idempotent.
     """
 
-    async def process_message(self, msg: Message):
+    def process_message(self, msg: Message, loop: asyncio.AbstractEventLoop):
         key = msg.key().decode('utf-8') if msg.key() else "NoKey"
         value = msg.value().decode('utf-8')
         event_id = f"{msg.topic()}-{msg.partition()}-{msg.offset()}"
-        correlation_id = correlation_id_var.get() # Get correlation ID
+        correlation_id = correlation_id_var.get()
         updated_snapshots = []
 
         try:
@@ -66,7 +66,7 @@ class MarketPriceConsumer(BaseConsumer):
 
         except (json.JSONDecodeError, ValidationError) as e:
             logger.error(f"Message validation failed for key '{key}': {e}. Value: '{value}'", exc_info=True)
-            await self._send_to_dlq(msg, e)
+            self._send_to_dlq_sync(msg, e, loop)
         except Exception as e:
             logger.error(f"Unexpected error processing message with key '{key}': {e}", exc_info=True)
-            await self._send_to_dlq(msg, e)
+            self._send_to_dlq_sync(msg, e, loop)

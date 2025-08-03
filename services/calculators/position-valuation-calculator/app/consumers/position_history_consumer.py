@@ -1,6 +1,7 @@
 # services/calculators/position-valuation-calculator/app/consumers/position_history_consumer.py
 import logging
 import json
+import asyncio
 from pydantic import ValidationError
 
 from confluent_kafka import Message
@@ -23,7 +24,7 @@ class PositionHistoryConsumer(BaseConsumer):
     saves the result as a daily position snapshot. This process is idempotent.
     """
 
-    async def process_message(self, msg: Message):
+    def process_message(self, msg: Message, loop: asyncio.AbstractEventLoop):
         key = msg.key().decode('utf-8') if msg.key() else "NoKey"
         value = msg.value().decode('utf-8')
         event_id = f"{msg.topic()}-{msg.partition()}-{msg.offset()}"
@@ -79,7 +80,6 @@ class PositionHistoryConsumer(BaseConsumer):
                         unrealized_gain_loss=unrealized_gain_loss
                     )
                     
-                    # SIMPLIFIED: Get the returned object directly from the upsert method
                     persisted_snapshot = repo.upsert_daily_snapshot(snapshot_to_save)
                     idempotency_repo.mark_event_processed(event_id, position.portfolio_id, SERVICE_NAME)
 
@@ -101,7 +101,7 @@ class PositionHistoryConsumer(BaseConsumer):
 
         except (json.JSONDecodeError, ValidationError) as e:
             logger.error(f"Message validation failed for key '{key}': {e}. Value: '{value}'", exc_info=True)
-            await self._send_to_dlq(msg, e)
+            self._send_to_dlq_sync(msg, e, loop)
         except Exception as e:
             logger.error(f"Unexpected error processing message with key '{key}': {e}", exc_info=True)
-            await self._send_to_dlq(msg, e)
+            self._send_to_dlq_sync(msg, e, loop)
