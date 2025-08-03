@@ -25,10 +25,11 @@ testpaths = [
 pythonpath = [
     ".", # Project root
     "libs",
-    "libs/portfolio-common", # <-- ADDED
+    "libs/portfolio-common",
     "services/ingestion-service",
     "tests",
-    "libs/financial-calculator-engine"
+    "libs/financial-calculator-engine",
+    "tools" 
 ]
 addopts = "--strict-markers"
 minversion = "6.0"
