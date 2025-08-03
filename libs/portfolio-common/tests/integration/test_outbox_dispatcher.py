@@ -35,10 +35,10 @@ async def test_dispatcher_processes_and_updates_pending_events(db_engine, clean_
             session.add(OutboxEvent(
                 aggregate_type="TestAggregate",
                 aggregate_id=aggregate_id,
+                status="PENDING",
                 event_type="TestEvent",
                 payload=json.dumps(event_payload),
-                topic="test.topic",
-                status="PENDING"
+                topic="test.topic"
             ))
 
     # ACT
