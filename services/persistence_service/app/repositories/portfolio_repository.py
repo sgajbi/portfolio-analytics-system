@@ -30,6 +30,7 @@ class PortfolioRepository:
                     setattr(db_portfolio, key, value)
                 logger.info(f"Portfolio '{event.portfolio_id}' found, staging for update.")
             else:
+                # Create new record
                 db_portfolio = DBPortfolio(**portfolio_data)
                 self.db.add(db_portfolio)
                 logger.info(f"Portfolio '{event.portfolio_id}' not found, staging for creation.")

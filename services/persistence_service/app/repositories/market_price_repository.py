@@ -1,3 +1,4 @@
+# services/persistence_service/app/repositories/market_price_repository.py
 import logging
 from sqlalchemy.orm import Session
 from portfolio_common.database_models import MarketPrice as DBMarketPrice
@@ -23,14 +24,16 @@ class MarketPriceRepository:
                 DBMarketPrice.price_date == event.price_date
             ).first()
 
+            market_price_data = event.model_dump()
+
             if db_price:
                 # Update existing
-                db_price.price = event.price
-                db_price.currency = event.currency
+                for key, value in market_price_data.items():
+                    setattr(db_price, key, value)
                 logger.info(f"Price for '{event.security_id}' on {event.price_date} found, staging for update.")
             else:
                 # Create new
-                db_price = DBMarketPrice(**event.model_dump(by_alias=True))
+                db_price = DBMarketPrice(**market_price_data)
                 self.db.add(db_price)
                 logger.info(f"Price for '{event.security_id}' on {event.price_date} not found, staging for creation.")
 

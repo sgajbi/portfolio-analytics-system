@@ -23,13 +23,14 @@ class InstrumentRepository:
             
             # Use model_dump() without by_alias to get Python-native field names
             instrument_data = event.model_dump()
-
+            
             if db_instrument:
                 # Update existing
                 for key, value in instrument_data.items():
                     setattr(db_instrument, key, value)
                 logger.info(f"Instrument '{event.security_id}' found, staging for update.")
             else:
+                # Create new
                 db_instrument = DBInstrument(**instrument_data)
                 self.db.add(db_instrument)
                 logger.info(f"Instrument '{event.security_id}' not found, staging for creation.")

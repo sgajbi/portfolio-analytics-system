@@ -1,3 +1,4 @@
+# services/persistence_service/app/repositories/fx_rate_repository.py
 import logging
 from sqlalchemy.orm import Session
 from portfolio_common.database_models import FxRate as DBFxRate
@@ -24,13 +25,16 @@ class FxRateRepository:
                 DBFxRate.rate_date == event.rate_date
             ).first()
 
+            fx_rate_data = event.model_dump()
+
             if db_rate:
                 # Update existing
-                db_rate.rate = event.rate
+                for key, value in fx_rate_data.items():
+                    setattr(db_rate, key, value)
                 logger.info(f"FX Rate for '{event.from_currency}-{event.to_currency}' on {event.rate_date} found, staging for update.")
             else:
                 # Create new
-                db_rate = DBFxRate(**event.model_dump(by_alias=True))
+                db_rate = DBFxRate(**fx_rate_data)
                 self.db.add(db_rate)
                 logger.info(f"FX Rate for '{event.from_currency}-{event.to_currency}' on {event.rate_date} not found, staging for creation.")
 
