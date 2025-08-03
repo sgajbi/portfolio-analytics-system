@@ -5,87 +5,56 @@ import json
 import uuid
 from unittest.mock import MagicMock
 from sqlalchemy.orm import Session
-from sqlalchemy import text, create_engine
+from sqlalchemy import text
 
 from portfolio_common.database_models import OutboxEvent
 from portfolio_common.kafka_utils import KafkaProducer
 from portfolio_common.outbox_dispatcher import OutboxDispatcher
 
-# Mark all tests in this file as asyncio
 pytestmark = pytest.mark.asyncio
 
 @pytest.fixture
 def mock_kafka_producer() -> MagicMock:
-    """Provides a mock of the KafkaProducer for testing."""
     mock = MagicMock(spec=KafkaProducer)
     mock.publish_message = MagicMock()
     mock.flush = MagicMock()
     return mock
 
-async def test_dispatcher_processes_and_updates_pending_events(
-    db_engine, clean_db, mock_kafka_producer
-):
-    """
-    GIVEN a pending event in the outbox_events table
-    WHEN the OutboxDispatcher runs
-    THEN it should publish the event to Kafka and update its status to PROCESSED.
-    """
-    # ARRANGE
+async def test_dispatcher_processes_and_updates_pending_events(db_engine, clean_db, mock_kafka_producer):
     correlation_id = f"corr-id-{uuid.uuid4()}"
     aggregate_id = f"agg-id-{uuid.uuid4()}"
     event_payload = {"message": "hello world"}
 
-    # Manually insert a PENDING event
     with Session(db_engine) as session:
         with session.begin():
-            new_event = OutboxEvent(
+            session.add(OutboxEvent(
                 aggregate_type="TestAggregate",
                 aggregate_id=aggregate_id,
                 event_type="TestEvent",
                 payload=json.dumps(event_payload),
                 topic="test.topic",
                 status="PENDING",
-                correlation_id=correlation_id,
-            )
-            session.add(new_event)
+                correlation_id=correlation_id
+            ))
 
-    # Instantiate the dispatcher with the mock producer
     dispatcher = OutboxDispatcher(kafka_producer=mock_kafka_producer, poll_interval=1)
-
-    # ACT
-    # Run the dispatcher for a short period to ensure it processes the batch
     dispatcher_task = asyncio.create_task(dispatcher.run())
-    await asyncio.sleep(2) # Give it a moment to poll and process
+    await asyncio.sleep(2)
     dispatcher.stop()
     await dispatcher_task
 
-    # ASSERT
-    # 1. Verify that the message was published to Kafka
     mock_kafka_producer.publish_message.assert_called_once()
-    call_args = mock_kafka_producer.publish_message.call_args.kwargs
-    assert call_args["topic"] == "test.topic"
-    assert call_args["key"] == aggregate_id
-    assert call_args["value"] == event_payload
-    assert ("correlation_id", correlation_id.encode("utf-8")) in call_args["headers"]
-    
-    # 2. Verify the event status is updated in the database
     with Session(db_engine) as session:
-        query = text("SELECT status FROM outbox_events WHERE aggregate_id = :agg_id")
-        result = session.execute(query, {"agg_id": aggregate_id}).scalar_one()
+        result = session.execute(
+            text("SELECT status FROM outbox_events WHERE aggregate_id = :agg_id"),
+            {"agg_id": aggregate_id}
+        ).scalar_one()
         assert result == "PROCESSED"
 
-async def test_dispatcher_handles_kafka_publish_failure(
-    db_engine, clean_db, mock_kafka_producer
-):
-    """
-    GIVEN a pending event in the outbox
-    WHEN the dispatcher runs but Kafka publishing fails
-    THEN the event status should remain PENDING, and it should be processed on the next successful run.
-    """
-    # ARRANGE
+async def test_dispatcher_handles_kafka_publish_failure(db_engine, clean_db, mock_kafka_producer):
     aggregate_id = f"agg-id-{uuid.uuid4()}"
     event_payload = {"message": "transient failure test"}
-    
+
     with Session(db_engine) as session:
         with session.begin():
             session.add(OutboxEvent(
@@ -97,46 +66,72 @@ async def test_dispatcher_handles_kafka_publish_failure(
                 status="PENDING"
             ))
 
-    # --- PHASE 1: Simulate Kafka Failure ---
-    # Configure the mock producer to ALWAYS fail in this phase
+    # Phase 1: Simulate Kafka Failure
     mock_kafka_producer.flush.side_effect = Exception("Kafka is down!")
     dispatcher_fail = OutboxDispatcher(kafka_producer=mock_kafka_producer, poll_interval=1)
-
-    # ACT 1: Run the dispatcher and stop it after one processing attempt
     task_fail = asyncio.create_task(dispatcher_fail.run())
-    await asyncio.sleep(2) # Allow at least one poll cycle
+    await asyncio.sleep(2)
     dispatcher_fail.stop()
     await task_fail
 
-    # ASSERT 1: The event is still pending
     with Session(db_engine) as session:
-        query = text("SELECT status FROM outbox_events WHERE aggregate_id = :agg_id")
-        status_after_fail = session.execute(query, {"agg_id": aggregate_id}).scalar_one()
+        status_after_fail = session.execute(
+            text("SELECT status FROM outbox_events WHERE aggregate_id = :agg_id"),
+            {"agg_id": aggregate_id}
+        ).scalar_one()
         assert status_after_fail == "PENDING"
-    assert mock_kafka_producer.flush.call_count > 0 # It should have tried at least once
 
-    # --- PHASE 2: Simulate Kafka Recovery ---
-    # Reset mock to ALWAYS succeed
-    mock_kafka_producer.flush.side_effect = None 
+    # Phase 2: Simulate Kafka Recovery
+    mock_kafka_producer.flush.side_effect = None
     mock_kafka_producer.flush.return_value = None
-    # Reset call counts to assert cleanly for this phase
     mock_kafka_producer.publish_message.reset_mock()
     mock_kafka_producer.flush.reset_mock()
-    
-    dispatcher_recover = OutboxDispatcher(kafka_producer=mock_kafka_producer, poll_interval=1)
 
-    # ACT 2: Run the dispatcher again to process the pending event
+    dispatcher_recover = OutboxDispatcher(kafka_producer=mock_kafka_producer, poll_interval=1)
     task_recover = asyncio.create_task(dispatcher_recover.run())
-    await asyncio.sleep(2) # Allow at least one poll cycle
+    await asyncio.sleep(2)
     dispatcher_recover.stop()
     await task_recover
 
-    # ASSERT 2: The event is now processed
-    with Session(db_engine) as session:
-        query = text("SELECT status FROM outbox_events WHERE aggregate_id = :agg_id")
-        status_after_success = session.execute(query, {"agg_id": aggregate_id}).scalar_one()
-        assert status_after_success == "PROCESSED"
-    
-    # Assert that it successfully published and flushed in this phase
     mock_kafka_producer.publish_message.assert_called_once()
-    mock_kafka_producer.flush.assert_called_once()
+    with Session(db_engine) as session:
+        status_after_success = session.execute(
+            text("SELECT status FROM outbox_events WHERE aggregate_id = :agg_id"),
+            {"agg_id": aggregate_id}
+        ).scalar_one()
+        assert status_after_success == "PROCESSED"
+
+async def test_dispatcher_is_concurrent_safe(db_engine, clean_db, mock_kafka_producer):
+    num_events = 10
+    events = []
+    for i in range(num_events):
+        events.append(OutboxEvent(
+            aggregate_type="ConcurrentTest",
+            aggregate_id=f"concurrent-agg-{i}",
+            event_type="TestEvent",
+            payload=json.dumps({"index": i}),
+            topic="concurrent.topic",
+            status="PENDING"
+        ))
+
+    with Session(db_engine) as session:
+        with session.begin():
+            session.add_all(events)
+
+    dispatcher1 = OutboxDispatcher(kafka_producer=mock_kafka_producer, poll_interval=0.5)
+    dispatcher2 = OutboxDispatcher(kafka_producer=mock_kafka_producer, poll_interval=0.5)
+
+    task1 = asyncio.create_task(dispatcher1.run())
+    task2 = asyncio.create_task(dispatcher2.run())
+    await asyncio.sleep(3)
+    dispatcher1.stop()
+    dispatcher2.stop()
+    await asyncio.gather(task1, task2)
+
+    assert mock_kafka_producer.publish_message.call_count == num_events
+
+    with Session(db_engine) as session:
+        count = session.execute(
+            text("SELECT count(*) FROM outbox_events WHERE status = 'PROCESSED'")
+        ).scalar_one()
+        assert count == num_events

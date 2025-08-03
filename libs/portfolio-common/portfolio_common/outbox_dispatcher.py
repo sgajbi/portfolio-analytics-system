@@ -38,7 +38,6 @@ class OutboxDispatcher:
         This is a synchronous, blocking method that performs the entire outbox
         processing cycle within a single atomic database transaction.
         """
-        processed_ids = []
         try:
             with self._session_factory() as db:
                 with db.begin(): # Starts a single transaction
@@ -53,14 +52,14 @@ class OutboxDispatcher:
                     )
 
                     if not events_to_process:
-                        return # No work to do, transaction will roll back harmlessly
+                        return # No work to do
 
+                    processed_ids = [e.id for e in events_to_process]
                     logger.info(f"OutboxDispatcher: Found {len(events_to_process)} pending events to dispatch.")
 
                     # 2. Stage messages for publishing
                     for event in events_to_process:
                         headers = [('correlation_id', event.correlation_id.encode('utf-8'))] if event.correlation_id else []
-                        # The payload is already a JSON string in the DB
                         payload_dict = json.loads(event.payload) 
                         self._producer.publish_message(
                             topic=event.topic,
@@ -68,9 +67,8 @@ class OutboxDispatcher:
                             value=payload_dict,
                             headers=headers
                         )
-                        processed_ids.append(event.id)
 
-                    # 3. Attempt to publish to Kafka. If this fails, the ENTIRE transaction rolls back.
+                    # 3. Attempt to publish. If this fails, the transaction rolls back.
                     self._producer.flush(timeout=10)
                     logger.info(f"OutboxDispatcher: Successfully flushed {len(processed_ids)} events to Kafka.")
 
@@ -82,15 +80,15 @@ class OutboxDispatcher:
                     )
                     logger.info(f"OutboxDispatcher: Marked {len(processed_ids)} events as PROCESSED in DB.")
                 # 5. The transaction commits here if all steps succeeded
-        except Exception:
+        except Exception as e:
             # If flush() or any other step fails, the `db.begin()` context manager
-            # will automatically roll back the transaction. The lock is released,
-            # and the event statuses remain PENDING.
+            # will automatically roll back the transaction.
             logger.error(
-                "OutboxDispatcher: Failed to process batch. Transaction rolled back.", 
+                "OutboxDispatcher: Failed to process batch. Transaction will be rolled back.", 
                 exc_info=True
             )
-            # We don't re-raise, allowing the dispatcher to continue polling.
+            # Re-raise the exception to ensure the transaction context manager rolls back.
+            raise
 
     async def run(self):
         """The main async loop for the dispatcher task."""
@@ -99,13 +97,10 @@ class OutboxDispatcher:
         
         while self._running:
             try:
-                # Run the entire synchronous batch processing logic in a thread pool executor
-                await loop.run_in_executor(
-                    None,  # Use the default executor
-                    self._process_batch_sync
-                )
+                await loop.run_in_executor(None, self._process_batch_sync)
             except Exception:
-                logger.error("OutboxDispatcher: An unexpected error occurred in the dispatcher run loop.", exc_info=True)
+                # This outer catch prevents a single batch failure from crashing the whole dispatcher loop.
+                logger.warning("Continuing to poll after a failed batch attempt.")
             
             await asyncio.sleep(self._poll_interval)
         logger.info("Outbox dispatcher has stopped.")

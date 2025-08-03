@@ -45,12 +45,13 @@ def docker_services(request):
             
         yield compose
 
-# RENAMED and REWRITTEN fixture
-@pytest.fixture(scope="session")
+# SCOPE CHANGED FROM "session" to "function"
+@pytest.fixture(scope="function")
 def db_engine(docker_services: DockerCompose):
     """
-    A session-scoped fixture that provides a SQLAlchemy Engine, which is the
-    correct object for creating sessions.
+    A function-scoped fixture that provides a SQLAlchemy Engine.
+    This ensures every test function gets a fresh connection pool,
+    guaranteeing test isolation.
     """
     host = docker_services.get_service_host("postgres", 5432)
     port = docker_services.get_service_port("postgres", 5432)
