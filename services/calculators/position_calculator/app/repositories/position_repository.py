@@ -81,14 +81,15 @@ class PositionRepository:
 
     def save_positions(self, positions: List[PositionHistory]):
         """
-        Bulk saves new position history records.
-        This method does not commit; it only stages the objects in the session.
+        Bulk saves new position history records and flushes the session
+        to populate auto-generated primary keys (like `id`).
+        This method does not commit; it only stages and flushes the objects.
         """
         if not positions:
             logger.debug("No new positions to save.")
             return
 
-        # This method assumes the caller is managing the session and commit.
-        # It simply adds the new position objects to be persisted.
         self.db.add_all(positions)
-        logger.info(f"Staged {len(positions)} new position records for saving.")
+        # --- NEW: Flush session to persist records and populate IDs ---
+        self.db.flush()
+        logger.info(f"Staged and flushed {len(positions)} new position records for saving.")

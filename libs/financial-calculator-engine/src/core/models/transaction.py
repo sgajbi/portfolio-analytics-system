@@ -1,8 +1,8 @@
 # src/core/models/transaction.py
 
-from datetime import date, datetime # <-- IMPORT DATETIME
+from datetime import date, datetime, timezone
 from typing import Optional, Any
-from pydantic import BaseModel, Field, condecimal, ConfigDict
+from pydantic import BaseModel, Field, condecimal, ConfigDict, field_validator
 from decimal import Decimal
 
 class Fees(BaseModel):
@@ -42,6 +42,22 @@ class Transaction(BaseModel):
     gross_cost: Optional[condecimal()] = Field(None, description="Calculated gross cost for BUYs")
     realized_gain_loss: Optional[condecimal()] = Field(None, description="Calculated realized gain/loss for SELLs")
     error_reason: Optional[str] = Field(None, description="Reason for transaction processing failure")
+
+    @field_validator('transaction_date', 'settlement_date', mode='before')
+    @classmethod
+    def standardize_datetimes(cls, v: Any) -> Any:
+        """Ensure all incoming datetimes are timezone-aware (UTC)."""
+        if v is None:
+            return v
+        if isinstance(v, str):
+            # Handle ISO format strings with or without 'Z'
+            if v.endswith('Z'):
+                v = v[:-1] + '+00:00'
+            v = datetime.fromisoformat(v)
+        
+        if isinstance(v, datetime) and v.tzinfo is None:
+            return v.replace(tzinfo=timezone.utc)
+        return v
 
     model_config = ConfigDict(
         populate_by_name=True,

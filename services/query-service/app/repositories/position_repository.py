@@ -5,7 +5,7 @@ from typing import List, Any, Optional
 from sqlalchemy.orm import Session, aliased
 from sqlalchemy import func, desc
 
-from portfolio_common.database_models import PositionHistory, Instrument
+from portfolio_common.database_models import PositionHistory, Instrument, DailyPositionSnapshot
 
 logger = logging.getLogger(__name__)
 
@@ -47,40 +47,40 @@ class PositionRepository:
 
     def get_latest_positions_by_portfolio(self, portfolio_id: str) -> List[Any]:
         """
-        Retrieves the single latest position for each security in a given portfolio.
-        
-        This uses a window function to rank position records for each security
-        by date and then selects only the most recent one (rank=1). It also joins
+        Retrieves the single latest daily snapshot for each security in a given portfolio.
+        This uses a window function to rank snapshots for each security by date
+        and then selects only the most recent one (rank=1). It also joins
         with the Instrument table to fetch the instrument's name.
         """
         
-        # Subquery to rank positions for each security by date
-        ranked_positions_subq = self.db.query(
-            PositionHistory,
+        # --- REWRITTEN QUERY ---
+        # Subquery to rank snapshots for each security by date
+        ranked_snapshots_subq = self.db.query(
+            DailyPositionSnapshot,
             func.row_number().over(
-                partition_by=PositionHistory.security_id,
+                partition_by=DailyPositionSnapshot.security_id,
                 order_by=[
-                    PositionHistory.position_date.desc(),
-                    PositionHistory.id.desc() # Tie-breaker for same-day transactions
+                    DailyPositionSnapshot.date.desc(),
+                    DailyPositionSnapshot.id.desc() # Tie-breaker
                 ]
             ).label('rn')
         ).filter(
-            PositionHistory.portfolio_id == portfolio_id
-        ).subquery('ranked_positions')
+            DailyPositionSnapshot.portfolio_id == portfolio_id
+        ).subquery('ranked_snapshots')
 
-        ranked_positions = aliased(PositionHistory, ranked_positions_subq)
+        ranked_snapshots = aliased(DailyPositionSnapshot, ranked_snapshots_subq)
 
-        # Main query to select the latest position object (where rank is 1)
+        # Main query to select the latest snapshot object (where rank is 1)
         # and LEFT JOIN with Instruments to get the name.
         results = self.db.query(
-            ranked_positions, # Select the entire ranked position object
+            ranked_snapshots, # Select the entire ranked snapshot object
             Instrument.name.label('instrument_name')
-        ).outerjoin( # Use outerjoin to be more robust
-            Instrument, Instrument.security_id == ranked_positions.security_id
+        ).outerjoin(
+            Instrument, Instrument.security_id == ranked_snapshots.security_id
         ).filter(
-            ranked_positions_subq.c.rn == 1,
+            ranked_snapshots_subq.c.rn == 1,
             # Also filter out zero-quantity positions, as they are closed
-            ranked_positions.quantity > 0 
+            ranked_snapshots.quantity > 0 
         ).all()
 
         logger.info(f"Found {len(results)} latest positions for portfolio '{portfolio_id}'.")
