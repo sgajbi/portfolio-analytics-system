@@ -18,14 +18,21 @@ from portfolio_common.config import KAFKA_BOOTSTRAP_SERVERS
 setup_logging()
 logger = logging.getLogger(__name__)
 
-# Define all topics and their configurations
-# For production, replication_factor should be >= 3
-# For local dev, 1 is fine.
+# --- UPDATED: Production-Ready Kafka Topic Configurations ---
+
+# For production, replication_factor should be >= 3. For local dev, 1 is sufficient.
 REPLICATION_FACTOR = int(os.getenv("KAFKA_REPLICATION_FACTOR", 1))
 NUM_PARTITIONS = int(os.getenv("KAFKA_NUM_PARTITIONS", 1))
+# For production, min.insync.replicas should be 2 when replication factor is 3.
+MIN_INSYNC_REPLICAS = int(os.getenv("KAFKA_MIN_INSYNC_REPLICAS", 1))
 
 TOPIC_CONFIG = {
-    "min.insync.replicas": 1 # For local dev; in prod this should be >= 2
+    # Guarantees that messages are not lost if a leader fails.
+    "min.insync.replicas": MIN_INSYNC_REPLICAS,
+    # Prevents an out-of-sync replica from being elected as leader, avoiding data loss.
+    "unclean.leader.election.enable": "false",
+    # Example retention policy: 7 days
+    "retention.ms": "604800000"
 }
 
 TOPICS_TO_CREATE = [
@@ -52,16 +59,16 @@ TOPICS_TO_CREATE = [
 
 def create_topics(admin_client: AdminClient):
     """Creates topics in Kafka."""
-    
+
     existing_topics = admin_client.list_topics().topics
-    
+
     new_topic_list = [
         NewTopic(
-            topic, 
-            num_partitions=NUM_PARTITIONS, 
+            topic,
+            num_partitions=NUM_PARTITIONS,
             replication_factor=REPLICATION_FACTOR,
             config=TOPIC_CONFIG
-        ) 
+        )
         for topic in TOPICS_TO_CREATE if topic not in existing_topics
     ]
 

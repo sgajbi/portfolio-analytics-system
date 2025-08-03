@@ -37,6 +37,8 @@ services:
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      # --- NEW: Production-safe setting to prevent data loss ---
+      KAFKA_UNCLEAN_LEADER_ELECTION_ENABLE: "false"
     healthcheck:
       test: ["CMD-SHELL", "kafka-topics --bootstrap-server kafka:9093 --list || exit 1"]
       interval: 10s
@@ -56,7 +58,6 @@ services:
       kafka:
         condition: service_healthy
     command: ["python", "-m", "tools.kafka_setup"]
-    # --- NEW: Add environment to set PYTHONPATH and Kafka connection ---
     environment:
       PYTHONPATH: "/app"
       KAFKA_BOOTSTRAP_SERVERS: kafka:9093
