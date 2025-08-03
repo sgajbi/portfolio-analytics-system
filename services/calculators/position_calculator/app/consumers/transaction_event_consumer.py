@@ -53,6 +53,9 @@ class TransactionEventConsumer(BaseConsumer):
                     position_repo = PositionRepository(db)
                     new_positions = PositionCalculator.calculate(event, db, repo=position_repo)
 
+                    # --- NEW: Flush the session to persist records and generate their IDs ---
+                    db.flush()
+
                     # Stage outbox events for each new/updated position history record
                     for record in new_positions:
                         completion_event = PositionHistoryPersistedEvent.model_validate(record)
@@ -69,7 +72,7 @@ class TransactionEventConsumer(BaseConsumer):
                     idempotency_repo.mark_event_processed(event_id, event.portfolio_id, SERVICE_NAME, correlation_id)
                 
                 logger.info(f"Successfully processed and saved {len(new_positions)} position records.")
-        except IntegrityError:
+        except IntegrityError as e:
             logger.warning(f"Caught IntegrityError for transaction {getattr(event, 'transaction_id', 'UNKNOWN')}. This should not happen in position-calculator. Sending to DLQ.")
             self._send_to_dlq_sync(msg, e, loop)
         except Exception as e:
