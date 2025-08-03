@@ -129,9 +129,53 @@ async def test_dispatcher_is_concurrent_safe(db_engine, clean_db, mock_kafka_pro
     await asyncio.gather(task1, task2)
 
     assert mock_kafka_producer.publish_message.call_count == num_events
-
     with Session(db_engine) as session:
         count = session.execute(
             text("SELECT count(*) FROM outbox_events WHERE status = 'PROCESSED'")
         ).scalar_one()
         assert count == num_events
+
+async def test_dispatcher_respects_batch_size(db_engine, clean_db, mock_kafka_producer):
+    """
+    GIVEN more events than the batch size
+    WHEN the dispatcher runs for one cycle
+    THEN it should only process a single batch of events.
+    """
+    # ARRANGE
+    num_events = 15
+    batch_size = 10
+    events = [OutboxEvent(
+        aggregate_type="BatchTest",
+        aggregate_id=f"batch-agg-{i}",
+        event_type="TestEvent",
+        payload=json.dumps({"index": i}),
+        topic="batch.topic",
+        status="PENDING"
+    ) for i in range(num_events)]
+
+    with Session(db_engine) as session:
+        with session.begin():
+            session.add_all(events)
+
+    # ACT
+    dispatcher = OutboxDispatcher(
+        kafka_producer=mock_kafka_producer,
+        batch_size=batch_size
+    )
+    # Directly call the synchronous processing method once for deterministic testing
+    dispatcher._process_batch_sync()
+
+    # ASSERT
+    # 1. Verify that only one batch was published
+    assert mock_kafka_producer.publish_message.call_count == batch_size
+
+    # 2. Verify the correct number of events were processed in the DB
+    with Session(db_engine) as session:
+        processed_count = session.execute(
+            text("SELECT count(*) FROM outbox_events WHERE status = 'PROCESSED'")
+        ).scalar_one()
+        pending_count = session.execute(
+            text("SELECT count(*) FROM outbox_events WHERE status = 'PENDING'")
+        ).scalar_one()
+        assert processed_count == batch_size
+        assert pending_count == num_events - batch_size

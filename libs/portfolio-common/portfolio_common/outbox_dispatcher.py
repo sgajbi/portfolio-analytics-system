@@ -12,9 +12,6 @@ from portfolio_common.db import SessionLocal
 
 logger = logging.getLogger(__name__)
 
-MAX_RETRIES = 5
-BATCH_SIZE = 50
-
 class OutboxDispatcher:
     """
     A dispatcher that polls the outbox_events table and publishes pending
@@ -22,9 +19,10 @@ class OutboxDispatcher:
     It runs its blocking I/O in a separate thread to avoid stalling the asyncio event loop.
     """
 
-    def __init__(self, kafka_producer: KafkaProducer, poll_interval: int = 5):
+    def __init__(self, kafka_producer: KafkaProducer, poll_interval: int = 5, batch_size: int = 50):
         self._producer = kafka_producer
         self._poll_interval = poll_interval
+        self._batch_size = batch_size # <-- ADDED
         self._running = True
         self._session_factory = SessionLocal
 
@@ -46,7 +44,7 @@ class OutboxDispatcher:
                         db.query(OutboxEvent)
                         .filter(OutboxEvent.status == 'PENDING')
                         .order_by(OutboxEvent.created_at)
-                        .limit(BATCH_SIZE)
+                        .limit(self._batch_size) # <-- UPDATED
                         .with_for_update(skip_locked=True)
                         .all()
                     )
@@ -81,13 +79,10 @@ class OutboxDispatcher:
                     logger.info(f"OutboxDispatcher: Marked {len(processed_ids)} events as PROCESSED in DB.")
                 # 5. The transaction commits here if all steps succeeded
         except Exception as e:
-            # If flush() or any other step fails, the `db.begin()` context manager
-            # will automatically roll back the transaction.
             logger.error(
                 "OutboxDispatcher: Failed to process batch. Transaction will be rolled back.", 
                 exc_info=True
             )
-            # Re-raise the exception to ensure the transaction context manager rolls back.
             raise
 
     async def run(self):
@@ -99,7 +94,6 @@ class OutboxDispatcher:
             try:
                 await loop.run_in_executor(None, self._process_batch_sync)
             except Exception:
-                # This outer catch prevents a single batch failure from crashing the whole dispatcher loop.
                 logger.warning("Continuing to poll after a failed batch attempt.")
             
             await asyncio.sleep(self._poll_interval)
