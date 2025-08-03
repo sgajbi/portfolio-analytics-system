@@ -56,6 +56,10 @@ services:
       kafka:
         condition: service_healthy
     command: ["python", "-m", "tools.kafka_setup"]
+    # --- NEW: Add environment to set PYTHONPATH and Kafka connection ---
+    environment:
+      PYTHONPATH: "/app"
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9093
     networks:
       - app_network
 
