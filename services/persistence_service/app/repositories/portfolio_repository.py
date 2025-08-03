@@ -1,3 +1,4 @@
+# services/persistence_service/app/repositories/portfolio_repository.py
 import logging
 from sqlalchemy.orm import Session
 from portfolio_common.database_models import Portfolio as DBPortfolio
@@ -18,27 +19,18 @@ class PortfolioRepository:
         using a get-then-update/create pattern.
         """
         try:
-            # Attempt to get the existing record
             db_portfolio = self.db.query(DBPortfolio).filter(DBPortfolio.portfolio_id == event.portfolio_id).first()
+            
+            # Use model_dump() without by_alias to get Python-native field names
+            portfolio_data = event.model_dump()
 
             if db_portfolio:
                 # Update existing record
-                db_portfolio.base_currency = event.base_currency
-                db_portfolio.open_date = event.open_date
-                db_portfolio.close_date = event.close_date
-                db_portfolio.risk_exposure = event.risk_exposure
-                db_portfolio.investment_time_horizon = event.investment_time_horizon
-                db_portfolio.portfolio_type = event.portfolio_type
-                db_portfolio.objective = event.objective
-                db_portfolio.booking_center = event.booking_center
-                db_portfolio.cif_id = event.cif_id
-                db_portfolio.is_leverage_allowed = event.is_leverage_allowed
-                db_portfolio.advisor_id = event.advisor_id
-                db_portfolio.status = event.status
+                for key, value in portfolio_data.items():
+                    setattr(db_portfolio, key, value)
                 logger.info(f"Portfolio '{event.portfolio_id}' found, staging for update.")
             else:
-                # Create new record
-                db_portfolio = DBPortfolio(**event.model_dump())
+                db_portfolio = DBPortfolio(**portfolio_data)
                 self.db.add(db_portfolio)
                 logger.info(f"Portfolio '{event.portfolio_id}' not found, staging for creation.")
             
