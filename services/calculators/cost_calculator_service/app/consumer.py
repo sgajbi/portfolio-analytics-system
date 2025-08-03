@@ -15,16 +15,17 @@ from portfolio_common.idempotency_repository import IdempotencyRepository
 from portfolio_common.outbox_repository import OutboxRepository
 from portfolio_common.logging_utils import correlation_id_var
 
-from financial_calculator_engine.src.services.transaction_processor import TransactionProcessor
-from financial_calculator_engine.src.core.models.transaction import Transaction as EngineTransaction
-from financial_calculator_engine.src.logic.parser import TransactionParser
-from financial_calculator_engine.src.logic.sorter import TransactionSorter
-from financial_calculator_engine.src.logic.disposition_engine import DispositionEngine
-from financial_calculator_engine.src.logic.cost_calculator import CostCalculator
-from financial_calculator_engine.src.logic.error_reporter import ErrorReporter
-from financial_calculator_engine.src.core.enums.cost_method import CostMethod
-from financial_calculator_engine.src.logic.cost_basis_strategies import FIFOBasisStrategy, AverageCostBasisStrategy
-from financial_calculator_engine.src.core.config.settings import Settings
+# CORRECTED IMPORTS: Import directly from the library's packages, not from 'src'
+from core.services.transaction_processor import TransactionProcessor
+from core.models.transaction import Transaction as EngineTransaction
+from logic.parser import TransactionParser
+from logic.sorter import TransactionSorter
+from logic.disposition_engine import DispositionEngine
+from logic.cost_calculator import CostCalculator
+from logic.error_reporter import ErrorReporter
+from core.enums.cost_method import CostMethod
+from logic.cost_basis_strategies import FIFOBasisStrategy, AverageCostBasisStrategy
+from core.config.settings import Settings
 from .repository import CostCalculatorRepository
 
 logger = logging.getLogger(__name__)

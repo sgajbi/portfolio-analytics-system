@@ -1,8 +1,8 @@
-"""feat: Initial consolidated migration
+"""feat: Describe your schema change
 
-Revision ID: 01ec5185682e
+Revision ID: 7d62c73eb220
 Revises: 
-Create Date: 2025-07-31 22:11:07.161237
+Create Date: 2025-08-03 09:48:54.050954
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = '01ec5185682e'
+revision: str = '7d62c73eb220'
 down_revision: Union[str, None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -56,6 +56,24 @@ def upgrade() -> None:
     sa.UniqueConstraint('security_id', 'price_date', name='_security_price_date_uc')
     )
     op.create_index(op.f('ix_market_prices_security_id'), 'market_prices', ['security_id'], unique=False)
+    op.create_table('outbox_events',
+    sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
+    sa.Column('aggregate_type', sa.String(), nullable=False),
+    sa.Column('aggregate_id', sa.String(), nullable=False),
+    sa.Column('event_type', sa.String(), nullable=False),
+    sa.Column('payload', sa.JSON(), nullable=False),
+    sa.Column('topic', sa.String(), nullable=False),
+    sa.Column('status', sa.String(), nullable=False),
+    sa.Column('correlation_id', sa.String(), nullable=True),
+    sa.Column('retry_count', sa.Integer(), nullable=False),
+    sa.Column('last_attempted_at', sa.DateTime(), nullable=True),
+    sa.Column('created_at', sa.DateTime(), nullable=False),
+    sa.Column('processed_at', sa.DateTime(), nullable=True),
+    sa.PrimaryKeyConstraint('id')
+    )
+    op.create_index(op.f('ix_outbox_events_aggregate_id'), 'outbox_events', ['aggregate_id'], unique=False)
+    op.create_index(op.f('ix_outbox_events_aggregate_type'), 'outbox_events', ['aggregate_type'], unique=False)
+    op.create_index(op.f('ix_outbox_events_status'), 'outbox_events', ['status'], unique=False)
     op.create_table('portfolios',
     sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
     sa.Column('portfolio_id', sa.String(), nullable=False),
@@ -77,6 +95,16 @@ def upgrade() -> None:
     )
     op.create_index(op.f('ix_portfolios_cif_id'), 'portfolios', ['cif_id'], unique=False)
     op.create_index(op.f('ix_portfolios_portfolio_id'), 'portfolios', ['portfolio_id'], unique=True)
+    op.create_table('processed_events',
+    sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
+    sa.Column('event_id', sa.String(), nullable=False),
+    sa.Column('portfolio_id', sa.String(), nullable=False),
+    sa.Column('service_name', sa.String(), nullable=False),
+    sa.Column('correlation_id', sa.String(), nullable=True),
+    sa.Column('processed_at', sa.DateTime(), server_default=sa.text('now()'), nullable=True),
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('event_id', 'service_name', name='_event_service_uc')
+    )
     op.create_table('daily_position_snapshots',
     sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
     sa.Column('portfolio_id', sa.String(), nullable=False),
@@ -222,9 +250,14 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_daily_position_snapshots_portfolio_id'), table_name='daily_position_snapshots')
     op.drop_index(op.f('ix_daily_position_snapshots_date'), table_name='daily_position_snapshots')
     op.drop_table('daily_position_snapshots')
+    op.drop_table('processed_events')
     op.drop_index(op.f('ix_portfolios_portfolio_id'), table_name='portfolios')
     op.drop_index(op.f('ix_portfolios_cif_id'), table_name='portfolios')
     op.drop_table('portfolios')
+    op.drop_index(op.f('ix_outbox_events_status'), table_name='outbox_events')
+    op.drop_index(op.f('ix_outbox_events_aggregate_type'), table_name='outbox_events')
+    op.drop_index(op.f('ix_outbox_events_aggregate_id'), table_name='outbox_events')
+    op.drop_table('outbox_events')
     op.drop_index(op.f('ix_market_prices_security_id'), table_name='market_prices')
     op.drop_table('market_prices')
     op.drop_index(op.f('ix_instruments_security_id'), table_name='instruments')
