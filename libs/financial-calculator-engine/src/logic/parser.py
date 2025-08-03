@@ -1,12 +1,11 @@
-# src/logic/parser.py
-
+# libs/financial-calculator-engine/src/logic/parser.py
 import logging
 from typing import Any
 from pydantic import ValidationError, TypeAdapter
 from decimal import Decimal
 
-from src.core.models.transaction import Transaction
-from src.logic.error_reporter import ErrorReporter
+from core.models.transaction import Transaction
+from logic.error_reporter import ErrorReporter
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +28,6 @@ class TransactionParser:
                 error_messages = "; ".join([f"{err.get('loc', ['unknown'])[0]}: {err['msg']}" for err in e.errors()])
                 error_reason = f"Validation error: {error_messages}"
                 self._error_reporter.add_error(transaction_id, error_reason)
-                # Create a stub transaction to carry the error
                 stub_txn = self._create_stub_transaction(raw_txn_data, error_reason)
                 parsed_transactions.append(stub_txn)
             except Exception as e:

@@ -1,9 +1,8 @@
-# src/logic/disposition_engine.py
-
+# libs/financial-calculator-engine/src/logic/disposition_engine.py
 from typing import Optional, Tuple
 from decimal import Decimal
-from src.core.models.transaction import Transaction
-from src.logic.cost_basis_strategies import CostBasisStrategy
+from core.models.transaction import Transaction
+from logic.cost_basis_strategies import CostBasisStrategy
 import logging
 
 logger = logging.getLogger(__name__)
@@ -29,7 +28,7 @@ class DispositionEngine:
         )
 
     def set_initial_lots(self, transactions: list[Transaction]):
-        from src.core.enums.transaction_type import TransactionType
+        from core.enums.transaction_type import TransactionType
         filtered_buys = [
             txn for txn in transactions if txn.transaction_type == TransactionType.BUY and txn.quantity > Decimal(0)
         ]

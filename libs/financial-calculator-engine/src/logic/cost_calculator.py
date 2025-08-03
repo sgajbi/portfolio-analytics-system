@@ -1,10 +1,11 @@
+# libs/financial-calculator-engine/src/logic/cost_calculator.py
 from typing import Protocol, Optional
 from decimal import Decimal
 
-from src.core.models.transaction import Transaction
-from src.core.enums.transaction_type import TransactionType
-from src.logic.disposition_engine import DispositionEngine
-from src.logic.error_reporter import ErrorReporter
+from core.models.transaction import Transaction
+from core.enums.transaction_type import TransactionType
+from logic.disposition_engine import DispositionEngine
+from logic.error_reporter import ErrorReporter
 
 class TransactionCostStrategy(Protocol):
     def calculate_costs(self, transaction: Transaction, disposition_engine: DispositionEngine, error_reporter: ErrorReporter) -> None: ...
@@ -13,7 +14,6 @@ class BuyStrategy:
     def calculate_costs(self, transaction: Transaction, disposition_engine: DispositionEngine, error_reporter: ErrorReporter) -> None:
         transaction.gross_cost = Decimal(str(transaction.gross_transaction_amount))
         
-        # This is the corrected logic:
         total_fees = transaction.fees.total_fees if transaction.fees else Decimal(0)
         
         accrued_interest = Decimal(str(transaction.accrued_interest)) if transaction.accrued_interest is not None else Decimal(0)
@@ -35,7 +35,6 @@ class SellStrategy:
         sell_quantity = Decimal(str(transaction.quantity))
         gross_sell_proceeds = Decimal(str(transaction.gross_transaction_amount))
 
-        # This is the corrected logic:
         sell_fees = transaction.fees.total_fees if transaction.fees else Decimal(0)
         net_sell_proceeds = gross_sell_proceeds - sell_fees
 

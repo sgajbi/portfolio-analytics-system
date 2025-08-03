@@ -1,6 +1,5 @@
-# src/logic/error_reporter.py
-
-from src.core.models.response import ErroredTransaction
+# libs/financial-calculator-engine/src/logic/error_reporter.py
+from core.models.response import ErroredTransaction
 
 class ErrorReporter:
     """
