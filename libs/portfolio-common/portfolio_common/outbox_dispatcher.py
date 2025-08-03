@@ -83,7 +83,7 @@ class OutboxDispatcher:
             try:
                 await loop.run_in_executor(None, self._process_batch_sync)
             except Exception:
-                logger.error("Failed to process outbox batch. This is now handled by the main polling loop.")
+                logger.error("Failed to process outbox batch. This is now handled by the main polling loop.", exc_info=True)
 
             try:
                 await asyncio.sleep(self._poll_interval)
