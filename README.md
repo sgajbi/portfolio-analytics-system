@@ -127,11 +127,12 @@ The system relies on a well-defined sequence of events published to Kafka topics
 ---
 
 ## 5. Local Development
+## 5. Local Development
 
 ### Prerequisites
 
 -   **Docker Desktop**: Must be installed and running.
--   **Python 3.11**: A local interpreter is required for setup.
+-   **Python 3.11**: Must be installed and available in your system's PATH. You can download it from the [official Python website](https://www.python.org/downloads/release/python-3110/). [cite_start]Newer versions may not be compatible with all project dependencies. 
 
 ### Initial Setup
 
@@ -144,8 +145,9 @@ The system relies on a well-defined sequence of events published to Kafka topics
     cp .env.example .env
     ```
 3.  **Create & Activate Virtual Environment**:
+    This command explicitly creates the virtual environment using Python 3.11. On Windows with Git Bash, the `py` launcher is the most reliable way to select a specific version.
     ```bash
-    python -m venv .venv
+    py -3.11 -m venv .venv
     source .venv/Scripts/activate
     ```
 4.  **Install All Dependencies**: This single command will install all core tools and then install all local libraries and services in "editable" mode.
@@ -161,7 +163,7 @@ The system relies on a well-defined sequence of events published to Kafka topics
             -e services/query-service \
             -e services/timeseries-generator-service
     ```
-
+ 
 ### Running the System
 
 -   **Start all services**:
