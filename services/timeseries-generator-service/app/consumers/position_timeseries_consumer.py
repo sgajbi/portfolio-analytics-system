@@ -21,7 +21,6 @@ from ..repositories.timeseries_repository import TimeseriesRepository
 
 logger = logging.getLogger(__name__)
 
-# Define a custom exception for retrying
 class InstrumentNotFoundError(Exception):
     """Custom exception to signal that a required instrument is not yet persisted."""
     pass
@@ -39,7 +38,6 @@ class PositionTimeseriesConsumer(BaseConsumer):
         wait=wait_fixed(3),
         stop=stop_after_attempt(5),
         before=before_log(logger, logging.INFO),
-        # NEW: Explicitly tell tenacity to retry on our custom error or IntegrityError
         retry=retry_if_exception_type((IntegrityError, InstrumentNotFoundError))
     )
     def _process_message_with_retry(self, msg: Message, loop: asyncio.AbstractEventLoop):
@@ -51,16 +49,16 @@ class PositionTimeseriesConsumer(BaseConsumer):
             logger.info(f"Processing position snapshot for {event.security_id} on {event.date}")
 
             with next(get_db_session()) as db:
-                repo = TimeseriesRepository(db)
-
-                # --- NEW: Proactive dependency check ---
-                # 1. Check if the instrument exists before starting a transaction.
-                instrument = repo.get_instrument(event.security_id)
-                if not instrument:
-                    # 2. If not, raise the custom exception to trigger a clean retry.
-                    raise InstrumentNotFoundError(f"Instrument '{event.security_id}' not found. Will retry.")
-
+                # FIX: All DB operations must be within a single transaction block.
                 with db.begin():
+                    repo = TimeseriesRepository(db)
+
+                    # 1. Check for the instrument *inside* the transaction.
+                    instrument = repo.get_instrument(event.security_id)
+                    if not instrument:
+                        # 2. If not found, raise to trigger a retry. The transaction will auto-rollback.
+                        raise InstrumentNotFoundError(f"Instrument '{event.security_id}' not found. Will retry.")
+
                     current_snapshot = db.get(DailyPositionSnapshot, event.id)
                     if not current_snapshot:
                         logger.warning(f"DailyPositionSnapshot record with id {event.id} not found. Skipping.")
@@ -105,13 +103,12 @@ class PositionTimeseriesConsumer(BaseConsumer):
         except (json.JSONDecodeError, ValidationError) as e:
             logger.error(f"Message validation failed: {e}. Sending to DLQ.", exc_info=True)
             self._send_to_dlq_sync(msg, e, loop)
-        # NEW: Catch the custom exception for logging before tenacity retries
         except InstrumentNotFoundError as e:
             logger.warning(str(e))
-            raise # Re-raise to trigger tenacity retry
+            raise
         except IntegrityError as e:
             logger.warning(f"Caught IntegrityError (likely a race condition). Retrying...", exc_info=True)
-            raise # Re-raise to trigger tenacity retry
+            raise
         except Exception as e:
             logger.error(f"Unexpected error processing message: {e}", exc_info=True)
             self._send_to_dlq_sync(msg, e, loop)
