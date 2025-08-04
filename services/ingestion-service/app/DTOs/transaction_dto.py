@@ -7,6 +7,7 @@ from decimal import Decimal # Import Decimal
 class Transaction(BaseModel):
     transaction_id: str = Field(json_schema_extra={'example': 'TRN001'})
     portfolio_id: str = Field(json_schema_extra={'example': 'PORT001'})
+    instrument_id: str = Field(json_schema_extra={'example': 'AAPL'})
     security_id: str = Field(json_schema_extra={'example': 'SEC_AAPL'})
     transaction_date: datetime = Field(json_schema_extra={'example': '2023-01-15T10:00:00Z'})
     transaction_type: str = Field(json_schema_extra={'example': 'BUY'})

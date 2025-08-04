@@ -12,6 +12,7 @@ class TransactionRecord(BaseModel):
     transaction_id: str
     transaction_date: datetime
     transaction_type: str
+    instrument_id: str  # <-- FIELD ADDED
     security_id: str
     quantity: Decimal
     price: Decimal
