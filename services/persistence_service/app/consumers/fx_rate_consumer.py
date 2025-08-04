@@ -41,8 +41,9 @@ class FxRateConsumer(BaseConsumer):
             )
 
             with next(get_db_session()) as db:
-                repo = FxRateRepository(db)
-                repo.create_fx_rate(event)
+                with db.begin():
+                    repo = FxRateRepository(db)
+                    repo.create_fx_rate(event)
             
         except (json.JSONDecodeError, ValidationError) as e:
             logger.error("Message validation failed. Sending to DLQ.", extra={"key": key}, exc_info=True)
