@@ -16,7 +16,6 @@ from portfolio_common.db import get_db_session
 from portfolio_common.database_models import Instrument
 from portfolio_common.config import KAFKA_PORTFOLIO_TIMESERIES_GENERATED_TOPIC
 
-# FIX: Import the new exception from the logic module
 from ..core.portfolio_timeseries_logic import PortfolioTimeseriesLogic, FxRateNotFoundError
 from ..repositories.timeseries_repository import TimeseriesRepository
 
@@ -80,7 +79,6 @@ class PortfolioTimeseriesConsumer(BaseConsumer):
         wait=wait_fixed(3),
         stop=stop_after_attempt(5),
         before=before_log(logger, logging.INFO),
-        # FIX: Add FxRateNotFoundError to the list of retryable exceptions.
         retry=retry_if_exception_type((IntegrityError, FxRateNotFoundError)),
         retry_error_callback=lambda _: None
     )
@@ -90,7 +88,7 @@ class PortfolioTimeseriesConsumer(BaseConsumer):
         This method is now decorated to retry on integrity or missing FX rate errors.
         """
         with next(get_db_session()) as db:
-            # FIX: Use a single transaction for the entire operation.
+            # FIX: Re-introduce the transaction block to ensure data is committed.
             with db.begin():
                 repo = TimeseriesRepository(db)
                 
@@ -163,7 +161,6 @@ class PortfolioTimeseriesConsumer(BaseConsumer):
                     logger.warning(f"Non-fatal consumer error: {msg.error()}.")
                     continue
             
-            # The run_in_executor call is correct for thread-safe operations.
             await loop.run_in_executor(None, self.process_message, msg, loop)
         
         batch_processor_task.cancel()
