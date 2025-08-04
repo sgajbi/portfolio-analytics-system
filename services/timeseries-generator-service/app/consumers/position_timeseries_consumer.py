@@ -7,7 +7,7 @@ from datetime import date, timedelta
 
 from confluent_kafka import Message
 from sqlalchemy.exc import IntegrityError
-from tenacity import retry, stop_after_attempt, wait_fixed, before_log
+from tenacity import retry, stop_after_attempt, wait_fixed, before_log, retry_if_exception_type
 
 from portfolio_common.kafka_consumer import BaseConsumer
 from portfolio_common.logging_utils import correlation_id_var
@@ -21,6 +21,11 @@ from ..repositories.timeseries_repository import TimeseriesRepository
 
 logger = logging.getLogger(__name__)
 
+# Define a custom exception for retrying
+class InstrumentNotFoundError(Exception):
+    """Custom exception to signal that a required instrument is not yet persisted."""
+    pass
+
 class PositionTimeseriesConsumer(BaseConsumer):
     """
     Consumes daily position snapshot events and generates the corresponding daily
@@ -33,7 +38,9 @@ class PositionTimeseriesConsumer(BaseConsumer):
     @retry(
         wait=wait_fixed(3),
         stop=stop_after_attempt(5),
-        before=before_log(logger, logging.INFO)
+        before=before_log(logger, logging.INFO),
+        # NEW: Explicitly tell tenacity to retry on our custom error or IntegrityError
+        retry=retry_if_exception_type((IntegrityError, InstrumentNotFoundError))
     )
     def _process_message_with_retry(self, msg: Message, loop: asyncio.AbstractEventLoop):
         try:
@@ -44,9 +51,16 @@ class PositionTimeseriesConsumer(BaseConsumer):
             logger.info(f"Processing position snapshot for {event.security_id} on {event.date}")
 
             with next(get_db_session()) as db:
-                with db.begin():
-                    repo = TimeseriesRepository(db)
+                repo = TimeseriesRepository(db)
 
+                # --- NEW: Proactive dependency check ---
+                # 1. Check if the instrument exists before starting a transaction.
+                instrument = repo.get_instrument(event.security_id)
+                if not instrument:
+                    # 2. If not, raise the custom exception to trigger a clean retry.
+                    raise InstrumentNotFoundError(f"Instrument '{event.security_id}' not found. Will retry.")
+
+                with db.begin():
                     current_snapshot = db.get(DailyPositionSnapshot, event.id)
                     if not current_snapshot:
                         logger.warning(f"DailyPositionSnapshot record with id {event.id} not found. Skipping.")
@@ -76,21 +90,25 @@ class PositionTimeseriesConsumer(BaseConsumer):
                     
                     repo.upsert_position_timeseries(new_timeseries_record)
 
-                if self._producer:
-                    completion_event = PositionTimeseriesGeneratedEvent.model_validate(new_timeseries_record)
-                    headers = [('correlation_id', correlation_id.encode('utf-8'))] if correlation_id else None
-                    
-                    self._producer.publish_message(
-                        topic=KAFKA_POSITION_TIMESERIES_GENERATED_TOPIC,
-                        key=f"{completion_event.portfolio_id}:{completion_event.security_id}",
-                        value=completion_event.model_dump(mode='json'),
-                        headers=headers
-                    )
-                    self._producer.flush(timeout=5)
+                    if self._producer:
+                        completion_event = PositionTimeseriesGeneratedEvent.model_validate(new_timeseries_record)
+                        headers = [('correlation_id', correlation_id.encode('utf-8'))] if correlation_id else None
+                        
+                        self._producer.publish_message(
+                            topic=KAFKA_POSITION_TIMESERIES_GENERATED_TOPIC,
+                            key=f"{completion_event.portfolio_id}:{completion_event.security_id}",
+                            value=completion_event.model_dump(mode='json'),
+                            headers=headers
+                        )
+                        self._producer.flush(timeout=5)
 
         except (json.JSONDecodeError, ValidationError) as e:
             logger.error(f"Message validation failed: {e}. Sending to DLQ.", exc_info=True)
             self._send_to_dlq_sync(msg, e, loop)
+        # NEW: Catch the custom exception for logging before tenacity retries
+        except InstrumentNotFoundError as e:
+            logger.warning(str(e))
+            raise # Re-raise to trigger tenacity retry
         except IntegrityError as e:
             logger.warning(f"Caught IntegrityError (likely a race condition). Retrying...", exc_info=True)
             raise # Re-raise to trigger tenacity retry
