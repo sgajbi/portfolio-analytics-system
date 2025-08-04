@@ -1,7 +1,7 @@
 # services/timeseries-generator-service/app/consumers/position_timeseries_consumer.py
 import logging
 import json
-import asyncio # <-- IMPORT ADDED
+import asyncio
 from pydantic import ValidationError
 from decimal import Decimal
 from datetime import date, timedelta
@@ -34,38 +34,40 @@ class PositionTimeseriesConsumer(BaseConsumer):
             logger.info(f"Processing position snapshot for {event.security_id} on {event.date}")
 
             with next(get_db_session()) as db:
-                repo = TimeseriesRepository(db)
-
-                current_snapshot = db.query(DailyPositionSnapshot).get(event.id)
-                if not current_snapshot:
-                    logger.warning(f"DailyPositionSnapshot record with id {event.id} not found. Skipping.")
-                    return
-
-                previous_timeseries = repo.get_last_position_timeseries_before(
-                    portfolio_id=event.portfolio_id,
-                    security_id=event.security_id,
-                    a_date=event.date
-                )
-
-                cashflows = db.query(Cashflow).filter(
-                    Cashflow.portfolio_id == event.portfolio_id,
-                    Cashflow.security_id == event.security_id,
-                    Cashflow.cashflow_date == event.date
-                ).all()
-
-                bod_cashflow = sum(cf.amount for cf in cashflows if cf.timing == 'BOD')
-                eod_cashflow = sum(cf.amount for cf in cashflows if cf.timing == 'EOD')
-
-                new_timeseries_record = PositionTimeseriesLogic.calculate_daily_record(
-                    current_snapshot=current_snapshot,
-                    previous_timeseries=previous_timeseries,
-                    bod_cashflow=bod_cashflow,
-                    eod_cashflow=eod_cashflow
-                )
-                
+                # CORRECTED: The transaction block now wraps ALL database operations for this message.
                 with db.begin():
+                    repo = TimeseriesRepository(db)
+
+                    current_snapshot = db.query(DailyPositionSnapshot).get(event.id)
+                    if not current_snapshot:
+                        logger.warning(f"DailyPositionSnapshot record with id {event.id} not found. Skipping.")
+                        return
+
+                    previous_timeseries = repo.get_last_position_timeseries_before(
+                        portfolio_id=event.portfolio_id,
+                        security_id=event.security_id,
+                        a_date=event.date
+                    )
+
+                    cashflows = db.query(Cashflow).filter(
+                        Cashflow.portfolio_id == event.portfolio_id,
+                        Cashflow.security_id == event.security_id,
+                        Cashflow.cashflow_date == event.date
+                    ).all()
+
+                    bod_cashflow = sum(cf.amount for cf in cashflows if cf.timing == 'BOD')
+                    eod_cashflow = sum(cf.amount for cf in cashflows if cf.timing == 'EOD')
+
+                    new_timeseries_record = PositionTimeseriesLogic.calculate_daily_record(
+                        current_snapshot=current_snapshot,
+                        previous_timeseries=previous_timeseries,
+                        bod_cashflow=bod_cashflow,
+                        eod_cashflow=eod_cashflow
+                    )
+                    
                     repo.upsert_position_timeseries(new_timeseries_record)
 
+                # Publishing happens *after* the database transaction has successfully committed.
                 if self._producer:
                     completion_event = PositionTimeseriesGeneratedEvent.model_validate(new_timeseries_record)
                     headers = [('correlation_id', correlation_id.encode('utf-8'))] if correlation_id else None
