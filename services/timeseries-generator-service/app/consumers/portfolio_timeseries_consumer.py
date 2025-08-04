@@ -32,7 +32,7 @@ class PortfolioTimeseriesConsumer(BaseConsumer):
         self._batch_lock = asyncio.Lock()
         self._processing_interval = 5  # seconds
 
-    async def process_message(self, msg: Message):
+    def process_message(self, msg: Message, loop: asyncio.AbstractEventLoop):
         """
         Instead of processing immediately, adds the work to a batch, storing
         the latest correlation ID for the task.
@@ -42,15 +42,19 @@ class PortfolioTimeseriesConsumer(BaseConsumer):
             event = PositionTimeseriesGeneratedEvent.model_validate(event_data)
             correlation_id = correlation_id_var.get()
             
-            # Use a dict to store the latest correlation ID for a given (portfolio, date) pair
-            async with self._batch_lock:
-                self._batch[(event.portfolio_id, event.date)] = correlation_id
+            # This must be an async method to use the async lock
+            async def add_to_batch():
+                async with self._batch_lock:
+                    self._batch[(event.portfolio_id, event.date)] = correlation_id
+            
+            # Schedule the async batch operation on the main loop
+            asyncio.run_coroutine_threadsafe(add_to_batch(), loop)
             
             self._consumer.commit(message=msg, asynchronous=False)
 
         except (json.JSONDecodeError, ValidationError) as e:
             logger.error(f"Message validation failed: {e}. Sending to DLQ.", exc_info=True)
-            await self._send_to_dlq(msg, e)
+            self._send_to_dlq_sync(msg, e, loop)
 
     async def _process_batch(self):
         """
@@ -78,49 +82,50 @@ class PortfolioTimeseriesConsumer(BaseConsumer):
         Contains the full aggregation logic for a single portfolio and date.
         """
         with next(get_db_session()) as db:
-            repo = TimeseriesRepository(db)
-            
-            portfolio = repo.get_portfolio(portfolio_id)
-            if not portfolio:
-                logger.warning(f"Portfolio {portfolio_id} not found. Cannot aggregate.")
-                return
-
-            position_timeseries_list = repo.get_all_position_timeseries_for_date(portfolio_id, a_date)
-            portfolio_cashflows = repo.get_portfolio_level_cashflows_for_date(portfolio_id, a_date)
-            
-            instruments = {inst.security_id: inst for inst in db.query(Instrument).all()}
-            fx_rates = {}
-            portfolio_currency = portfolio.base_currency
-            required_currencies = {instruments[pts.security_id].currency for pts in position_timeseries_list if pts.security_id in instruments}
-            
-            for currency in required_currencies:
-                if currency != portfolio_currency:
-                    rate = repo.get_fx_rate(currency, portfolio_currency, a_date)
-                    if rate:
-                        fx_rates[currency] = rate
-
-            new_portfolio_record = PortfolioTimeseriesLogic.calculate_daily_record(
-                portfolio=portfolio,
-                a_date=a_date,
-                position_timeseries_list=position_timeseries_list,
-                portfolio_cashflows=portfolio_cashflows,
-                instruments=instruments,
-                fx_rates=fx_rates
-            )
-
-            repo.upsert_portfolio_timeseries(new_portfolio_record)
-
-            if self._producer:
-                completion_event = PortfolioTimeseriesGeneratedEvent.model_validate(new_portfolio_record)
-                headers = [('correlation_id', correlation_id.encode('utf-8'))] if correlation_id else None
+            with db.begin():
+                repo = TimeseriesRepository(db)
                 
-                self._producer.publish_message(
-                    topic=KAFKA_PORTFOLIO_TIMESERIES_GENERATED_TOPIC,
-                    key=completion_event.portfolio_id,
-                    value=completion_event.model_dump(mode='json'),
-                    headers=headers
+                portfolio = repo.get_portfolio(portfolio_id)
+                if not portfolio:
+                    logger.warning(f"Portfolio {portfolio_id} not found. Cannot aggregate.")
+                    return
+
+                position_timeseries_list = repo.get_all_position_timeseries_for_date(portfolio_id, a_date)
+                portfolio_cashflows = repo.get_portfolio_level_cashflows_for_date(portfolio_id, a_date)
+                
+                instruments = {inst.security_id: inst for inst in db.query(Instrument).all()}
+                fx_rates = {}
+                portfolio_currency = portfolio.base_currency
+                required_currencies = {instruments[pts.security_id].currency for pts in position_timeseries_list if pts.security_id in instruments}
+                
+                for currency in required_currencies:
+                    if currency != portfolio_currency:
+                        rate = repo.get_fx_rate(currency, portfolio_currency, a_date)
+                        if rate:
+                            fx_rates[currency] = rate
+
+                new_portfolio_record = PortfolioTimeseriesLogic.calculate_daily_record(
+                    portfolio=portfolio,
+                    a_date=a_date,
+                    position_timeseries_list=position_timeseries_list,
+                    portfolio_cashflows=portfolio_cashflows,
+                    instruments=instruments,
+                    fx_rates=fx_rates
                 )
-                self._producer.flush(timeout=5)
+
+                repo.upsert_portfolio_timeseries(new_portfolio_record)
+
+                if self._producer:
+                    completion_event = PortfolioTimeseriesGeneratedEvent.model_validate(new_portfolio_record)
+                    headers = [('correlation_id', correlation_id.encode('utf-8'))] if correlation_id else None
+                    
+                    self._producer.publish_message(
+                        topic=KAFKA_PORTFOLIO_TIMESERIES_GENERATED_TOPIC,
+                        key=completion_event.portfolio_id,
+                        value=completion_event.model_dump(mode='json'),
+                        headers=headers
+                    )
+                    self._producer.flush(timeout=5)
 
     async def run(self):
         """
@@ -149,7 +154,8 @@ class PortfolioTimeseriesConsumer(BaseConsumer):
                     logger.warning(f"Non-fatal consumer error: {msg.error()}.")
                     continue
             
-            await self.process_message(msg)
+            # This is a synchronous call within the executor
+            await loop.run_in_executor(None, self.process_message, msg, loop)
         
         batch_processor_task.cancel()
         self.shutdown()

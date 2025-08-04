@@ -24,7 +24,7 @@ class PositionTimeseriesConsumer(BaseConsumer):
     position time series record.
     """
 
-    async def process_message(self, msg: Message):
+    def process_message(self, msg: Message, loop: asyncio.AbstractEventLoop):
         try:
             event_data = json.loads(msg.value().decode('utf-8'))
             event = DailyPositionSnapshotPersistedEvent.model_validate(event_data)
@@ -61,24 +61,25 @@ class PositionTimeseriesConsumer(BaseConsumer):
                     bod_cashflow=bod_cashflow,
                     eod_cashflow=eod_cashflow
                 )
+                
+                with db.begin():
+                    repo.upsert_position_timeseries(new_timeseries_record)
 
-                repo.upsert_position_timeseries(new_timeseries_record)
-
-                if self._producer:
-                    completion_event = PositionTimeseriesGeneratedEvent.model_validate(new_timeseries_record)
-                    headers = [('correlation_id', correlation_id.encode('utf-8'))] if correlation_id else None
-                    
-                    self._producer.publish_message(
-                        topic=KAFKA_POSITION_TIMESERIES_GENERATED_TOPIC,
-                        key=f"{completion_event.portfolio_id}:{completion_event.security_id}",
-                        value=completion_event.model_dump(mode='json'),
-                        headers=headers
-                    )
-                    self._producer.flush(timeout=5)
+                    if self._producer:
+                        completion_event = PositionTimeseriesGeneratedEvent.model_validate(new_timeseries_record)
+                        headers = [('correlation_id', correlation_id.encode('utf-8'))] if correlation_id else None
+                        
+                        self._producer.publish_message(
+                            topic=KAFKA_POSITION_TIMESERIES_GENERATED_TOPIC,
+                            key=f"{completion_event.portfolio_id}:{completion_event.security_id}",
+                            value=completion_event.model_dump(mode='json'),
+                            headers=headers
+                        )
+                        self._producer.flush(timeout=5)
 
         except (json.JSONDecodeError, ValidationError) as e:
             logger.error(f"Message validation failed: {e}. Sending to DLQ.", exc_info=True)
-            await self._send_to_dlq(msg, e)
+            self._send_to_dlq_sync(msg, e, loop)
         except Exception as e:
             logger.error(f"Unexpected error processing message: {e}", exc_info=True)
-            await self._send_to_dlq(msg, e)
+            self._send_to_dlq_sync(msg, e, loop)
