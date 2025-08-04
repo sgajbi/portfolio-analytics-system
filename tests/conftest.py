@@ -2,13 +2,12 @@
 import pytest
 import requests
 import time
-import psycopg2
 import subprocess
 import os
 from testcontainers.compose import DockerCompose
 import sys
 # UPDATED IMPORTS
-from sqlalchemy import create_engine, MetaData
+from sqlalchemy import create_engine, text
 
 
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
@@ -60,40 +59,27 @@ def db_engine(docker_services: DockerCompose):
     engine.dispose()
 
 @pytest.fixture(scope="function")
-def clean_db(docker_services):
+def clean_db(db_engine):
     """
-    A function-scoped fixture that completely resets the database
-    by dropping all tables and re-applying migrations before each test.
+    A function-scoped fixture that cleans all data from tables using TRUNCATE,
+    leaving the schema intact. This is much faster and more reliable than
+    dropping tables or running alembic downgrade/upgrade.
     """
-    print("\n--- Resetting database schema ---")
+    print("\n--- Cleaning database tables ---")
+
+    # List of all tables to be cleaned, in an order that respects potential (though unlikely) FK issues.
+    TABLES = [
+        "transaction_costs", "cashflows", "position_history", "daily_position_snapshots",
+        "position_timeseries", "portfolio_timeseries", "transactions", "market_prices",
+        "instruments", "fx_rates", "portfolios", "processed_events", "outbox_events"
+    ]
     
-    host = docker_services.get_service_host("postgres", 5432)
-    port = docker_services.get_service_port("postgres", 5432)
-    db_user = os.getenv("POSTGRES_USER", "user")
-    db_password = os.getenv("POSTGRES_PASSWORD", "password")
-    db_name = os.getenv("POSTGRES_DB", "portfolio_db")
-    db_url = f"postgresql://{db_user}:{db_password}@{host}:{port}/{db_name}"
+    # Use TRUNCATE ... RESTART IDENTITY CASCADE to quickly delete all data
+    # and reset primary key sequences. This is the fastest and cleanest method.
+    truncate_query = text(f"TRUNCATE TABLE {', '.join(TABLES)} RESTART IDENTITY CASCADE;")
 
-    # Connect and drop all tables to ensure a clean slate
-    engine = create_engine(db_url)
-    meta = MetaData()
-    with engine.connect() as connection:
-        meta.reflect(bind=connection)
-        meta.drop_all(bind=connection)
-    engine.dispose()
-    print("--- All tables dropped ---")
-
-    # Set environment variable for the alembic command
-    env = os.environ.copy()
-    env["HOST_DATABASE_URL"] = db_url
-
-    # Apply all migrations from scratch
-    upgrade_result = subprocess.run(
-        ["alembic", "upgrade", "head"],
-        capture_output=True, text=True, env=env, shell=True
-    )
-    if upgrade_result.returncode != 0:
-        pytest.fail(f"Alembic upgrade failed:\nSTDOUT:\n{upgrade_result.stdout}\nSTDERR:\n{upgrade_result.stderr}")
-
-    print("--- Database reset complete ---")
+    with db_engine.begin() as connection:
+        connection.execute(truncate_query)
+    
+    print("--- Database tables cleaned ---")
     yield
