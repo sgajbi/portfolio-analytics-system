@@ -27,7 +27,6 @@ class PortfolioTimeseriesConsumer(BaseConsumer):
     """
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # The batch is now a dictionary to store the latest correlation ID for each task
         self._batch: Dict[Tuple[str, date], str] = {}
         self._batch_lock = asyncio.Lock()
         self._processing_interval = 5  # seconds
@@ -42,12 +41,10 @@ class PortfolioTimeseriesConsumer(BaseConsumer):
             event = PositionTimeseriesGeneratedEvent.model_validate(event_data)
             correlation_id = correlation_id_var.get()
             
-            # This must be an async method to use the async lock
             async def add_to_batch():
                 async with self._batch_lock:
                     self._batch[(event.portfolio_id, event.date)] = correlation_id
             
-            # Schedule the async batch operation on the main loop
             asyncio.run_coroutine_threadsafe(add_to_batch(), loop)
             
             self._consumer.commit(message=msg, asynchronous=False)
@@ -72,7 +69,6 @@ class PortfolioTimeseriesConsumer(BaseConsumer):
             logger.info(f"Processing batch of {len(current_work)} portfolio-date aggregations.")
             for (portfolio_id, a_date), correlation_id in current_work.items():
                 try:
-                    # Pass the correlation ID to the aggregation logic
                     self._aggregate_for_portfolio_date(portfolio_id, a_date, correlation_id)
                 except Exception as e:
                     logger.error(f"Failed to process aggregation for {portfolio_id} on {a_date}: {e}", exc_info=True)
@@ -154,7 +150,6 @@ class PortfolioTimeseriesConsumer(BaseConsumer):
                     logger.warning(f"Non-fatal consumer error: {msg.error()}.")
                     continue
             
-            # This is a synchronous call within the executor
             await loop.run_in_executor(None, self.process_message, msg, loop)
         
         batch_processor_task.cancel()

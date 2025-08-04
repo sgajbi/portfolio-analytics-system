@@ -1,6 +1,7 @@
 # services/timeseries-generator-service/app/consumers/position_timeseries_consumer.py
 import logging
 import json
+import asyncio # <-- IMPORT ADDED
 from pydantic import ValidationError
 from decimal import Decimal
 from datetime import date, timedelta
@@ -65,17 +66,17 @@ class PositionTimeseriesConsumer(BaseConsumer):
                 with db.begin():
                     repo.upsert_position_timeseries(new_timeseries_record)
 
-                    if self._producer:
-                        completion_event = PositionTimeseriesGeneratedEvent.model_validate(new_timeseries_record)
-                        headers = [('correlation_id', correlation_id.encode('utf-8'))] if correlation_id else None
-                        
-                        self._producer.publish_message(
-                            topic=KAFKA_POSITION_TIMESERIES_GENERATED_TOPIC,
-                            key=f"{completion_event.portfolio_id}:{completion_event.security_id}",
-                            value=completion_event.model_dump(mode='json'),
-                            headers=headers
-                        )
-                        self._producer.flush(timeout=5)
+                if self._producer:
+                    completion_event = PositionTimeseriesGeneratedEvent.model_validate(new_timeseries_record)
+                    headers = [('correlation_id', correlation_id.encode('utf-8'))] if correlation_id else None
+                    
+                    self._producer.publish_message(
+                        topic=KAFKA_POSITION_TIMESERIES_GENERATED_TOPIC,
+                        key=f"{completion_event.portfolio_id}:{completion_event.security_id}",
+                        value=completion_event.model_dump(mode='json'),
+                        headers=headers
+                    )
+                    self._producer.flush(timeout=5)
 
         except (json.JSONDecodeError, ValidationError) as e:
             logger.error(f"Message validation failed: {e}. Sending to DLQ.", exc_info=True)
