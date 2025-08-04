@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 class TimeseriesRepository:
     """
-    Handles all database read/write operations for time series data.
+    [cite_start]Handles all database read/write operations for time series data. [cite: 1023]
     """
     def __init__(self, db: Session):
         self.db = db
@@ -25,6 +25,10 @@ class TimeseriesRepository:
     def get_portfolio(self, portfolio_id: str) -> Optional[Portfolio]:
         """Fetches portfolio details by its ID."""
         return self.db.query(Portfolio).filter(Portfolio.portfolio_id == portfolio_id).first()
+
+    def get_instrument(self, security_id: str) -> Optional[Instrument]:
+        """Fetches an instrument by its security ID."""
+        return self.db.query(Instrument).filter(Instrument.security_id == security_id).first()
 
     def get_fx_rate(self, from_currency: str, to_currency: str, a_date: date) -> Optional[FxRate]:
         """Fetches the latest FX rate on or before a given date."""
@@ -42,7 +46,7 @@ class TimeseriesRepository:
     ) -> Optional[PositionTimeseries]:
         """
         Fetches the most recent position time series record for a security
-        strictly before a given date.
+        [cite_start]strictly before a given date. [cite: 1025]
         """
         return self.db.query(PositionTimeseries).filter(
             PositionTimeseries.portfolio_id == portfolio_id,
