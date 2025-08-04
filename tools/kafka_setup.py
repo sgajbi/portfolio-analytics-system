@@ -50,6 +50,7 @@ TOPICS_TO_CREATE = [
     "position_history_persisted",
     "cashflow_calculated",
     "daily_position_snapshot_persisted",
+    "position_valued",
     # Timeseries topics
     "position_timeseries_generated",
     "portfolio_timeseries_generated",
