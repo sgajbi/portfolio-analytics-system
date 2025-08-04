@@ -9,9 +9,9 @@ from portfolio_common.config import (
     KAFKA_PERSISTENCE_DLQ_TOPIC
 )
 from .consumers.transaction_consumer import CashflowCalculatorConsumer
-# NEW IMPORTS
 from portfolio_common.kafka_utils import get_kafka_producer
 from portfolio_common.outbox_dispatcher import OutboxDispatcher
+from portfolio_common.kafka_admin import ensure_topics_exist
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +35,6 @@ class ConsumerManager:
             )
         )
 
-        # NEW: Instantiate the dispatcher
         kafka_producer = get_kafka_producer()
         self.dispatcher = OutboxDispatcher(kafka_producer=kafka_producer)
 
@@ -46,12 +45,14 @@ class ConsumerManager:
         self._shutdown_event.set()
 
     async def run(self):
+        required_topics = [consumer.topic for consumer in self.consumers]
+        ensure_topics_exist(required_topics)
+
         signal.signal(signal.SIGINT, self._signal_handler)
         signal.signal(signal.SIGTERM, self._signal_handler)
 
         logger.info("Starting all consumer tasks and the outbox dispatcher...")
         self.tasks = [asyncio.create_task(c.run()) for c in self.consumers]
-        # NEW: Start the outbox dispatcher as a background task
         self.tasks.append(asyncio.create_task(self.dispatcher.run()))
 
         logger.info("ConsumerManager is running. Press Ctrl+C to exit.")
@@ -61,7 +62,6 @@ class ConsumerManager:
         for consumer in self.consumers:
             consumer.shutdown()
         
-        # NEW: Stop the dispatcher
         self.dispatcher.stop()
 
         await asyncio.gather(*self.tasks, return_exceptions=True)
