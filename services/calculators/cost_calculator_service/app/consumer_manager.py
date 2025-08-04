@@ -11,6 +11,7 @@ from portfolio_common.config import (
 from .consumer import CostCalculatorConsumer
 from portfolio_common.kafka_utils import get_kafka_producer
 from portfolio_common.outbox_dispatcher import OutboxDispatcher
+from portfolio_common.kafka_admin import ensure_topics_exist
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +45,9 @@ class ConsumerManager:
         self._shutdown_event.set()
 
     async def run(self):
+        required_topics = [consumer.topic for consumer in self.consumers]
+        ensure_topics_exist(required_topics)
+        
         signal.signal(signal.SIGINT, self._signal_handler)
         signal.signal(signal.SIGTERM, self._signal_handler)
 
