@@ -51,8 +51,8 @@ TOPICS_TO_CREATE = [
     "cashflow_calculated",
     "daily_position_snapshot_persisted",
     # Timeseries topics
-    "position_timeseries_generated",
-    "portfolio_timeseries_generated",
+    "position_times_generated",
+    "portfolio_times_generated",
     # DLQ topics
     "persistence_service.dlq",
 ]
