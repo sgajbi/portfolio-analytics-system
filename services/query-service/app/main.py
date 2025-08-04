@@ -1,6 +1,7 @@
 # services/query-service/app/main.py
 import logging
 from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from portfolio_common.logging_utils import setup_logging, correlation_id_var, generate_correlation_id
 from .routers import positions, transactions, instruments, prices, fx_rates, portfolios
 
@@ -32,6 +33,24 @@ async def add_correlation_id_middleware(request: Request, call_next):
     correlation_id_var.reset(token)
     
     return response
+
+# NEW: Global Exception Handler
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    """
+    This middleware will log the full traceback for any unhandled exception
+    that occurs in the application, which is critical for debugging 500 errors.
+    """
+    correlation_id = correlation_id_var.get()
+    logger.critical(
+        f"Unhandled exception for request {request.method} {request.url}",
+        exc_info=exc,
+        extra={"correlation_id": correlation_id}
+    )
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"Internal Server Error: {exc}"},
+    )
 
 # Register the API routers
 app.include_router(portfolios.router)
