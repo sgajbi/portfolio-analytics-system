@@ -7,6 +7,7 @@ from portfolio_common.config import KAFKA_BOOTSTRAP_SERVERS, KAFKA_PROCESSED_TRA
 from .consumers.transaction_event_consumer import TransactionEventConsumer
 from portfolio_common.kafka_utils import get_kafka_producer
 from portfolio_common.outbox_dispatcher import OutboxDispatcher
+from portfolio_common.kafka_admin import ensure_topics_exist
 
 
 logger = logging.getLogger(__name__)
@@ -40,13 +41,16 @@ class ConsumerManager:
         self._shutdown_event.set()
 
     async def run(self):
+        required_topics = [consumer.topic for consumer in self.consumers]
+        ensure_topics_exist(required_topics)
+
         signal.signal(signal.SIGINT, self._signal_handler)
         signal.signal(signal.SIGTERM, self._signal_handler)
 
         logger.info("Starting all consumer tasks and the outbox dispatcher...")
         self.tasks = [asyncio.create_task(c.run()) for c in self.consumers]
         self.tasks.append(asyncio.create_task(self.dispatcher.run()))
-        
+         
         logger.info("ConsumerManager is running. Press Ctrl+C to exit.")
         await self._shutdown_event.wait()
         
