@@ -36,8 +36,10 @@ class InstrumentConsumer(BaseConsumer):
             logger.info("Successfully validated event", extra={"security_id": event.security_id})
 
             with next(get_db_session()) as db:
-                repo = InstrumentRepository(db)
-                repo.create_or_update_instrument(event)
+                # FIX: Wrap the operation in a transaction block to ensure commit/rollback.
+                with db.begin():
+                    repo = InstrumentRepository(db)
+                    repo.create_or_update_instrument(event)
             
             logger.info("Successfully persisted", extra={"security_id": event.security_id})
 
