@@ -10,6 +10,7 @@ from portfolio_common.config import (
 )
 from app.consumers.position_history_consumer import PositionHistoryConsumer
 from app.consumers.market_price_consumer import MarketPriceConsumer
+from portfolio_common.kafka_admin import ensure_topics_exist
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +56,9 @@ class ConsumerManager:
         The main execution function.
         Sets up signal handling and runs consumer tasks.
         """
+        required_topics = [consumer.topic for consumer in self.consumers]
+        ensure_topics_exist(required_topics)
+
         signal.signal(signal.SIGINT, self._signal_handler)
         signal.signal(signal.SIGTERM, self._signal_handler)
 
@@ -72,8 +76,7 @@ class ConsumerManager:
         
         logger.info("Shutdown event received. Stopping all consumers...")
         for consumer in self.consumers:
-            consumer.shutdown() # Tell each consumer to stop its loop
+            consumer.shutdown()
         
-        # Wait for all tasks to complete
         await asyncio.gather(*self.tasks, return_exceptions=True)
         logger.info("All consumer tasks have been successfully shut down.")
