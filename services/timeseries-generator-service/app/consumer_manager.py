@@ -11,6 +11,7 @@ from portfolio_common.config import (
 )
 from .consumers.position_timeseries_consumer import PositionTimeseriesConsumer
 from .consumers.portfolio_timeseries_consumer import PortfolioTimeseriesConsumer
+from portfolio_common.kafka_admin import ensure_topics_exist
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +54,9 @@ class ConsumerManager:
         self._shutdown_event.set()
 
     async def run(self):
+        required_topics = [consumer.topic for consumer in self.consumers]
+        ensure_topics_exist(required_topics)
+
         signal.signal(signal.SIGINT, self._signal_handler)
         signal.signal(signal.SIGTERM, self._signal_handler)
 
