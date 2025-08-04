@@ -14,6 +14,11 @@ from portfolio_common.database_models import (
 
 logger = logging.getLogger(__name__)
 
+# NEW: Define a custom, specific exception for this failure case.
+class FxRateNotFoundError(Exception):
+    """Raised when a required FX rate for a calculation is not found."""
+    pass
+
 class PortfolioTimeseriesLogic:
     """
     A stateless calculator for aggregating position data into a single daily
@@ -51,8 +56,10 @@ class PortfolioTimeseriesLogic:
             if instrument_currency != portfolio_currency:
                 fx_rate = fx_rates.get(instrument_currency)
                 if not fx_rate:
-                    logger.error(f"Missing FX rate from {instrument_currency} to {portfolio_currency} for date {pos_ts.date}. Cannot convert.")
-                    continue
+                    # FIX: Instead of just logging, raise a specific error to allow for retries.
+                    error_msg = f"Missing FX rate from {instrument_currency} to {portfolio_currency} for date {pos_ts.date}. Cannot convert."
+                    logger.error(error_msg)
+                    raise FxRateNotFoundError(error_msg)
                 rate = fx_rate.rate
 
             total_bod_mv += pos_ts.bod_market_value * rate
