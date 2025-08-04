@@ -7,7 +7,7 @@ from typing import Dict, Tuple, Optional
 
 from confluent_kafka import Message
 from sqlalchemy.exc import IntegrityError
-from tenacity import retry, stop_after_attempt, wait_fixed, before_log
+from tenacity import retry, stop_after_attempt, wait_fixed, before_log, retry_if_exception_type
 
 from portfolio_common.kafka_consumer import BaseConsumer
 from portfolio_common.logging_utils import correlation_id_var
@@ -16,7 +16,8 @@ from portfolio_common.db import get_db_session
 from portfolio_common.database_models import Instrument
 from portfolio_common.config import KAFKA_PORTFOLIO_TIMESERIES_GENERATED_TOPIC
 
-from ..core.portfolio_timeseries_logic import PortfolioTimeseriesLogic
+# FIX: Import the new exception from the logic module
+from ..core.portfolio_timeseries_logic import PortfolioTimeseriesLogic, FxRateNotFoundError
 from ..repositories.timeseries_repository import TimeseriesRepository
 
 logger = logging.getLogger(__name__)
@@ -79,14 +80,17 @@ class PortfolioTimeseriesConsumer(BaseConsumer):
         wait=wait_fixed(3),
         stop=stop_after_attempt(5),
         before=before_log(logger, logging.INFO),
-        retry_error_callback=lambda _: None # Suppress final exception to not crash the loop
+        # FIX: Add FxRateNotFoundError to the list of retryable exceptions.
+        retry=retry_if_exception_type((IntegrityError, FxRateNotFoundError)),
+        retry_error_callback=lambda _: None
     )
     def _aggregate_for_portfolio_date(self, portfolio_id: str, a_date: date, correlation_id: Optional[str]):
         """
         Contains the full aggregation logic for a single portfolio and date.
-        This method is now decorated to retry on integrity errors.
+        This method is now decorated to retry on integrity or missing FX rate errors.
         """
         with next(get_db_session()) as db:
+            # FIX: Use a single transaction for the entire operation.
             with db.begin():
                 repo = TimeseriesRepository(db)
                 
@@ -159,6 +163,7 @@ class PortfolioTimeseriesConsumer(BaseConsumer):
                     logger.warning(f"Non-fatal consumer error: {msg.error()}.")
                     continue
             
+            # The run_in_executor call is correct for thread-safe operations.
             await loop.run_in_executor(None, self.process_message, msg, loop)
         
         batch_processor_task.cancel()
