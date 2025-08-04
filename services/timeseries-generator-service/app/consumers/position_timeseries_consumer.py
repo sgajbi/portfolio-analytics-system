@@ -1,4 +1,3 @@
-# services/timeseries-generator-service/app/consumers/position_timeseries_consumer.py
 import logging
 import json
 import asyncio
@@ -7,6 +6,9 @@ from decimal import Decimal
 from datetime import date, timedelta
 
 from confluent_kafka import Message
+from sqlalchemy.exc import IntegrityError
+from tenacity import retry, stop_after_attempt, wait_fixed, before_log
+
 from portfolio_common.kafka_consumer import BaseConsumer
 from portfolio_common.logging_utils import correlation_id_var
 from portfolio_common.events import DailyPositionSnapshotPersistedEvent, PositionTimeseriesGeneratedEvent
@@ -24,8 +26,16 @@ class PositionTimeseriesConsumer(BaseConsumer):
     Consumes daily position snapshot events and generates the corresponding daily
     position time series record.
     """
-
     def process_message(self, msg: Message, loop: asyncio.AbstractEventLoop):
+        """Wrapper to call the retryable logic."""
+        self._process_message_with_retry(msg, loop)
+
+    @retry(
+        wait=wait_fixed(3),
+        stop=stop_after_attempt(5),
+        before=before_log(logger, logging.INFO)
+    )
+    def _process_message_with_retry(self, msg: Message, loop: asyncio.AbstractEventLoop):
         try:
             event_data = json.loads(msg.value().decode('utf-8'))
             event = DailyPositionSnapshotPersistedEvent.model_validate(event_data)
@@ -34,11 +44,10 @@ class PositionTimeseriesConsumer(BaseConsumer):
             logger.info(f"Processing position snapshot for {event.security_id} on {event.date}")
 
             with next(get_db_session()) as db:
-                # CORRECTED: The transaction block now wraps ALL database operations for this message.
                 with db.begin():
                     repo = TimeseriesRepository(db)
 
-                    current_snapshot = db.query(DailyPositionSnapshot).get(event.id)
+                    current_snapshot = db.get(DailyPositionSnapshot, event.id)
                     if not current_snapshot:
                         logger.warning(f"DailyPositionSnapshot record with id {event.id} not found. Skipping.")
                         return
@@ -67,7 +76,6 @@ class PositionTimeseriesConsumer(BaseConsumer):
                     
                     repo.upsert_position_timeseries(new_timeseries_record)
 
-                # Publishing happens *after* the database transaction has successfully committed.
                 if self._producer:
                     completion_event = PositionTimeseriesGeneratedEvent.model_validate(new_timeseries_record)
                     headers = [('correlation_id', correlation_id.encode('utf-8'))] if correlation_id else None
@@ -83,6 +91,9 @@ class PositionTimeseriesConsumer(BaseConsumer):
         except (json.JSONDecodeError, ValidationError) as e:
             logger.error(f"Message validation failed: {e}. Sending to DLQ.", exc_info=True)
             self._send_to_dlq_sync(msg, e, loop)
+        except IntegrityError as e:
+            logger.warning(f"Caught IntegrityError (likely a race condition). Retrying...", exc_info=True)
+            raise # Re-raise to trigger tenacity retry
         except Exception as e:
             logger.error(f"Unexpected error processing message: {e}", exc_info=True)
             self._send_to_dlq_sync(msg, e, loop)

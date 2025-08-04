@@ -1,4 +1,3 @@
-# services/timeseries-generator-service/app/consumers/portfolio_timeseries_consumer.py
 import logging
 import json
 import asyncio
@@ -7,6 +6,9 @@ from datetime import date
 from typing import Dict, Tuple, Optional
 
 from confluent_kafka import Message
+from sqlalchemy.exc import IntegrityError
+from tenacity import retry, stop_after_attempt, wait_fixed, before_log
+
 from portfolio_common.kafka_consumer import BaseConsumer
 from portfolio_common.logging_utils import correlation_id_var
 from portfolio_common.events import PositionTimeseriesGeneratedEvent, PortfolioTimeseriesGeneratedEvent
@@ -71,11 +73,18 @@ class PortfolioTimeseriesConsumer(BaseConsumer):
                 try:
                     self._aggregate_for_portfolio_date(portfolio_id, a_date, correlation_id)
                 except Exception as e:
-                    logger.error(f"Failed to process aggregation for {portfolio_id} on {a_date}: {e}", exc_info=True)
+                    logger.error(f"Failed to process aggregation for {portfolio_id} on {a_date} after retries: {e}", exc_info=True)
 
+    @retry(
+        wait=wait_fixed(3),
+        stop=stop_after_attempt(5),
+        before=before_log(logger, logging.INFO),
+        retry_error_callback=lambda _: None # Suppress final exception to not crash the loop
+    )
     def _aggregate_for_portfolio_date(self, portfolio_id: str, a_date: date, correlation_id: Optional[str]):
         """
         Contains the full aggregation logic for a single portfolio and date.
+        This method is now decorated to retry on integrity errors.
         """
         with next(get_db_session()) as db:
             with db.begin():
