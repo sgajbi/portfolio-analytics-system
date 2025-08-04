@@ -11,6 +11,8 @@ from portfolio_common.config import (
 from app.consumers.position_history_consumer import PositionHistoryConsumer
 from app.consumers.market_price_consumer import MarketPriceConsumer
 from portfolio_common.kafka_admin import ensure_topics_exist
+from portfolio_common.kafka_utils import get_kafka_producer
+from portfolio_common.outbox_dispatcher import OutboxDispatcher
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +46,10 @@ class ConsumerManager:
             )
         )
 
+        # NEW: Instantiate the dispatcher
+        kafka_producer = get_kafka_producer()
+        self.dispatcher = OutboxDispatcher(kafka_producer=kafka_producer)
+
         logger.info(f"ConsumerManager initialized with {len(self.consumers)} consumer(s).")
 
     def _signal_handler(self, signum, frame):
@@ -68,15 +74,18 @@ class ConsumerManager:
             logger.info("Shutdown event received. Exiting.")
             return
 
-        logger.info("Starting all consumer tasks...")
+        logger.info("Starting all consumer tasks and the outbox dispatcher...")
         self.tasks = [asyncio.create_task(c.run()) for c in self.consumers]
+        self.tasks.append(asyncio.create_task(self.dispatcher.run()))
         
         logger.info("ConsumerManager is running. Press Ctrl+C to exit.")
         await self._shutdown_event.wait()
         
-        logger.info("Shutdown event received. Stopping all consumers...")
+        logger.info("Shutdown event received. Stopping all consumers and the dispatcher...")
         for consumer in self.consumers:
             consumer.shutdown()
         
+        self.dispatcher.stop()
+        
         await asyncio.gather(*self.tasks, return_exceptions=True)
-        logger.info("All consumer tasks have been successfully shut down.")
+        logger.info("All consumer and dispatcher tasks have been successfully shut down.")

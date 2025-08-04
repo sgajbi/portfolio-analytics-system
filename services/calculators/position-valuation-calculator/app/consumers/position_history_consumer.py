@@ -11,6 +11,8 @@ from portfolio_common.db import get_db_session
 from portfolio_common.database_models import DailyPositionSnapshot, PositionHistory
 from portfolio_common.config import KAFKA_DAILY_POSITION_SNAPSHOT_PERSISTED_TOPIC
 from portfolio_common.idempotency_repository import IdempotencyRepository
+from portfolio_common.outbox_repository import OutboxRepository
+from portfolio_common.logging_utils import correlation_id_var
 from ..repositories.valuation_repository import ValuationRepository
 from ..logic.valuation_logic import ValuationLogic
 
@@ -28,7 +30,7 @@ class PositionHistoryConsumer(BaseConsumer):
         key = msg.key().decode('utf-8') if msg.key() else "NoKey"
         value = msg.value().decode('utf-8')
         event_id = f"{msg.topic()}-{msg.partition()}-{msg.offset()}"
-        persisted_snapshot = None
+        correlation_id = correlation_id_var.get()
 
         try:
             event_data = json.loads(value)
@@ -37,18 +39,20 @@ class PositionHistoryConsumer(BaseConsumer):
             logger.info(f"Valuing transaction-based position for id {position_event.id}", extra={"event_id": event_id})
             
             with next(get_db_session()) as db:
-                with db.begin(): # Atomically check, process, and mark
+                with db.begin():
                     idempotency_repo = IdempotencyRepository(db)
+                    outbox_repo = OutboxRepository()
+    
                     if idempotency_repo.is_event_processed(event_id, SERVICE_NAME):
                         logger.warning(f"Event {event_id} already processed. Skipping.")
                         return
 
                     repo = ValuationRepository(db)
-                    
+        
                     position = db.query(PositionHistory).get(position_event.id)
                     if not position:
                         logger.warning(f"PositionHistory with id {position_event.id} not found. Marking as processed to skip.")
-                        idempotency_repo.mark_event_processed(event_id, position_event.portfolio_id, SERVICE_NAME)
+                        idempotency_repo.mark_event_processed(event_id, position_event.portfolio_id, SERVICE_NAME, correlation_id)
                         return
 
                     price = repo.get_latest_price_for_position(
@@ -56,8 +60,7 @@ class PositionHistoryConsumer(BaseConsumer):
                         position_date=position.position_date
                     )
                     
-                    market_price = None
-                    market_value, unrealized_gain_loss = None, None
+                    market_price, market_value, unrealized_gain_loss = None, None, None
 
                     if price:
                         market_price = price.price
@@ -81,23 +84,20 @@ class PositionHistoryConsumer(BaseConsumer):
                     )
                     
                     persisted_snapshot = repo.upsert_daily_snapshot(snapshot_to_save)
-                    idempotency_repo.mark_event_processed(event_id, position.portfolio_id, SERVICE_NAME)
+                    db.flush()
 
-            # Publish event after the transaction commits
-            if self._producer and persisted_snapshot:
-                snapshot_data = {
-                    "id": persisted_snapshot.id,
-                    "portfolio_id": persisted_snapshot.portfolio_id,
-                    "security_id": persisted_snapshot.security_id,
-                    "date": persisted_snapshot.date
-                }
-                completion_event = DailyPositionSnapshotPersistedEvent.model_validate(snapshot_data)
-                self._producer.publish_message(
-                    topic=KAFKA_DAILY_POSITION_SNAPSHOT_PERSISTED_TOPIC,
-                    key=completion_event.security_id,
-                    value=completion_event.model_dump(mode='json')
-                )
-                self._producer.flush(timeout=5)
+                    completion_event = DailyPositionSnapshotPersistedEvent.model_validate(persisted_snapshot)
+                    outbox_repo.create_outbox_event(
+                        db_session=db,
+                        aggregate_type='DailyPositionSnapshot',
+                        aggregate_id=str(persisted_snapshot.id),
+                        event_type='DailyPositionSnapshotPersisted',
+                        topic=KAFKA_DAILY_POSITION_SNAPSHOT_PERSISTED_TOPIC,
+                        payload=completion_event.model_dump(mode='json'),
+                        correlation_id=correlation_id
+                    )
+
+                    idempotency_repo.mark_event_processed(event_id, position.portfolio_id, SERVICE_NAME, correlation_id)
 
         except (json.JSONDecodeError, ValidationError) as e:
             logger.error(f"Message validation failed for key '{key}': {e}. Value: '{value}'", exc_info=True)
