@@ -1,6 +1,7 @@
 # services/persistence_service/app/repositories/portfolio_repository.py
 import logging
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from portfolio_common.database_models import Portfolio as DBPortfolio
 from portfolio_common.events import PortfolioEvent
 
@@ -10,27 +11,26 @@ class PortfolioRepository:
     """
     Handles database operations for the Portfolio model.
     """
-    def __init__(self, db: Session):
+    def __init__(self, db: AsyncSession):
         self.db = db
 
-    def create_or_update_portfolio(self, event: PortfolioEvent) -> DBPortfolio:
+    async def create_or_update_portfolio(self, event: PortfolioEvent) -> DBPortfolio:
         """
         Idempotently creates a new portfolio or updates an existing one
         using a get-then-update/create pattern.
         """
         try:
-            db_portfolio = self.db.query(DBPortfolio).filter(DBPortfolio.portfolio_id == event.portfolio_id).first()
+            stmt = select(DBPortfolio).filter_by(portfolio_id=event.portfolio_id)
+            result = await self.db.execute(stmt)
+            db_portfolio = result.scalars().first()
             
-            # Use model_dump() without by_alias to get Python-native field names
-            portfolio_data = event.model_dump()
+            portfolio_data = event.model_dump(by_alias=True)
 
             if db_portfolio:
-                # Update existing record
                 for key, value in portfolio_data.items():
                     setattr(db_portfolio, key, value)
                 logger.info(f"Portfolio '{event.portfolio_id}' found, staging for update.")
             else:
-                # Create new record
                 db_portfolio = DBPortfolio(**portfolio_data)
                 self.db.add(db_portfolio)
                 logger.info(f"Portfolio '{event.portfolio_id}' not found, staging for creation.")

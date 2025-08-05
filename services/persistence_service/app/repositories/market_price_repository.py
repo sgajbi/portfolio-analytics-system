@@ -1,23 +1,26 @@
 # services/persistence_service/app/repositories/market_price_repository.py
 import logging
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from portfolio_common.database_models import MarketPrice as DBMarketPrice
 from portfolio_common.events import MarketPriceEvent
 
 logger = logging.getLogger(__name__)
 
 class MarketPriceRepository:
-    def __init__(self, db: Session):
+    def __init__(self, db: AsyncSession):
         self.db = db
 
-    def create_market_price(self, event: MarketPriceEvent) -> DBMarketPrice:
+    async def create_market_price(self, event: MarketPriceEvent) -> DBMarketPrice:
         try:
-            db_price = self.db.query(DBMarketPrice).filter(
-                DBMarketPrice.security_id == event.security_id,
-                DBMarketPrice.price_date == event.price_date
-            ).first()
+            stmt = select(DBMarketPrice).filter_by(
+                security_id=event.security_id,
+                price_date=event.price_date
+            )
+            result = await self.db.execute(stmt)
+            db_price = result.scalars().first()
 
-            market_price_data = event.model_dump()
+            market_price_data = event.model_dump(by_alias=True)
 
             if db_price:
                 for key, value in market_price_data.items():

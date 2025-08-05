@@ -1,20 +1,23 @@
 # services/persistence_service/app/repositories/instrument_repository.py
 import logging
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from portfolio_common.database_models import Instrument as DBInstrument
 from portfolio_common.events import InstrumentEvent
 
 logger = logging.getLogger(__name__)
 
 class InstrumentRepository:
-    def __init__(self, db: Session):
+    def __init__(self, db: AsyncSession):
         self.db = db
 
-    def create_or_update_instrument(self, event: InstrumentEvent) -> DBInstrument:
+    async def create_or_update_instrument(self, event: InstrumentEvent) -> DBInstrument:
         try:
-            db_instrument = self.db.query(DBInstrument).filter(DBInstrument.security_id == event.security_id).first()
+            stmt = select(DBInstrument).filter_by(security_id=event.security_id)
+            result = await self.db.execute(stmt)
+            db_instrument = result.scalars().first()
             
-            instrument_data = event.model_dump()
+            instrument_data = event.model_dump(by_alias=True)
 
             if db_instrument:
                 for key, value in instrument_data.items():

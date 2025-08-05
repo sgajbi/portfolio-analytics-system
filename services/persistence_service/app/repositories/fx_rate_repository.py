@@ -1,6 +1,8 @@
+# services/persistence_service/app/repositories/fx_rate_repository.py
 import logging
-from typing import Tuple
-from sqlalchemy.orm import Session
+from typing import Tuple, List
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from portfolio_common.database_models import FxRate as DBFxRate
 from portfolio_common.events import FxRateEvent
 
@@ -10,21 +12,23 @@ class FxRateRepository:
     """
     Repository for upserting FX rate records into the database.
     """
-
-    def __init__(self, db: Session):
+    def __init__(self, db: AsyncSession):
         self.db = db
 
-    def upsert_fx_rate(self, event: FxRateEvent) -> Tuple[DBFxRate, str]:
+    async def upsert_fx_rate(self, event: FxRateEvent) -> Tuple[DBFxRate, str]:
         """
         Upserts an FX rate by (from_currency, to_currency, rate_date).
         Returns a tuple: (DBFxRate instance, status: 'created', 'updated', or 'no-op').
         """
+        stmt = select(DBFxRate).filter_by(
+            from_currency=event.from_currency,
+            to_currency=event.to_currency,
+            rate_date=event.rate_date
+        )
+        result = await self.db.execute(stmt)
+        db_rate = result.scalars().first()
+        
         fx_rate_data = event.model_dump()
-        db_rate = self.db.query(DBFxRate).filter(
-            DBFxRate.from_currency == event.from_currency,
-            DBFxRate.to_currency == event.to_currency,
-            DBFxRate.rate_date == event.rate_date
-        ).first()
 
         if db_rate:
             changed = False
@@ -46,7 +50,7 @@ class FxRateRepository:
             )
         return db_rate, status
 
-    def batch_upsert_fx_rates(self, events: list) -> Tuple[int, int, int]:
+    async def batch_upsert_fx_rates(self, events: List[FxRateEvent]) -> Tuple[int, int, int]:
         """
         Batch upserts a list of FxRateEvent objects.
         Returns a tuple: (created_count, updated_count, noop_count).
@@ -54,7 +58,7 @@ class FxRateRepository:
         created, updated, noop = 0, 0, 0
         for event in events:
             try:
-                _, status = self.upsert_fx_rate(event)
+                _, status = await self.upsert_fx_rate(event)
                 if status == "created":
                     created += 1
                 elif status == "updated":
@@ -66,7 +70,5 @@ class FxRateRepository:
                     f"Failed to upsert FX rate for '{event.from_currency}-{event.to_currency}' on '{event.rate_date}': {e}",
                     exc_info=True
                 )
-                # Optionally: handle/re-raise as needed for batch error policy
         logger.info(f"Batch upsert summary: {created} created, {updated} updated, {noop} unchanged.")
         return created, updated, noop
-
