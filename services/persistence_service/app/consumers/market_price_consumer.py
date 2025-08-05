@@ -13,58 +13,89 @@ from portfolio_common.events import MarketPriceEvent
 from portfolio_common.db import get_db_session
 from portfolio_common.config import KAFKA_MARKET_PRICE_PERSISTED_TOPIC
 from ..repositories.market_price_repository import MarketPriceRepository
+from portfolio_common.idempotency_repository import IdempotencyRepository # NEW IMPORT
+from portfolio_common.outbox_repository import OutboxRepository # NEW IMPORT
 
 logger = logging.getLogger(__name__)
+
+# NEW: Define a constant for the service name.
+SERVICE_NAME = "persistence-market-prices"
 
 class MarketPriceConsumer(BaseConsumer):
     """
     A concrete consumer for validating and persisting market price events.
-    Publishes a completion event on success.
+    - It uses an idempotency check for exactly-once processing.
+    - On success, it writes a completion event to the outbox table.
     """
     def process_message(self, msg: Message, loop: asyncio.AbstractEventLoop):
         """Wrapper to call the retryable logic."""
         self._process_message_with_retry(msg, loop)
     
-    @retry(wait=wait_fixed(2), stop=stop_after_attempt(3))
+    @retry(wait=wait_fixed(2), stop=after_attempt(3), reraise=True)
     def _process_message_with_retry(self, msg: Message, loop: asyncio.AbstractEventLoop):
         key = msg.key().decode('utf-8') if msg.key() else "NoKey"
         value = msg.value().decode('utf-8')
+        correlation_id = correlation_id_var.get()
         event = None
-        logger.info("MarketPriceConsumer received message", extra={"key": key})
+
+        # NEW: Create a unique, deterministic ID for the event.
+        event_id = f"{msg.topic()}-{msg.partition()}-{msg.offset()}"
+        
+        logger.info("MarketPriceConsumer received message", 
+            extra={"key": key, "event_id": event_id})
 
         try:
             market_price_data = json.loads(value)
             event = MarketPriceEvent.model_validate(market_price_data)
-            logger.info("Successfully validated event", extra={"security_id": event.security_id, "price_date": event.price_date})
+            logger.info("Successfully validated event", 
+                extra={"security_id": event.security_id, "price_date": event.price_date})
 
             with next(get_db_session()) as db:
                 with db.begin():
                     repo = MarketPriceRepository(db)
+                    idempotency_repo = IdempotencyRepository(db) # NEW
+                    outbox_repo = OutboxRepository() # NEW
+
+                    # --- IDEMPOTENCY CHECK ---
+                    if idempotency_repo.is_event_processed(event_id, SERVICE_NAME):
+                        logger.warning(
+                            "Event has already been processed. Skipping.",
+                            extra={"event_id": event_id, "service_name": SERVICE_NAME}
+                        )
+                        return
+
                     repo.create_market_price(event)
             
-            logger.info("Database transaction for market price was successful.")
-            
-            if self._producer:
-                corr_id = correlation_id_var.get()
-                headers = [('correlation_id', corr_id.encode('utf-8'))] if corr_id else None
+                    # --- REFACTORED: Use Outbox Pattern ---
+                    outbox_repo.create_outbox_event(
+                        db_session=db,
+                        aggregate_type='MarketPrice',
+                        aggregate_id=event.security_id,
+                        event_type='MarketPricePersisted',
+                        topic=KAFKA_MARKET_PRICE_PERSISTED_TOPIC,
+                        payload=event.model_dump(mode='json'),
+                        correlation_id=correlation_id
+                    )
 
-                self._producer.publish_message(
-                    topic=KAFKA_MARKET_PRICE_PERSISTED_TOPIC,
-                    key=event.security_id,
-                    value=event.model_dump(mode='json'),
-                    headers=headers
-                )
-                logger.info("Published market_price_persisted event", extra={"security_id": event.security_id})
-                self._producer.flush(timeout=5)
-            else:
-                logger.warning("Kafka producer not available, skipping completion event.")
+                    # --- MARK AS PROCESSED ---
+                    idempotency_repo.mark_event_processed(
+                        event_id=event_id,
+                        portfolio_id="N/A", # Market prices are not portfolio-specific
+                        service_name=SERVICE_NAME,
+                        correlation_id=correlation_id
+                    )
+
+            logger.info("Database transaction for market price was successful.")
 
         except (json.JSONDecodeError, ValidationError) as e:
-            logger.error("Message validation failed. Sending to DLQ.", extra={"key": key}, exc_info=True)
+            logger.error("Message validation failed. Sending to DLQ.", 
+                extra={"key": key, "event_id": event_id}, exc_info=True)
             self._send_to_dlq_sync(msg, e, loop)
         except IntegrityError:
-            logger.warning(f"Caught IntegrityError for price {getattr(event, 'security_id', 'UNKNOWN')}. Will retry...")
+            logger.warning(f"Caught IntegrityError for price {getattr(event, 'security_id', 'UNKNOWN')}. Will retry...",
+                extra={"event_id": event_id})
             raise
         except Exception as e:
-            logger.error(f"An unexpected error occurred for price {getattr(event, 'security_id', 'UNKNOWN')}. Sending to DLQ.", extra={"key": key}, exc_info=True)
+            logger.error(f"An unexpected error occurred for price {getattr(event, 'security_id', 'UNKNOWN')}. Sending to DLQ.", 
+                extra={"key": key, "event_id": event_id}, exc_info=True)
             self._send_to_dlq_sync(msg, e, loop)
