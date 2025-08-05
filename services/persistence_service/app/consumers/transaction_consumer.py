@@ -5,7 +5,7 @@ import asyncio
 from pydantic import ValidationError
 from confluent_kafka import Message
 from sqlalchemy.exc import IntegrityError
-from tenacity import retry, stop_after_attempt, wait_fixed, before_log
+from tenacity import retry, stop_after_attempt, wait_exponential, before_log
 
 from portfolio_common.kafka_consumer import BaseConsumer
 from portfolio_common.logging_utils import correlation_id_var
@@ -14,11 +14,10 @@ from portfolio_common.db import get_db_session
 from portfolio_common.config import KAFKA_RAW_TRANSACTIONS_COMPLETED_TOPIC
 from ..repositories.transaction_db_repo import TransactionDBRepository
 from portfolio_common.outbox_repository import OutboxRepository
-from portfolio_common.idempotency_repository import IdempotencyRepository # NEW IMPORT
+from portfolio_common.idempotency_repository import IdempotencyRepository
 
 logger = logging.getLogger(__name__)
 
-# NEW: Define a constant for the service name to ensure consistency.
 SERVICE_NAME = "persistence-transactions"
 
 class TransactionPersistenceConsumer(BaseConsumer):
@@ -37,9 +36,10 @@ class TransactionPersistenceConsumer(BaseConsumer):
         self._process_message_with_retry(msg, loop)
 
     @retry(
-        wait=wait_fixed(2),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
         stop=stop_after_attempt(3),
         before=before_log(logger, logging.INFO),
+        reraise=True
     )
     def _process_message_with_retry(self, msg: Message, loop: asyncio.AbstractEventLoop):
         """
@@ -50,25 +50,20 @@ class TransactionPersistenceConsumer(BaseConsumer):
         correlation_id = correlation_id_var.get()
         event = None
 
-        # NEW: Create a unique, deterministic ID for the event from its source.
         event_id = f"{msg.topic()}-{msg.partition()}-{msg.offset()}"
         
         try:
-            # 1. Validate the incoming message
             transaction_data = json.loads(value)
             event = TransactionEvent.model_validate(transaction_data)
             logger.info("Successfully validated event", 
                 extra={"transaction_id": event.transaction_id, "event_id": event_id})
 
-            # 2. Persist to DB and write to outbox in a single transaction
             with next(get_db_session()) as db:
-                with db.begin(): # Atomically commit or rollback
+                with db.begin(): 
                     repo = TransactionDBRepository(db)
                     outbox_repo = OutboxRepository()
-                    idempotency_repo = IdempotencyRepository(db) # NEW
+                    idempotency_repo = IdempotencyRepository(db)
 
-                    # --- IDEMPOTENCY CHECK ---
-                    # If this event ID has been processed by this service before, skip.
                     if idempotency_repo.is_event_processed(event_id, SERVICE_NAME):
                         logger.warning(
                             "Event has already been processed. Skipping.",
@@ -88,8 +83,6 @@ class TransactionPersistenceConsumer(BaseConsumer):
                         correlation_id=correlation_id
                     )
 
-                    # --- MARK AS PROCESSED ---
-                    # Mark the event as processed within the same transaction.
                     idempotency_repo.mark_event_processed(
                         event_id=event_id,
                         portfolio_id=event.portfolio_id,

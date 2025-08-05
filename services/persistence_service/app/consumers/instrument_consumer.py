@@ -5,18 +5,17 @@ import asyncio
 from pydantic import ValidationError
 from confluent_kafka import Message
 from sqlalchemy.exc import IntegrityError
-from tenacity import retry, stop_after_attempt, wait_fixed, before_log
+from tenacity import retry, stop_after_attempt, wait_exponential, before_log
 
 from portfolio_common.kafka_consumer import BaseConsumer
 from portfolio_common.events import InstrumentEvent
 from portfolio_common.db import get_db_session
 from ..repositories.instrument_repository import InstrumentRepository
-from portfolio_common.idempotency_repository import IdempotencyRepository # NEW IMPORT
-from portfolio_common.logging_utils import correlation_id_var # NEW IMPORT
+from portfolio_common.idempotency_repository import IdempotencyRepository
+from portfolio_common.logging_utils import correlation_id_var
 
 logger = logging.getLogger(__name__)
 
-# NEW: Define a constant for the service name.
 SERVICE_NAME = "persistence-instruments"
 
 class InstrumentConsumer(BaseConsumer):
@@ -29,14 +28,18 @@ class InstrumentConsumer(BaseConsumer):
         """Wrapper to call the retryable logic."""
         self._process_message_with_retry(msg, loop)
 
-    @retry(wait=wait_fixed(2), stop=stop_after_attempt(3), reraise=True)
+    @retry(
+        wait=wait_exponential(multiplier=1, min=2, max=10), 
+        stop=stop_after_attempt(3), 
+        before=before_log(logger, logging.INFO),
+        reraise=True
+    )
     def _process_message_with_retry(self, msg: Message, loop: asyncio.AbstractEventLoop):
         key = msg.key().decode('utf-8') if msg.key() else "NoKey"
         value = msg.value().decode('utf-8')
         correlation_id = correlation_id_var.get()
         event = None
 
-        # NEW: Create a unique, deterministic ID for the event.
         event_id = f"{msg.topic()}-{msg.partition()}-{msg.offset()}"
         
         try:
@@ -48,9 +51,8 @@ class InstrumentConsumer(BaseConsumer):
             with next(get_db_session()) as db:
                 with db.begin():
                     repo = InstrumentRepository(db)
-                    idempotency_repo = IdempotencyRepository(db) # NEW
+                    idempotency_repo = IdempotencyRepository(db)
 
-                    # --- IDEMPOTENCY CHECK ---
                     if idempotency_repo.is_event_processed(event_id, SERVICE_NAME):
                         logger.warning(
                             "Event has already been processed. Skipping.",
@@ -60,8 +62,6 @@ class InstrumentConsumer(BaseConsumer):
 
                     repo.create_or_update_instrument(event)
 
-                    # --- MARK AS PROCESSED ---
-                    # Instruments are not portfolio-specific, so we use a placeholder.
                     idempotency_repo.mark_event_processed(
                         event_id=event_id,
                         portfolio_id="N/A", 

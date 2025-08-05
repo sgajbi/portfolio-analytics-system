@@ -5,7 +5,7 @@ import asyncio
 from pydantic import ValidationError
 from confluent_kafka import Message
 from sqlalchemy.exc import IntegrityError
-from tenacity import retry, stop_after_attempt, wait_fixed # CORRECTED IMPORT
+from tenacity import retry, stop_after_attempt, wait_exponential, before_log
 
 from portfolio_common.kafka_consumer import BaseConsumer
 from portfolio_common.logging_utils import correlation_id_var
@@ -30,7 +30,12 @@ class MarketPriceConsumer(BaseConsumer):
         """Wrapper to call the retryable logic."""
         self._process_message_with_retry(msg, loop)
     
-    @retry(wait=wait_fixed(2), stop=stop_after_attempt(3), reraise=True) # CORRECTED HERE
+    @retry(
+        wait=wait_exponential(multiplier=1, min=2, max=10), 
+        stop=stop_after_attempt(3), 
+        before=before_log(logger, logging.INFO),
+        reraise=True
+    )
     def _process_message_with_retry(self, msg: Message, loop: asyncio.AbstractEventLoop):
         key = msg.key().decode('utf-8') if msg.key() else "NoKey"
         value = msg.value().decode('utf-8')
