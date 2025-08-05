@@ -4,11 +4,11 @@ from datetime import date
 from decimal import Decimal
 from typing import List
 
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 from portfolio_common.database_models import PositionHistory, Transaction as DBTransaction
 from ..core.position_models import PositionState
 from portfolio_common.events import TransactionEvent
-from ..repositories.position_repository import PositionRepository # NEW IMPORT
+from ..repositories.position_repository import PositionRepository
 
 logger = logging.getLogger(__name__)
 
@@ -22,16 +22,14 @@ class PositionCalculator:
     """
 
     @classmethod
-    def calculate(cls, event: TransactionEvent, db_session: Session, repo: PositionRepository) -> List[PositionHistory]:
+    async def calculate(cls, event: TransactionEvent, db_session: AsyncSession, repo: PositionRepository) -> List[PositionHistory]:
         """
         Orchestrates recalculation logic for positions.
         This method stages changes in the session but does NOT commit them.
-
         Args:
             event: The incoming transaction event triggering the recalculation.
             db_session: The SQLAlchemy session.
             repo: The repository instance for database operations.
-
         Returns:
             A list of the new or updated PositionHistory records that were created.
         """
@@ -42,14 +40,15 @@ class PositionCalculator:
         logger.info(f"[Calculate] Portfolio={portfolio_id}, Security={security_id}, Date={transaction_date}")
 
         # Use the repository to fetch data and stage deletes
-        anchor_position = repo.get_last_position_before(portfolio_id, security_id, transaction_date)
-        transactions = repo.get_transactions_on_or_after(portfolio_id, security_id, transaction_date)
-        repo.delete_positions_from(portfolio_id, security_id, transaction_date)
+        anchor_position = await repo.get_last_position_before(portfolio_id, security_id, transaction_date)
+        transactions = await repo.get_transactions_on_or_after(portfolio_id, security_id, transaction_date)
+        await repo.delete_positions_from(portfolio_id, security_id, transaction_date)
 
+        
         new_positions = cls._calculate_new_positions(anchor_position, transactions)
 
         # Use the repository to stage the new records
-        repo.save_positions(new_positions)
+        await repo.save_positions(new_positions)
 
         logger.info(f"[Calculate] Staged {len(new_positions)} new position records for Portfolio={portfolio_id}, Security={security_id}")
         return new_positions
@@ -101,6 +100,7 @@ class PositionCalculator:
                 cost_of_goods_sold = (cost_basis / quantity) * transaction.quantity
                 cost_basis -= cost_of_goods_sold
             quantity -= transaction.quantity
+        
         else:
             logger.debug(f"[CalculateNext] Txn type {txn_type} does not affect position quantity/cost.")
 
