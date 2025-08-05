@@ -1,9 +1,10 @@
+# services/query-service/app/routers/transactions.py
 from datetime import date
 from typing import Optional, Dict
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from portfolio_common.db import get_db_session
+from portfolio_common.db import get_async_db_session
 from ..services.transaction_service import TransactionService
 from ..dtos.transaction_dto import PaginatedTransactionResponse
 from ..dependencies import pagination_params
@@ -13,25 +14,17 @@ router = APIRouter(
     tags=["Transactions"]
 )
 
-@router.get(
-    "/{portfolio_id}/transactions",
-    response_model=PaginatedTransactionResponse,
-    summary="Get Transactions for a Portfolio"
-)
+@router.get("/{portfolio_id}/transactions", response_model=PaginatedTransactionResponse, summary="Get Transactions for a Portfolio")
 async def get_transactions(
     portfolio_id: str,
     security_id: Optional[str] = Query(None, description="Filter by a specific security ID."),
     start_date: Optional[date] = Query(None, description="The start date for the date range filter (inclusive)."),
     end_date: Optional[date] = Query(None, description="The end date for the date range filter (inclusive)."),
     pagination: Dict[str, int] = Depends(pagination_params),
-    db: Session = Depends(get_db_session)
+    db: AsyncSession = Depends(get_async_db_session)
 ):
-    """
-    Retrieves a paginated list of transactions for a specific portfolio,
-    with optional filters for security and date range.
-    """
     service = TransactionService(db)
-    return service.get_transactions(
+    return await service.get_transactions(
         portfolio_id=portfolio_id,
         security_id=security_id,
         start_date=start_date,
