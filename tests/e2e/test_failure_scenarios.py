@@ -65,13 +65,13 @@ def test_db_outage_recovery(docker_services, db_engine, clean_db):
     
     # 5. ACT: Simulate database outage
     print("\n--- Stopping PostgreSQL container ---")
-    docker_services.stop("postgres")
+    docker_services._run_command(["stop", "postgres"])
     
     # Wait long enough for the consumer to fail its first attempt and start backing off
     time.sleep(5) 
     
     print("\n--- Starting PostgreSQL container ---")
-    docker_services.start("postgres")
+    docker_services._run_command(["start", "postgres"])
     wait_for_postgres_ready(db_engine)
 
     # 6. ASSERT: Verify the transaction is eventually persisted
