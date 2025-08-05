@@ -4,6 +4,7 @@ import requests
 import time
 import uuid
 import os
+import subprocess
 from sqlalchemy.orm import Session
 from sqlalchemy import text, exc
 from confluent_kafka import Consumer
@@ -65,13 +66,13 @@ def test_db_outage_recovery(docker_services, db_engine, clean_db):
     
     # 5. ACT: Simulate database outage
     print("\n--- Stopping PostgreSQL container ---")
-    docker_services._run_command(["stop", "postgres"])
+    subprocess.run(["docker", "compose", "stop", "postgres"], check=True, capture_output=True)
     
     # Wait long enough for the consumer to fail its first attempt and start backing off
     time.sleep(5) 
     
     print("\n--- Starting PostgreSQL container ---")
-    docker_services._run_command(["start", "postgres"])
+    subprocess.run(["docker", "compose", "start", "postgres"], check=True, capture_output=True)
     wait_for_postgres_ready(db_engine)
 
     # 6. ASSERT: Verify the transaction is eventually persisted
