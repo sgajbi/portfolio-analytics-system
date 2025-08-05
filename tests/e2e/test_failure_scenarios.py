@@ -9,7 +9,7 @@ from sqlalchemy import text, exc
 from confluent_kafka import Consumer
 
 from portfolio_common.config import (
-    KAFKA_BOOTSTRAP_SERVERS_HOST,
+    KAFKA_BOOTSTRAP_SERVERS,
     KAFKA_PERSISTENCE_DLQ_TOPIC
 )
 
@@ -42,7 +42,7 @@ def test_db_outage_recovery(docker_services, db_engine, clean_db):
 
     # 2. ARRANGE: Set up a Kafka consumer for the DLQ topic
     dlq_consumer_conf = {
-        'bootstrap.servers': KAFKA_BOOTSTRAP_SERVERS_HOST,
+        'bootstrap.servers': KAFKA_BOOTSTRAP_SERVERS,
         'group.id': f'test-dlq-checker-{uuid.uuid4()}',
         'auto.offset.reset': 'earliest'
     }
