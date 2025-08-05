@@ -1,7 +1,8 @@
+# services/query-service/app/services/transaction_service.py
 import logging
 from datetime import date
 from typing import Optional
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..repositories.transaction_repository import TransactionRepository
 from ..dtos.transaction_dto import TransactionRecord, PaginatedTransactionResponse
@@ -12,11 +13,11 @@ class TransactionService:
     """
     Handles the business logic for querying transaction data.
     """
-    def __init__(self, db: Session):
+    def __init__(self, db: AsyncSession):
         self.db = db
         self.repo = TransactionRepository(db)
 
-    def get_transactions(
+    async def get_transactions(
         self,
         portfolio_id: str,
         skip: int,
@@ -30,16 +31,14 @@ class TransactionService:
         """
         logger.info(f"Fetching transactions for portfolio '{portfolio_id}'.")
         
-        # 1. Get the total count for pagination metadata
-        total_count = self.repo.get_transactions_count(
+        total_count = await self.repo.get_transactions_count(
             portfolio_id=portfolio_id,
             security_id=security_id,
             start_date=start_date,
             end_date=end_date
         )
 
-        # 2. Get the paginated list of (transaction, cashflow) tuples
-        db_results = self.repo.get_transactions(
+        db_results = await self.repo.get_transactions(
             portfolio_id=portfolio_id,
             skip=skip,
             limit=limit,
@@ -48,19 +47,13 @@ class TransactionService:
             end_date=end_date
         )
         
-        # 3. Map the database results to our nested TransactionRecord DTO
         transactions = []
-        for transaction, cashflow in db_results:
-            # Pydantic can automatically map the ORM object and its nested relationship
-            # The relationship must be loaded for this to work
+        for transaction in db_results:
             record = TransactionRecord.model_validate(transaction)
-            if cashflow:
-                # The cashflow object from the join is attached here before validation
-                record.cashflow = cashflow
-            
+            if transaction.cashflow:
+                record.cashflow = transaction.cashflow
             transactions.append(record)
 
-        # 4. Construct the final API response object
         return PaginatedTransactionResponse(
             portfolio_id=portfolio_id,
             total=total_count,

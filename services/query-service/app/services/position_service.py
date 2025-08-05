@@ -1,7 +1,8 @@
+# services/query-service/app/services/position_service.py
 import logging
 from datetime import date
 from typing import List, Optional
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..repositories.position_repository import PositionRepository
 from ..dtos.position_dto import (
@@ -18,11 +19,11 @@ class PositionService:
     """
     Handles the business logic for querying position data.
     """
-    def __init__(self, db: Session):
+    def __init__(self, db: AsyncSession):
         self.db = db
         self.repo = PositionRepository(db)
 
-    def get_position_history(
+    async def get_position_history(
         self,
         portfolio_id: str,
         security_id: str,
@@ -34,7 +35,7 @@ class PositionService:
         """
         logger.info(f"Fetching position history for security '{security_id}' in portfolio '{portfolio_id}'.")
         
-        db_results = self.repo.get_position_history_by_security(
+        db_results = await self.repo.get_position_history_by_security(
             portfolio_id=portfolio_id,
             security_id=security_id,
             start_date=start_date,
@@ -43,13 +44,11 @@ class PositionService:
         
         positions = []
         for row in db_results:
-            # Explicitly create the nested valuation object
             valuation_dto = ValuationData(
                 market_price=row.market_price,
                 market_value=row.market_value,
                 unrealized_gain_loss=row.unrealized_gain_loss,
             )
-            # Create the main record and attach the valuation object
             record = PositionHistoryRecord(
                 position_date=row.position_date,
                 transaction_id=row.transaction_id,
@@ -65,29 +64,27 @@ class PositionService:
             positions=positions
         )
 
-    def get_portfolio_positions(self, portfolio_id: str) -> PortfolioPositionsResponse:
+    async def get_portfolio_positions(self, portfolio_id: str) -> PortfolioPositionsResponse:
         """
         Retrieves and formats the latest positions for a given portfolio.
         """
         logger.info(f"Fetching latest positions for portfolio '{portfolio_id}'.")
         
-        db_results = self.repo.get_latest_positions_by_portfolio(portfolio_id)
+        db_results = await self.repo.get_latest_positions_by_portfolio(portfolio_id)
         
         positions = []
-        for pos_history, instrument_name in db_results:
-            # Explicitly create the nested valuation object
+        for pos_snapshot, instrument_name in db_results:
             valuation_dto = ValuationData(
-                market_price=pos_history.market_price,
-                market_value=pos_history.market_value,
-                unrealized_gain_loss=pos_history.unrealized_gain_loss,
+                market_price=pos_snapshot.market_price,
+                market_value=pos_snapshot.market_value,
+                unrealized_gain_loss=pos_snapshot.unrealized_gain_loss,
             )
-            # Create the main position object
             position_dto = Position(
-                security_id=pos_history.security_id,
-                quantity=pos_history.quantity,
-                cost_basis=pos_history.cost_basis,
+                security_id=pos_snapshot.security_id,
+                quantity=pos_snapshot.quantity,
+                cost_basis=pos_snapshot.cost_basis,
                 instrument_name=instrument_name or "N/A",
-                position_date=pos_history.position_date,
+                position_date=pos_snapshot.date,
                 valuation=valuation_dto
             )
             positions.append(position_dto)
