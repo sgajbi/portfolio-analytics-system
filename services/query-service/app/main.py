@@ -4,6 +4,7 @@ import asyncio
 from fastapi import FastAPI, Request, status, HTTPException
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
+from prometheus_fastapi_instrumentator import Instrumentator # <-- NEW IMPORT
 from portfolio_common.logging_utils import setup_logging, correlation_id_var, generate_correlation_id
 from portfolio_common.db import get_db_session
 from .routers import positions, transactions, instruments, prices, fx_rates, portfolios
@@ -17,6 +18,16 @@ app = FastAPI(
     description="Service for querying portfolio analytics data.",
     version="0.2.0"
 )
+
+# --- NEW: Prometheus Metrics Instrumentation ---
+@app.on_event("startup")
+async def startup():
+    """
+    Attaches the Prometheus Instrumentator to the app during startup.
+    This will expose a /metrics endpoint.
+    """
+    Instrumentator().instrument(app).expose(app)
+    logger.info("Prometheus metrics exposed at /metrics")
 
 @app.middleware("http")
 async def add_correlation_id_middleware(request: Request, call_next):
@@ -103,7 +114,7 @@ async def readiness_probe():
         },
     )
 
-# --- NEW: Temporary Debug Endpoint ---
+# --- Temporary Debug Endpoint ---
 @app.get("/debug-error", tags=["Debug"])
 async def trigger_error():
     """
