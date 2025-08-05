@@ -22,6 +22,7 @@ from portfolio_common.kafka_utils import get_kafka_producer
 from portfolio_common.outbox_dispatcher import OutboxDispatcher
 from portfolio_common.kafka_admin import ensure_topics_exist
 from .web import app as web_app
+from .monitoring import setup_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +36,10 @@ class ConsumerManager:
         self.tasks = []
         self._shutdown_event = asyncio.Event()
         
+        # Setup web app and metrics first
+        self.web_app = web_app
+        custom_metrics = setup_metrics(self.web_app)
+
         dlq_topic = KAFKA_PERSISTENCE_DLQ_TOPIC
         service_prefix = "PST"
         
@@ -44,7 +49,8 @@ class ConsumerManager:
                 topic=KAFKA_RAW_PORTFOLIOS_TOPIC,
                 group_id="persistence_group_portfolios",
                 dlq_topic=dlq_topic,
-                service_prefix=service_prefix
+                service_prefix=service_prefix,
+                metrics=custom_metrics
             )
         )
         self.consumers.append(
@@ -53,7 +59,8 @@ class ConsumerManager:
                 topic=KAFKA_RAW_TRANSACTIONS_TOPIC,
                 group_id="persistence_group_transactions",
                 dlq_topic=dlq_topic,
-                service_prefix=service_prefix
+                service_prefix=service_prefix,
+                metrics=custom_metrics
             )
         )
         self.consumers.append(
@@ -62,7 +69,8 @@ class ConsumerManager:
                 topic=KAFKA_INSTRUMENTS_TOPIC,
                 group_id="persistence_group_instruments",
                 dlq_topic=dlq_topic,
-                service_prefix=service_prefix
+                service_prefix=service_prefix,
+                metrics=custom_metrics
             )
         )
         self.consumers.append(
@@ -71,7 +79,8 @@ class ConsumerManager:
                 topic=KAFKA_MARKET_PRICES_TOPIC,
                 group_id="persistence_group_market_prices",
                 dlq_topic=dlq_topic,
-                service_prefix=service_prefix
+                service_prefix=service_prefix,
+                metrics=custom_metrics
             )
         )
         self.consumers.append(
@@ -80,7 +89,8 @@ class ConsumerManager:
                 topic=KAFKA_FX_RATES_TOPIC,
                 group_id="persistence_group_fx_rates",
                 dlq_topic=dlq_topic,
-                service_prefix=service_prefix
+                service_prefix=service_prefix,
+                metrics=custom_metrics
             )
         )
 
@@ -104,7 +114,7 @@ class ConsumerManager:
         signal.signal(signal.SIGINT, self._signal_handler)
         signal.signal(signal.SIGTERM, self._signal_handler)
 
-        uvicorn_config = uvicorn.Config(web_app, host="0.0.0.0", port=8080, log_config=None)
+        uvicorn_config = uvicorn.Config(self.web_app, host="0.0.0.0", port=8080, log_config=None)
         server = uvicorn.Server(uvicorn_config)
         
         logger.info("Starting all consumer tasks, the outbox dispatcher, and the web server...")

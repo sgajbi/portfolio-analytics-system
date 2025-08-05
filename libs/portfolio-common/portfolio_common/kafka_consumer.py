@@ -3,10 +3,11 @@ import logging
 import json
 import traceback
 import asyncio
-import functools  # <-- IMPORT functools
+import functools
+import time
 from datetime import datetime, timezone
 from abc import ABC, abstractmethod
-from typing import Optional
+from typing import Optional, Dict
 from confluent_kafka import Consumer, KafkaException, Message
 
 from .kafka_utils import get_kafka_producer
@@ -19,7 +20,7 @@ logger = logging.getLogger(__name__)
 class BaseConsumer(ABC):
     """
     An abstract base class for creating robust, retrying Kafka consumers
-    with Dead-Letter Queue (DLQ) support.
+    with Dead-Letter Queue (DLQ) support and Prometheus metrics.
     """
     def __init__(
         self,
@@ -27,11 +28,13 @@ class BaseConsumer(ABC):
         topic: str,
         group_id: str,
         dlq_topic: Optional[str] = None,
-        service_prefix: str = "SVC"
+        service_prefix: str = "SVC",
+        metrics: Optional[Dict] = None
     ):
         self.topic = topic
         self.dlq_topic = dlq_topic
         self.service_prefix = service_prefix
+        self._metrics = metrics
         self._consumer = None
         self._producer = None
         self._consumer_config = {
@@ -75,6 +78,12 @@ class BaseConsumer(ABC):
         """
         Sends a message that failed processing to the Dead-Letter Queue.
         """
+        if self._metrics:
+            self._metrics["dlqd"].labels(
+                topic=self.topic, 
+                consumer_group=self._consumer_config['group.id']
+            ).inc()
+
         if not self._producer or not self.dlq_topic:
             return
 
@@ -115,8 +124,8 @@ class BaseConsumer(ABC):
 
     async def run(self):
         """
-        The main consumer loop. Polls for messages, processes them in a thread
-        pool executor to avoid blocking the event loop, and commits offsets.
+        The main consumer loop. Polls for messages, processes them, records metrics,
+        and commits offsets.
         """
         self._initialize_consumer()
         loop = asyncio.get_running_loop()
@@ -137,6 +146,8 @@ class BaseConsumer(ABC):
                     continue
             
             token = None
+            start_time = time.monotonic()
+            processed_successfully = False
             try:
                 corr_id = None
                 if msg.headers():
@@ -151,18 +162,28 @@ class BaseConsumer(ABC):
 
                 token = correlation_id_var.set(corr_id)
                 
-                # CORRECTED: Use functools.partial to pass the current context to the executor.
                 await loop.run_in_executor(
                     None,
                     functools.partial(self.process_message, msg, loop)
                 )
                 
                 self._consumer.commit(message=msg, asynchronous=False)
+                processed_successfully = True
 
             except Exception as e:
                 logger.error(f"Unhandled exception in consumer loop for topic {self.topic}: {e}", exc_info=True)
                 await self._send_to_dlq_async(msg, e)
             finally:
+                duration = time.monotonic() - start_time
+                if self._metrics:
+                    labels = {
+                        "topic": self.topic, 
+                        "consumer_group": self._consumer_config['group.id']
+                    }
+                    self._metrics["latency"].labels(**labels).observe(duration)
+                    if processed_successfully:
+                        self._metrics["processed"].labels(**labels).inc()
+
                 if token:
                     correlation_id_var.reset(token)
         
