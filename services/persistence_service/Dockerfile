@@ -28,7 +28,6 @@ RUN pip install /app/services/persistence_service
 
 COPY alembic.ini /app/alembic.ini
 COPY alembic /app/alembic
-# --- NEW: Copy the tools directory ---
 COPY tools /app/tools
 
 # Stage 3: Final production stage
@@ -39,8 +38,10 @@ COPY --from=builder --chown=appuser:appuser /app/services/persistence_service/ap
 COPY --from=builder --chown=appuser:appuser /app/libs /app/libs
 COPY --from=builder --chown=appuser:appuser /app/alembic.ini /app/alembic.ini
 COPY --from=builder --chown=appuser:appuser /app/alembic /app/alembic
-# --- NEW: Copy the tools directory into the final image ---
 COPY --from=builder --chown=appuser:appuser /app/tools /app/tools
 
 USER appuser
+
+EXPOSE 8080
+
 CMD ["python", "-m", "app.main"]
