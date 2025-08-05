@@ -10,7 +10,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential, before_log, re
 from portfolio_common.kafka_consumer import BaseConsumer
 from portfolio_common.logging_utils import correlation_id_var
 from portfolio_common.events import TransactionEvent
-from portfolio_common.db import get_db_session
+from portfolio_common.db import get_async_db_session
 from portfolio_common.config import KAFKA_RAW_TRANSACTIONS_COMPLETED_TOPIC
 from ..repositories.transaction_db_repo import TransactionDBRepository
 from portfolio_common.outbox_repository import OutboxRepository
@@ -24,15 +24,15 @@ class TransactionPersistenceConsumer(BaseConsumer):
     """
     A concrete consumer for validating and persisting raw transaction events.
     """
-    def process_message(self, msg: Message, loop: asyncio.AbstractEventLoop):
+    async def process_message(self, msg: Message):
         """
         Wrapper method to call the retryable logic.
         """
         try:
-            self._process_message_with_retry(msg, loop)
+            await self._process_message_with_retry(msg)
         except Exception as e:
             logger.error(f"Fatal error for transaction after retries. Sending to DLQ. Key={msg.key()}", exc_info=True)
-            self._send_to_dlq_sync(msg, e, loop)
+            await self._send_to_dlq_async(msg, e)
 
     @retry(
         wait=wait_exponential(multiplier=1, min=2, max=10),
@@ -41,7 +41,7 @@ class TransactionPersistenceConsumer(BaseConsumer):
         retry=retry_if_exception_type((DBAPIError, IntegrityError)),
         reraise=True
     )
-    def _process_message_with_retry(self, msg: Message, loop: asyncio.AbstractEventLoop):
+    async def _process_message_with_retry(self, msg: Message):
         """
         Processes a single raw transaction message from Kafka atomically and idempotently.
         Retries on database connection errors or integrity errors.
@@ -58,20 +58,20 @@ class TransactionPersistenceConsumer(BaseConsumer):
             logger.info("Successfully validated event", 
                 extra={"transaction_id": event.transaction_id, "event_id": event_id})
 
-            with next(get_db_session()) as db:
-                with db.begin(): 
+            async with get_async_db_session() as db:
+                async with db.begin(): 
                     repo = TransactionDBRepository(db)
                     outbox_repo = OutboxRepository()
                     idempotency_repo = IdempotencyRepository(db)
 
-                    if idempotency_repo.is_event_processed(event_id, SERVICE_NAME):
+                    if await idempotency_repo.is_event_processed(event_id, SERVICE_NAME):
                         logger.warning(
                             "Event has already been processed. Skipping.",
                             extra={"event_id": event_id, "service_name": SERVICE_NAME}
                         )
                         return
 
-                    repo.create_or_update_transaction(event)
+                    await repo.create_or_update_transaction(event)
             
                     outbox_repo.create_outbox_event(
                         db_session=db,
@@ -83,7 +83,7 @@ class TransactionPersistenceConsumer(BaseConsumer):
                         correlation_id=correlation_id
                     )
 
-                    idempotency_repo.mark_event_processed(
+                    await idempotency_repo.mark_event_processed(
                         event_id=event_id,
                         portfolio_id=event.portfolio_id,
                         service_name=SERVICE_NAME,
@@ -98,7 +98,7 @@ class TransactionPersistenceConsumer(BaseConsumer):
         except (json.JSONDecodeError, ValidationError) as e:
             logger.error("Message validation failed. Sending to DLQ.", 
                 extra={"key": key, "event_id": event_id}, exc_info=True)
-            self._send_to_dlq_sync(msg, e, loop)
+            await self._send_to_dlq_async(msg, e)
         except (DBAPIError, IntegrityError):
             logger.warning(
                 f"Caught a DB error for transaction {getattr(event, 'transaction_id', 'UNKNOWN')}. Will retry...",
@@ -108,4 +108,4 @@ class TransactionPersistenceConsumer(BaseConsumer):
         except Exception as e:
             logger.error(f"An unexpected error occurred for transaction {getattr(event, 'transaction_id', 'UNKNOWN')}. Sending to DLQ.", 
                 extra={"event_id": event_id}, exc_info=True)
-            self._send_to_dlq_sync(msg, e, loop)
+            await self._send_to_dlq_async(msg, e)

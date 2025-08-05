@@ -5,6 +5,7 @@ import traceback
 import asyncio
 import functools
 import time
+import inspect # NEW IMPORT
 from datetime import datetime, timezone
 from abc import ABC, abstractmethod
 from typing import Optional, Dict
@@ -115,17 +116,16 @@ class BaseConsumer(ABC):
             logger.error(f"FATAL: Could not send message to DLQ. Error: {e}", exc_info=True)
 
     @abstractmethod
-    def process_message(self, msg: Message, loop: asyncio.AbstractEventLoop):
+    def process_message(self, msg: Message):
         """
-        Abstract method to be implemented by subclasses. This method contains
-        synchronous, blocking business logic for processing a single message.
+        Abstract method to be implemented by subclasses. Can be sync or async.
         """
         pass
 
     async def run(self):
         """
         The main consumer loop. Polls for messages, processes them, records metrics,
-        and commits offsets.
+        and commits offsets. Now supports both sync and async process_message handlers.
         """
         self._initialize_consumer()
         loop = asyncio.get_running_loop()
@@ -162,10 +162,15 @@ class BaseConsumer(ABC):
 
                 token = correlation_id_var.set(corr_id)
                 
-                await loop.run_in_executor(
-                    None,
-                    functools.partial(self.process_message, msg, loop)
-                )
+                # --- UPDATED LOGIC to handle sync and async handlers ---
+                if inspect.iscoroutinefunction(self.process_message):
+                    await self.process_message(msg)
+                else:
+                    # For backward compatibility with sync consumers
+                    await loop.run_in_executor(
+                        None,
+                        functools.partial(self.process_message, msg, loop)
+                    )
                 
                 self._consumer.commit(message=msg, asynchronous=False)
                 processed_successfully = True
