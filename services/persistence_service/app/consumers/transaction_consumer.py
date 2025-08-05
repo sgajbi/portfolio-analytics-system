@@ -58,7 +58,7 @@ class TransactionPersistenceConsumer(BaseConsumer):
             logger.info("Successfully validated event", 
                 extra={"transaction_id": event.transaction_id, "event_id": event_id})
 
-            async with get_async_db_session() as db:
+            async for db in get_async_db_session():
                 async with db.begin(): 
                     repo = TransactionDBRepository(db)
                     outbox_repo = OutboxRepository()

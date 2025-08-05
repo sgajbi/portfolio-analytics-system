@@ -52,7 +52,7 @@ class PortfolioConsumer(BaseConsumer):
             logger.info("Successfully validated event", 
                 extra={"portfolio_id": event.portfolio_id, "event_id": event_id})
 
-            async with get_async_db_session() as db:
+            async for db in get_async_db_session():
                 async with db.begin():
                     repo = PortfolioRepository(db)
                     idempotency_repo = IdempotencyRepository(db)

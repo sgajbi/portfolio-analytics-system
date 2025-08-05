@@ -62,7 +62,7 @@ class FxRateConsumer(BaseConsumer):
         )
         
         try:
-            async with get_async_db_session() as db:
+            async for db in get_async_db_session():
                 async with db.begin():
                     repo = FxRateRepository(db)
                     idempotency_repo = IdempotencyRepository(db)

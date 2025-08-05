@@ -50,7 +50,7 @@ class InstrumentConsumer(BaseConsumer):
             logger.info("Successfully validated event", 
                 extra={"security_id": event.security_id, "event_id": event_id})
 
-            async with get_async_db_session() as db:
+            async for db in get_async_db_session():
                 async with db.begin():
                     repo = InstrumentRepository(db)
                     idempotency_repo = IdempotencyRepository(db)

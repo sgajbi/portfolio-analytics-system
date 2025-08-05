@@ -55,7 +55,7 @@ class MarketPriceConsumer(BaseConsumer):
             logger.info("Successfully validated event", 
                 extra={"security_id": event.security_id, "price_date": event.price_date})
 
-            async with get_async_db_session() as db:
+            async for db in get_async_db_session():
                 async with db.begin():
                     repo = MarketPriceRepository(db)
                     idempotency_repo = IdempotencyRepository(db)
