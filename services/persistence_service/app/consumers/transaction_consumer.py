@@ -14,13 +14,17 @@ from portfolio_common.db import get_db_session
 from portfolio_common.config import KAFKA_RAW_TRANSACTIONS_COMPLETED_TOPIC
 from ..repositories.transaction_db_repo import TransactionDBRepository
 from portfolio_common.outbox_repository import OutboxRepository
-
+from portfolio_common.idempotency_repository import IdempotencyRepository # NEW IMPORT
 
 logger = logging.getLogger(__name__)
+
+# NEW: Define a constant for the service name to ensure consistency.
+SERVICE_NAME = "persistence-transactions"
 
 class TransactionPersistenceConsumer(BaseConsumer):
     """
     A concrete consumer for validating and persisting raw transaction events.
+    - It uses an idempotency check to ensure exactly-once processing.
     - On success, it writes a completion event to the outbox table.
     - On validation failure, it publishes the message to a DLQ.
     - It retries on database integrity errors to handle race conditions.
@@ -39,25 +43,38 @@ class TransactionPersistenceConsumer(BaseConsumer):
     )
     def _process_message_with_retry(self, msg: Message, loop: asyncio.AbstractEventLoop):
         """
-        Processes a single raw transaction message from Kafka.
+        Processes a single raw transaction message from Kafka atomically and idempotently.
         """
         key = msg.key().decode('utf-8') if msg.key() else "NoKey"
         value = msg.value().decode('utf-8')
         correlation_id = correlation_id_var.get()
         event = None
+
+        # NEW: Create a unique, deterministic ID for the event from its source.
+        event_id = f"{msg.topic()}-{msg.partition()}-{msg.offset()}"
         
         try:
             # 1. Validate the incoming message
             transaction_data = json.loads(value)
             event = TransactionEvent.model_validate(transaction_data)
             logger.info("Successfully validated event", 
-                extra={"transaction_id": event.transaction_id})
+                extra={"transaction_id": event.transaction_id, "event_id": event_id})
 
             # 2. Persist to DB and write to outbox in a single transaction
             with next(get_db_session()) as db:
                 with db.begin(): # Atomically commit or rollback
                     repo = TransactionDBRepository(db)
                     outbox_repo = OutboxRepository()
+                    idempotency_repo = IdempotencyRepository(db) # NEW
+
+                    # --- IDEMPOTENCY CHECK ---
+                    # If this event ID has been processed by this service before, skip.
+                    if idempotency_repo.is_event_processed(event_id, SERVICE_NAME):
+                        logger.warning(
+                            "Event has already been processed. Skipping.",
+                            extra={"event_id": event_id, "service_name": SERVICE_NAME}
+                        )
+                        return
 
                     repo.create_or_update_transaction(event)
             
@@ -71,20 +88,31 @@ class TransactionPersistenceConsumer(BaseConsumer):
                         correlation_id=correlation_id
                     )
 
+                    # --- MARK AS PROCESSED ---
+                    # Mark the event as processed within the same transaction.
+                    idempotency_repo.mark_event_processed(
+                        event_id=event_id,
+                        portfolio_id=event.portfolio_id,
+                        service_name=SERVICE_NAME,
+                        correlation_id=correlation_id
+                    )
+
             logger.info(
-                "Successfully persisted transaction and staged outbox event.",
-                extra={"transaction_id": event.transaction_id}
+                "Successfully persisted transaction, staged outbox event, and marked as processed.",
+                extra={"transaction_id": event.transaction_id, "event_id": event_id}
             )
 
         except (json.JSONDecodeError, ValidationError) as e:
-            logger.error("Message validation failed. Sending to DLQ.", extra={"key": key}, exc_info=True)
+            logger.error("Message validation failed. Sending to DLQ.", 
+                extra={"key": key, "event_id": event_id}, exc_info=True)
             self._send_to_dlq_sync(msg, e, loop)
         except IntegrityError:
             logger.warning(
                 "Caught IntegrityError, likely a race condition. Will retry...",
-                extra={"transaction_id": getattr(event, 'transaction_id', 'UNKNOWN')},
+                extra={"transaction_id": getattr(event, 'transaction_id', 'UNKNOWN'), "event_id": event_id},
             )
             raise
         except Exception as e:
-            logger.error(f"An unexpected error occurred for transaction {getattr(event, 'transaction_id', 'UNKNOWN')}. Sending to DLQ.", exc_info=True)
+            logger.error(f"An unexpected error occurred for transaction {getattr(event, 'transaction_id', 'UNKNOWN')}. Sending to DLQ.", 
+                extra={"event_id": event_id}, exc_info=True)
             self._send_to_dlq_sync(msg, e, loop)
