@@ -1,10 +1,11 @@
+# services/query-service/app/repositories/position_repository.py
 import logging
 from datetime import date
 from typing import List, Any, Optional
 
-from sqlalchemy.orm import Session, aliased
-from sqlalchemy import func, desc
-
+from sqlalchemy import select, func
+from sqlalchemy.orm import aliased
+from sqlalchemy.ext.asyncio import AsyncSession
 from portfolio_common.database_models import PositionHistory, Instrument, DailyPositionSnapshot
 
 logger = logging.getLogger(__name__)
@@ -13,10 +14,10 @@ class PositionRepository:
     """
     Handles read-only database queries for position data.
     """
-    def __init__(self, db: Session):
+    def __init__(self, db: AsyncSession):
         self.db = db
 
-    def get_position_history_by_security(
+    async def get_position_history_by_security(
         self,
         portfolio_id: str,
         security_id: str,
@@ -27,41 +28,36 @@ class PositionRepository:
         Retrieves the time series of position history for a specific security,
         with optional date range filtering.
         """
-        query = self.db.query(PositionHistory).filter(
-            PositionHistory.portfolio_id == portfolio_id,
-            PositionHistory.security_id == security_id
+        stmt = select(PositionHistory).filter_by(
+            portfolio_id=portfolio_id,
+            security_id=security_id
         )
 
         if start_date:
-            query = query.filter(PositionHistory.position_date >= start_date)
+            stmt = stmt.filter(PositionHistory.position_date >= start_date)
         
         if end_date:
-            query = query.filter(PositionHistory.position_date <= end_date)
+            stmt = stmt.filter(PositionHistory.position_date <= end_date)
 
-        results = query.order_by(PositionHistory.position_date.asc()).all()
+        results = await self.db.execute(stmt.order_by(PositionHistory.position_date.asc()))
+        history = results.scalars().all()
         logger.info(
-            f"Found {len(results)} position history records for security '{security_id}' "
+            f"Found {len(history)} position history records for security '{security_id}' "
             f"in portfolio '{portfolio_id}'."
         )
-        return results
+        return history
 
-    def get_latest_positions_by_portfolio(self, portfolio_id: str) -> List[Any]:
+    async def get_latest_positions_by_portfolio(self, portfolio_id: str) -> List[Any]:
         """
         Retrieves the single latest daily snapshot for each security in a given portfolio.
-        This uses a window function to rank snapshots for each security by date
-        and then selects only the most recent one (rank=1). It also joins
-        with the Instrument table to fetch the instrument's name.
         """
-        
-        # --- REWRITTEN QUERY ---
-        # Subquery to rank snapshots for each security by date
-        ranked_snapshots_subq = self.db.query(
+        ranked_snapshots_subq = select(
             DailyPositionSnapshot,
             func.row_number().over(
                 partition_by=DailyPositionSnapshot.security_id,
                 order_by=[
                     DailyPositionSnapshot.date.desc(),
-                    DailyPositionSnapshot.id.desc() # Tie-breaker
+                    DailyPositionSnapshot.id.desc()
                 ]
             ).label('rn')
         ).filter(
@@ -70,18 +66,17 @@ class PositionRepository:
 
         ranked_snapshots = aliased(DailyPositionSnapshot, ranked_snapshots_subq)
 
-        # Main query to select the latest snapshot object (where rank is 1)
-        # and LEFT JOIN with Instruments to get the name.
-        results = self.db.query(
-            ranked_snapshots, # Select the entire ranked snapshot object
+        stmt = select(
+            ranked_snapshots,
             Instrument.name.label('instrument_name')
         ).outerjoin(
             Instrument, Instrument.security_id == ranked_snapshots.security_id
         ).filter(
             ranked_snapshots_subq.c.rn == 1,
-            # Also filter out zero-quantity positions, as they are closed
             ranked_snapshots.quantity > 0 
-        ).all()
+        )
 
-        logger.info(f"Found {len(results)} latest positions for portfolio '{portfolio_id}'.")
-        return results
+        results = await self.db.execute(stmt)
+        positions = results.all()
+        logger.info(f"Found {len(positions)} latest positions for portfolio '{portfolio_id}'.")
+        return positions

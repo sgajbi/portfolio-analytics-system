@@ -1,10 +1,11 @@
+# services/query-service/app/repositories/transaction_repository.py
 import logging
 from datetime import date
 from typing import List, Optional
 
-from sqlalchemy.orm import Session
-from sqlalchemy import func
-
+from sqlalchemy import select, func
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 from portfolio_common.database_models import Transaction, Cashflow
 
 logger = logging.getLogger(__name__)
@@ -13,7 +14,7 @@ class TransactionRepository:
     """
     Handles read-only database queries for transaction data.
     """
-    def __init__(self, db: Session):
+    def __init__(self, db: AsyncSession):
         self.db = db
 
     def _get_base_query(
@@ -22,29 +23,21 @@ class TransactionRepository:
         security_id: Optional[str] = None,
         start_date: Optional[date] = None,
         end_date: Optional[date] = None
-    ) -> Session.query:
+    ):
         """
-        Constructs a base query with all the common filters, joining
-        transactions with their optional cashflow record.
+        Constructs a base query with all the common filters.
         """
-        query = self.db.query(
-            Transaction,
-            Cashflow
-        ).outerjoin(
-            Cashflow, Transaction.transaction_id == Cashflow.transaction_id
-        ).filter(
-            Transaction.portfolio_id == portfolio_id
-        )
+        stmt = select(Transaction).options(selectinload(Transaction.cashflow)).filter_by(portfolio_id=portfolio_id)
 
         if security_id:
-            query = query.filter(Transaction.security_id == security_id)
+            stmt = stmt.filter_by(security_id=security_id)
         if start_date:
-            query = query.filter(func.date(Transaction.transaction_date) >= start_date)
+            stmt = stmt.filter(func.date(Transaction.transaction_date) >= start_date)
         if end_date:
-            query = query.filter(func.date(Transaction.transaction_date) <= end_date)
-        return query
+            stmt = stmt.filter(func.date(Transaction.transaction_date) <= end_date)
+        return stmt
 
-    def get_transactions(
+    async def get_transactions(
         self,
         portfolio_id: str,
         skip: int,
@@ -52,18 +45,17 @@ class TransactionRepository:
         security_id: Optional[str] = None,
         start_date: Optional[date] = None,
         end_date: Optional[date] = None
-    ) -> List[tuple]:
+    ) -> List[Transaction]:
         """
         Retrieves a paginated list of transactions with optional filters.
-        Returns a list of tuples, where each tuple contains a
-        (Transaction, Cashflow | None).
         """
-        query = self._get_base_query(portfolio_id, security_id, start_date, end_date)
-        results = query.order_by(Transaction.transaction_date.desc()).offset(skip).limit(limit).all()
-        logger.info(f"Found {len(results)} transactions for portfolio '{portfolio_id}' with given filters.")
-        return results
+        stmt = self._get_base_query(portfolio_id, security_id, start_date, end_date)
+        results = await self.db.execute(stmt.order_by(Transaction.transaction_date.desc()).offset(skip).limit(limit))
+        transactions = results.scalars().all()
+        logger.info(f"Found {len(transactions)} transactions for portfolio '{portfolio_id}' with given filters.")
+        return transactions
 
-    def get_transactions_count(
+    async def get_transactions_count(
         self,
         portfolio_id: str,
         security_id: Optional[str] = None,
@@ -73,16 +65,13 @@ class TransactionRepository:
         """
         Returns the total count of transactions for the given filters.
         """
-        # For counting, we only need to query the Transaction table.
-        query = self.db.query(Transaction).filter(
-            Transaction.portfolio_id == portfolio_id
-        )
+        stmt = select(func.count(Transaction.id)).filter_by(portfolio_id=portfolio_id)
         if security_id:
-            query = query.filter(Transaction.security_id == security_id)
+            stmt = stmt.filter_by(security_id=security_id)
         if start_date:
-            query = query.filter(func.date(Transaction.transaction_date) >= start_date)
+            stmt = stmt.filter(func.date(Transaction.transaction_date) >= start_date)
         if end_date:
-            query = query.filter(func.date(Transaction.transaction_date) <= end_date)
+            stmt = stmt.filter(func.date(Transaction.transaction_date) <= end_date)
 
-        count = query.with_entities(func.count(Transaction.id)).scalar()
+        count = (await self.db.execute(stmt)).scalar()
         return count
