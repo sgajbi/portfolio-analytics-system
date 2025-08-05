@@ -1,11 +1,11 @@
-# services/persistence-service/app/web.py
+# services/persistence_service/app/web.py
 import logging
 import asyncio
 from fastapi import FastAPI, status, HTTPException
 from sqlalchemy import text
 from confluent_kafka.admin import AdminClient
 
-from portfolio_common.db import get_db_session
+from portfolio_common.db import AsyncSessionLocal
 from portfolio_common.config import KAFKA_BOOTSTRAP_SERVERS
 from .monitoring import setup_metrics
 
@@ -21,13 +21,15 @@ app = FastAPI(
 setup_metrics(app)
 
 async def check_db_health():
-    """Checks if a connection can be established with the database."""
+    """Checks if a valid asynchronous connection can be established with the database."""
     try:
-        with next(get_db_session()) as db:
-            await asyncio.to_thread(db.execute, text("SELECT 1"))
+        async with AsyncSessionLocal() as session:
+            async with session.begin():
+                await session.execute(text("SELECT 1"))
         return True
     except Exception as e:
-        logger.error(f"Health Check: Database connection failed: {e}", exc_info=True)
+        # Log only the error message for health checks to avoid spamming tracebacks
+        logger.error(f"Health Check: Database connection failed: {e}", exc_info=False)
         return False
 
 async def check_kafka_health():
@@ -38,7 +40,7 @@ async def check_kafka_health():
         await asyncio.to_thread(admin_client.list_topics, timeout=5)
         return True
     except Exception as e:
-        logger.error(f"Health Check: Kafka connection failed: {e}", exc_info=True)
+        logger.error(f"Health Check: Kafka connection failed: {e}", exc_info=False)
         return False
 
 @app.get("/health/live", status_code=status.HTTP_200_OK, tags=["Health"])
