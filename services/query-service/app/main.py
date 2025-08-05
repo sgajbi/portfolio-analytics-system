@@ -1,8 +1,11 @@
 # services/query-service/app/main.py
 import logging
-from fastapi import FastAPI, Request
+import asyncio
+from fastapi import FastAPI, Request, status, HTTPException
 from fastapi.responses import JSONResponse
+from sqlalchemy import text
 from portfolio_common.logging_utils import setup_logging, correlation_id_var, generate_correlation_id
+from portfolio_common.db import get_db_session
 from .routers import positions, transactions, instruments, prices, fx_rates, portfolios
 
 SERVICE_PREFIX = "QRY"
@@ -18,8 +21,7 @@ app = FastAPI(
 @app.middleware("http")
 async def add_correlation_id_middleware(request: Request, call_next):
     """
-    Checks for an existing correlation ID in the request header or generates
-    a new one. It sets this ID in the context for logging purposes.
+    Checks for an existing correlation ID in the request header or generates a new one. It sets this ID in the context for logging purposes.
     """
     correlation_id = request.headers.get('X-Correlation-ID')
     if not correlation_id:
@@ -34,12 +36,12 @@ async def add_correlation_id_middleware(request: Request, call_next):
     
     return response
 
-# NEW: Global Exception Handler
+# Global Exception Handler
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception):
     """
     This middleware will log the full traceback for any unhandled exception
-    that occurs in the application, which is critical for debugging 500 errors.
+    that occurs in the application, which is critical for debugging 500 errors. 
     """
     correlation_id = correlation_id_var.get()
     logger.critical(
@@ -52,6 +54,49 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
         content={"detail": f"Internal Server Error: {exc}"},
     )
 
+# --- NEW: Health Probe Logic ---
+
+async def check_db_health():
+    """Checks if a valid connection can be established with the database."""
+    try:
+        with next(get_db_session()) as db:
+            # Run the synchronous DB call in a separate thread to avoid blocking the event loop
+            await asyncio.to_thread(db.execute, text("SELECT 1"))
+        return True
+    except Exception as e:
+        logger.error(f"Health Check: Database connection failed: {e}", exc_info=True)
+        return False
+
+@app.get("/health/live", status_code=status.HTTP_200_OK, tags=["Health"])
+async def liveness_probe():
+    """
+    Liveness probe: A simple check to confirm the service process is running and responsive.
+    """
+    logger.info("Liveness probe was called.")
+    return {"status": "alive"}
+
+@app.get("/health/ready", status_code=status.HTTP_200_OK, tags=["Health"])
+async def readiness_probe():
+    """
+    Readiness probe: Checks if the service can connect to its dependencies (PostgreSQL)
+    and is ready to process requests.
+    """
+    logger.info("Readiness probe was called.")
+    db_ok = await check_db_health()
+
+    if db_ok:
+        return {"status": "ready", "dependencies": {"database": "ok"}}
+    
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail={
+            "status": "not_ready",
+            "dependencies": {
+                "database": "ok" if db_ok else "unavailable",
+            },
+        },
+    )
+
 # Register the API routers
 app.include_router(portfolios.router)
 app.include_router(positions.router)
@@ -60,11 +105,7 @@ app.include_router(instruments.router)
 app.include_router(prices.router)
 app.include_router(fx_rates.router)
 
-@app.get("/health")
-async def health_check():
-    """Returns the operational status of the service."""
-    logger.info("Health check endpoint was called.")
-    return {"status": "ok", "service": "Query Service"}
+# The old /health endpoint is now replaced by the specific probes above.
 
 if __name__ == "__main__":
     import uvicorn
