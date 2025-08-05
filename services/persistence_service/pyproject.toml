@@ -1,3 +1,4 @@
+# services/persistence_service/pyproject.toml
 [build-system]
 requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
@@ -9,7 +10,7 @@ description = "Portfolio Analytics - Generic Persistence Service"
 requires-python = ">=3.11"
 dependencies = [
     "sqlalchemy==2.0.30",
-    "psycopg2-binary==2.9.9",
+    "asyncpg==0.29.0", # <-- REPLACES psycopg2-binary
     "confluent-kafka==2.4.0",
     "pydantic==2.7.4",
     "tenacity==8.2.3",
