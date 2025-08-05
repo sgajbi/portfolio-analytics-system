@@ -17,7 +17,7 @@ class InstrumentRepository:
             result = await self.db.execute(stmt)
             db_instrument = result.scalars().first()
             
-            instrument_data = event.model_dump(by_alias=True)
+            instrument_data = event.model_dump()
 
             if db_instrument:
                 for key, value in instrument_data.items():

@@ -20,7 +20,7 @@ class MarketPriceRepository:
             result = await self.db.execute(stmt)
             db_price = result.scalars().first()
 
-            market_price_data = event.model_dump(by_alias=True)
+            market_price_data = event.model_dump()
 
             if db_price:
                 for key, value in market_price_data.items():

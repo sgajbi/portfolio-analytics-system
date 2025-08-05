@@ -24,7 +24,7 @@ class PortfolioRepository:
             result = await self.db.execute(stmt)
             db_portfolio = result.scalars().first()
             
-            portfolio_data = event.model_dump(by_alias=True)
+            portfolio_data = event.model_dump()
 
             if db_portfolio:
                 for key, value in portfolio_data.items():
