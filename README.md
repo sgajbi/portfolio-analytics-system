@@ -1,4 +1,7 @@
 
+#### **`README.md`**
+
+````markdown
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/sgajbi/portfolio-analytics-system)
  
 # Portfolio Analytics System
@@ -18,10 +21,11 @@ An event-driven, microservices-based platform for comprehensive portfolio analyt
 2.  [Core Services](#2-core-services)
 3.  [Data Flow & Kafka Topics](#3-data-flow--kafka-topics)
 4.  [API Endpoints](#4-api-endpoints)
-5.  [Local Development](#5-local-development)
-6.  [Testing](#6-testing)
-7.  [Database Migrations](#7-database-migrations)
-8.  [Directory Structure](#8-directory-structure)
+5.  [Observability](#5-observability)
+6.  [Local Development](#6-local-development)
+7.  [Testing](#7-testing)
+8.  [Database Migrations](#8-database-migrations)
+9.  [Directory Structure](#9-directory-structure)
 
 ---
 ## 1. System Architecture
@@ -83,7 +87,6 @@ graph TD
     subgraph "Data Query Layer"
         QueryService -- Reads --> DB;
     end
-
 ````
 
 ## 2\. Core Services
@@ -135,9 +138,36 @@ The system relies on a well-defined sequence of events published to Kafka topics
 
 -----
 
-## 5\. Local Development
+## 5\. Observability
 
-## 5\. Local Development
+The system is designed with observability in mind, exposing metrics, health checks, and structured logs to allow for effective monitoring in a production environment.
+
+### 5.1 Structured Logging
+
+All services output structured JSON logs. Every log entry is enriched with a `correlation_id` that is propagated through HTTP headers and Kafka messages, allowing for easy tracing of a single request or event flow across multiple services.
+
+### 5.2 Health Probes
+
+Services that run background consumers (like the `persistence-service`) expose a web server with health check endpoints, making them compatible with orchestrators like Kubernetes.
+
+  - **`persistence-service` @ `http://localhost:8080`**:
+      - `GET /health/live`: Liveness probe. Returns `200 OK` if the service's process is running and responsive.
+      - `GET /health/ready`: Readiness probe. Returns `200 OK` only if the service can successfully connect to its dependencies (PostgreSQL and Kafka).
+
+### 5.3 Prometheus Metrics
+
+Services with a web server also expose an endpoint for metrics in the Prometheus format.
+
+  - **`persistence-service` @ `http://localhost:8080/metrics`**:
+      - Provides default metrics for the health-probe API (e.g., `http_requests_total`).
+      - Provides custom metrics for Kafka consumer performance:
+          - `events_processed_total`: A counter for successfully processed messages, labeled by topic and consumer group.
+          - `events_dlqd_total`: A counter for messages that failed all retries and were sent to the Dead-Letter Queue.
+          - `event_processing_latency_seconds`: A histogram measuring the time taken to process each message.
+
+-----
+
+## 6\. Local Development
 
 ### Prerequisites
 
@@ -191,7 +221,7 @@ The system relies on a well-defined sequence of events published to Kafka topics
 
 -----
 
-## 6\. Testing
+## 7\. Testing
 
 The project includes a suite of end-to-end tests that validate the full data pipeline.
 
@@ -206,7 +236,7 @@ The project includes a suite of end-to-end tests that validate the full data pip
 
 -----
 
-## 7\. Database Migrations
+## 8\. Database Migrations
 
 Database schema changes are managed by Alembic.
 
@@ -225,10 +255,9 @@ Database schema changes are managed by Alembic.
 
 -----
 
-## 8\. Directory Structure
+## 9\. Directory Structure
 
 ```
-
 sgajbi-portfolio-analytics-system/
 ├── alembic/                  # Database migration scripts
 ├── docker/
@@ -251,12 +280,11 @@ sgajbi-portfolio-analytics-system/
 │   └── unit/
 ├── docker-compose.yml        # Orchestrates all services for local development
 └── README.md                 # This file
-
 ```
 
 -----
 
-## 9\. Full Usage Example
+## 10\. Full Usage Example
 
 This example demonstrates the full flow from ingestion to querying the final calculated position.
 
@@ -392,4 +420,5 @@ This example demonstrates the full flow from ingestion to querying the final cal
     ```
 
 <!-- end list -->
+
  
