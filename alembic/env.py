@@ -38,14 +38,21 @@ target_metadata = Base.metadata
 
 
 def get_db_url():
-    """Gets the correct DB URL for the current context (host vs container)."""
-    # Use HOST_DATABASE_URL if available (for local tools), otherwise use DATABASE_URL.
+    """
+    Gets the correct DB URL for Alembic.
+    Alembic runs synchronously, so it must use a synchronous driver scheme.
+    """
     url = os.environ.get("HOST_DATABASE_URL") or os.environ.get("DATABASE_URL")
     if url is None:
         raise Exception(
             "Neither HOST_DATABASE_URL nor DATABASE_URL are set. "
             "Please check your .env file."
         )
+    
+    # Ensure the URL uses a synchronous scheme for alembic
+    if "asyncpg" in url:
+        url = url.replace("postgresql+asyncpg://", "postgresql://")
+    
     return url
 
 

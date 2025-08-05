@@ -1,31 +1,55 @@
 # libs/portfolio-common/portfolio_common/db.py
 import os
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from .config import POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_HOST, POSTGRES_PORT, POSTGRES_DB
 from .db_base import Base
 
-def get_database_url():
+# --- Synchronous Database Setup (for legacy services) ---
+
+def get_sync_database_url():
     """
-    Determines the correct database URL, now with an asyncpg driver scheme.
-    - For local development, it uses HOST_DATABASE_URL from the .env file.
-    - For Docker, it constructs the URL from individual POSTGRES_* vars.
+    Determines the synchronous database URL.
+    """
+    url = os.getenv("HOST_DATABASE_URL")
+    if url and url.startswith("postgresql://"):
+        return url
+    
+    # Fallback for container-to-container communication
+    return f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
+
+engine = create_engine(get_sync_database_url())
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+def get_db_session():
+    """
+    A synchronous dependency to get a SQLAlchemy database session.
+    """
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+# --- Asynchronous Database Setup (for modernized services) ---
+
+def get_async_database_url():
+    """
+    Determines the correct async database URL, with an asyncpg driver scheme.
     """
     url = os.getenv("HOST_DATABASE_URL")
     if url:
-        # Ensure the scheme is compatible with asyncpg
         if url.startswith("postgresql://"):
-            url = url.replace("postgresql://", "postgresql+asyncpg://")
+            return url.replace("postgresql://", "postgresql+asyncpg://")
         return url
     
     return f"postgresql+asyncpg://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
 
-# Async Database Setup
-ASYNC_SQLALCHEMY_DATABASE_URL = get_database_url()
-
 async_engine = create_async_engine(
-    ASYNC_SQLALCHEMY_DATABASE_URL,
+    get_async_database_url(),
     pool_pre_ping=True,
-    echo=False, # Set to True for debugging DB queries
 )
 
 AsyncSessionLocal = async_sessionmaker(
@@ -39,7 +63,6 @@ AsyncSessionLocal = async_sessionmaker(
 async def get_async_db_session() -> AsyncSession:
     """
     An async dependency that provides an SQLAlchemy AsyncSession.
-    It ensures the session is always closed, even if errors occur.
     """
     async with AsyncSessionLocal() as session:
         try:
