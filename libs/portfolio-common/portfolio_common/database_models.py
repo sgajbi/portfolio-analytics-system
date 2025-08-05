@@ -113,8 +113,9 @@ class Transaction(Base):
     gross_transaction_amount = Column(Numeric(18, 10), nullable=False)
     trade_currency = Column(String, nullable=False)
     currency = Column(String, nullable=False)
-    transaction_date = Column(DateTime, nullable=False)
-    settlement_date = Column(DateTime, nullable=True)
+    # --- THE FIX: Change to timezone-aware timestamp columns ---
+    transaction_date = Column(DateTime(timezone=True), nullable=False)
+    settlement_date = Column(DateTime(timezone=True), nullable=True)
     trade_fee = Column(Numeric(18, 10), nullable=True)
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
@@ -125,10 +126,10 @@ class Transaction(Base):
     costs = relationship("TransactionCost", back_populates="transaction", cascade="all, delete-orphan")
     cashflow = relationship("Cashflow", uselist=False, back_populates="transaction", cascade="all, delete-orphan")
 
-    # --- NEW: Define the composite index directly on the model ---
     __table_args__ = (
         Index('ix_transactions_portfolio_security', 'portfolio_id', 'security_id'),
     )
+
 
 
 class TransactionCost(Base):
