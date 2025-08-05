@@ -8,7 +8,7 @@ from confluent_kafka import Message
 from portfolio_common.kafka_consumer import BaseConsumer
 from portfolio_common.logging_utils import correlation_id_var
 from portfolio_common.events import MarketPriceEvent, DailyPositionSnapshotPersistedEvent
-from portfolio_common.db import get_db_session
+from portfolio_common.db import get_async_db_session
 from portfolio_common.config import KAFKA_DAILY_POSITION_SNAPSHOT_PERSISTED_TOPIC
 from portfolio_common.idempotency_repository import IdempotencyRepository
 from portfolio_common.outbox_repository import OutboxRepository
@@ -23,8 +23,7 @@ class MarketPriceConsumer(BaseConsumer):
     Consumes market price events and creates or updates daily position snapshots
     for all affected portfolios with the new valuation. This process is idempotent.
     """
-
-    def process_message(self, msg: Message, loop: asyncio.AbstractEventLoop):
+    async def process_message(self, msg: Message):
         key = msg.key().decode('utf-8') if msg.key() else "NoKey"
         value = msg.value().decode('utf-8')
         event_id = f"{msg.topic()}-{msg.partition()}-{msg.offset()}"
@@ -36,20 +35,19 @@ class MarketPriceConsumer(BaseConsumer):
             
             logger.info(f"Processing market price for {price_event.security_id} on {price_event.price_date}")
             
-            with next(get_db_session()) as db:
-                with db.begin():
+            async for db in get_async_db_session():
+                async with db.begin():
                     idempotency_repo = IdempotencyRepository(db)
                     outbox_repo = OutboxRepository()
  
-                    if idempotency_repo.is_event_processed(event_id, SERVICE_NAME):
+                    if await idempotency_repo.is_event_processed(event_id, SERVICE_NAME):
                         logger.warning(f"Event {event_id} already processed. Skipping.")
                         return
 
                     repo = ValuationRepository(db)
                     
-                    updated_snapshots = repo.update_snapshots_for_market_price(price_event)
-                    db.flush()
-
+                    updated_snapshots = await repo.update_snapshots_for_market_price(price_event)
+                    
                     if updated_snapshots:
                         logger.info(f"Staging {len(updated_snapshots)} snapshot events for price event {event_id}")
                         for snapshot in updated_snapshots:
@@ -64,11 +62,11 @@ class MarketPriceConsumer(BaseConsumer):
                                 correlation_id=correlation_id
                             )
                     
-                    idempotency_repo.mark_event_processed(event_id, "N/A", SERVICE_NAME, correlation_id)
+                    await idempotency_repo.mark_event_processed(event_id, "N/A", SERVICE_NAME, correlation_id)
 
         except (json.JSONDecodeError, ValidationError) as e:
             logger.error(f"Message validation failed for key '{key}': {e}. Value: '{value}'", exc_info=True)
-            self._send_to_dlq_sync(msg, e, loop)
+            await self._send_to_dlq_async(msg, e)
         except Exception as e:
             logger.error(f"Unexpected error processing message with key '{key}': {e}", exc_info=True)
-            self._send_to_dlq_sync(msg, e, loop)
+            await self._send_to_dlq_async(msg, e)

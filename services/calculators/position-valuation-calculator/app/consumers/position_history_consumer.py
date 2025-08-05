@@ -7,7 +7,7 @@ from pydantic import ValidationError
 from confluent_kafka import Message
 from portfolio_common.kafka_consumer import BaseConsumer
 from portfolio_common.events import PositionHistoryPersistedEvent, DailyPositionSnapshotPersistedEvent
-from portfolio_common.db import get_db_session
+from portfolio_common.db import get_async_db_session
 from portfolio_common.database_models import DailyPositionSnapshot, PositionHistory
 from portfolio_common.config import KAFKA_DAILY_POSITION_SNAPSHOT_PERSISTED_TOPIC
 from portfolio_common.idempotency_repository import IdempotencyRepository
@@ -25,8 +25,7 @@ class PositionHistoryConsumer(BaseConsumer):
     Consumes transaction-driven position history events, values them, and
     saves the result as a daily position snapshot. This process is idempotent.
     """
-
-    def process_message(self, msg: Message, loop: asyncio.AbstractEventLoop):
+    async def process_message(self, msg: Message):
         key = msg.key().decode('utf-8') if msg.key() else "NoKey"
         value = msg.value().decode('utf-8')
         event_id = f"{msg.topic()}-{msg.partition()}-{msg.offset()}"
@@ -38,24 +37,24 @@ class PositionHistoryConsumer(BaseConsumer):
             
             logger.info(f"Valuing transaction-based position for id {position_event.id}", extra={"event_id": event_id})
             
-            with next(get_db_session()) as db:
-                with db.begin():
+            async for db in get_async_db_session():
+                async with db.begin():
                     idempotency_repo = IdempotencyRepository(db)
                     outbox_repo = OutboxRepository()
     
-                    if idempotency_repo.is_event_processed(event_id, SERVICE_NAME):
+                    if await idempotency_repo.is_event_processed(event_id, SERVICE_NAME):
                         logger.warning(f"Event {event_id} already processed. Skipping.")
                         return
 
                     repo = ValuationRepository(db)
         
-                    position = db.query(PositionHistory).get(position_event.id)
+                    position = await db.get(PositionHistory, position_event.id)
                     if not position:
                         logger.warning(f"PositionHistory with id {position_event.id} not found. Marking as processed to skip.")
-                        idempotency_repo.mark_event_processed(event_id, position_event.portfolio_id, SERVICE_NAME, correlation_id)
+                        await idempotency_repo.mark_event_processed(event_id, position_event.portfolio_id, SERVICE_NAME, correlation_id)
                         return
 
-                    price = repo.get_latest_price_for_position(
+                    price = await repo.get_latest_price_for_position(
                         security_id=position.security_id,
                         position_date=position.position_date
                     )
@@ -83,9 +82,8 @@ class PositionHistoryConsumer(BaseConsumer):
                         unrealized_gain_loss=unrealized_gain_loss
                     )
                     
-                    persisted_snapshot = repo.upsert_daily_snapshot(snapshot_to_save)
-                    db.flush()
-
+                    persisted_snapshot = await repo.upsert_daily_snapshot(snapshot_to_save)
+                    
                     completion_event = DailyPositionSnapshotPersistedEvent.model_validate(persisted_snapshot)
                     outbox_repo.create_outbox_event(
                         db_session=db,
@@ -97,11 +95,11 @@ class PositionHistoryConsumer(BaseConsumer):
                         correlation_id=correlation_id
                     )
 
-                    idempotency_repo.mark_event_processed(event_id, position.portfolio_id, SERVICE_NAME, correlation_id)
+                    await idempotency_repo.mark_event_processed(event_id, position.portfolio_id, SERVICE_NAME, correlation_id)
 
         except (json.JSONDecodeError, ValidationError) as e:
             logger.error(f"Message validation failed for key '{key}': {e}. Value: '{value}'", exc_info=True)
-            self._send_to_dlq_sync(msg, e, loop)
+            await self._send_to_dlq_async(msg, e)
         except Exception as e:
             logger.error(f"Unexpected error processing message with key '{key}': {e}", exc_info=True)
-            self._send_to_dlq_sync(msg, e, loop)
+            await self._send_to_dlq_async(msg, e)

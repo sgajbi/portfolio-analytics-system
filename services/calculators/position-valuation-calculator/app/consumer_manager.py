@@ -2,24 +2,26 @@
 import logging
 import signal
 import asyncio
+import uvicorn
 
 from portfolio_common.config import (
     KAFKA_BOOTSTRAP_SERVERS, 
     KAFKA_POSITION_HISTORY_PERSISTED_TOPIC,
     KAFKA_MARKET_PRICE_PERSISTED_TOPIC
 )
-from app.consumers.position_history_consumer import PositionHistoryConsumer
-from app.consumers.market_price_consumer import MarketPriceConsumer
+from .consumers.position_history_consumer import PositionHistoryConsumer
+from .consumers.market_price_consumer import MarketPriceConsumer
 from portfolio_common.kafka_admin import ensure_topics_exist
 from portfolio_common.kafka_utils import get_kafka_producer
 from portfolio_common.outbox_dispatcher import OutboxDispatcher
+from .web import app as web_app
 
 logger = logging.getLogger(__name__)
 
 class ConsumerManager:
     """
-    Manages the lifecycle of Kafka consumers for the position valuation service.
-    It instantiates, runs, and gracefully shuts down all consumer tasks.
+    Manages the lifecycle of Kafka consumers, the outbox dispatcher,
+    and the new health probe web server.
     """
     def __init__(self):
         self.consumers = []
@@ -46,7 +48,6 @@ class ConsumerManager:
             )
         )
 
-        # NEW: Instantiate the dispatcher
         kafka_producer = get_kafka_producer()
         self.dispatcher = OutboxDispatcher(kafka_producer=kafka_producer)
 
@@ -60,32 +61,30 @@ class ConsumerManager:
     async def run(self):
         """
         The main execution function.
-        Sets up signal handling and runs consumer tasks.
         """
         required_topics = [consumer.topic for consumer in self.consumers]
         ensure_topics_exist(required_topics)
 
         signal.signal(signal.SIGINT, self._signal_handler)
         signal.signal(signal.SIGTERM, self._signal_handler)
+        
+        uvicorn_config = uvicorn.Config(web_app, host="0.0.0.0", port=8084, log_config=None)
+        server = uvicorn.Server(uvicorn_config)
 
-        if not self.consumers:
-            logger.warning("No consumers configured. Service will idle.")
-            await self._shutdown_event.wait()
-            logger.info("Shutdown event received. Exiting.")
-            return
-
-        logger.info("Starting all consumer tasks and the outbox dispatcher...")
+        logger.info("Starting all consumer tasks, the outbox dispatcher, and the web server...")
         self.tasks = [asyncio.create_task(c.run()) for c in self.consumers]
         self.tasks.append(asyncio.create_task(self.dispatcher.run()))
+        self.tasks.append(asyncio.create_task(server.serve()))
         
         logger.info("ConsumerManager is running. Press Ctrl+C to exit.")
         await self._shutdown_event.wait()
         
-        logger.info("Shutdown event received. Stopping all consumers and the dispatcher...")
+        logger.info("Shutdown event received. Stopping all tasks...")
         for consumer in self.consumers:
             consumer.shutdown()
         
         self.dispatcher.stop()
+        server.should_exit = True
         
         await asyncio.gather(*self.tasks, return_exceptions=True)
         logger.info("All consumer and dispatcher tasks have been successfully shut down.")
