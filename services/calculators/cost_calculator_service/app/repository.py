@@ -1,14 +1,15 @@
 # services/calculators/cost_calculator_service/app/repository.py
 from typing import List, Optional
-from sqlalchemy.orm import Session
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 from portfolio_common.database_models import Transaction as DBTransaction
 from core.models.transaction import Transaction as EngineTransaction
 
 class CostCalculatorRepository:
-    def __init__(self, db: Session):
+    def __init__(self, db: AsyncSession):
         self.db = db
 
-    def get_transaction_history(
+    async def get_transaction_history(
         self,
         portfolio_id: str,
         security_id: str,
@@ -18,21 +19,22 @@ class CostCalculatorRepository:
         Fetches all transactions for a given security in a portfolio,
         optionally excluding one by its transaction_id.
         """
-        query = self.db.query(DBTransaction).filter(
-            DBTransaction.portfolio_id == portfolio_id,
-            DBTransaction.security_id == security_id
+        stmt = select(DBTransaction).filter_by(
+            portfolio_id=portfolio_id,
+            security_id=security_id
         )
 
         if exclude_id:
-            query = query.filter(DBTransaction.transaction_id != exclude_id)
+            stmt = stmt.filter(DBTransaction.transaction_id != exclude_id)
             
-        return query.all()
+        result = await self.db.execute(stmt)
+        return result.scalars().all()
 
-    def update_transaction_costs(self, transaction_result: EngineTransaction) -> DBTransaction | None:
+    async def update_transaction_costs(self, transaction_result: EngineTransaction) -> DBTransaction | None:
         """Finds a transaction by its ID and updates its calculated cost fields."""
-        db_txn_to_update = self.db.query(DBTransaction).filter(
-            DBTransaction.transaction_id == transaction_result.transaction_id
-        ).first()
+        stmt = select(DBTransaction).filter_by(transaction_id=transaction_result.transaction_id)
+        result = await self.db.execute(stmt)
+        db_txn_to_update = result.scalars().first()
 
         if db_txn_to_update:
             db_txn_to_update.net_cost = transaction_result.net_cost

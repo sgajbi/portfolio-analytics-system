@@ -184,9 +184,12 @@ services:
       dockerfile: ./services/calculators/cost_calculator_service/Dockerfile
     hostname: cost-calculator-service
     container_name: cost-calculator-service
+    ports:
+      - "8083:8083"
     environment:
       PYTHONPATH: "/app:/app/libs/portfolio-common:/app/libs/financial-calculator-engine/src"
       KAFKA_BOOTSTRAP_SERVERS: kafka:9093
+      DATABASE_URL: postgresql://user:password@postgres:5432/portfolio_db # Added for health check
     depends_on:
       kafka-topic-creator:
         condition: service_completed_successfully
@@ -197,6 +200,12 @@ services:
       - ./libs/portfolio-common:/app/libs/portfolio-common
       - ./libs/financial-calculator-engine:/app/libs/financial-calculator-engine
     command: ["python", "-m", "app.main"]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8083/health/ready || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     networks:
       - app_network
 

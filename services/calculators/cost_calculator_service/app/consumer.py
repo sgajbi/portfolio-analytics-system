@@ -8,7 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from tenacity import retry, stop_after_attempt, wait_fixed, before_log
 
 from portfolio_common.config import KAFKA_PROCESSED_TRANSACTIONS_COMPLETED_TOPIC
-from portfolio_common.db import get_db_session
+from portfolio_common.db import get_async_db_session
 from portfolio_common.events import TransactionEvent
 from portfolio_common.kafka_consumer import BaseConsumer
 from portfolio_common.idempotency_repository import IdempotencyRepository
@@ -50,12 +50,12 @@ class CostCalculatorConsumer(BaseConsumer):
             error_reporter=error_reporter
         )
 
-    def process_message(self, msg: Message, loop: asyncio.AbstractEventLoop):
+    async def process_message(self, msg: Message):
         """ Wrapper to call the retryable logic. """
-        self._process_message_with_retry(msg, loop)
+        await self._process_message_with_retry(msg)
 
     @retry(wait=wait_fixed(2), stop=stop_after_attempt(3), before=before_log(logger, logging.INFO))
-    def _process_message_with_retry(self, msg: Message, loop: asyncio.AbstractEventLoop):
+    async def _process_message_with_retry(self, msg: Message):
         event_id = f"{msg.topic()}-{msg.partition()}-{msg.offset()}"
         correlation_id = correlation_id_var.get()
         event = None
@@ -65,23 +65,23 @@ class CostCalculatorConsumer(BaseConsumer):
             event = TransactionEvent.model_validate(data)
         except (json.JSONDecodeError, ValidationError) as e:
             logger.error(f"Validation error for event {event_id}. Sending to DLQ.", exc_info=True)
-            self._send_to_dlq_sync(msg, e, loop)
+            await self._send_to_dlq_async(msg, e)
             return
 
         processor = self._get_transaction_processor()
         
         try:
-            with next(get_db_session()) as db:
-                idempotency_repo = IdempotencyRepository(db)
-                outbox_repo = OutboxRepository()
-                repo = CostCalculatorRepository(db)
+            async for db in get_async_db_session():
+                async with db.begin():
+                    idempotency_repo = IdempotencyRepository(db)
+                    outbox_repo = OutboxRepository()
+                    repo = CostCalculatorRepository(db)
 
-                with db.begin():
-                    if idempotency_repo.is_event_processed(event_id, SERVICE_NAME):
+                    if await idempotency_repo.is_event_processed(event_id, SERVICE_NAME):
                         logger.warning(f"Event {event_id} already processed. Skipping.")
                         return
 
-                    existing_db_txns = repo.get_transaction_history(
+                    existing_db_txns = await repo.get_transaction_history(
                         portfolio_id=event.portfolio_id,
                         security_id=event.security_id,
                         exclude_id=event.transaction_id
@@ -98,12 +98,12 @@ class CostCalculatorConsumer(BaseConsumer):
                     if errored:
                         for e in errored:
                             logger.error(f"Transaction {e.transaction_id} failed processing: {e.error_reason}")
-                        idempotency_repo.mark_event_processed(event_id, event.portfolio_id, SERVICE_NAME, correlation_id)
+                        await idempotency_repo.mark_event_processed(event_id, event.portfolio_id, SERVICE_NAME, correlation_id)
                         return
 
                     if processed:
                         processed_result = processed[0]
-                        db_txn_to_update = repo.update_transaction_costs(processed_result)
+                        db_txn_to_update = await repo.update_transaction_costs(processed_result)
 
                         if not db_txn_to_update:
                             raise Exception(f"Failed to find transaction {processed_result.transaction_id} in DB to update.")
@@ -122,12 +122,12 @@ class CostCalculatorConsumer(BaseConsumer):
                             correlation_id=correlation_id
                         )
                         
-                        idempotency_repo.mark_event_processed(event_id, event.portfolio_id, SERVICE_NAME, correlation_id)
+                        await idempotency_repo.mark_event_processed(event_id, event.portfolio_id, SERVICE_NAME, correlation_id)
                         logger.info(f"Successfully calculated costs for transaction {processed_result.transaction_id}.")
 
-        except IntegrityError as e:
+        except IntegrityError:
              logger.warning(f"Caught IntegrityError for transaction {getattr(event, 'transaction_id', 'UNKNOWN')}. Will retry...")
              raise
         except Exception as e:
             logger.error(f"Unexpected error processing transaction {getattr(event, 'transaction_id', 'UNKNOWN')}. Sending to DLQ.", exc_info=True)
-            self._send_to_dlq_sync(msg, e, loop)
+            await self._send_to_dlq_async(msg, e)

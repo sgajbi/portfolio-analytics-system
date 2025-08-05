@@ -8,6 +8,11 @@ ENV POETRY_VIRTUALENVS_CREATE=false \
     PYTHONUNBUFFERED=1 \
     PATH="/opt/venv/bin:$PATH"
 
+# NEW: Install curl for the healthcheck command
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends curl && \
+    rm -rf /var/lib/apt/lists/*
+
 RUN useradd --create-home appuser
 RUN python -m venv /opt/venv && \
     chown -R appuser:appuser /opt/venv
@@ -36,4 +41,8 @@ COPY --from=builder --chown=appuser:appuser /app/services/calculators/cost_calcu
 COPY --from=builder --chown=appuser:appuser /app/libs /app/libs
 
 USER appuser
-CMD ["python", "app/main.py"]
+
+# NEW: Expose port for health probes
+EXPOSE 8083
+
+CMD ["python", "-m", "app.main"]
