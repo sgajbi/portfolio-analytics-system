@@ -1,7 +1,7 @@
 # libs/portfolio-common/portfolio_common/database_models.py
 from sqlalchemy import (
     Column, Integer, String, Numeric, DateTime, Date, func,
-    ForeignKey, UniqueConstraint, Boolean, JSON
+    ForeignKey, UniqueConstraint, Boolean, JSON, Index
 )
 from sqlalchemy.orm import relationship
 
@@ -124,6 +124,12 @@ class Transaction(Base):
 
     costs = relationship("TransactionCost", back_populates="transaction", cascade="all, delete-orphan")
     cashflow = relationship("Cashflow", uselist=False, back_populates="transaction", cascade="all, delete-orphan")
+
+    # --- NEW: Define the composite index directly on the model ---
+    __table_args__ = (
+        Index('ix_transactions_portfolio_security', 'portfolio_id', 'security_id'),
+    )
+
 
 class TransactionCost(Base):
     __tablename__ = 'transaction_costs'
