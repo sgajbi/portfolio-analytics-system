@@ -1,3 +1,4 @@
+# docker-compose.yml
 services:
   zookeeper:
     image: confluentinc/cp-zookeeper:7.2.15
@@ -138,6 +139,13 @@ services:
       - ./services/query-service/app:/app/app
       - ./libs/portfolio-common:/app/libs/portfolio-common
     command: uvicorn app.main:app --host 0.0.0.0 --port 8001
+    # --- NEW: Healthcheck for Query Service ---
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8001/health/ready || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     networks:
       - app_network
 
