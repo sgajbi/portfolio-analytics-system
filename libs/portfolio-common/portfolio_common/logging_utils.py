@@ -3,6 +3,7 @@ import logging
 import sys
 import uuid
 from contextvars import ContextVar
+from pythonjsonlogger import jsonlogger # NEW IMPORT
 
 # This shared context variable will hold the correlation ID for each request/event.
 # It's initialized with a default value for cases where it's not explicitly set.
@@ -28,9 +29,9 @@ class CorrelationIdFilter(logging.Filter):
 
 def setup_logging():
     """
-    Configures the root logger for standardized, correlation-ID-aware logging.
-    This ensures all loggers within an application (including libraries)
-    will inherit this configuration.
+    Configures the root logger for standardized, correlation-ID-aware,
+    structured JSON logging. This ensures all loggers within an application
+    (including libraries) will inherit this configuration.
     """
     # Get the root logger
     root_logger = logging.getLogger()
@@ -43,9 +44,15 @@ def setup_logging():
 
     handler = logging.StreamHandler(sys.stdout)
     
-    # Define a standard format that includes the correlation ID
-    formatter = logging.Formatter(
-        "%(asctime)s [%(levelname)s] [corr_id=%(correlation_id)s] [%(name)s] - %(message)s"
+    # --- REFACTORED: Use JsonFormatter ---
+    # Define a standard format string that the JsonFormatter will use to structure the JSON output.
+    formatter = jsonlogger.JsonFormatter(
+        "%(asctime)s %(name)s %(levelname)s %(message)s %(correlation_id)s",
+        rename_fields={
+            "asctime": "timestamp",
+            "levelname": "level",
+            "name": "logger"
+        }
     )
     
     handler.setFormatter(formatter)
@@ -58,10 +65,8 @@ def setup_logging():
 def generate_correlation_id(prefix: str) -> str:
     """
     Generates a new correlation ID with a service-specific prefix.
-    
     Args:
         prefix: A short code for the service (e.g., 'ING').
-
     Returns:
         A formatted correlation ID string.
     """
