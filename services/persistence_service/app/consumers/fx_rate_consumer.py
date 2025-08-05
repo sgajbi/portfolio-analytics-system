@@ -5,8 +5,8 @@ import asyncio
 from typing import Optional
 from pydantic import ValidationError
 from confluent_kafka import Message
-from sqlalchemy.exc import IntegrityError
-from tenacity import retry, stop_after_attempt, wait_exponential, before_log
+from sqlalchemy.exc import DBAPIError, IntegrityError
+from tenacity import retry, stop_after_attempt, wait_exponential, before_log, retry_if_exception_type
 
 from portfolio_common.kafka_consumer import BaseConsumer
 from portfolio_common.events import FxRateEvent
@@ -38,6 +38,7 @@ class FxRateConsumer(BaseConsumer):
         wait=wait_exponential(multiplier=1, min=2, max=10), 
         stop=stop_after_attempt(3), 
         before=before_log(logger, logging.INFO),
+        retry=retry_if_exception_type((DBAPIError, IntegrityError)),
         reraise=True
     )
     def _process_message_with_retry(self, msg: Message, loop: asyncio.AbstractEventLoop):
@@ -45,21 +46,13 @@ class FxRateConsumer(BaseConsumer):
         value = msg.value().decode('utf-8')
         correlation_id = correlation_id_var.get()
         event = None
-
         event_id = f"{msg.topic()}-{msg.partition()}-{msg.offset()}"
 
         try:
             fx_rate_data = json.loads(value)
-        except json.JSONDecodeError as e:
-            logger.error(f"JSON decode failed for FX rate event. Key={key} Error={e}. Sending to DLQ.", 
-                extra={"event_id": event_id}, exc_info=True)
-            self._send_to_dlq_sync(msg, e, loop)
-            return
-
-        try:
             event = FxRateEvent.model_validate(fx_rate_data)
-        except ValidationError as e:
-            logger.error(f"Validation failed for FX rate event. Key={key} Error={e}. Sending to DLQ.", 
+        except (json.JSONDecodeError, ValidationError) as e:
+            logger.error(f"Validation or JSON decode failed for FX rate event. Key={key}. Sending to DLQ.", 
                 extra={"event_id": event_id}, exc_info=True)
             self._send_to_dlq_sync(msg, e, loop)
             return
@@ -68,7 +61,7 @@ class FxRateConsumer(BaseConsumer):
             f"Received FX rate event: {event.from_currency}->{event.to_currency} on {event.rate_date}",
             extra={"event_id": event_id}
         )
-
+        
         try:
             with next(get_db_session()) as db:
                 with db.begin():
@@ -95,17 +88,17 @@ class FxRateConsumer(BaseConsumer):
                         f"FX Rate event processed: {event.from_currency}->{event.to_currency} on {event.rate_date} "
                         f"Status={status}", extra={"event_id": event_id}
                     )
-        except IntegrityError as e:
+        except (DBAPIError, IntegrityError):
             logger.warning(
-                f"IntegrityError (likely duplicate) for FX rate: {event.from_currency}->{event.to_currency} "
-                f"on {event.rate_date}. Key={key}. Error={e}. Sending to DLQ.",
+                f"Caught a DB error for FX rate: {getattr(event, 'from_currency', 'UNK')}->{getattr(event, 'to_currency', 'UNK')} "
+                f"on {getattr(event, 'rate_date', 'UNKNOWN')}. Will retry...",
                 extra={"event_id": event_id}
             )
-            self._send_to_dlq_sync(msg, e, loop)
+            raise
         except Exception as e:
             logger.error(
-                f"Unexpected error for FX rate event: {event.from_currency}->{event.to_currency} "
-                f"on {event.rate_date}. Key={key}. Sending to DLQ.",
+                f"Unexpected error for FX rate event: {getattr(event, 'from_currency', 'UNK')}->{getattr(event, 'to_currency', 'UNK')} "
+                f"on {getattr(event, 'rate_date', 'UNKNOWN')}. Sending to DLQ.",
                 extra={"event_id": event_id},
                 exc_info=True
             )

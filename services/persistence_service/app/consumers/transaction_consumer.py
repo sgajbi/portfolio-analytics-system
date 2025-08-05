@@ -4,8 +4,8 @@ import json
 import asyncio
 from pydantic import ValidationError
 from confluent_kafka import Message
-from sqlalchemy.exc import IntegrityError
-from tenacity import retry, stop_after_attempt, wait_exponential, before_log
+from sqlalchemy.exc import DBAPIError, IntegrityError
+from tenacity import retry, stop_after_attempt, wait_exponential, before_log, retry_if_exception_type
 
 from portfolio_common.kafka_consumer import BaseConsumer
 from portfolio_common.logging_utils import correlation_id_var
@@ -23,33 +23,33 @@ SERVICE_NAME = "persistence-transactions"
 class TransactionPersistenceConsumer(BaseConsumer):
     """
     A concrete consumer for validating and persisting raw transaction events.
-    - It uses an idempotency check to ensure exactly-once processing.
-    - On success, it writes a completion event to the outbox table.
-    - On validation failure, it publishes the message to a DLQ.
-    - It retries on database integrity errors to handle race conditions.
     """
     def process_message(self, msg: Message, loop: asyncio.AbstractEventLoop):
         """
-        Wrapper method to satisfy the abstract base class.
-        It calls the actual processing logic which is decorated with tenacity.
+        Wrapper method to call the retryable logic.
         """
-        self._process_message_with_retry(msg, loop)
+        try:
+            self._process_message_with_retry(msg, loop)
+        except Exception as e:
+            logger.error(f"Fatal error for transaction after retries. Sending to DLQ. Key={msg.key()}", exc_info=True)
+            self._send_to_dlq_sync(msg, e, loop)
 
     @retry(
         wait=wait_exponential(multiplier=1, min=2, max=10),
         stop=stop_after_attempt(3),
         before=before_log(logger, logging.INFO),
+        retry=retry_if_exception_type((DBAPIError, IntegrityError)),
         reraise=True
     )
     def _process_message_with_retry(self, msg: Message, loop: asyncio.AbstractEventLoop):
         """
         Processes a single raw transaction message from Kafka atomically and idempotently.
+        Retries on database connection errors or integrity errors.
         """
         key = msg.key().decode('utf-8') if msg.key() else "NoKey"
         value = msg.value().decode('utf-8')
         correlation_id = correlation_id_var.get()
         event = None
-
         event_id = f"{msg.topic()}-{msg.partition()}-{msg.offset()}"
         
         try:
@@ -99,12 +99,12 @@ class TransactionPersistenceConsumer(BaseConsumer):
             logger.error("Message validation failed. Sending to DLQ.", 
                 extra={"key": key, "event_id": event_id}, exc_info=True)
             self._send_to_dlq_sync(msg, e, loop)
-        except IntegrityError:
+        except (DBAPIError, IntegrityError):
             logger.warning(
-                "Caught IntegrityError, likely a race condition. Will retry...",
-                extra={"transaction_id": getattr(event, 'transaction_id', 'UNKNOWN'), "event_id": event_id},
+                f"Caught a DB error for transaction {getattr(event, 'transaction_id', 'UNKNOWN')}. Will retry...",
+                extra={"event_id": event_id},
             )
-            raise
+            raise 
         except Exception as e:
             logger.error(f"An unexpected error occurred for transaction {getattr(event, 'transaction_id', 'UNKNOWN')}. Sending to DLQ.", 
                 extra={"event_id": event_id}, exc_info=True)

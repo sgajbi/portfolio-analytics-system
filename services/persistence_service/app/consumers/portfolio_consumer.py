@@ -4,8 +4,8 @@ import json
 import asyncio
 from pydantic import ValidationError
 from confluent_kafka import Message
-from sqlalchemy.exc import IntegrityError
-from tenacity import retry, stop_after_attempt, wait_exponential, before_log
+from sqlalchemy.exc import DBAPIError, IntegrityError
+from tenacity import retry, stop_after_attempt, wait_exponential, before_log, retry_if_exception_type
 
 from portfolio_common.kafka_consumer import BaseConsumer
 from portfolio_common.events import PortfolioEvent
@@ -36,6 +36,7 @@ class PortfolioConsumer(BaseConsumer):
         wait=wait_exponential(multiplier=1, min=2, max=10),
         stop=stop_after_attempt(3),
         before=before_log(logger, logging.INFO),
+        retry=retry_if_exception_type((DBAPIError, IntegrityError)),
         reraise=True
     )
     def _process_message_with_retry(self, msg: Message, loop: asyncio.AbstractEventLoop):
@@ -43,7 +44,6 @@ class PortfolioConsumer(BaseConsumer):
         value = msg.value().decode('utf-8')
         correlation_id = correlation_id_var.get()
         event = None
-
         event_id = f"{msg.topic()}-{msg.partition()}-{msg.offset()}"
 
         try:
@@ -80,10 +80,10 @@ class PortfolioConsumer(BaseConsumer):
             logger.error("Message validation failed. Sending to DLQ.", 
                 extra={"key": key, "event_id": event_id}, exc_info=True)
             self._send_to_dlq_sync(msg, e, loop)
-        except IntegrityError:
+        except (DBAPIError, IntegrityError):
             logger.warning(
-                "Caught IntegrityError, likely a race condition. Will retry...",
-                extra={"portfolio_id": getattr(event, 'portfolio_id', 'UNKNOWN'), "event_id": event_id},
+                f"Caught a DB error for portfolio {getattr(event, 'portfolio_id', 'UNKNOWN')}. Will retry...",
+                extra={"event_id": event_id},
             )
             raise
         except Exception as e:
