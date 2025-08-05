@@ -206,6 +206,8 @@ services:
       dockerfile: ./services/calculators/cashflow_calculator_service/Dockerfile
     hostname: cashflow-calculator-service
     container_name: cashflow-calculator-service
+    ports:
+      - "8082:8082"
     environment:
       PYTHONPATH: "/app:/app/libs/portfolio-common"
       KAFKA_BOOTSTRAP_SERVERS: kafka:9093
@@ -219,6 +221,12 @@ services:
       - ./services/calculators/cashflow_calculator_service/app:/app/app
       - ./libs/portfolio-common:/app/libs/portfolio-common
     command: ["python", "-m", "app.main"]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8082/health/ready || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     networks:
       - app_network
 
@@ -228,7 +236,6 @@ services:
       dockerfile: ./services/calculators/position_calculator/Dockerfile
     hostname: position-calculator-service
     container_name: position-calculator-service
-    # --- NEW: Expose port for healthcheck ---
     ports:
       - "8081:8081"
     environment:

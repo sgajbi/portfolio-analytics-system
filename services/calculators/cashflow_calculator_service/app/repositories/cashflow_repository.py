@@ -1,5 +1,6 @@
+# services/calculators/cashflow_calculator_service/app/repositories/cashflow_repository.py
 import logging
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
 from portfolio_common.database_models import Cashflow
 
@@ -9,17 +10,17 @@ class CashflowRepository:
     """
     Handles all database operations for the Cashflow model.
     """
-    def __init__(self, db: Session):
+    def __init__(self, db: AsyncSession):
         self.db = db
 
-    def create_cashflow(self, cashflow: Cashflow) -> Cashflow | None:
+    async def create_cashflow(self, cashflow: Cashflow) -> Cashflow | None:
         """
         Saves a new Cashflow record to the database within a managed transaction.
         """
         try:
             self.db.add(cashflow)
-            self.db.flush() # Flushes to assign DB-generated defaults like 'id'
-            self.db.refresh(cashflow) # <-- THE FIX: Refresh the object to load all columns
+            await self.db.flush()
+            await self.db.refresh(cashflow)
             logger.info(f"Successfully staged cashflow record for transaction_id: {cashflow.transaction_id}")
             return cashflow
         except IntegrityError:
