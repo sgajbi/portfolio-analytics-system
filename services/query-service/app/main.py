@@ -21,7 +21,8 @@ app = FastAPI(
 @app.middleware("http")
 async def add_correlation_id_middleware(request: Request, call_next):
     """
-    Checks for an existing correlation ID in the request header or generates a new one. It sets this ID in the context for logging purposes.
+    Checks for an existing correlation ID in the request header or generates
+    a new one. It sets this ID in the context for logging purposes.
     """
     correlation_id = request.headers.get('X-Correlation-ID')
     if not correlation_id:
@@ -41,20 +42,25 @@ async def add_correlation_id_middleware(request: Request, call_next):
 async def unhandled_exception_handler(request: Request, exc: Exception):
     """
     This middleware will log the full traceback for any unhandled exception
-    that occurs in the application, which is critical for debugging 500 errors. 
+    that occurs in the application, which is critical for debugging 500 errors.
+    It now returns a generic error message to the client, including the correlation ID for traceability.
     """
     correlation_id = correlation_id_var.get()
     logger.critical(
         f"Unhandled exception for request {request.method} {request.url}",
-        exc_info=exc,
+        exc_info=exc, # This ensures the full stack trace is logged
         extra={"correlation_id": correlation_id}
     )
     return JSONResponse(
-        status_code=500,
-        content={"detail": f"Internal Server Error: {exc}"},
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={
+            "error": "Internal Server Error",
+            "message": "An unexpected error occurred. Please contact support.",
+            "correlation_id": correlation_id # Provide ID for tracing
+        },
     )
 
-# --- NEW: Health Probe Logic ---
+# --- Health Probe Logic ---
 
 async def check_db_health():
     """Checks if a valid connection can be established with the database."""
@@ -97,6 +103,16 @@ async def readiness_probe():
         },
     )
 
+# --- NEW: Temporary Debug Endpoint ---
+@app.get("/debug-error", tags=["Debug"])
+async def trigger_error():
+    """
+    A temporary endpoint for testing the global exception handler.
+    This will be removed before final production deployment.
+    """
+    raise ValueError("This is a test exception to verify error handling.")
+
+
 # Register the API routers
 app.include_router(portfolios.router)
 app.include_router(positions.router)
@@ -105,7 +121,6 @@ app.include_router(instruments.router)
 app.include_router(prices.router)
 app.include_router(fx_rates.router)
 
-# The old /health endpoint is now replaced by the specific probes above.
 
 if __name__ == "__main__":
     import uvicorn
