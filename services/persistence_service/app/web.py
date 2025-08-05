@@ -7,6 +7,7 @@ from confluent_kafka.admin import AdminClient
 
 from portfolio_common.db import get_db_session
 from portfolio_common.config import KAFKA_BOOTSTRAP_SERVERS
+from .monitoring import setup_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -15,6 +16,9 @@ app = FastAPI(
     description="Provides health and readiness probes for the Persistence Service.",
     version="1.0.0",
 )
+
+# Setup and expose the /metrics endpoint
+setup_metrics(app)
 
 async def check_db_health():
     """Checks if a connection can be established with the database."""
