@@ -8,6 +8,11 @@ ENV POETRY_VIRTUALENVS_CREATE=false \
     PYTHONUNBUFFERED=1 \
     PATH="/opt/venv/bin:$PATH"
 
+# NEW: Install curl for the healthcheck command
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends curl && \
+    rm -rf /var/lib/apt/lists/*
+
 RUN useradd --create-home appuser
 RUN python -m venv /opt/venv && \
     chown -R appuser:appuser /opt/venv
@@ -34,4 +39,8 @@ COPY --from=builder --chown=appuser:appuser /app/services/timeseries-generator-s
 COPY --from=builder --chown=appuser:appuser /app/libs /app/libs
 
 USER appuser
+
+# NEW: Expose port for health probes
+EXPOSE 8085
+
 CMD ["python", "-m", "app.main"]

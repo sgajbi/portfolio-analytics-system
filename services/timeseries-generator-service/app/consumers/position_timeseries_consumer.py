@@ -1,18 +1,15 @@
+# services/timeseries-generator-service/app/consumers/position_timeseries_consumer.py
 import logging
 import json
 import asyncio
 from pydantic import ValidationError
-from decimal import Decimal
-from datetime import date, timedelta
-
-from confluent_kafka import Message
 from sqlalchemy.exc import IntegrityError
 from tenacity import retry, stop_after_attempt, wait_fixed, before_log, retry_if_exception_type
 
 from portfolio_common.kafka_consumer import BaseConsumer
 from portfolio_common.logging_utils import correlation_id_var
 from portfolio_common.events import DailyPositionSnapshotPersistedEvent, PositionTimeseriesGeneratedEvent
-from portfolio_common.db import get_db_session
+from portfolio_common.db import get_async_db_session
 from portfolio_common.database_models import DailyPositionSnapshot, Cashflow
 from portfolio_common.config import KAFKA_POSITION_TIMESERIES_GENERATED_TOPIC
 
@@ -30,9 +27,9 @@ class PositionTimeseriesConsumer(BaseConsumer):
     Consumes daily position snapshot events and generates the corresponding daily
     position time series record.
     """
-    def process_message(self, msg: Message, loop: asyncio.AbstractEventLoop):
+    async def process_message(self, msg: Message):
         """Wrapper to call the retryable logic."""
-        self._process_message_with_retry(msg, loop)
+        await self._process_message_with_retry(msg)
 
     @retry(
         wait=wait_fixed(3),
@@ -40,7 +37,7 @@ class PositionTimeseriesConsumer(BaseConsumer):
         before=before_log(logger, logging.INFO),
         retry=retry_if_exception_type((IntegrityError, InstrumentNotFoundError))
     )
-    def _process_message_with_retry(self, msg: Message, loop: asyncio.AbstractEventLoop):
+    async def _process_message_with_retry(self, msg: Message):
         try:
             event_data = json.loads(msg.value().decode('utf-8'))
             event = DailyPositionSnapshotPersistedEvent.model_validate(event_data)
@@ -48,34 +45,27 @@ class PositionTimeseriesConsumer(BaseConsumer):
 
             logger.info(f"Processing position snapshot for {event.security_id} on {event.date}")
 
-            with next(get_db_session()) as db:
-                # FIX: All DB operations must be within a single transaction block.
-                with db.begin():
+            async for db in get_async_db_session():
+                async with db.begin():
                     repo = TimeseriesRepository(db)
 
-                    # 1. Check for the instrument *inside* the transaction.
-                    instrument = repo.get_instrument(event.security_id)
+                    instrument = await repo.get_instrument(event.security_id)
                     if not instrument:
-                        # 2. If not found, raise to trigger a retry. The transaction will auto-rollback.
                         raise InstrumentNotFoundError(f"Instrument '{event.security_id}' not found. Will retry.")
 
-                    current_snapshot = db.get(DailyPositionSnapshot, event.id)
+                    current_snapshot = await db.get(DailyPositionSnapshot, event.id)
                     if not current_snapshot:
                         logger.warning(f"DailyPositionSnapshot record with id {event.id} not found. Skipping.")
                         return
 
-                    previous_timeseries = repo.get_last_position_timeseries_before(
+                    previous_timeseries = await repo.get_last_position_timeseries_before(
                         portfolio_id=event.portfolio_id,
                         security_id=event.security_id,
                         a_date=event.date
                     )
-
-                    cashflows = db.query(Cashflow).filter(
-                        Cashflow.portfolio_id == event.portfolio_id,
-                        Cashflow.security_id == event.security_id,
-                        Cashflow.cashflow_date == event.date
-                    ).all()
-
+                    
+                    cashflows = await repo.get_portfolio_level_cashflows_for_date(event.portfolio_id, event.date)
+                    
                     bod_cashflow = sum(cf.amount for cf in cashflows if cf.timing == 'BOD')
                     eod_cashflow = sum(cf.amount for cf in cashflows if cf.timing == 'EOD')
 
@@ -86,7 +76,7 @@ class PositionTimeseriesConsumer(BaseConsumer):
                         eod_cashflow=eod_cashflow
                     )
                     
-                    repo.upsert_position_timeseries(new_timeseries_record)
+                    await repo.upsert_position_timeseries(new_timeseries_record)
 
                     if self._producer:
                         completion_event = PositionTimeseriesGeneratedEvent.model_validate(new_timeseries_record)
@@ -102,13 +92,13 @@ class PositionTimeseriesConsumer(BaseConsumer):
 
         except (json.JSONDecodeError, ValidationError) as e:
             logger.error(f"Message validation failed: {e}. Sending to DLQ.", exc_info=True)
-            self._send_to_dlq_sync(msg, e, loop)
+            await self._send_to_dlq_async(msg, e)
         except InstrumentNotFoundError as e:
             logger.warning(str(e))
             raise
-        except IntegrityError as e:
+        except IntegrityError:
             logger.warning(f"Caught IntegrityError (likely a race condition). Retrying...", exc_info=True)
             raise
         except Exception as e:
             logger.error(f"Unexpected error processing message: {e}", exc_info=True)
-            self._send_to_dlq_sync(msg, e, loop)
+            await self._send_to_dlq_async(msg, e)

@@ -305,6 +305,8 @@ services:
       dockerfile: ./services/timeseries-generator-service/Dockerfile
     hostname: timeseries-generator-service
     container_name: timeseries-generator-service
+    ports:
+      - "8085:8085"
     environment:
       PYTHONPATH: "/app:/app/libs/portfolio-common"
       KAFKA_BOOTSTRAP_SERVERS: kafka:9093
@@ -318,6 +320,12 @@ services:
       - ./services/timeseries-generator-service/app:/app/app
       - ./libs/portfolio-common:/app/libs/portfolio-common
     command: ["python", "-m", "app.main"]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8085/health/ready || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     networks:
       - app_network
 

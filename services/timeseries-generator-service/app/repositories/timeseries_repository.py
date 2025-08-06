@@ -1,7 +1,9 @@
+# services/timeseries-generator-service/app/repositories/timeseries_repository.py
 import logging
-from datetime import date, timedelta
+from datetime import date
 from typing import Optional, List
-from sqlalchemy.orm import Session
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from portfolio_common.database_models import (
@@ -17,28 +19,32 @@ logger = logging.getLogger(__name__)
 
 class TimeseriesRepository:
     """
-    [cite_start]Handles all database read/write operations for time series data. [cite: 1023]
+    Handles all database read/write operations for time series data.
     """
-    def __init__(self, db: Session):
+    def __init__(self, db: AsyncSession):
         self.db = db
 
-    def get_portfolio(self, portfolio_id: str) -> Optional[Portfolio]:
+    async def get_portfolio(self, portfolio_id: str) -> Optional[Portfolio]:
         """Fetches portfolio details by its ID."""
-        return self.db.query(Portfolio).filter(Portfolio.portfolio_id == portfolio_id).first()
+        result = await self.db.execute(select(Portfolio).filter_by(portfolio_id=portfolio_id))
+        return result.scalars().first()
 
-    def get_instrument(self, security_id: str) -> Optional[Instrument]:
+    async def get_instrument(self, security_id: str) -> Optional[Instrument]:
         """Fetches an instrument by its security ID."""
-        return self.db.query(Instrument).filter(Instrument.security_id == security_id).first()
+        result = await self.db.execute(select(Instrument).filter_by(security_id=security_id))
+        return result.scalars().first()
 
-    def get_fx_rate(self, from_currency: str, to_currency: str, a_date: date) -> Optional[FxRate]:
+    async def get_fx_rate(self, from_currency: str, to_currency: str, a_date: date) -> Optional[FxRate]:
         """Fetches the latest FX rate on or before a given date."""
-        return self.db.query(FxRate).filter(
+        stmt = select(FxRate).filter(
             FxRate.from_currency == from_currency,
             FxRate.to_currency == to_currency,
             FxRate.rate_date <= a_date
-        ).order_by(FxRate.rate_date.desc()).first()
+        ).order_by(FxRate.rate_date.desc())
+        result = await self.db.execute(stmt)
+        return result.scalars().first()
 
-    def get_last_position_timeseries_before(
+    async def get_last_position_timeseries_before(
         self,
         portfolio_id: str,
         security_id: str,
@@ -46,32 +52,38 @@ class TimeseriesRepository:
     ) -> Optional[PositionTimeseries]:
         """
         Fetches the most recent position time series record for a security
-        [cite_start]strictly before a given date. [cite: 1025]
+        strictly before a given date.
         """
-        return self.db.query(PositionTimeseries).filter(
+        stmt = select(PositionTimeseries).filter(
             PositionTimeseries.portfolio_id == portfolio_id,
             PositionTimeseries.security_id == security_id,
             PositionTimeseries.date < a_date
-        ).order_by(PositionTimeseries.date.desc()).first()
+        ).order_by(PositionTimeseries.date.desc())
+        result = await self.db.execute(stmt)
+        return result.scalars().first()
 
-    def get_all_position_timeseries_for_date(
+    async def get_all_position_timeseries_for_date(
         self, portfolio_id: str, a_date: date
     ) -> List[PositionTimeseries]:
         """Fetches all position time series records for a portfolio on a specific date."""
-        return self.db.query(PositionTimeseries).filter(
-            PositionTimeseries.portfolio_id == portfolio_id,
-            PositionTimeseries.date == a_date
-        ).all()
+        stmt = select(PositionTimeseries).filter_by(
+            portfolio_id=portfolio_id,
+            date=a_date
+        )
+        result = await self.db.execute(stmt)
+        return result.scalars().all()
 
-    def get_portfolio_level_cashflows_for_date(self, portfolio_id: str, a_date: date) -> List[Cashflow]:
+    async def get_portfolio_level_cashflows_for_date(self, portfolio_id: str, a_date: date) -> List[Cashflow]:
         """Fetches all portfolio-level cashflows for a specific date."""
-        return self.db.query(Cashflow).filter(
-            Cashflow.portfolio_id == portfolio_id,
-            Cashflow.cashflow_date == a_date,
-            Cashflow.level == 'PORTFOLIO'
-        ).all()
+        stmt = select(Cashflow).filter_by(
+            portfolio_id=portfolio_id,
+            cashflow_date=a_date,
+            level='PORTFOLIO'
+        )
+        result = await self.db.execute(stmt)
+        return result.scalars().all()
 
-    def upsert_position_timeseries(self, timeseries_record: PositionTimeseries):
+    async def upsert_position_timeseries(self, timeseries_record: PositionTimeseries):
         """Idempotent insert/update for a position time series record."""
         try:
             insert_dict = {c.name: getattr(timeseries_record, c.name) for c in timeseries_record.__table__.columns}
@@ -83,15 +95,13 @@ class TimeseriesRepository:
                 index_elements=['portfolio_id', 'security_id', 'date'],
                 set_=update_dict
             )
-            self.db.execute(stmt)
-            # COMMIT REMOVED
+            await self.db.execute(stmt)
             logger.info(f"Staged upsert for position time series for {timeseries_record.security_id} on {timeseries_record.date}")
         except Exception as e:
-            # ROLLBACK REMOVED
             logger.error(f"Failed to stage upsert for position time series: {e}", exc_info=True)
             raise
     
-    def upsert_portfolio_timeseries(self, timeseries_record: PortfolioTimeseries):
+    async def upsert_portfolio_timeseries(self, timeseries_record: PortfolioTimeseries):
         """Idempotent insert/update for a portfolio time series record."""
         try:
             insert_dict = {c.name: getattr(timeseries_record, c.name) for c in timeseries_record.__table__.columns}
@@ -103,10 +113,8 @@ class TimeseriesRepository:
                 index_elements=['portfolio_id', 'date'],
                 set_=update_dict
             )
-            self.db.execute(stmt)
-            # COMMIT REMOVED
+            await self.db.execute(stmt)
             logger.info(f"Staged upsert for portfolio time series for {timeseries_record.portfolio_id} on {timeseries_record.date}")
         except Exception as e:
-            # ROLLBACK REMOVED
             logger.error(f"Failed to stage upsert for portfolio time series: {e}", exc_info=True)
             raise

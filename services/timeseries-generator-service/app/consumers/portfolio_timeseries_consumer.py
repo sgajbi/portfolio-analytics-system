@@ -1,18 +1,20 @@
+# services/timeseries-generator-service/app/consumers/portfolio_timeseries_consumer.py
 import logging
 import json
 import asyncio
 from pydantic import ValidationError
 from datetime import date
-from typing import Dict, Tuple, Optional
+from typing import Dict, Tuple, Optional, List
 
 from confluent_kafka import Message
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy import select
 from tenacity import retry, stop_after_attempt, wait_fixed, before_log, retry_if_exception_type
 
 from portfolio_common.kafka_consumer import BaseConsumer
 from portfolio_common.logging_utils import correlation_id_var
 from portfolio_common.events import PositionTimeseriesGeneratedEvent, PortfolioTimeseriesGeneratedEvent
-from portfolio_common.db import get_db_session
+from portfolio_common.db import get_async_db_session
 from portfolio_common.database_models import Instrument
 from portfolio_common.config import KAFKA_PORTFOLIO_TIMESERIES_GENERATED_TOPIC
 
@@ -31,29 +33,25 @@ class PortfolioTimeseriesConsumer(BaseConsumer):
         super().__init__(*args, **kwargs)
         self._batch: Dict[Tuple[str, date], str] = {}
         self._batch_lock = asyncio.Lock()
-        self._processing_interval = 5  # seconds
+        self._processing_interval = 5
 
-    def process_message(self, msg: Message, loop: asyncio.AbstractEventLoop):
+    async def process_message(self, msg: Message):
         """
-        Instead of processing immediately, adds the work to a batch, storing
-        the latest correlation ID for the task.
+        Instead of processing immediately, adds the work to a batch.
         """
         try:
             event_data = json.loads(msg.value().decode('utf-8'))
             event = PositionTimeseriesGeneratedEvent.model_validate(event_data)
             correlation_id = correlation_id_var.get()
             
-            async def add_to_batch():
-                async with self._batch_lock:
-                    self._batch[(event.portfolio_id, event.date)] = correlation_id
-            
-            asyncio.run_coroutine_threadsafe(add_to_batch(), loop)
+            async with self._batch_lock:
+                self._batch[(event.portfolio_id, event.date)] = correlation_id
             
             self._consumer.commit(message=msg, asynchronous=False)
 
         except (json.JSONDecodeError, ValidationError) as e:
             logger.error(f"Message validation failed: {e}. Sending to DLQ.", exc_info=True)
-            self._send_to_dlq_sync(msg, e, loop)
+            await self._send_to_dlq_async(msg, e)
 
     async def _process_batch(self):
         """
@@ -69,11 +67,16 @@ class PortfolioTimeseriesConsumer(BaseConsumer):
                 self._batch.clear()
 
             logger.info(f"Processing batch of {len(current_work)} portfolio-date aggregations.")
-            for (portfolio_id, a_date), correlation_id in current_work.items():
-                try:
-                    self._aggregate_for_portfolio_date(portfolio_id, a_date, correlation_id)
-                except Exception as e:
-                    logger.error(f"Failed to process aggregation for {portfolio_id} on {a_date} after retries: {e}", exc_info=True)
+            
+            tasks = [
+                self._aggregate_for_portfolio_date(portfolio_id, a_date, correlation_id)
+                for (portfolio_id, a_date), correlation_id in current_work.items()
+            ]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            for result in results:
+                if isinstance(result, Exception):
+                    logger.error(f"Failed to process aggregation batch item: {result}", exc_info=result)
 
     @retry(
         wait=wait_fixed(3),
@@ -82,32 +85,31 @@ class PortfolioTimeseriesConsumer(BaseConsumer):
         retry=retry_if_exception_type((IntegrityError, FxRateNotFoundError)),
         retry_error_callback=lambda _: None
     )
-    def _aggregate_for_portfolio_date(self, portfolio_id: str, a_date: date, correlation_id: Optional[str]):
+    async def _aggregate_for_portfolio_date(self, portfolio_id: str, a_date: date, correlation_id: Optional[str]):
         """
         Contains the full aggregation logic for a single portfolio and date.
-        This method is now decorated to retry on integrity or missing FX rate errors.
         """
-        with next(get_db_session()) as db:
-            # FIX: Re-introduce the transaction block to ensure data is committed.
-            with db.begin():
+        async for db in get_async_db_session():
+            async with db.begin():
                 repo = TimeseriesRepository(db)
                 
-                portfolio = repo.get_portfolio(portfolio_id)
+                portfolio = await repo.get_portfolio(portfolio_id)
                 if not portfolio:
                     logger.warning(f"Portfolio {portfolio_id} not found. Cannot aggregate.")
                     return
 
-                position_timeseries_list = repo.get_all_position_timeseries_for_date(portfolio_id, a_date)
-                portfolio_cashflows = repo.get_portfolio_level_cashflows_for_date(portfolio_id, a_date)
+                position_timeseries_list = await repo.get_all_position_timeseries_for_date(portfolio_id, a_date)
+                portfolio_cashflows = await repo.get_portfolio_level_cashflows_for_date(portfolio_id, a_date)
                 
-                instruments = {inst.security_id: inst for inst in db.query(Instrument).all()}
+                instrument_results = await db.execute(select(Instrument))
+                instruments = {inst.security_id: inst for inst in instrument_results.scalars().all()}
                 fx_rates = {}
                 portfolio_currency = portfolio.base_currency
                 required_currencies = {instruments[pts.security_id].currency for pts in position_timeseries_list if pts.security_id in instruments}
                 
                 for currency in required_currencies:
                     if currency != portfolio_currency:
-                        rate = repo.get_fx_rate(currency, portfolio_currency, a_date)
+                        rate = await repo.get_fx_rate(currency, portfolio_currency, a_date)
                         if rate:
                             fx_rates[currency] = rate
 
@@ -120,7 +122,7 @@ class PortfolioTimeseriesConsumer(BaseConsumer):
                     fx_rates=fx_rates
                 )
 
-                repo.upsert_portfolio_timeseries(new_portfolio_record)
+                await repo.upsert_portfolio_timeseries(new_portfolio_record)
 
                 if self._producer:
                     completion_event = PortfolioTimeseriesGeneratedEvent.model_validate(new_portfolio_record)
@@ -147,12 +149,8 @@ class PortfolioTimeseriesConsumer(BaseConsumer):
 
         logger.info(f"Starting to consume messages from topic '{self.topic}'...")
         while self._running:
-            msg = await loop.run_in_executor(
-                None, self._consumer.poll, 1.0
-            )
-
-            if msg is None:
-                continue
+            msg = await loop.run_in_executor(None, self._consumer.poll, 1.0)
+            if msg is None: continue
             if msg.error():
                 if msg.error().fatal():
                     logger.error(f"Fatal consumer error: {msg.error()}. Shutting down.", exc_info=True)
@@ -161,7 +159,7 @@ class PortfolioTimeseriesConsumer(BaseConsumer):
                     logger.warning(f"Non-fatal consumer error: {msg.error()}.")
                     continue
             
-            await loop.run_in_executor(None, self.process_message, msg, loop)
+            await self.process_message(msg)
         
         batch_processor_task.cancel()
         self.shutdown()
