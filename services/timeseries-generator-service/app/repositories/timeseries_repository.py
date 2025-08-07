@@ -30,37 +30,26 @@ class TimeseriesRepository:
         """
         Finds PENDING aggregation jobs where the previous day's job is COMPLETE (or doesn't exist)
         and atomically claims them by updating their status to PROCESSING.
-        This is done using a CTE and FOR UPDATE SKIP LOCKED to be concurrent-safe.
+        This is done using a CTE for concurrency-safety, but no longer uses FOR UPDATE SKIP LOCKED
+        on the nullable side of a LEFT JOIN (which PostgreSQL does not support).
         """
-        # CORRECTED SQL QUERY
-        query = text(f"""
+        query = text("""
             WITH eligible_jobs AS (
-                SELECT id FROM (
-                    SELECT
-                        p1.id,
-                        p1.portfolio_id,
-                        p1.aggregation_date,
-                        p2.status as prev_status
-                    FROM
-                        portfolio_aggregation_jobs p1
-                    LEFT JOIN
-                        portfolio_aggregation_jobs p2 ON p1.portfolio_id = p2.portfolio_id AND p2.aggregation_date = p1.aggregation_date - INTERVAL '1 day'
-                    WHERE
-                        p1.status = 'PENDING'
-                ) as subquery
-                WHERE
-                    prev_status IS NULL OR prev_status = 'COMPLETE'
-                ORDER BY
-                    portfolio_id, aggregation_date
+                SELECT p1.id
+                FROM portfolio_aggregation_jobs p1
+                LEFT JOIN portfolio_aggregation_jobs p2
+                  ON p1.portfolio_id = p2.portfolio_id
+                 AND p2.aggregation_date = p1.aggregation_date - INTERVAL '1 day'
+                WHERE p1.status = 'PENDING'
+                  AND (p2.status IS NULL OR p2.status = 'COMPLETE')
+                ORDER BY p1.portfolio_id, p1.aggregation_date
                 LIMIT :batch_size
-                FOR UPDATE SKIP LOCKED
             )
-            UPDATE
-                portfolio_aggregation_jobs
-            SET
-                status = 'PROCESSING'
-            WHERE
-                id IN (SELECT id FROM eligible_jobs)
+            UPDATE portfolio_aggregation_jobs
+            SET status = 'PROCESSING'
+            WHERE id IN (
+                SELECT id FROM eligible_jobs
+            ) AND status = 'PENDING'
             RETURNING *;
         """)
         
