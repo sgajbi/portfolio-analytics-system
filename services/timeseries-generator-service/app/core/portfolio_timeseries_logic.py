@@ -11,7 +11,6 @@ from portfolio_common.database_models import (
 )
 from ..repositories.timeseries_repository import TimeseriesRepository
 
-
 logger = logging.getLogger(__name__)
 
 class FxRateNotFoundError(Exception):
@@ -41,6 +40,14 @@ class PortfolioTimeseriesLogic:
 
         portfolio_currency = portfolio.base_currency
 
+        # --- KEY CHANGE: Use previous day's EOD as today's BOD ---
+        previous_portfolio_ts = await repo.get_last_portfolio_timeseries_before(portfolio.portfolio_id, a_date)
+        if previous_portfolio_ts:
+            total_bod_mv = previous_portfolio_ts.eod_market_value
+        else:
+            total_bod_mv = Decimal(0)
+        # ---------------------------------------------------------
+
         # 1. Fetch all required instruments and their currencies in one go
         security_ids = [pt.security_id for pt in position_timeseries_list]
         instruments_list = await repo.get_instruments_by_ids(security_ids)
@@ -58,14 +65,14 @@ class PortfolioTimeseriesLogic:
 
             if instrument_currency != portfolio_currency:
                 fx_rate = await repo.get_fx_rate(instrument_currency, portfolio_currency, pos_ts.date)
-            
                 if not fx_rate:
                     error_msg = f"Missing FX rate from {instrument_currency} to {portfolio_currency} for date {pos_ts.date}. Cannot convert."
                     logger.error(error_msg)
                     raise FxRateNotFoundError(error_msg)
                 rate = fx_rate.rate
 
-            total_bod_mv += pos_ts.bod_market_value * rate
+            # --- Remove BOD MV aggregation here ---
+            # total_bod_mv += pos_ts.bod_market_value * rate
             total_bod_cf += pos_ts.bod_cashflow * rate
             total_eod_cf += pos_ts.eod_cashflow * rate
             total_eod_mv += pos_ts.eod_market_value * rate

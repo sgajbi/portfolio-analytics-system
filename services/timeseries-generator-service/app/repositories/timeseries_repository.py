@@ -68,6 +68,16 @@ class TimeseriesRepository:
         """Fetches an instrument by its security ID."""
         result = await self.db.execute(select(Instrument).filter_by(security_id=security_id))
         return result.scalars().first()
+    
+    
+    async def get_last_portfolio_timeseries_before(self, portfolio_id: str, a_date: date) -> Optional[PortfolioTimeseries]:
+        stmt = select(PortfolioTimeseries).filter(
+            PortfolioTimeseries.portfolio_id == portfolio_id,
+            PortfolioTimeseries.date < a_date
+        ).order_by(PortfolioTimeseries.date.desc())
+        result = await self.db.execute(stmt)
+        return result.scalars().first()
+    
 
     async def get_instruments_by_ids(self, security_ids: List[str]) -> List[Instrument]:
         """Fetches multiple instruments by their security IDs in a single query."""
