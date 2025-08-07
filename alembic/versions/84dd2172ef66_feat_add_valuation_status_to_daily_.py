@@ -1,8 +1,8 @@
-"""feat: Initial schema
+"""feat: add valuation_status to daily_position_snapshots
 
-Revision ID: ae1f67a6912f
+Revision ID: 84dd2172ef66
 Revises: 
-Create Date: 2025-08-04 20:56:42.170034
+Create Date: 2025-08-07 10:37:45.357543
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = 'ae1f67a6912f'
+revision: str = '84dd2172ef66'
 down_revision: Union[str, None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -115,6 +115,7 @@ def upgrade() -> None:
     sa.Column('market_price', sa.Numeric(precision=18, scale=10), nullable=True),
     sa.Column('market_value', sa.Numeric(precision=18, scale=10), nullable=True),
     sa.Column('unrealized_gain_loss', sa.Numeric(precision=18, scale=10), nullable=True),
+    sa.Column('valuation_status', sa.String(), server_default='UNVALUED', nullable=False),
     sa.Column('created_at', sa.DateTime(), nullable=True),
     sa.Column('updated_at', sa.DateTime(), nullable=True),
     sa.ForeignKeyConstraint(['portfolio_id'], ['portfolios.portfolio_id'], ),
@@ -124,6 +125,7 @@ def upgrade() -> None:
     op.create_index(op.f('ix_daily_position_snapshots_date'), 'daily_position_snapshots', ['date'], unique=False)
     op.create_index(op.f('ix_daily_position_snapshots_portfolio_id'), 'daily_position_snapshots', ['portfolio_id'], unique=False)
     op.create_index(op.f('ix_daily_position_snapshots_security_id'), 'daily_position_snapshots', ['security_id'], unique=False)
+    op.create_index(op.f('ix_daily_position_snapshots_valuation_status'), 'daily_position_snapshots', ['valuation_status'], unique=False)
     op.create_table('portfolio_timeseries',
     sa.Column('portfolio_id', sa.String(), nullable=False),
     sa.Column('date', sa.Date(), nullable=False),
@@ -166,8 +168,8 @@ def upgrade() -> None:
     sa.Column('gross_transaction_amount', sa.Numeric(precision=18, scale=10), nullable=False),
     sa.Column('trade_currency', sa.String(), nullable=False),
     sa.Column('currency', sa.String(), nullable=False),
-    sa.Column('transaction_date', sa.DateTime(), nullable=False),
-    sa.Column('settlement_date', sa.DateTime(), nullable=True),
+    sa.Column('transaction_date', sa.DateTime(timezone=True), nullable=False),
+    sa.Column('settlement_date', sa.DateTime(timezone=True), nullable=True),
     sa.Column('trade_fee', sa.Numeric(precision=18, scale=10), nullable=True),
     sa.Column('created_at', sa.DateTime(), nullable=True),
     sa.Column('updated_at', sa.DateTime(), nullable=True),
@@ -177,6 +179,7 @@ def upgrade() -> None:
     sa.ForeignKeyConstraint(['portfolio_id'], ['portfolios.portfolio_id'], ),
     sa.PrimaryKeyConstraint('id')
     )
+    op.create_index('ix_transactions_portfolio_security', 'transactions', ['portfolio_id', 'security_id'], unique=False)
     op.create_index(op.f('ix_transactions_transaction_id'), 'transactions', ['transaction_id'], unique=True)
     op.create_table('cashflows',
     sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
@@ -243,9 +246,11 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_cashflows_cashflow_date'), table_name='cashflows')
     op.drop_table('cashflows')
     op.drop_index(op.f('ix_transactions_transaction_id'), table_name='transactions')
+    op.drop_index('ix_transactions_portfolio_security', table_name='transactions')
     op.drop_table('transactions')
     op.drop_table('position_timeseries')
     op.drop_table('portfolio_timeseries')
+    op.drop_index(op.f('ix_daily_position_snapshots_valuation_status'), table_name='daily_position_snapshots')
     op.drop_index(op.f('ix_daily_position_snapshots_security_id'), table_name='daily_position_snapshots')
     op.drop_index(op.f('ix_daily_position_snapshots_portfolio_id'), table_name='daily_position_snapshots')
     op.drop_index(op.f('ix_daily_position_snapshots_date'), table_name='daily_position_snapshots')
