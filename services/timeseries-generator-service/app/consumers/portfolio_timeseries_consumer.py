@@ -2,11 +2,10 @@
 import logging
 import json
 import asyncio
-import time
 from pydantic import ValidationError
 from datetime import date
-from typing import Dict, Tuple, Optional
-from sqlalchemy import select
+from typing import Optional
+from sqlalchemy import update
 
 from confluent_kafka import Message
 from sqlalchemy.exc import IntegrityError
@@ -16,7 +15,7 @@ from portfolio_common.kafka_consumer import BaseConsumer
 from portfolio_common.logging_utils import correlation_id_var
 from portfolio_common.events import PositionTimeseriesGeneratedEvent, PortfolioTimeseriesGeneratedEvent
 from portfolio_common.db import get_async_db_session
-from portfolio_common.database_models import Instrument
+from portfolio_common.database_models import PortfolioAggregationJob
 from portfolio_common.config import KAFKA_PORTFOLIO_TIMESERIES_GENERATED_TOPIC
 
 from ..core.portfolio_timeseries_logic import PortfolioTimeseriesLogic, FxRateNotFoundError
@@ -26,23 +25,15 @@ logger = logging.getLogger(__name__)
 
 class PortfolioTimeseriesConsumer(BaseConsumer):
     """
-    Consumes position time series events and aggregates them into a daily
-    portfolio time series record using a time-windowed batching approach to
-    handle race conditions.
+    Consumes position time series events. Uses a database table as a distributed
+    lock to perform a final, idempotent aggregation into a daily portfolio time series record.
     """
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        # The batch now stores the timestamp of the first event and its correlation ID
-        self._batch: Dict[Tuple[str, date], Tuple[float, str]] = {}
-        self._batch_lock = asyncio.Lock()
-        self._processing_interval = 2  # Check for expired items more frequently
-        self._cooldown_period = 5      # Wait 5 seconds after the first event
 
     async def process_message(self, msg: Message):
         """
-        Receives a signal that a portfolio/date needs aggregation.
-        If it's the first signal for this key, it adds it to the batch and
-        starts a cooldown timer by recording the arrival time.
+        Receives a signal that a portfolio/date might need aggregation. It attempts to
+        claim a job from the portfolio_aggregation_jobs table, which acts as a
+        distributed lock to prevent race conditions.
         """
         try:
             event_data = json.loads(msg.value().decode('utf-8'))
@@ -51,140 +42,96 @@ class PortfolioTimeseriesConsumer(BaseConsumer):
             
             work_key = (event.portfolio_id, event.date)
             
-            async with self._batch_lock:
-                if work_key not in self._batch:
-                    # This is the first signal for this portfolio/date, start the timer
-                    self._batch[work_key] = (time.time(), correlation_id)
-                    logger.info(
-                        f"First signal for {work_key} received. Starting {self._cooldown_period}s cooldown.",
-                        extra={"correlation_id": correlation_id}
+            async for db in get_async_db_session():
+                async with db.begin():
+                    # Atomically claim the job. This is our distributed lock.
+                    claim_stmt = update(PortfolioAggregationJob).where(
+                        PortfolioAggregationJob.portfolio_id == event.portfolio_id,
+                        PortfolioAggregationJob.aggregation_date == event.date,
+                        PortfolioAggregationJob.status == 'PENDING'
+                    ).values(
+                        status='PROCESSING',
+                        correlation_id=correlation_id
                     )
+                    result = await db.execute(claim_stmt)
 
-            # Acknowledge the message immediately, as the work is now queued
-            self._consumer.commit(message=msg, asynchronous=False)
+                    # If rowcount is 0, another consumer instance claimed this job. We can safely stop.
+                    if result.rowcount == 0:
+                        logger.info(f"Aggregation job for {work_key} already claimed or completed. Skipping.")
+                        return
+
+            # If we successfully claimed the job, proceed with aggregation in a new transaction.
+            logger.info(f"Successfully claimed aggregation job for {work_key}. Starting aggregation.")
+            await self._perform_aggregation(event.portfolio_id, event.date, correlation_id)
 
         except (json.JSONDecodeError, ValidationError) as e:
             logger.error(f"Message validation failed: {e}. Sending to DLQ.", exc_info=True)
+            # We don't have a job to fail here, so just DLQ the trigger message
             await self._send_to_dlq_async(msg, e)
-
-    async def _process_batch(self):
-        """
-        Periodically scans the batch and processes items whose cooldown
-        period has expired.
-        """
-        while self._running:
-            await asyncio.sleep(self._processing_interval)
-            
-            items_to_process = {}
-            
-            async with self._batch_lock:
-                # Find items that are ready to be processed
-                ready_keys = []
-                for key, (timestamp, corr_id) in self._batch.items():
-                    if time.time() - timestamp > self._cooldown_period:
-                        items_to_process[key] = corr_id
-                        ready_keys.append(key)
-                
-                # Remove the ready items from the main batch
-                for key in ready_keys:
-                    del self._batch[key]
-
-            if not items_to_process:
-                continue
-
-            logger.info(f"Cooldown expired for {len(items_to_process)} portfolio-date aggregations. Processing now.")
-            
-            tasks = [
-                self._aggregate_for_portfolio_date(portfolio_id, a_date, correlation_id)
-                for (portfolio_id, a_date), correlation_id in items_to_process.items()
-            ]
-            results = await asyncio.gather(*tasks, return_exceptions=True)
-            
-            for result, key in zip(results, items_to_process.keys()):
-                if isinstance(result, Exception):
-                    logger.error(f"Failed to process aggregation batch item for {key}: {result}", exc_info=result)
+        except Exception as e:
+            logger.error(f"Unexpected error when trying to claim aggregation job for {msg.key()}: {e}", exc_info=True)
+            # Again, DLQ the trigger message as we cannot update the job status.
+            await self._send_to_dlq_async(msg, e)
 
     @retry(
         wait=wait_fixed(3),
         stop=stop_after_attempt(5),
         before=before_log(logger, logging.INFO),
         retry=retry_if_exception_type((IntegrityError, FxRateNotFoundError)),
-        retry_error_callback=lambda _: None
+        reraise=True # Reraise the exception to be caught by the outer handler
     )
-    async def _aggregate_for_portfolio_date(self, portfolio_id: str, a_date: date, correlation_id: Optional[str]):
+    async def _perform_aggregation(self, portfolio_id: str, a_date: date, correlation_id: Optional[str]):
         """
         Contains the full aggregation logic for a single portfolio and date.
+        This is now a separate, retryable unit of work.
         """
-        async for db in get_async_db_session():
-            async with db.begin():
-                repo = TimeseriesRepository(db)
-                
-                portfolio = await repo.get_portfolio(portfolio_id)
-                if not portfolio:
-                    logger.warning(f"Portfolio {portfolio_id} not found. Cannot aggregate.")
-                    return
-
-                position_timeseries_list = await repo.get_all_position_timeseries_for_date(portfolio_id, a_date)
-                portfolio_cashflows = await repo.get_portfolio_level_cashflows_for_date(portfolio_id, a_date)
-                
-                instrument_results = await db.execute(select(Instrument))
-                instruments = {inst.security_id: inst for inst in instrument_results.scalars().all()}
-                fx_rates = {}
-                portfolio_currency = portfolio.base_currency
-                required_currencies = {instruments[pts.security_id].currency for pts in position_timeseries_list if pts.security_id in instruments}
-                
-                for currency in required_currencies:
-                    if currency != portfolio_currency:
-                        rate = await repo.get_fx_rate(currency, portfolio_currency, a_date)
-                        if rate:
-                            fx_rates[currency] = rate
-
-                new_portfolio_record = PortfolioTimeseriesLogic.calculate_daily_record(
-                    portfolio=portfolio,
-                    a_date=a_date,
-                    position_timeseries_list=position_timeseries_list,
-                    portfolio_cashflows=portfolio_cashflows,
-                    instruments=instruments,
-                    fx_rates=fx_rates
-                )
-
-                await repo.upsert_portfolio_timeseries(new_portfolio_record)
-
-                if self._producer:
-                    completion_event = PortfolioTimeseriesGeneratedEvent.model_validate(new_portfolio_record)
-                    headers = [('correlation_id', correlation_id.encode('utf-8'))] if correlation_id else None
+        job_status_to_set = 'FAILED'
+        try:
+            async for db in get_async_db_session():
+                async with db.begin():
+                    repo = TimeseriesRepository(db)
                     
-                    self._producer.publish_message(
-                        topic=KAFKA_PORTFOLIO_TIMESERIES_GENERATED_TOPIC,
-                        key=completion_event.portfolio_id,
-                        value=completion_event.model_dump(mode='json'),
-                        headers=headers
+                    portfolio = await repo.get_portfolio(portfolio_id)
+                    if not portfolio:
+                        logger.error(f"Portfolio {portfolio_id} not found during aggregation. Failing job.")
+                        return # The job will be marked as FAILED in the finally block.
+
+                    # The core aggregation logic remains the same
+                    position_timeseries_list = await repo.get_all_position_timeseries_for_date(portfolio_id, a_date)
+                    portfolio_cashflows = await repo.get_portfolio_level_cashflows_for_date(portfolio_id, a_date)
+                    
+                    new_portfolio_record = await PortfolioTimeseriesLogic.calculate_daily_record(
+                        portfolio=portfolio,
+                        a_date=a_date,
+                        position_timeseries_list=position_timeseries_list,
+                        portfolio_cashflows=portfolio_cashflows,
+                        repo=repo # Pass repo to the logic function
                     )
-                    self._producer.flush(timeout=5)
 
-    async def run(self):
-        """
-        Starts the batch processor alongside the message polling loop.
-        """
-        self._initialize_consumer()
-        loop = asyncio.get_running_loop()
-        
-        batch_processor_task = loop.create_task(self._process_batch())
-        logger.info(f"Started background batch processor with a {self._processing_interval}s check interval and {self._cooldown_period}s cooldown.")
+                    await repo.upsert_portfolio_timeseries(new_portfolio_record)
 
-        logger.info(f"Starting to consume messages from topic '{self.topic}'...")
-        while self._running:
-            msg = await loop.run_in_executor(None, self._consumer.poll, 1.0)
-            if msg is None: continue
-            if msg.error():
-                if msg.error().fatal():
-                    logger.error(f"Fatal consumer error: {msg.error()}. Shutting down.", exc_info=True)
-                    break
-                else:
-                    logger.warning(f"Non-fatal consumer error: {msg.error()}.")
-                    continue
-            
-            await self.process_message(msg)
+                    if self._producer:
+                        completion_event = PortfolioTimeseriesGeneratedEvent.model_validate(new_portfolio_record)
+                        headers = [('correlation_id', correlation_id.encode('utf-8'))] if correlation_id else None
+                        
+                        self._producer.publish_message(
+                            topic=KAFKA_PORTFOLIO_TIMESERIES_GENERATED_TOPIC,
+                            key=completion_event.portfolio_id,
+                            value=completion_event.model_dump(mode='json'),
+                            headers=headers
+                        )
+                        self._producer.flush(timeout=5)
+                    
+                    job_status_to_set = 'COMPLETE' # Mark for success
         
-        batch_processor_task.cancel()
-        self.shutdown()
+        finally:
+            # Final step: Update the job status to COMPLETE or FAILED in a separate transaction
+            async for db in get_async_db_session():
+                async with db.begin():
+                    await db.execute(
+                        update(PortfolioAggregationJob).where(
+                            PortfolioAggregationJob.portfolio_id == portfolio_id,
+                            PortfolioAggregationJob.aggregation_date == a_date
+                        ).values(status=job_status_to_set)
+                    )
+            logger.info(f"Aggregation job for ({portfolio_id}, {a_date}) marked as {job_status_to_set}.")
