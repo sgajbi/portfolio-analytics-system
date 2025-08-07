@@ -7,6 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from tenacity import retry, stop_after_attempt, wait_fixed, before_log, retry_if_exception_type
 from confluent_kafka import Message
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy import func
 
 from portfolio_common.kafka_consumer import BaseConsumer
 from portfolio_common.logging_utils import correlation_id_var
@@ -103,8 +104,8 @@ class PositionTimeseriesConsumer(BaseConsumer):
                     )
                     
                     await repo.upsert_position_timeseries(new_timeseries_record)
-
-                    # --- NEW LOGIC: Create an aggregation job ---
+                    
+                    # --- FIXED LOGIC ---
                     # Idempotently create a job to signify this portfolio-date pair needs aggregation.
                     job_stmt = pg_insert(PortfolioAggregationJob).values(
                         portfolio_id=event.portfolio_id,
@@ -113,11 +114,11 @@ class PositionTimeseriesConsumer(BaseConsumer):
                         correlation_id=correlation_id
                     ).on_conflict_do_update(
                         index_elements=['portfolio_id', 'aggregation_date'],
-                        set_={'status': 'PENDING', 'updated_at': 'now()'}
+                        set_={'status': 'PENDING', 'updated_at': func.now()} # Use func.now() instead of 'now()'
                     )
                     await db.execute(job_stmt)
                     logger.info(f"Successfully staged aggregation job for portfolio {event.portfolio_id} on {event.date}")
-                    # --- END NEW LOGIC ---
+                    # --- END FIXED LOGIC ---
 
                     if self._producer:
                         completion_event = PositionTimeseriesGeneratedEvent.model_validate(new_timeseries_record)
