@@ -148,4 +148,5 @@ class PositionTimeseriesConsumer(BaseConsumer):
                 quantity=prev_ts.quantity,
                 cost=prev_ts.cost
             )
-            await repo.upsert_position_tim
+            await repo.upsert_position_timeseries(new_ts)
+
