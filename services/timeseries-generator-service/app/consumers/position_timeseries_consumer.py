@@ -1,4 +1,3 @@
-# services/timeseries-generator-service/app/consumers/position_timeseries_consumer.py
 import logging
 import json
 import asyncio
@@ -22,20 +21,13 @@ from ..repositories.timeseries_repository import TimeseriesRepository
 logger = logging.getLogger(__name__)
 
 class InstrumentNotFoundError(Exception):
-    """Custom exception to signal that a required instrument is not yet persisted."""
     pass
 
 class PreviousTimeseriesNotFoundError(Exception):
-    """Custom exception to signal that the previous day's time series record is not yet persisted."""
     pass
 
 class PositionTimeseriesConsumer(BaseConsumer):
-    """
-    Consumes daily position snapshot events, generates the corresponding daily
-    position time series record, and creates an aggregation job.
-    """
     async def process_message(self, msg: Message):
-        """Wrapper to call the retryable logic."""
         retry_config = retry(
             wait=wait_fixed(3),
             stop=stop_after_attempt(5),
@@ -43,7 +35,6 @@ class PositionTimeseriesConsumer(BaseConsumer):
             retry=retry_if_exception_type((IntegrityError, InstrumentNotFoundError, PreviousTimeseriesNotFoundError))
         )
         retryable_process = retry_config(self._process_message_with_retry)
-        
         try:
             await retryable_process(msg)
         except Exception as e:
@@ -61,7 +52,6 @@ class PositionTimeseriesConsumer(BaseConsumer):
             async for db in get_async_db_session():
                 async with db.begin():
                     repo = TimeseriesRepository(db)
-                    
                     instrument = await repo.get_instrument(event.security_id)
                     if not instrument:
                         raise InstrumentNotFoundError(f"Instrument '{event.security_id}' not found. Will retry.")
@@ -83,7 +73,6 @@ class PositionTimeseriesConsumer(BaseConsumer):
                             security_id=event.security_id,
                             position_date=event.date
                         )
-    
                         if not is_truly_first:
                             raise PreviousTimeseriesNotFoundError(
                                 f"Previous day's timeseries for {event.security_id} not found for date {event.date}, but history exists. Retrying."
@@ -105,7 +94,7 @@ class PositionTimeseriesConsumer(BaseConsumer):
                     
                     await repo.upsert_position_timeseries(new_timeseries_record)
 
-                    # Create an aggregation job. This is now this consumer's primary output.
+                    # Create an aggregation job for this date.
                     job_stmt = pg_insert(PortfolioAggregationJob).values(
                         portfolio_id=event.portfolio_id,
                         aggregation_date=event.date,
@@ -133,8 +122,8 @@ class PositionTimeseriesConsumer(BaseConsumer):
 
     async def roll_forward_open_positions(self, portfolio_id: str, a_date: date, db):
         """
-        For all positions open on previous day, create today's position_timeseries using previous EOD.
-        EOD value is always recalculated using today's (or most recent) market price, with FX if needed.
+        For all positions open on previous day, create today's position_timeseries by copying previous values
+        if there is no new valuation or transaction (i.e., no timeseries for this security/date yet).
         """
         repo = TimeseriesRepository(db)
         prev_date = a_date - timedelta(days=1)
@@ -147,25 +136,6 @@ class PositionTimeseriesConsumer(BaseConsumer):
             prev_ts = await repo.get_last_position_timeseries_before(portfolio_id, security_id, a_date)
             if not prev_ts:
                 continue
-
-            # Get latest available price as of 'a_date'
-            market_price = await repo.get_latest_market_price(security_id, a_date)
-            if market_price is None:
-                # Optionally log a warning and skip or continue with 0
-                logger.warning(f"No market price found for {security_id} as of {a_date}, skipping EOD valuation.")
-                continue
-
-            # FX conversion if needed
-            rate = Decimal(1.0)
-            instrument = await repo.get_instrument(security_id)
-            portfolio = await repo.get_portfolio(portfolio_id)
-            if instrument and portfolio and instrument.currency != portfolio.base_currency:
-                fx = await repo.get_fx_rate(instrument.currency, portfolio.base_currency, a_date)
-                if fx:
-                    rate = fx.rate
-
-            eod_mv = prev_ts.quantity * market_price * rate
-
             new_ts = PositionTimeseries(
                 portfolio_id=portfolio_id,
                 security_id=security_id,
@@ -173,9 +143,9 @@ class PositionTimeseriesConsumer(BaseConsumer):
                 bod_market_value=prev_ts.eod_market_value,
                 bod_cashflow=0,
                 eod_cashflow=0,
-                eod_market_value=eod_mv,
+                eod_market_value=prev_ts.eod_market_value,
                 fees=0,
                 quantity=prev_ts.quantity,
                 cost=prev_ts.cost
             )
-            await repo.upsert_position_timeseries(new_ts)
+            await repo.upsert_position_tim
