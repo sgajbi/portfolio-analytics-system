@@ -68,16 +68,6 @@ class TimeseriesRepository:
         """Fetches an instrument by its security ID."""
         result = await self.db.execute(select(Instrument).filter_by(security_id=security_id))
         return result.scalars().first()
-    
-    
-    async def get_last_portfolio_timeseries_before(self, portfolio_id: str, a_date: date) -> Optional[PortfolioTimeseries]:
-        stmt = select(PortfolioTimeseries).filter(
-            PortfolioTimeseries.portfolio_id == portfolio_id,
-            PortfolioTimeseries.date < a_date
-        ).order_by(PortfolioTimeseries.date.desc())
-        result = await self.db.execute(stmt)
-        return result.scalars().first()
-    
 
     async def get_instruments_by_ids(self, security_ids: List[str]) -> List[Instrument]:
         """Fetches multiple instruments by their security IDs in a single query."""
@@ -191,3 +181,27 @@ class TimeseriesRepository:
         except Exception as e:
             logger.error(f"Failed to stage upsert for portfolio time series: {e}", exc_info=True)
             raise
+
+    async def get_last_portfolio_timeseries_before(self, portfolio_id: str, a_date: date) -> Optional[PortfolioTimeseries]:
+        stmt = select(PortfolioTimeseries).filter(
+            PortfolioTimeseries.portfolio_id == portfolio_id,
+            PortfolioTimeseries.date < a_date
+        ).order_by(PortfolioTimeseries.date.desc())
+        result = await self.db.execute(stmt)
+        return result.scalars().first()
+
+    async def get_all_open_positions_as_of(self, portfolio_id: str, a_date: date) -> List[str]:
+        """
+        Returns the security_ids of all positions with a nonzero quantity as of a given date.
+        Used for daily roll-forward to ensure all open positions are materialized.
+        """
+        stmt = text("""
+            SELECT DISTINCT security_id
+            FROM position_timeseries
+            WHERE portfolio_id = :portfolio_id
+              AND date <= :a_date
+              AND quantity != 0
+            ORDER BY security_id
+        """)
+        result = await self.db.execute(stmt, {"portfolio_id": portfolio_id, "a_date": a_date})
+        return [row.security_id for row in result.fetchall()]
