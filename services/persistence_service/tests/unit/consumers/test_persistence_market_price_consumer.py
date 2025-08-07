@@ -7,7 +7,7 @@ from decimal import Decimal
 from portfolio_common.logging_utils import correlation_id_var
 from portfolio_common.events import MarketPriceEvent
 from portfolio_common.config import KAFKA_MARKET_PRICE_PERSISTED_TOPIC
-from app.consumers.market_price_consumer import MarketPriceConsumer
+from consumers.market_price_consumer import MarketPriceConsumer
 
 # Mark all tests in this file as asyncio
 pytestmark = pytest.mark.asyncio
@@ -69,13 +69,13 @@ async def test_process_message_success(
     mock_db_session.__aenter__.return_value.begin.return_value.__aenter__.return_value = None
 
     with patch(
-        "app.consumers.market_price_consumer.get_async_db_session", return_value=mock_db_session
+        "consumers.market_price_consumer.get_async_db_session", return_value=mock_db_session
     ), patch(
-        "app.consumers.market_price_consumer.MarketPriceRepository", return_value=mock_repo
+        "consumers.market_price_consumer.MarketPriceRepository", return_value=mock_repo
     ), patch(
-        "app.consumers.market_price_consumer.IdempotencyRepository", return_value=mock_idempotency_repo
+        "consumers.market_price_consumer.IdempotencyRepository", return_value=mock_idempotency_repo
     ), patch(
-        "app.consumers.market_price_consumer.OutboxRepository", return_value=mock_outbox_repo
+        "consumers.market_price_consumer.OutboxRepository", return_value=mock_outbox_repo
     ):
         # Act
         await market_price_consumer._process_message_with_retry(mock_kafka_message)
