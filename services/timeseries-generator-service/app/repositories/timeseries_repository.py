@@ -2,6 +2,7 @@
 import logging
 from datetime import date
 from typing import Optional, List
+from decimal import Decimal
 from sqlalchemy import select, text, update, exists
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import insert as pg_insert
