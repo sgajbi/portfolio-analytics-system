@@ -15,7 +15,7 @@ from portfolio_common.idempotency_repository import IdempotencyRepository
 from portfolio_common.outbox_repository import OutboxRepository
 from portfolio_common.logging_utils import correlation_id_var
 
-from services.transaction_processor import TransactionProcessor
+from engine.transaction_processor import TransactionProcessor
 from core.models.transaction import Transaction as EngineTransaction
 from logic.parser import TransactionParser
 from logic.sorter import TransactionSorter

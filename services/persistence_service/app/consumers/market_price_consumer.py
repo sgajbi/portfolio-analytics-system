@@ -12,7 +12,7 @@ from portfolio_common.logging_utils import correlation_id_var
 from portfolio_common.events import MarketPriceEvent
 from portfolio_common.db import get_async_db_session
 from portfolio_common.config import KAFKA_MARKET_PRICE_PERSISTED_TOPIC
-from ..repositories.market_price_repository import MarketPriceRepository
+from repositories.market_price_repository import MarketPriceRepository
 from portfolio_common.idempotency_repository import IdempotencyRepository
 from portfolio_common.outbox_repository import OutboxRepository
 

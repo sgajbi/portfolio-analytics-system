@@ -10,7 +10,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential, before_log, re
 from portfolio_common.kafka_consumer import BaseConsumer
 from portfolio_common.events import PortfolioEvent
 from portfolio_common.db import get_async_db_session
-from ..repositories.portfolio_repository import PortfolioRepository
+from repositories.portfolio_repository import PortfolioRepository
 from portfolio_common.idempotency_repository import IdempotencyRepository
 from portfolio_common.logging_utils import correlation_id_var
 
