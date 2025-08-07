@@ -1,6 +1,7 @@
 # libs/portfolio-common/portfolio_common/database_models.py
 from sqlalchemy import (
-    Column, Integer, String, Numeric, DateTime, Date, func,
+    Column, Integer, String, Numeric, DateTime, 
+    Date, func,
     ForeignKey, UniqueConstraint, Boolean, JSON, Index
 )
 from sqlalchemy.orm import relationship
@@ -53,6 +54,7 @@ class DailyPositionSnapshot(Base):
     market_price = Column(Numeric(18, 10), nullable=True)
     market_value = Column(Numeric(18, 10), nullable=True)
     unrealized_gain_loss = Column(Numeric(18, 10), nullable=True)
+    valuation_status = Column(String, nullable=False, server_default='UNVALUED', index=True)
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 
