@@ -2,7 +2,7 @@
 import logging
 from datetime import date
 from typing import Optional, List
-from sqlalchemy import select, text, update
+from sqlalchemy import select, text, update, exists
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
@@ -32,13 +32,14 @@ class TimeseriesRepository:
         and atomically claims them by updating their status to PROCESSING.
         This is done using a CTE and FOR UPDATE SKIP LOCKED to be concurrent-safe.
         """
-        # Using a raw SQL query here because the self-join logic with date arithmetic
-        # is significantly more complex and less readable in the SQLAlchemy ORM/Core.
+        # CORRECTED SQL QUERY
         query = text(f"""
             WITH eligible_jobs AS (
                 SELECT id FROM (
                     SELECT
                         p1.id,
+                        p1.portfolio_id,
+                        p1.aggregation_date,
                         p2.status as prev_status
                     FROM
                         portfolio_aggregation_jobs p1
