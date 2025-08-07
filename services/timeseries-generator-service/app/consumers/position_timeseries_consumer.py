@@ -23,7 +23,6 @@ class InstrumentNotFoundError(Exception):
     """Custom exception to signal that a required instrument is not yet persisted."""
     pass
 
-# --- NEW EXCEPTION TO HANDLE RACE CONDITION ---
 class PreviousTimeseriesNotFoundError(Exception):
     """Custom exception to signal that the previous day's time series record is not yet persisted."""
     pass
@@ -42,7 +41,12 @@ class PositionTimeseriesConsumer(BaseConsumer):
             retry=retry_if_exception_type((IntegrityError, InstrumentNotFoundError, PreviousTimeseriesNotFoundError))
         )
         retryable_process = retry_config(self._process_message_with_retry)
-        await retryable_process(msg)
+        
+        try:
+            await retryable_process(msg)
+        except Exception as e:
+            logger.error(f"Fatal error after all retries for message {msg.topic()}-{msg.partition()}-{msg.offset()}. Sending to DLQ.", exc_info=True)
+            await self._send_to_dlq_async(msg, e)
 
     async def _process_message_with_retry(self, msg: Message):
         try:
@@ -65,24 +69,24 @@ class PositionTimeseriesConsumer(BaseConsumer):
                         logger.warning(f"DailyPositionSnapshot record with id {event.id} not found. Skipping.")
                         return
 
-                    # --- MODIFIED LOGIC TO HANDLE RACE CONDITION ---
-                    is_first = await repo.is_first_position(
-                        portfolio_id=event.portfolio_id,
-                        security_id=event.security_id,
-                        position_date=event.date
-                    )
-                    
                     previous_timeseries = await repo.get_last_position_timeseries_before(
                         portfolio_id=event.portfolio_id,
                         security_id=event.security_id,
                         a_date=event.date
                     )
-                    
-                    if not is_first and not previous_timeseries:
-                        raise PreviousTimeseriesNotFoundError(
-                            f"Previous day's timeseries for {event.security_id} not found for date {event.date}. Will retry."
-                        )
 
+                    if previous_timeseries is None:
+                        is_truly_first = await repo.is_first_position(
+                            portfolio_id=event.portfolio_id,
+                            security_id=event.security_id,
+                            position_date=event.date
+                        )
+                        
+                        if not is_truly_first:
+                            raise PreviousTimeseriesNotFoundError(
+                                f"Previous day's timeseries for {event.security_id} not found for date {event.date}, but history exists. Retrying."
+                            )
+                    
                     cashflows = await repo.get_all_cashflows_for_security_date(
                         event.portfolio_id, event.security_id, event.date
                     )
@@ -114,11 +118,8 @@ class PositionTimeseriesConsumer(BaseConsumer):
         except (json.JSONDecodeError, ValidationError) as e:
             logger.error(f"Message validation failed: {e}. Sending to DLQ.", exc_info=True)
             await self._send_to_dlq_async(msg, e)
-        except (InstrumentNotFoundError, PreviousTimeseriesNotFoundError) as e:
-            logger.warning(str(e))
-            raise
-        except IntegrityError:
-            logger.warning(f"Caught IntegrityError (likely a race condition). Retrying...", exc_info=True)
+        except (InstrumentNotFoundError, PreviousTimeseriesNotFoundError, IntegrityError) as e:
+            logger.warning(f"A recoverable error occurred: {e}. Retrying...")
             raise
         except Exception as e:
             logger.error(f"Unexpected error processing message: {e}", exc_info=True)
