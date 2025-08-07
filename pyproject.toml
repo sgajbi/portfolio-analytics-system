@@ -14,6 +14,7 @@ requires-python = ">=3.11"
 where = ["."]
 exclude = ["tests*", "deployment*"]
 
+# --- UPDATED: Pytest Configuration for PYTHONPATH and addopts ---
 [tool.pytest.ini_options]
 # Explicitly tell pytest where to find tests
 testpaths = [
@@ -21,8 +22,20 @@ testpaths = [
     "libs",
     "services"
 ]
-# The project root is sufficient when packages are installed in editable mode
-pythonpath = [ "." ]
+pythonpath = [
+    ".",
+    "libs/portfolio-common",
+    "libs/financial-calculator-engine", # Add the root for src imports
+    "services/ingestion-service",
+    "services/persistence_service",
+    "services/query-service",
+    "services/calculators/cashflow_calculator_service",
+    "services/calculators/cost_calculator_service",
+    "services/calculators/position_calculator",
+    "services/calculators/position-valuation-calculator",
+    "services/timeseries-generator-service",
+    "tools"
+]
 addopts = "--strict-markers"
 minversion = "6.0"
 # Add registration for the asyncio marker

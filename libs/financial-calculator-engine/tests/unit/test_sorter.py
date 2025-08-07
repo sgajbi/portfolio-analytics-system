@@ -3,8 +3,8 @@
 import pytest
 from datetime import date, datetime
 from decimal import Decimal
-from core.models.transaction import Transaction
-from logic.sorter import TransactionSorter
+from src.core.models.transaction import Transaction
+from src.logic.sorter import TransactionSorter
 
 @pytest.fixture
 def sorter():

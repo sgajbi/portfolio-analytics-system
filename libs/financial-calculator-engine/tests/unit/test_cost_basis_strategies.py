@@ -3,13 +3,14 @@ import pytest
 from datetime import date
 from decimal import Decimal
 
-from core.models.transaction import Transaction
-from logic.cost_basis_strategies import AverageCostBasisStrategy
+from src.core.models.transaction import Transaction
+from src.logic.cost_basis_strategies import AverageCostBasisStrategy
 
 @pytest.fixture
 def avco_strategy():
     """Provides a clean instance of the AverageCostBasisStrategy."""
     return AverageCostBasisStrategy()
+
 
 def test_average_cost_simple_disposition(avco_strategy: AverageCostBasisStrategy):
     """

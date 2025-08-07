@@ -1,7 +1,7 @@
 # tests/unit/test_error_reporter.py
 
 import pytest
-from logic.error_reporter import ErrorReporter
+from src.logic.error_reporter import ErrorReporter
 
 @pytest.fixture
 def error_reporter():

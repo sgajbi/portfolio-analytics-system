@@ -1,2 +1,21 @@
-confluent-kafka[librdkafka]==2.4.0
-pydantic==2.7.4
+# tests/requirements.txt
+
+# Core testing library
+pytest==8.2.2
+
+# Plugin for running asyncio tests
+pytest-asyncio
+
+# HTTP client for testing APIs
+requests==2.32.3
+httpx
+
+# Database drivers (sync and async)
+psycopg2-binary==2.9.9
+asyncpg==0.29.0
+
+# Environment variable management
+python-dotenv==1.0.1
+
+# Docker testcontainers for E2E and integration tests
+testcontainers[kafka,postgres]==4.5.0
