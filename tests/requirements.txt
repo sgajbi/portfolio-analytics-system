@@ -10,8 +10,9 @@ pytest-asyncio
 requests==2.32.3
 httpx
 
-# Database driver
+# Database drivers (sync and async)
 psycopg2-binary==2.9.9
+asyncpg==0.29.0
 
 # Environment variable management
 python-dotenv==1.0.1

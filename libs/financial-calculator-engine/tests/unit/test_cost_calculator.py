@@ -6,14 +6,14 @@ from decimal import Decimal
 from unittest.mock import MagicMock
 
 # Imports for the new, more comprehensive test
-from src.logic.cost_basis_strategies import FIFOBasisStrategy
-from src.logic.disposition_engine import DispositionEngine
+from logic.cost_basis_strategies import FIFOBasisStrategy
+from logic.disposition_engine import DispositionEngine
 
 # Keep existing imports for old tests
-from src.logic.cost_calculator import CostCalculator
-from src.logic.error_reporter import ErrorReporter
-from src.core.models.transaction import Transaction, Fees
-from src.core.enums.transaction_type import TransactionType
+from logic.cost_calculator import CostCalculator
+from logic.error_reporter import ErrorReporter
+from core.models.transaction import Transaction, Fees
+from core.enums.transaction_type import TransactionType
 
 @pytest.fixture
 def mock_disposition_engine():

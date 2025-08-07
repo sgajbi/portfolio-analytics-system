@@ -4,10 +4,10 @@ import pytest
 from datetime import date
 from decimal import Decimal
 
-from src.logic.disposition_engine import DispositionEngine
-from src.logic.cost_basis_strategies import FIFOBasisStrategy, AverageCostBasisStrategy
-from src.core.models.transaction import Transaction
-from src.core.enums.transaction_type import TransactionType
+from logic.disposition_engine import DispositionEngine
+from logic.cost_basis_strategies import FIFOBasisStrategy, AverageCostBasisStrategy
+from core.models.transaction import Transaction
+from core.enums.transaction_type import TransactionType
 
 @pytest.fixture
 def fifo_engine():

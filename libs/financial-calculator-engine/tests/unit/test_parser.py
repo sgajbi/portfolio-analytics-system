@@ -4,8 +4,8 @@ import pytest
 from datetime import date
 from decimal import Decimal
 
-from src.logic.parser import TransactionParser
-from src.logic.error_reporter import ErrorReporter
+from logic.parser import TransactionParser
+from logic.error_reporter import ErrorReporter
 
 @pytest.fixture
 def error_reporter():
@@ -18,7 +18,7 @@ def parser(error_reporter):
 def test_parse_valid_transaction(parser, error_reporter):
     raw_data = [{
         "transaction_id": "txn1", "portfolio_id": "P1", "instrument_id": "AAPL", "security_id": "S1",
-        "transaction_type": "BUY", "transaction_date": "2023-01-01", "settlement_date": "2023-01-03",
+        "transaction_type": "BUY", "transaction_date": "2023-01-01T00:00:00Z", "settlement_date": "2023-01-03T00:00:00Z",
         "quantity": 10.0, "gross_transaction_amount": 1500.0, "trade_currency": "USD"
     }]
     parsed = parser.parse_transactions(raw_data)

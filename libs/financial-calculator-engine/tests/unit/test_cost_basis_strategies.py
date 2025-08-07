@@ -3,8 +3,8 @@ import pytest
 from datetime import date
 from decimal import Decimal
 
-from src.core.models.transaction import Transaction
-from src.logic.cost_basis_strategies import AverageCostBasisStrategy
+from core.models.transaction import Transaction
+from logic.cost_basis_strategies import AverageCostBasisStrategy
 
 @pytest.fixture
 def avco_strategy():
@@ -17,7 +17,7 @@ def test_average_cost_simple_disposition(avco_strategy: AverageCostBasisStrategy
     Scenario:
     1. Buy 100 shares for a total net cost of $1000.
     2. Buy 100 shares for a total net cost of $1200.
-       - Total position: 200 shares, total cost: $2200, average cost: $11/share.
+    - Total position: 200 shares, total cost: $2200, average cost: $11/share.
     3. Sell 50 shares.
     """
     # Arrange: Create the two buy transactions
