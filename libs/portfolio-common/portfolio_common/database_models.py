@@ -1,12 +1,11 @@
 # libs/portfolio-common/portfolio_common/database_models.py
 from sqlalchemy import (
-    Column, Integer, String, Numeric, DateTime, 
+    Column, Integer, String, Numeric, DateTime,
     Date, func,
     ForeignKey, UniqueConstraint, Boolean, JSON, Index
 )
 from sqlalchemy.orm import relationship
 
-# CORRECTED: Import Base from the new, non-circular file
 from .db_base import Base
 
 class Portfolio(Base):
@@ -115,7 +114,6 @@ class Transaction(Base):
     gross_transaction_amount = Column(Numeric(18, 10), nullable=False)
     trade_currency = Column(String, nullable=False)
     currency = Column(String, nullable=False)
-    # --- THE FIX: Change to timezone-aware timestamp columns ---
     transaction_date = Column(DateTime(timezone=True), nullable=False)
     settlement_date = Column(DateTime(timezone=True), nullable=True)
     trade_fee = Column(Numeric(18, 10), nullable=True)
@@ -163,7 +161,7 @@ class Cashflow(Base):
     calculation_type = Column(String, nullable=False)
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
-    
+
     transaction = relationship("Transaction", back_populates="cashflow")
 
     __table_args__ = (UniqueConstraint('transaction_id', name='_transaction_id_uc'),)
