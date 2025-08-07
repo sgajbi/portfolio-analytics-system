@@ -110,3 +110,14 @@ class PortfolioTimeseriesGeneratedEvent(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     portfolio_id: str
     date: date
+
+class PortfolioAggregationRequiredEvent(BaseModel):
+    """
+    Event published by the AggregationScheduler to trigger a portfolio
+    time series calculation for a specific portfolio and date.
+    """
+    model_config = ConfigDict(from_attributes=True)
+
+    portfolio_id: str
+    aggregation_date: date
+    correlation_id: Optional[str] = None

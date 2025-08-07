@@ -2,7 +2,7 @@
 import logging
 from datetime import date
 from typing import Optional, List
-from sqlalchemy import select, exists
+from sqlalchemy import select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
@@ -13,7 +13,8 @@ from portfolio_common.database_models import (
     Cashflow, 
     FxRate,
     Instrument,
-    PositionHistory 
+    PositionHistory,
+    PortfolioAggregationJob
 )
 
 logger = logging.getLogger(__name__)
@@ -25,6 +26,49 @@ class TimeseriesRepository:
     def __init__(self, db: AsyncSession):
         self.db = db
 
+    async def find_and_claim_eligible_jobs(self, batch_size: int) -> List[PortfolioAggregationJob]:
+        """
+        Finds PENDING aggregation jobs where the previous day's job is COMPLETE (or doesn't exist)
+        and atomically claims them by updating their status to PROCESSING.
+        This is done using a CTE and FOR UPDATE SKIP LOCKED to be concurrent-safe.
+        """
+        # Using a raw SQL query here because the self-join logic with date arithmetic
+        # is significantly more complex and less readable in the SQLAlchemy ORM/Core.
+        query = text(f"""
+            WITH eligible_jobs AS (
+                SELECT id FROM (
+                    SELECT
+                        p1.id,
+                        p2.status as prev_status
+                    FROM
+                        portfolio_aggregation_jobs p1
+                    LEFT JOIN
+                        portfolio_aggregation_jobs p2 ON p1.portfolio_id = p2.portfolio_id AND p2.aggregation_date = p1.aggregation_date - INTERVAL '1 day'
+                    WHERE
+                        p1.status = 'PENDING'
+                ) as subquery
+                WHERE
+                    prev_status IS NULL OR prev_status = 'COMPLETE'
+                ORDER BY
+                    portfolio_id, aggregation_date
+                LIMIT :batch_size
+                FOR UPDATE SKIP LOCKED
+            )
+            UPDATE
+                portfolio_aggregation_jobs
+            SET
+                status = 'PROCESSING'
+            WHERE
+                id IN (SELECT id FROM eligible_jobs)
+            RETURNING *;
+        """)
+        
+        result = await self.db.execute(query, {"batch_size": batch_size})
+        claimed_jobs = result.mappings().all()
+        if claimed_jobs:
+            logger.info(f"Found and claimed {len(claimed_jobs)} eligible aggregation jobs.")
+        return [PortfolioAggregationJob(**job) for job in claimed_jobs]
+
     async def get_portfolio(self, portfolio_id: str) -> Optional[Portfolio]:
         """Fetches portfolio details by its ID."""
         result = await self.db.execute(select(Portfolio).filter_by(portfolio_id=portfolio_id))
@@ -35,7 +79,6 @@ class TimeseriesRepository:
         result = await self.db.execute(select(Instrument).filter_by(security_id=security_id))
         return result.scalars().first()
 
-    # --- NEW METHOD ---
     async def get_instruments_by_ids(self, security_ids: List[str]) -> List[Instrument]:
         """Fetches multiple instruments by their security IDs in a single query."""
         if not security_ids:

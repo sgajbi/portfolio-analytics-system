@@ -54,6 +54,7 @@ TOPICS_TO_CREATE = [
     # Timeseries topics
     "position_timeseries_generated",
     "portfolio_timeseries_generated",
+    "portfolio_aggregation_required",
     # DLQ topics
     "persistence_service.dlq",
 ]
