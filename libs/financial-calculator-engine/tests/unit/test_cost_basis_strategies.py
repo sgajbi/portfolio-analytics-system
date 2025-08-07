@@ -3,8 +3,8 @@ import pytest
 from datetime import date
 from decimal import Decimal
 
-from src.core.models.transaction import Transaction
-from src.logic.cost_basis_strategies import AverageCostBasisStrategy
+from core.models.transaction import Transaction
+from logic.cost_basis_strategies import AverageCostBasisStrategy
 
 @pytest.fixture
 def avco_strategy():

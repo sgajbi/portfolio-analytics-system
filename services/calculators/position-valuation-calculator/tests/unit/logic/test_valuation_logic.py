@@ -1,7 +1,7 @@
 import pytest
 from decimal import Decimal
 
-from app.logic.valuation_logic import ValuationLogic
+from logic.valuation_logic import ValuationLogic
 
 def test_calculate_valuation_with_gain():
     """

@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch, AsyncMock
 
 from portfolio_common.logging_utils import correlation_id_var
 from portfolio_common.events import TransactionEvent
-from app.consumers.transaction_consumer import TransactionPersistenceConsumer
+from consumers.transaction_consumer import TransactionPersistenceConsumer
 
 # Mark all tests in this file as asyncio
 pytestmark = pytest.mark.asyncio

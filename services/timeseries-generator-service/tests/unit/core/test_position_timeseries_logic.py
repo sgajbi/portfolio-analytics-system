@@ -2,7 +2,7 @@ import pytest
 from decimal import Decimal
 from datetime import date
 
-from app.core.position_timeseries_logic import PositionTimeseriesLogic
+from core.position_timeseries_logic import PositionTimeseriesLogic
 from portfolio_common.database_models import DailyPositionSnapshot, PositionTimeseries
 
 @pytest.fixture

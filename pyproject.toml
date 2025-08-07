@@ -22,18 +22,19 @@ testpaths = [
     "libs",
     "services"
 ]
+# This explicit path configuration ensures all modules are discoverable
 pythonpath = [
     ".",
     "libs/portfolio-common",
-    "libs/financial-calculator-engine", # Add the root for src imports
-    "services/ingestion-service",
-    "services/persistence_service",
-    "services/query-service",
-    "services/calculators/cashflow_calculator_service",
-    "services/calculators/cost_calculator_service",
-    "services/calculators/position_calculator",
-    "services/calculators/position-valuation-calculator",
-    "services/timeseries-generator-service",
+    "libs/financial-calculator-engine/src",
+    "services/ingestion-service/app",
+    "services/persistence_service/app",
+    "services/query-service/app",
+    "services/calculators/cashflow_calculator_service/app",
+    "services/calculators/cost_calculator_service/app",
+    "services/calculators/position_calculator/app",
+    "services/calculators/position-valuation-calculator/app",
+    "services/timeseries-generator-service/app",
     "tools"
 ]
 addopts = "--strict-markers"

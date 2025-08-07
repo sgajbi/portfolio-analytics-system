@@ -4,9 +4,9 @@ import pytest
 from datetime import date
 from decimal import Decimal
 
-from src.logic.parser import TransactionParser
-from src.logic.error_reporter import ErrorReporter
-from src.core.models.transaction import Transaction
+from logic.parser import TransactionParser
+from logic.error_reporter import ErrorReporter
+from core.models.transaction import Transaction
 
 
 @pytest.fixture
