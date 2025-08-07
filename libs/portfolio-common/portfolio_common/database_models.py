@@ -224,3 +224,24 @@ class OutboxEvent(Base):
     last_attempted_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=func.now(), nullable=False)
     processed_at = Column(DateTime, nullable=True)
+
+
+# --- NEW MODEL ---
+class PortfolioAggregationJob(Base):
+    """
+    Tracks portfolio-date pairs that require aggregation.
+    This table acts as a stateful, idempotent queue to trigger portfolio time series calculations.
+    """
+    __tablename__ = 'portfolio_aggregation_jobs'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    portfolio_id = Column(String, nullable=False, index=True)
+    aggregation_date = Column(Date, nullable=False, index=True)
+    status = Column(String, nullable=False, default='PENDING', index=True)
+    correlation_id = Column(String, nullable=True)
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        UniqueConstraint('portfolio_id', 'aggregation_date', name='_portfolio_date_uc'),
+    )

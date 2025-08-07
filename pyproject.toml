@@ -14,32 +14,14 @@ requires-python = ">=3.11"
 where = ["."]
 exclude = ["tests*", "deployment*"]
 
-# --- UPDATED: Pytest Configuration for PYTHONPATH and addopts ---
+# --- UPDATED: Pytest Configuration ---
 [tool.pytest.ini_options]
-# Explicitly tell pytest where to find tests
+# The test root is now the single top-level tests directory
 testpaths = [
-    "tests",
-    "libs",
-    "services"
-]
-# This explicit path configuration ensures all modules are discoverable
-pythonpath = [
-    ".",
-    "libs/portfolio-common",
-    "libs/financial-calculator-engine/src",
-    "services/ingestion-service/app",
-    "services/persistence_service/app",
-    "services/query-service/app",
-    "services/calculators/cashflow_calculator_service/app",
-    "services/calculators/cost_calculator_service/app",
-    "services/calculators/position_calculator/app",
-    "services/calculators/position-valuation-calculator/app",
-    "services/timeseries-generator-service/app",
-    "tools"
+    "tests"
 ]
 addopts = "--strict-markers"
 minversion = "6.0"
-# Add registration for the asyncio marker
 markers = [
     "asyncio: mark a test as being an asyncio test",
 ]
