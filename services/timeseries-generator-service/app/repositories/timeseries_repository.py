@@ -13,7 +13,7 @@ from portfolio_common.database_models import (
     Cashflow, 
     FxRate,
     Instrument,
-    PositionHistory
+    PositionHistory # NEW IMPORT
 )
 
 logger = logging.getLogger(__name__)
@@ -24,6 +24,8 @@ class TimeseriesRepository:
     """
     def __init__(self, db: AsyncSession):
         self.db = db
+
+    # ... (get_portfolio, get_instrument, get_fx_rate, get_last_position_timeseries_before remain the same) ...
 
     async def get_portfolio(self, portfolio_id: str) -> Optional[Portfolio]:
         """Fetches portfolio details by its ID."""
@@ -51,10 +53,6 @@ class TimeseriesRepository:
         security_id: str,
         a_date: date
     ) -> Optional[PositionTimeseries]:
-        """
-        Fetches the most recent position time series record for a security
-        strictly before a given date.
-        """
         stmt = select(PositionTimeseries).filter(
             PositionTimeseries.portfolio_id == portfolio_id,
             PositionTimeseries.security_id == security_id,
@@ -63,6 +61,7 @@ class TimeseriesRepository:
         result = await self.db.execute(stmt)
         return result.scalars().first()
 
+    # --- NEW METHOD TO CHECK FOR FIRST POSITION ---
     async def is_first_position(self, portfolio_id: str, security_id: str, position_date: date) -> bool:
         """
         Checks if there is any position history for this security prior to the given date.
@@ -81,7 +80,6 @@ class TimeseriesRepository:
     async def get_all_position_timeseries_for_date(
         self, portfolio_id: str, a_date: date
     ) -> List[PositionTimeseries]:
-        """Fetches all position time series records for a portfolio on a specific date."""
         stmt = select(PositionTimeseries).filter_by(
             portfolio_id=portfolio_id,
             date=a_date
@@ -92,7 +90,6 @@ class TimeseriesRepository:
     async def get_all_cashflows_for_security_date(
         self, portfolio_id: str, security_id: str, a_date: date
     ) -> List[Cashflow]:
-        """Fetches all cashflows for a specific security within a portfolio on a given date."""
         stmt = select(Cashflow).filter_by(
             portfolio_id=portfolio_id,
             security_id=security_id,
@@ -102,7 +99,6 @@ class TimeseriesRepository:
         return result.scalars().all()
 
     async def get_portfolio_level_cashflows_for_date(self, portfolio_id: str, a_date: date) -> List[Cashflow]:
-        """Fetches all portfolio-level cashflows for a specific date."""
         stmt = select(Cashflow).filter_by(
             portfolio_id=portfolio_id,
             cashflow_date=a_date,

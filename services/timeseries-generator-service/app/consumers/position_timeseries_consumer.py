@@ -3,9 +3,9 @@ import logging
 import json
 import asyncio
 from pydantic import ValidationError
-from confluent_kafka import Message
 from sqlalchemy.exc import IntegrityError
 from tenacity import retry, stop_after_attempt, wait_fixed, before_log, retry_if_exception_type
+from confluent_kafka import Message
 
 from portfolio_common.kafka_consumer import BaseConsumer
 from portfolio_common.logging_utils import correlation_id_var
@@ -23,6 +23,7 @@ class InstrumentNotFoundError(Exception):
     """Custom exception to signal that a required instrument is not yet persisted."""
     pass
 
+# --- NEW EXCEPTION TO HANDLE RACE CONDITION ---
 class PreviousTimeseriesNotFoundError(Exception):
     """Custom exception to signal that the previous day's time series record is not yet persisted."""
     pass
@@ -54,7 +55,7 @@ class PositionTimeseriesConsumer(BaseConsumer):
             async for db in get_async_db_session():
                 async with db.begin():
                     repo = TimeseriesRepository(db)
-
+                    
                     instrument = await repo.get_instrument(event.security_id)
                     if not instrument:
                         raise InstrumentNotFoundError(f"Instrument '{event.security_id}' not found. Will retry.")
@@ -63,13 +64,14 @@ class PositionTimeseriesConsumer(BaseConsumer):
                     if not current_snapshot:
                         logger.warning(f"DailyPositionSnapshot record with id {event.id} not found. Skipping.")
                         return
-                    
+
+                    # --- MODIFIED LOGIC TO HANDLE RACE CONDITION ---
                     is_first = await repo.is_first_position(
                         portfolio_id=event.portfolio_id,
                         security_id=event.security_id,
                         position_date=event.date
                     )
-
+                    
                     previous_timeseries = await repo.get_last_position_timeseries_before(
                         portfolio_id=event.portfolio_id,
                         security_id=event.security_id,
@@ -101,7 +103,6 @@ class PositionTimeseriesConsumer(BaseConsumer):
                         completion_event = PositionTimeseriesGeneratedEvent.model_validate(new_timeseries_record)
                         headers = [('correlation_id', correlation_id.encode('utf-8'))] if correlation_id else None
                         
-                        # THE FIX: Key by portfolio_id to ensure partition affinity
                         self._producer.publish_message(
                             topic=KAFKA_POSITION_TIMESERIES_GENERATED_TOPIC,
                             key=completion_event.portfolio_id,
