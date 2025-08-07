@@ -4,10 +4,10 @@ from unittest.mock import MagicMock, patch, AsyncMock
 from datetime import date
 from decimal import Decimal
 
-from portfolio_common.kafka_consumer import correlation_id_cv
+from portfolio_common.logging_utils import correlation_id_var
 from portfolio_common.events import MarketPriceEvent
 from portfolio_common.config import KAFKA_MARKET_PRICE_PERSISTED_TOPIC
-from services.persistence_service.app.consumers.market_price_consumer import MarketPriceConsumer
+from app.consumers.market_price_consumer import MarketPriceConsumer
 
 # Mark all tests in this file as asyncio
 pytestmark = pytest.mark.asyncio
@@ -21,8 +21,7 @@ def market_price_consumer():
         group_id="test_group",
         dlq_topic="persistence.dlq"
     )
-    consumer._producer = MagicMock()
-    consumer._send_to_dlq = AsyncMock()
+    consumer._send_to_dlq_async = AsyncMock()
     return consumer
 
 @pytest.fixture
@@ -42,6 +41,10 @@ def mock_kafka_message(valid_market_price_event: MarketPriceEvent):
     mock_message.value.return_value = valid_market_price_event.model_dump_json().encode('utf-8')
     mock_message.key.return_value = valid_market_price_event.security_id.encode('utf-8')
     mock_message.error.return_value = None
+    mock_message.topic.return_value = "market_prices"
+    mock_message.partition.return_value = 0
+    mock_message.offset.return_value = 1
+    mock_message.headers.return_value = [('correlation_id', b'test-corr-id')]
     return mock_message
 
 
@@ -57,35 +60,36 @@ async def test_process_message_success(
     AND publish a market_price_persisted event.
     """
     # Arrange
-    mock_repo = MagicMock()
-    correlation_id = 'corr-price-456'
-    correlation_id_cv.set(correlation_id)
+    mock_repo = AsyncMock()
+    mock_idempotency_repo = AsyncMock()
+    mock_idempotency_repo.is_event_processed.return_value = False
+    mock_outbox_repo = MagicMock()
+
+    mock_db_session = AsyncMock()
+    mock_db_session.__aenter__.return_value.begin.return_value.__aenter__.return_value = None
 
     with patch(
-        "services.persistence_service.app.consumers.market_price_consumer.get_db_session"
+        "app.consumers.market_price_consumer.get_async_db_session", return_value=mock_db_session
     ), patch(
-        "services.persistence_service.app.consumers.market_price_consumer.MarketPriceRepository", return_value=mock_repo
+        "app.consumers.market_price_consumer.MarketPriceRepository", return_value=mock_repo
+    ), patch(
+        "app.consumers.market_price_consumer.IdempotencyRepository", return_value=mock_idempotency_repo
+    ), patch(
+        "app.consumers.market_price_consumer.OutboxRepository", return_value=mock_outbox_repo
     ):
         # Act
-        await market_price_consumer.process_message(mock_kafka_message)
+        await market_price_consumer._process_message_with_retry(mock_kafka_message)
 
         # Assert
-        # 1. Verify the repository was called correctly
         mock_repo.create_market_price.assert_called_once()
         call_args = mock_repo.create_market_price.call_args[0][0]
         assert isinstance(call_args, MarketPriceEvent)
         assert call_args.security_id == valid_market_price_event.security_id
 
-        # 2. Verify that the completion event was published
-        mock_producer = market_price_consumer._producer
-        mock_producer.publish_message.assert_called_once()
-        
-        # 3. Verify the content of the published message
-        publish_args = mock_producer.publish_message.call_args.kwargs
-        assert publish_args['topic'] == KAFKA_MARKET_PRICE_PERSISTED_TOPIC
-        assert publish_args['key'] == valid_market_price_event.security_id
-        assert publish_args['value']['price'] == str(valid_market_price_event.price) # JSON value will be a string
-        assert ('X-Correlation-ID', correlation_id.encode('utf-8')) in publish_args['headers']
+        mock_outbox_repo.create_outbox_event.assert_called_once()
 
-        # 4. Ensure the DLQ method was NOT called
-        market_price_consumer._send_to_dlq.assert_not_called()
+        publish_args = mock_outbox_repo.create_outbox_event.call_args.kwargs
+        assert publish_args['topic'] == KAFKA_MARKET_PRICE_PERSISTED_TOPIC
+        assert publish_args['aggregate_id'] == valid_market_price_event.security_id
+
+        market_price_consumer._send_to_dlq_async.assert_not_called()

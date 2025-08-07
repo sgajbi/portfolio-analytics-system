@@ -20,16 +20,21 @@ exclude = ["tests*", "deployment*"]
 testpaths = [
     "tests",
     "services",
-    "libs/portfolio-common/tests"
+    "libs"
 ]
 pythonpath = [
-    ".", # Project root
-    "libs",
+    ".",
     "libs/portfolio-common",
+    "libs/financial-calculator-engine/src",
     "services/ingestion-service",
-    "tests",
-    "libs/financial-calculator-engine",
-    "tools" 
+    "services/persistence_service",
+    "services/query-service",
+    "services/calculators/cashflow_calculator_service",
+    "services/calculators/cost_calculator_service",
+    "services/calculators/position_calculator",
+    "services/calculators/position-valuation-calculator",
+    "services/timeseries-generator-service",
+    "tools"
 ]
 addopts = "--strict-markers"
 minversion = "6.0"

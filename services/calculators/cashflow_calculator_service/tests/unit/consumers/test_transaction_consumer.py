@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch, AsyncMock, ANY
 from datetime import datetime, date
 from decimal import Decimal
 
-from portfolio_common.kafka_consumer import correlation_id_cv
+from portfolio_common.logging_utils import correlation_id_var
 from portfolio_common.events import TransactionEvent, CashflowCalculatedEvent
 from portfolio_common.database_models import Cashflow
 from portfolio_common.config import KAFKA_CASHFLOW_CALCULATED_TOPIC
@@ -22,8 +22,7 @@ def cashflow_consumer():
         group_id="test_group",
         dlq_topic="test.dlq"
     )
-    consumer._producer = MagicMock()
-    consumer._send_to_dlq = AsyncMock()
+    consumer._send_to_dlq_async = AsyncMock()
     return consumer
 
 @pytest.fixture
@@ -50,6 +49,7 @@ def mock_kafka_message():
     mock_msg.partition.return_value = 0
     mock_msg.offset.return_value = 123
     mock_msg.error.return_value = None
+    mock_msg.headers.return_value = [('correlation_id', b'test-corr-id')]
     return mock_msg
 
 async def test_process_message_success(
@@ -62,9 +62,10 @@ async def test_process_message_success(
     THEN it should check for idempotency, call the repository, mark as processed, and publish an event.
     """
     # Arrange
-    mock_cashflow_repo = MagicMock()
-    mock_idempotency_repo = MagicMock()
+    mock_cashflow_repo = AsyncMock()
+    mock_idempotency_repo = AsyncMock()
     mock_idempotency_repo.is_event_processed.return_value = False # Simulate new event
+    mock_outbox_repo = MagicMock()
 
     mock_saved_cashflow = Cashflow(
         id=1,
@@ -81,18 +82,22 @@ async def test_process_message_success(
     )
     mock_cashflow_repo.create_cashflow.return_value = mock_saved_cashflow
 
-    mock_db_session = MagicMock()
-    mock_db_session.begin.return_value.__enter__.return_value = None # Mock the transaction context
+    # Mock the async context manager for the DB session
+    mock_db_session = AsyncMock()
+    mock_db_session.__aenter__.return_value.begin.return_value.__aenter__.return_value = None
 
     with patch(
-        "services.calculators.cashflow_calculator_service.app.consumers.transaction_consumer.get_db_session",
-        return_value=iter([mock_db_session])
+        "app.consumers.transaction_consumer.get_async_db_session",
+        return_value=mock_db_session
     ), patch(
-        "services.calculators.cashflow_calculator_service.app.consumers.transaction_consumer.CashflowRepository",
+        "app.consumers.transaction_consumer.CashflowRepository",
         return_value=mock_cashflow_repo
     ), patch(
-        "services.calculators.cashflow_calculator_service.app.consumers.transaction_consumer.IdempotencyRepository",
+        "app.consumers.transaction_consumer.IdempotencyRepository",
         return_value=mock_idempotency_repo
+    ), patch(
+        "app.consumers.transaction_consumer.OutboxRepository",
+        return_value=mock_outbox_repo
     ):
         # Act
         await cashflow_consumer.process_message(mock_kafka_message)
@@ -100,16 +105,10 @@ async def test_process_message_success(
         # Assert
         mock_idempotency_repo.is_event_processed.assert_called_once_with("raw_transactions_completed-0-123", "cashflow-calculator")
         mock_cashflow_repo.create_cashflow.assert_called_once()
+        mock_outbox_repo.create_outbox_event.assert_called_once()
         mock_idempotency_repo.mark_event_processed.assert_called_once()
 
-        mock_producer = cashflow_consumer._producer
-        mock_producer.publish_message.assert_called_once()
-
-        publish_args = mock_producer.publish_message.call_args.kwargs
-        assert publish_args['topic'] == KAFKA_CASHFLOW_CALCULATED_TOPIC
-        assert publish_args['value']['id'] == mock_saved_cashflow.id
-
-        cashflow_consumer._send_to_dlq.assert_not_called()
+        cashflow_consumer._send_to_dlq_async.assert_not_called()
 
 async def test_process_message_skips_processed_event(
     cashflow_consumer: CashflowCalculatorConsumer,
@@ -121,22 +120,26 @@ async def test_process_message_skips_processed_event(
     THEN it should skip all business logic and publishing.
     """
     # Arrange
-    mock_cashflow_repo = MagicMock()
-    mock_idempotency_repo = MagicMock()
+    mock_cashflow_repo = AsyncMock()
+    mock_idempotency_repo = AsyncMock()
     mock_idempotency_repo.is_event_processed.return_value = True # Simulate processed event
+    mock_outbox_repo = MagicMock()
 
-    mock_db_session = MagicMock()
-    mock_db_session.begin.return_value.__enter__.return_value = None
+    mock_db_session = AsyncMock()
+    mock_db_session.__aenter__.return_value.begin.return_value.__aenter__.return_value = None
 
     with patch(
-        "services.calculators.cashflow_calculator_service.app.consumers.transaction_consumer.get_db_session",
-        return_value=iter([mock_db_session])
+        "app.consumers.transaction_consumer.get_async_db_session",
+        return_value=mock_db_session
     ), patch(
-        "services.calculators.cashflow_calculator_service.app.consumers.transaction_consumer.CashflowRepository",
+        "app.consumers.transaction_consumer.CashflowRepository",
         return_value=mock_cashflow_repo
     ), patch(
-        "services.calculators.cashflow_calculator_service.app.consumers.transaction_consumer.IdempotencyRepository",
+        "app.consumers.transaction_consumer.IdempotencyRepository",
         return_value=mock_idempotency_repo
+    ), patch(
+        "app.consumers.transaction_consumer.OutboxRepository",
+        return_value=mock_outbox_repo
     ):
         # Act
         await cashflow_consumer.process_message(mock_kafka_message)
@@ -146,6 +149,6 @@ async def test_process_message_skips_processed_event(
 
         # Verify that no business logic was executed
         mock_cashflow_repo.create_cashflow.assert_not_called()
+        mock_outbox_repo.create_outbox_event.assert_not_called()
         mock_idempotency_repo.mark_event_processed.assert_not_called()
-        cashflow_consumer._producer.publish_message.assert_not_called()
-        cashflow_consumer._send_to_dlq.assert_not_called()
+        cashflow_consumer._send_to_dlq_async.assert_not_called()
