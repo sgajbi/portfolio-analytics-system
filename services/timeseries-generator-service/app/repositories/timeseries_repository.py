@@ -73,6 +73,19 @@ class TimeseriesRepository:
         result = await self.db.execute(stmt)
         return result.scalars().all()
 
+    # --- NEW METHOD TO FIX THE AttributeError ---
+    async def get_all_cashflows_for_security_date(
+        self, portfolio_id: str, security_id: str, a_date: date
+    ) -> List[Cashflow]:
+        """Fetches all cashflows for a specific security within a portfolio on a given date."""
+        stmt = select(Cashflow).filter_by(
+            portfolio_id=portfolio_id,
+            security_id=security_id,
+            cashflow_date=a_date
+        )
+        result = await self.db.execute(stmt)
+        return result.scalars().all()
+
     async def get_portfolio_level_cashflows_for_date(self, portfolio_id: str, a_date: date) -> List[Cashflow]:
         """Fetches all portfolio-level cashflows for a specific date."""
         stmt = select(Cashflow).filter_by(
