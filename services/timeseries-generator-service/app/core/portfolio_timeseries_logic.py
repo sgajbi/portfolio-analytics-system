@@ -7,14 +7,13 @@ from portfolio_common.database_models import (
     PortfolioTimeseries, 
     PositionTimeseries, 
     Cashflow, 
-    Instrument,
     Portfolio,
-    FxRate
 )
+from ..repositories.timeseries_repository import TimeseriesRepository
+
 
 logger = logging.getLogger(__name__)
 
-# NEW: Define a custom, specific exception for this failure case.
 class FxRateNotFoundError(Exception):
     """Raised when a required FX rate for a calculation is not found."""
     pass
@@ -25,13 +24,12 @@ class PortfolioTimeseriesLogic:
     portfolio time series record, handling all necessary FX conversions.
     """
     @staticmethod
-    def calculate_daily_record(
+    async def calculate_daily_record(
         portfolio: Portfolio,
         a_date: date,
         position_timeseries_list: List[PositionTimeseries],
         portfolio_cashflows: List[Cashflow],
-        instruments: Dict[str, Instrument],
-        fx_rates: Dict[str, FxRate]
+        repo: TimeseriesRepository
     ) -> PortfolioTimeseries:
         """
         Calculates a single, complete portfolio time series record for a given day.
@@ -43,7 +41,12 @@ class PortfolioTimeseriesLogic:
 
         portfolio_currency = portfolio.base_currency
 
-        # 1. Aggregate all position-level data with FX conversion
+        # 1. Fetch all required instruments and their currencies in one go
+        security_ids = [pt.security_id for pt in position_timeseries_list]
+        instruments_list = await repo.get_instruments_by_ids(security_ids)
+        instruments = {inst.security_id: inst for inst in instruments_list}
+
+        # 2. Aggregate all position-level data with FX conversion
         for pos_ts in position_timeseries_list:
             instrument = instruments.get(pos_ts.security_id)
             if not instrument:
@@ -54,9 +57,9 @@ class PortfolioTimeseriesLogic:
             rate = Decimal(1.0) # Default to 1.0 if no conversion is needed
 
             if instrument_currency != portfolio_currency:
-                fx_rate = fx_rates.get(instrument_currency)
+                fx_rate = await repo.get_fx_rate(instrument_currency, portfolio_currency, pos_ts.date)
+            
                 if not fx_rate:
-                    # FIX: Instead of just logging, raise a specific error to allow for retries.
                     error_msg = f"Missing FX rate from {instrument_currency} to {portfolio_currency} for date {pos_ts.date}. Cannot convert."
                     logger.error(error_msg)
                     raise FxRateNotFoundError(error_msg)
@@ -67,7 +70,7 @@ class PortfolioTimeseriesLogic:
             total_eod_cf += pos_ts.eod_cashflow * rate
             total_eod_mv += pos_ts.eod_market_value * rate
 
-        # 2. Aggregate portfolio-level cashflows (already in portfolio currency)
+        # 3. Aggregate portfolio-level cashflows (already in portfolio currency)
         for port_cf in portfolio_cashflows:
             if port_cf.timing == 'BOD':
                 total_bod_cf += port_cf.amount

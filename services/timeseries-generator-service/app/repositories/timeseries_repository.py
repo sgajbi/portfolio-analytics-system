@@ -13,7 +13,7 @@ from portfolio_common.database_models import (
     Cashflow, 
     FxRate,
     Instrument,
-    PositionHistory # NEW IMPORT
+    PositionHistory 
 )
 
 logger = logging.getLogger(__name__)
@@ -25,8 +25,6 @@ class TimeseriesRepository:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    # ... (get_portfolio, get_instrument, get_fx_rate, get_last_position_timeseries_before remain the same) ...
-
     async def get_portfolio(self, portfolio_id: str) -> Optional[Portfolio]:
         """Fetches portfolio details by its ID."""
         result = await self.db.execute(select(Portfolio).filter_by(portfolio_id=portfolio_id))
@@ -36,6 +34,15 @@ class TimeseriesRepository:
         """Fetches an instrument by its security ID."""
         result = await self.db.execute(select(Instrument).filter_by(security_id=security_id))
         return result.scalars().first()
+
+    # --- NEW METHOD ---
+    async def get_instruments_by_ids(self, security_ids: List[str]) -> List[Instrument]:
+        """Fetches multiple instruments by their security IDs in a single query."""
+        if not security_ids:
+            return []
+        stmt = select(Instrument).where(Instrument.security_id.in_(security_ids))
+        result = await self.db.execute(stmt)
+        return result.scalars().all()
 
     async def get_fx_rate(self, from_currency: str, to_currency: str, a_date: date) -> Optional[FxRate]:
         """Fetches the latest FX rate on or before a given date."""
@@ -61,7 +68,6 @@ class TimeseriesRepository:
         result = await self.db.execute(stmt)
         return result.scalars().first()
 
-    # --- NEW METHOD TO CHECK FOR FIRST POSITION ---
     async def is_first_position(self, portfolio_id: str, security_id: str, position_date: date) -> bool:
         """
         Checks if there is any position history for this security prior to the given date.
