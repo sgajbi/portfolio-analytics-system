@@ -5,7 +5,7 @@ from datetime import date
 from decimal import Decimal
 
 from sqlalchemy.orm import Session
-from app.consumers.market_price_consumer import MarketPriceConsumer
+from consumers.market_price_consumer import MarketPriceConsumer
 from portfolio_common.events import MarketPriceEvent
 from portfolio_common.database_models import DailyPositionSnapshot
 
