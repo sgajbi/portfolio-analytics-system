@@ -2,6 +2,7 @@
 import logging
 import json
 import asyncio
+import time
 from pydantic import ValidationError
 from datetime import date
 from typing import Dict, Tuple, Optional
@@ -31,22 +32,35 @@ class PortfolioTimeseriesConsumer(BaseConsumer):
     """
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._batch: Dict[Tuple[str, date], str] = {}
+        # The batch now stores the timestamp of the first event and its correlation ID
+        self._batch: Dict[Tuple[str, date], Tuple[float, str]] = {}
         self._batch_lock = asyncio.Lock()
-        self._processing_interval = 5
+        self._processing_interval = 2  # Check for expired items more frequently
+        self._cooldown_period = 5      # Wait 5 seconds after the first event
 
     async def process_message(self, msg: Message):
         """
-        Instead of processing immediately, adds the work to a batch.
+        Receives a signal that a portfolio/date needs aggregation.
+        If it's the first signal for this key, it adds it to the batch and
+        starts a cooldown timer by recording the arrival time.
         """
         try:
             event_data = json.loads(msg.value().decode('utf-8'))
             event = PositionTimeseriesGeneratedEvent.model_validate(event_data)
             correlation_id = correlation_id_var.get()
             
-            async with self._batch_lock:
-                self._batch[(event.portfolio_id, event.date)] = correlation_id
+            work_key = (event.portfolio_id, event.date)
             
+            async with self._batch_lock:
+                if work_key not in self._batch:
+                    # This is the first signal for this portfolio/date, start the timer
+                    self._batch[work_key] = (time.time(), correlation_id)
+                    logger.info(
+                        f"First signal for {work_key} received. Starting {self._cooldown_period}s cooldown.",
+                        extra={"correlation_id": correlation_id}
+                    )
+
+            # Acknowledge the message immediately, as the work is now queued
             self._consumer.commit(message=msg, asynchronous=False)
 
         except (json.JSONDecodeError, ValidationError) as e:
@@ -55,26 +69,38 @@ class PortfolioTimeseriesConsumer(BaseConsumer):
 
     async def _process_batch(self):
         """
-        Periodically processes the collected batch of work.
+        Periodically scans the batch and processes items whose cooldown
+        period has expired.
         """
         while self._running:
             await asyncio.sleep(self._processing_interval)
             
+            items_to_process = {}
+            
             async with self._batch_lock:
-                if not self._batch:
-                    continue
-                current_work = self._batch.copy()
-                self._batch.clear()
+                # Find items that are ready to be processed
+                ready_keys = []
+                for key, (timestamp, corr_id) in self._batch.items():
+                    if time.time() - timestamp > self._cooldown_period:
+                        items_to_process[key] = corr_id
+                        ready_keys.append(key)
+                
+                # Remove the ready items from the main batch
+                for key in ready_keys:
+                    del self._batch[key]
 
-            logger.info(f"Processing batch of {len(current_work)} portfolio-date aggregations.")
+            if not items_to_process:
+                continue
+
+            logger.info(f"Cooldown expired for {len(items_to_process)} portfolio-date aggregations. Processing now.")
             
             tasks = [
                 self._aggregate_for_portfolio_date(portfolio_id, a_date, correlation_id)
-                for (portfolio_id, a_date), correlation_id in current_work.items()
+                for (portfolio_id, a_date), correlation_id in items_to_process.items()
             ]
             results = await asyncio.gather(*tasks, return_exceptions=True)
             
-            for result, (key, _) in zip(results, current_work.items()):
+            for result, key in zip(results, items_to_process.keys()):
                 if isinstance(result, Exception):
                     logger.error(f"Failed to process aggregation batch item for {key}: {result}", exc_info=result)
 
@@ -144,7 +170,7 @@ class PortfolioTimeseriesConsumer(BaseConsumer):
         loop = asyncio.get_running_loop()
         
         batch_processor_task = loop.create_task(self._process_batch())
-        logger.info(f"Started background batch processor with a {self._processing_interval}s window.")
+        logger.info(f"Started background batch processor with a {self._processing_interval}s check interval and {self._cooldown_period}s cooldown.")
 
         logger.info(f"Starting to consume messages from topic '{self.topic}'...")
         while self._running:
