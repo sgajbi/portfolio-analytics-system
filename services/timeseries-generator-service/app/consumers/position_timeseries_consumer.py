@@ -11,10 +11,9 @@ from sqlalchemy import func
 
 from portfolio_common.kafka_consumer import BaseConsumer
 from portfolio_common.logging_utils import correlation_id_var
-from portfolio_common.events import DailyPositionSnapshotPersistedEvent, PositionTimeseriesGeneratedEvent
+from portfolio_common.events import DailyPositionSnapshotPersistedEvent
 from portfolio_common.db import get_async_db_session
 from portfolio_common.database_models import DailyPositionSnapshot, PositionHistory, PortfolioAggregationJob
-from portfolio_common.config import KAFKA_POSITION_TIMESERIES_GENERATED_TOPIC
 
 from ..core.position_timeseries_logic import PositionTimeseriesLogic
 from ..repositories.timeseries_repository import TimeseriesRepository
@@ -31,8 +30,8 @@ class PreviousTimeseriesNotFoundError(Exception):
 
 class PositionTimeseriesConsumer(BaseConsumer):
     """
-    Consumes daily position snapshot events and generates the corresponding daily
-    position time series record.
+    Consumes daily position snapshot events, generates the corresponding daily
+    position time series record, and creates an aggregation job.
     """
     async def process_message(self, msg: Message):
         """Wrapper to call the retryable logic."""
@@ -104,9 +103,8 @@ class PositionTimeseriesConsumer(BaseConsumer):
                     )
                     
                     await repo.upsert_position_timeseries(new_timeseries_record)
-                    
-                    # --- FIXED LOGIC ---
-                    # Idempotently create a job to signify this portfolio-date pair needs aggregation.
+
+                    # Create an aggregation job. This is now this consumer's primary output.
                     job_stmt = pg_insert(PortfolioAggregationJob).values(
                         portfolio_id=event.portfolio_id,
                         aggregation_date=event.date,
@@ -114,23 +112,12 @@ class PositionTimeseriesConsumer(BaseConsumer):
                         correlation_id=correlation_id
                     ).on_conflict_do_update(
                         index_elements=['portfolio_id', 'aggregation_date'],
-                        set_={'status': 'PENDING', 'updated_at': func.now()} # Use func.now() instead of 'now()'
+                        set_={'status': 'PENDING', 'updated_at': func.now()}
                     )
                     await db.execute(job_stmt)
                     logger.info(f"Successfully staged aggregation job for portfolio {event.portfolio_id} on {event.date}")
-                    # --- END FIXED LOGIC ---
-
-                    if self._producer:
-                        completion_event = PositionTimeseriesGeneratedEvent.model_validate(new_timeseries_record)
-                        headers = [('correlation_id', correlation_id.encode('utf-8'))] if correlation_id else None
-                        
-                        self._producer.publish_message(
-                            topic=KAFKA_POSITION_TIMESERIES_GENERATED_TOPIC,
-                            key=completion_event.portfolio_id,
-                            value=completion_event.model_dump(mode='json'),
-                            headers=headers
-                        )
-                        self._producer.flush(timeout=5)
+                    
+                    # NOTE: We no longer publish a Kafka event here. The scheduler will handle triggers.
 
         except (json.JSONDecodeError, ValidationError) as e:
             logger.error(f"Message validation failed: {e}. Sending to DLQ.", exc_info=True)
