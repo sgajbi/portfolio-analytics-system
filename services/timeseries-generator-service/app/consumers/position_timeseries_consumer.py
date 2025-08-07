@@ -6,12 +6,13 @@ from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError
 from tenacity import retry, stop_after_attempt, wait_fixed, before_log, retry_if_exception_type
 from confluent_kafka import Message
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from portfolio_common.kafka_consumer import BaseConsumer
 from portfolio_common.logging_utils import correlation_id_var
 from portfolio_common.events import DailyPositionSnapshotPersistedEvent, PositionTimeseriesGeneratedEvent
 from portfolio_common.db import get_async_db_session
-from portfolio_common.database_models import DailyPositionSnapshot, PositionHistory
+from portfolio_common.database_models import DailyPositionSnapshot, PositionHistory, PortfolioAggregationJob
 from portfolio_common.config import KAFKA_POSITION_TIMESERIES_GENERATED_TOPIC
 
 from ..core.position_timeseries_logic import PositionTimeseriesLogic
@@ -81,7 +82,7 @@ class PositionTimeseriesConsumer(BaseConsumer):
                             security_id=event.security_id,
                             position_date=event.date
                         )
-                        
+    
                         if not is_truly_first:
                             raise PreviousTimeseriesNotFoundError(
                                 f"Previous day's timeseries for {event.security_id} not found for date {event.date}, but history exists. Retrying."
@@ -102,6 +103,21 @@ class PositionTimeseriesConsumer(BaseConsumer):
                     )
                     
                     await repo.upsert_position_timeseries(new_timeseries_record)
+
+                    # --- NEW LOGIC: Create an aggregation job ---
+                    # Idempotently create a job to signify this portfolio-date pair needs aggregation.
+                    job_stmt = pg_insert(PortfolioAggregationJob).values(
+                        portfolio_id=event.portfolio_id,
+                        aggregation_date=event.date,
+                        status='PENDING',
+                        correlation_id=correlation_id
+                    ).on_conflict_do_update(
+                        index_elements=['portfolio_id', 'aggregation_date'],
+                        set_={'status': 'PENDING', 'updated_at': 'now()'}
+                    )
+                    await db.execute(job_stmt)
+                    logger.info(f"Successfully staged aggregation job for portfolio {event.portfolio_id} on {event.date}")
+                    # --- END NEW LOGIC ---
 
                     if self._producer:
                         completion_event = PositionTimeseriesGeneratedEvent.model_validate(new_timeseries_record)
