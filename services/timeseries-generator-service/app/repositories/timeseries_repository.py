@@ -205,3 +205,19 @@ class TimeseriesRepository:
         """)
         result = await self.db.execute(stmt, {"portfolio_id": portfolio_id, "a_date": a_date})
         return [row.security_id for row in result.fetchall()]
+
+    async def get_latest_market_price(self, security_id: str, a_date: date) -> Optional[Decimal]:
+        """
+        Returns the latest market price for a security as of a_date, or None if not available.
+        """
+        stmt = text("""
+            SELECT price
+            FROM market_price
+            WHERE security_id = :security_id
+              AND price_date <= :a_date
+            ORDER BY price_date DESC
+            LIMIT 1
+        """)
+        result = await self.db.execute(stmt, {"security_id": security_id, "a_date": a_date})
+        row = result.fetchone()
+        return row.price if row else None

@@ -8,12 +8,13 @@ from tenacity import retry, stop_after_attempt, wait_fixed, before_log, retry_if
 from confluent_kafka import Message
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy import func
+from datetime import timedelta, date
 
 from portfolio_common.kafka_consumer import BaseConsumer
 from portfolio_common.logging_utils import correlation_id_var
 from portfolio_common.events import DailyPositionSnapshotPersistedEvent
 from portfolio_common.db import get_async_db_session
-from portfolio_common.database_models import DailyPositionSnapshot, PositionHistory, PortfolioAggregationJob
+from portfolio_common.database_models import DailyPositionSnapshot, PositionHistory, PortfolioAggregationJob, PositionTimeseries
 
 from ..core.position_timeseries_logic import PositionTimeseriesLogic
 from ..repositories.timeseries_repository import TimeseriesRepository
@@ -116,9 +117,10 @@ class PositionTimeseriesConsumer(BaseConsumer):
                     )
                     await db.execute(job_stmt)
                     logger.info(f"Successfully staged aggregation job for portfolio {event.portfolio_id} on {event.date}")
-                    
-                    # NOTE: We no longer publish a Kafka event here. The scheduler will handle triggers.
 
+                    # --- Roll-forward for all open positions on this date ---
+                    await self.roll_forward_open_positions(event.portfolio_id, event.date, db)
+                    
         except (json.JSONDecodeError, ValidationError) as e:
             logger.error(f"Message validation failed: {e}. Sending to DLQ.", exc_info=True)
             await self._send_to_dlq_async(msg, e)
@@ -128,3 +130,52 @@ class PositionTimeseriesConsumer(BaseConsumer):
         except Exception as e:
             logger.error(f"Unexpected error processing message: {e}", exc_info=True)
             await self._send_to_dlq_async(msg, e)
+
+    async def roll_forward_open_positions(self, portfolio_id: str, a_date: date, db):
+        """
+        For all positions open on previous day, create today's position_timeseries using previous EOD.
+        EOD value is always recalculated using today's (or most recent) market price, with FX if needed.
+        """
+        repo = TimeseriesRepository(db)
+        prev_date = a_date - timedelta(days=1)
+        open_security_ids = await repo.get_all_open_positions_as_of(portfolio_id, prev_date)
+        existing_ts = await repo.get_all_position_timeseries_for_date(portfolio_id, a_date)
+        already_done = {ts.security_id for ts in existing_ts}
+        for security_id in open_security_ids:
+            if security_id in already_done:
+                continue
+            prev_ts = await repo.get_last_position_timeseries_before(portfolio_id, security_id, a_date)
+            if not prev_ts:
+                continue
+
+            # Get latest available price as of 'a_date'
+            market_price = await repo.get_latest_market_price(security_id, a_date)
+            if market_price is None:
+                # Optionally log a warning and skip or continue with 0
+                logger.warning(f"No market price found for {security_id} as of {a_date}, skipping EOD valuation.")
+                continue
+
+            # FX conversion if needed
+            rate = Decimal(1.0)
+            instrument = await repo.get_instrument(security_id)
+            portfolio = await repo.get_portfolio(portfolio_id)
+            if instrument and portfolio and instrument.currency != portfolio.base_currency:
+                fx = await repo.get_fx_rate(instrument.currency, portfolio.base_currency, a_date)
+                if fx:
+                    rate = fx.rate
+
+            eod_mv = prev_ts.quantity * market_price * rate
+
+            new_ts = PositionTimeseries(
+                portfolio_id=portfolio_id,
+                security_id=security_id,
+                date=a_date,
+                bod_market_value=prev_ts.eod_market_value,
+                bod_cashflow=0,
+                eod_cashflow=0,
+                eod_market_value=eod_mv,
+                fees=0,
+                quantity=prev_ts.quantity,
+                cost=prev_ts.cost
+            )
+            await repo.upsert_position_timeseries(new_ts)
