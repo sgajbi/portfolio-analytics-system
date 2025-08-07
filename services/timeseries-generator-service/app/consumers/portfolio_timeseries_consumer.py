@@ -5,16 +5,16 @@ import asyncio
 from pydantic import ValidationError
 from datetime import date
 from typing import Dict, Tuple, Optional
+from sqlalchemy import select
 
 from confluent_kafka import Message
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy import select
 from tenacity import retry, stop_after_attempt, wait_fixed, before_log, retry_if_exception_type
 
 from portfolio_common.kafka_consumer import BaseConsumer
 from portfolio_common.logging_utils import correlation_id_var
 from portfolio_common.events import PositionTimeseriesGeneratedEvent, PortfolioTimeseriesGeneratedEvent
-from portfolio_common.db import get_async_db_session # Updated import
+from portfolio_common.db import get_async_db_session
 from portfolio_common.database_models import Instrument
 from portfolio_common.config import KAFKA_PORTFOLIO_TIMESERIES_GENERATED_TOPIC
 
@@ -22,9 +22,6 @@ from ..core.portfolio_timeseries_logic import PortfolioTimeseriesLogic, FxRateNo
 from ..repositories.timeseries_repository import TimeseriesRepository
 
 logger = logging.getLogger(__name__)
-
-# ... (rest of the file is correct and does not need changes)
-# This space is intentionally left blank to highlight that only the import was missing.
 
 class PortfolioTimeseriesConsumer(BaseConsumer):
     """
@@ -38,7 +35,7 @@ class PortfolioTimeseriesConsumer(BaseConsumer):
         self._batch_lock = asyncio.Lock()
         self._processing_interval = 5
 
-    async def process_message(self, msg: Message): # <-- This line now works
+    async def process_message(self, msg: Message):
         """
         Instead of processing immediately, adds the work to a batch.
         """
@@ -77,9 +74,9 @@ class PortfolioTimeseriesConsumer(BaseConsumer):
             ]
             results = await asyncio.gather(*tasks, return_exceptions=True)
             
-            for result in results:
+            for result, (key, _) in zip(results, current_work.items()):
                 if isinstance(result, Exception):
-                    logger.error(f"Failed to process aggregation batch item: {result}", exc_info=result)
+                    logger.error(f"Failed to process aggregation batch item for {key}: {result}", exc_info=result)
 
     @retry(
         wait=wait_fixed(3),
@@ -141,8 +138,7 @@ class PortfolioTimeseriesConsumer(BaseConsumer):
 
     async def run(self):
         """
-        Overrides the BaseConsumer's run method to start the batch processor
-        alongside the message polling loop.
+        Starts the batch processor alongside the message polling loop.
         """
         self._initialize_consumer()
         loop = asyncio.get_running_loop()

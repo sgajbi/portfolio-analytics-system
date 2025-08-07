@@ -2,7 +2,7 @@
 import logging
 from datetime import date
 from typing import Optional, List
-from sqlalchemy import select
+from sqlalchemy import select, exists
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
@@ -12,7 +12,8 @@ from portfolio_common.database_models import (
     Portfolio, 
     Cashflow, 
     FxRate,
-    Instrument
+    Instrument,
+    PositionHistory
 )
 
 logger = logging.getLogger(__name__)
@@ -62,6 +63,21 @@ class TimeseriesRepository:
         result = await self.db.execute(stmt)
         return result.scalars().first()
 
+    async def is_first_position(self, portfolio_id: str, security_id: str, position_date: date) -> bool:
+        """
+        Checks if there is any position history for this security prior to the given date.
+        Returns True if this is the first known position, False otherwise.
+        """
+        stmt = select(
+            exists().where(
+                PositionHistory.portfolio_id == portfolio_id,
+                PositionHistory.security_id == security_id,
+                PositionHistory.position_date < position_date
+            )
+        )
+        result = await self.db.execute(stmt)
+        return not result.scalar()
+
     async def get_all_position_timeseries_for_date(
         self, portfolio_id: str, a_date: date
     ) -> List[PositionTimeseries]:
@@ -73,7 +89,6 @@ class TimeseriesRepository:
         result = await self.db.execute(stmt)
         return result.scalars().all()
 
-    # --- NEW METHOD TO FIX THE AttributeError ---
     async def get_all_cashflows_for_security_date(
         self, portfolio_id: str, security_id: str, a_date: date
     ) -> List[Cashflow]:

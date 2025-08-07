@@ -3,9 +3,6 @@ import logging
 import json
 import asyncio
 from pydantic import ValidationError
-from decimal import Decimal
-from datetime import date, timedelta
-
 from confluent_kafka import Message
 from sqlalchemy.exc import IntegrityError
 from tenacity import retry, stop_after_attempt, wait_fixed, before_log, retry_if_exception_type
@@ -13,8 +10,8 @@ from tenacity import retry, stop_after_attempt, wait_fixed, before_log, retry_if
 from portfolio_common.kafka_consumer import BaseConsumer
 from portfolio_common.logging_utils import correlation_id_var
 from portfolio_common.events import DailyPositionSnapshotPersistedEvent, PositionTimeseriesGeneratedEvent
-from portfolio_common.db import get_async_db_session # Updated import
-from portfolio_common.database_models import DailyPositionSnapshot, Cashflow
+from portfolio_common.db import get_async_db_session
+from portfolio_common.database_models import DailyPositionSnapshot, PositionHistory
 from portfolio_common.config import KAFKA_POSITION_TIMESERIES_GENERATED_TOPIC
 
 from ..core.position_timeseries_logic import PositionTimeseriesLogic
@@ -22,11 +19,12 @@ from ..repositories.timeseries_repository import TimeseriesRepository
 
 logger = logging.getLogger(__name__)
 
-# ... (rest of the file is correct and does not need changes)
-# This space is intentionally left blank to highlight that only the import was missing.
-
 class InstrumentNotFoundError(Exception):
     """Custom exception to signal that a required instrument is not yet persisted."""
+    pass
+
+class PreviousTimeseriesNotFoundError(Exception):
+    """Custom exception to signal that the previous day's time series record is not yet persisted."""
     pass
 
 class PositionTimeseriesConsumer(BaseConsumer):
@@ -34,16 +32,17 @@ class PositionTimeseriesConsumer(BaseConsumer):
     Consumes daily position snapshot events and generates the corresponding daily
     position time series record.
     """
-    async def process_message(self, msg: Message): # <-- This line now works
+    async def process_message(self, msg: Message):
         """Wrapper to call the retryable logic."""
-        await self._process_message_with_retry(msg)
+        retry_config = retry(
+            wait=wait_fixed(3),
+            stop=stop_after_attempt(5),
+            before=before_log(logger, logging.INFO),
+            retry=retry_if_exception_type((IntegrityError, InstrumentNotFoundError, PreviousTimeseriesNotFoundError))
+        )
+        retryable_process = retry_config(self._process_message_with_retry)
+        await retryable_process(msg)
 
-    @retry(
-        wait=wait_fixed(3),
-        stop=stop_after_attempt(5),
-        before=before_log(logger, logging.INFO),
-        retry=retry_if_exception_type((IntegrityError, InstrumentNotFoundError))
-    )
     async def _process_message_with_retry(self, msg: Message):
         try:
             event_data = json.loads(msg.value().decode('utf-8'))
@@ -64,12 +63,23 @@ class PositionTimeseriesConsumer(BaseConsumer):
                     if not current_snapshot:
                         logger.warning(f"DailyPositionSnapshot record with id {event.id} not found. Skipping.")
                         return
+                    
+                    is_first = await repo.is_first_position(
+                        portfolio_id=event.portfolio_id,
+                        security_id=event.security_id,
+                        position_date=event.date
+                    )
 
                     previous_timeseries = await repo.get_last_position_timeseries_before(
                         portfolio_id=event.portfolio_id,
                         security_id=event.security_id,
                         a_date=event.date
                     )
+                    
+                    if not is_first and not previous_timeseries:
+                        raise PreviousTimeseriesNotFoundError(
+                            f"Previous day's timeseries for {event.security_id} not found for date {event.date}. Will retry."
+                        )
 
                     cashflows = await repo.get_all_cashflows_for_security_date(
                         event.portfolio_id, event.security_id, event.date
@@ -91,9 +101,10 @@ class PositionTimeseriesConsumer(BaseConsumer):
                         completion_event = PositionTimeseriesGeneratedEvent.model_validate(new_timeseries_record)
                         headers = [('correlation_id', correlation_id.encode('utf-8'))] if correlation_id else None
                         
+                        # THE FIX: Key by portfolio_id to ensure partition affinity
                         self._producer.publish_message(
                             topic=KAFKA_POSITION_TIMESERIES_GENERATED_TOPIC,
-                            key=f"{completion_event.portfolio_id}:{completion_event.security_id}",
+                            key=completion_event.portfolio_id,
                             value=completion_event.model_dump(mode='json'),
                             headers=headers
                         )
@@ -102,7 +113,7 @@ class PositionTimeseriesConsumer(BaseConsumer):
         except (json.JSONDecodeError, ValidationError) as e:
             logger.error(f"Message validation failed: {e}. Sending to DLQ.", exc_info=True)
             await self._send_to_dlq_async(msg, e)
-        except InstrumentNotFoundError as e:
+        except (InstrumentNotFoundError, PreviousTimeseriesNotFoundError) as e:
             logger.warning(str(e))
             raise
         except IntegrityError:
