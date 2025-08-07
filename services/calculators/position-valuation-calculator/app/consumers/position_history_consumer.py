@@ -34,20 +34,20 @@ class PositionHistoryConsumer(BaseConsumer):
         try:
             event_data = json.loads(value)
             position_event = PositionHistoryPersistedEvent.model_validate(event_data)
-            
+
             logger.info(f"Valuing transaction-based position for id {position_event.id}", extra={"event_id": event_id})
-            
+
             async for db in get_async_db_session():
                 async with db.begin():
                     idempotency_repo = IdempotencyRepository(db)
                     outbox_repo = OutboxRepository()
-    
+
                     if await idempotency_repo.is_event_processed(event_id, SERVICE_NAME):
                         logger.warning(f"Event {event_id} already processed. Skipping.")
                         return
 
                     repo = ValuationRepository(db)
-        
+
                     position = await db.get(PositionHistory, position_event.id)
                     if not position:
                         logger.warning(f"PositionHistory with id {position_event.id} not found. Marking as processed to skip.")
@@ -58,10 +58,13 @@ class PositionHistoryConsumer(BaseConsumer):
                         security_id=position.security_id,
                         position_date=position.position_date
                     )
-                    
+
+                    # --- MODIFIED LOGIC FOR EVENTUAL CONSISTENCY ---
                     market_price, market_value, unrealized_gain_loss = None, None, None
+                    valuation_status = 'UNVALUED'
 
                     if price:
+                        valuation_status = 'VALUED'
                         market_price = price.price
                         market_value, unrealized_gain_loss = ValuationLogic.calculate(
                             quantity=position.quantity,
@@ -70,7 +73,7 @@ class PositionHistoryConsumer(BaseConsumer):
                         )
                     else:
                         logger.warning(f"No market price for {position.security_id} on or before {position.position_date}. Creating un-valued snapshot.")
-                    
+
                     snapshot_to_save = DailyPositionSnapshot(
                         portfolio_id=position.portfolio_id,
                         security_id=position.security_id,
@@ -79,11 +82,12 @@ class PositionHistoryConsumer(BaseConsumer):
                         cost_basis=position.cost_basis,
                         market_price=market_price,
                         market_value=market_value,
-                        unrealized_gain_loss=unrealized_gain_loss
+                        unrealized_gain_loss=unrealized_gain_loss,
+                        valuation_status=valuation_status # Set the status explicitly
                     )
-                    
+
                     persisted_snapshot = await repo.upsert_daily_snapshot(snapshot_to_save)
-                    
+
                     completion_event = DailyPositionSnapshotPersistedEvent.model_validate(persisted_snapshot)
                     outbox_repo.create_outbox_event(
                         db_session=db,
