@@ -5,6 +5,7 @@ import asyncio
 
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
+from prometheus_fastapi_instrumentator import Instrumentator # <-- NEW IMPORT
 from portfolio_common.kafka_utils import get_kafka_producer, KafkaProducer
 from portfolio_common.logging_utils import setup_logging, correlation_id_var, generate_correlation_id
 from portfolio_common.config import KAFKA_BOOTSTRAP_SERVERS
@@ -49,6 +50,10 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+# --- NEW: Add Prometheus Metrics ---
+Instrumentator().instrument(app).expose(app)
+logger.info("Prometheus metrics exposed at /metrics")
+
 # Correlation ID Middleware
 @app.middleware("http")
 async def add_correlation_id_middleware(request: Request, call_next):
@@ -65,7 +70,7 @@ async def add_correlation_id_middleware(request: Request, call_next):
     
     return response
 
-# --- NEW: Global Exception Handler ---
+# Global Exception Handler
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception):
     """
