@@ -3,16 +3,19 @@ import logging
 import json
 import asyncio
 from pydantic import ValidationError
+from decimal import Decimal
 
 from confluent_kafka import Message
 from portfolio_common.kafka_consumer import BaseConsumer
 from portfolio_common.logging_utils import correlation_id_var
 from portfolio_common.events import MarketPriceEvent, DailyPositionSnapshotPersistedEvent
 from portfolio_common.db import get_async_db_session
+from portfolio_common.database_models import DailyPositionSnapshot
 from portfolio_common.config import KAFKA_DAILY_POSITION_SNAPSHOT_PERSISTED_TOPIC
 from portfolio_common.idempotency_repository import IdempotencyRepository
 from portfolio_common.outbox_repository import OutboxRepository
 from ..repositories.valuation_repository import ValuationRepository
+from ..logic.valuation_logic import ValuationLogic
 
 logger = logging.getLogger(__name__)
 
@@ -20,8 +23,8 @@ SERVICE_NAME = "position-valuation-calculator-from-price"
 
 class MarketPriceConsumer(BaseConsumer):
     """
-    Consumes market price events and creates or updates daily position snapshots
-    for all affected portfolios with the new valuation. This process is idempotent.
+    Consumes market price events and re-values all daily position snapshots
+    for all affected portfolios with the new valuation, respecting instrument currency.
     """
     async def process_message(self, msg: Message):
         key = msg.key().decode('utf-8') if msg.key() else "NoKey"
@@ -46,22 +49,61 @@ class MarketPriceConsumer(BaseConsumer):
 
                     repo = ValuationRepository(db)
                     
-                    updated_snapshots = await repo.update_snapshots_for_market_price(price_event)
+                    # --- NEW: Orchestration logic moved from repository to consumer ---
+                    instrument = await repo.get_instrument(price_event.security_id)
+                    if not instrument:
+                        logger.error(f"Instrument '{price_event.security_id}' not found for price event. Skipping.")
+                        await idempotency_repo.mark_event_processed(event_id, "N/A", SERVICE_NAME, correlation_id)
+                        return
                     
-                    if updated_snapshots:
-                        logger.info(f"Staging {len(updated_snapshots)} snapshot events for price event {event_id}")
-                        for snapshot in updated_snapshots:
-                            completion_event = DailyPositionSnapshotPersistedEvent.model_validate(snapshot)
+                    fx_rate_value = None
+                    if price_event.currency != instrument.currency:
+                        fx_rate = await repo.get_fx_rate(price_event.currency, instrument.currency, price_event.price_date)
+                        if fx_rate:
+                            fx_rate_value = fx_rate.rate
+
+                    # Find all snapshots for this security on this date that are unvalued OR
+                    # could be updated by this new price info.
+                    snapshots_to_update = await repo.find_snapshots_to_update(price_event.security_id, price_event.price_date)
+                    
+                    if not snapshots_to_update:
+                        logger.info(f"No existing positions found needing valuation for {price_event.security_id} on {price_event.price_date}.")
+                        await idempotency_repo.mark_event_processed(event_id, "N/A", SERVICE_NAME, correlation_id)
+                        return
+
+                    updated_snapshots_count = 0
+                    for snapshot in snapshots_to_update:
+                        market_value = ValuationLogic.calculate_market_value(
+                            quantity=snapshot.quantity,
+                            market_price=price_event.price,
+                            price_currency=price_event.currency,
+                            instrument_currency=instrument.currency,
+                            fx_rate=fx_rate_value
+                        )
+
+                        if market_value is not None:
+                            snapshot.market_price = price_event.price
+                            snapshot.market_value = market_value
+                            snapshot.unrealized_gain_loss = None # Still ambiguous
+                            snapshot.valuation_status = 'VALUED'
+                            updated_snapshots_count += 1
+                            
+                            # The snapshot object is managed by SQLAlchemy, so changes are tracked.
+                            # We will upsert it to be safe.
+                            persisted_snapshot = await repo.upsert_daily_snapshot(snapshot)
+
+                            completion_event = DailyPositionSnapshotPersistedEvent.model_validate(persisted_snapshot)
                             outbox_repo.create_outbox_event(
                                 db_session=db,
                                 aggregate_type='DailyPositionSnapshot',
-                                aggregate_id=str(snapshot.id),
+                                aggregate_id=str(persisted_snapshot.id),
                                 event_type='DailyPositionSnapshotPersisted',
                                 topic=KAFKA_DAILY_POSITION_SNAPSHOT_PERSISTED_TOPIC,
                                 payload=completion_event.model_dump(mode='json'),
                                 correlation_id=correlation_id
                             )
                     
+                    logger.info(f"Successfully valued and staged updates for {updated_snapshots_count} snapshots.")
                     await idempotency_repo.mark_event_processed(event_id, "N/A", SERVICE_NAME, correlation_id)
 
         except (json.JSONDecodeError, ValidationError) as e:
