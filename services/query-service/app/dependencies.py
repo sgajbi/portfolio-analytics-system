@@ -1,5 +1,6 @@
+# services/query-service/app/dependencies.py
 from fastapi import Query
-from typing import Dict
+from typing import Dict, Optional
 
 def pagination_params(
     skip: int = Query(0, ge=0, description="Number of records to skip for pagination"),
@@ -11,3 +12,14 @@ def pagination_params(
     - limit: The number of items to return.
     """
     return {"skip": skip, "limit": limit}
+
+def sorting_params(
+    sort_by: Optional[str] = Query(None, description="Field to sort by (e.g., 'transaction_date')."),
+    sort_order: Optional[str] = Query("desc", description="Sort order: 'asc' or 'desc'.")
+) -> Dict[str, Optional[str]]:
+    """
+    A dependency that provides standardized sorting query parameters.
+    - sort_by: The field to sort the results on.
+    - sort_order: The direction of the sort (ascending or descending).
+    """
+    return {"sort_by": sort_by, "sort_order": sort_order}
