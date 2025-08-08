@@ -4,8 +4,10 @@ from contextlib import asynccontextmanager
 import asyncio
 
 from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse # <-- IMPORT ADDED
 from portfolio_common.kafka_utils import get_kafka_producer, KafkaProducer
 from portfolio_common.logging_utils import setup_logging, correlation_id_var, generate_correlation_id
+from portfolio_common.config import KAFKA_BOOTSTRAP_SERVERS
 from app.routers import transactions, instruments, market_prices, fx_rates, portfolios
 from confluent_kafka.admin import AdminClient
 
@@ -65,13 +67,10 @@ async def add_correlation_id_middleware(request: Request, call_next):
 
 async def check_kafka_health():
     """Checks if a connection can be established with Kafka."""
-    producer = app_state.get("kafka_producer")
-    if not producer or not producer.producer:
-        return False
+    # This is a more robust way to check health without relying on the producer's internal state.
     try:
-        # Use the underlying AdminClient from the producer for a lightweight check
-        admin_client = AdminClient.from_conf(producer.producer.cimpl.conf())
-        # Listing topics is a reliable way to check broker connectivity
+        conf = {'bootstrap.servers': KAFKA_BOOTSTRAP_SERVERS}
+        admin_client = AdminClient(conf)
         await asyncio.to_thread(admin_client.list_topics, timeout=5)
         return True
     except Exception as e:
