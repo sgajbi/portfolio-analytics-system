@@ -80,5 +80,7 @@ def test_full_valuation_pipeline(docker_services, db_engine, clean_db):
     assert valuation["market_price"] == "110.0000000000"
     # Expected market_value = 10 * 110 = 1100
     assert valuation["market_value"] == "1100.0000000000"
-    # Expected unrealized_gain_loss = 1100 - 1000 = 100
-    assert valuation["unrealized_gain_loss"] == "100.0000000000"
+    
+    # --- UPDATED ASSERTION ---
+    # Assert that unrealized_gain_loss is null due to the ambiguous cost_basis currency
+    assert valuation["unrealized_gain_loss"] is None
