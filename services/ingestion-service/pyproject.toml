@@ -15,7 +15,8 @@ dependencies = [
     "confluent-kafka==2.4.0",
     "structlog==24.1.0",
     "python-json-logger==2.0.7",
-    "python-multipart"
+    "python-multipart",
+    "prometheus-fastapi-instrumentator==7.0.0"
 ]
 
 [tool.setuptools.packages.find]
