@@ -7,6 +7,7 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from portfolio_common.database_models import Transaction, Cashflow
+from portfolio_common.utils import async_timed
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +38,7 @@ class TransactionRepository:
             stmt = stmt.filter(func.date(Transaction.transaction_date) <= end_date)
         return stmt
 
+    @async_timed(repository="TransactionRepository", method="get_transactions")
     async def get_transactions(
         self,
         portfolio_id: str,
@@ -55,6 +57,7 @@ class TransactionRepository:
         logger.info(f"Found {len(transactions)} transactions for portfolio '{portfolio_id}' with given filters.")
         return transactions
 
+    @async_timed(repository="TransactionRepository", method="get_transactions_count")
     async def get_transactions_count(
         self,
         portfolio_id: str,
