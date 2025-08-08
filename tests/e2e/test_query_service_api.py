@@ -18,11 +18,10 @@ def api_endpoints(docker_services):
     
     return {"ingestion": ingestion_url, "query": query_url}
 
-@pytest.fixture(scope="module")
+@pytest.fixture(scope="function") # <-- SCOPE CHANGED FROM "module" TO "function"
 def setup_e2e_data(api_endpoints, clean_db):
     """
-    A module-scoped fixture to ingest a consistent set of data once for all
-    tests in this file. This is more efficient than ingesting for every test.
+    A function-scoped fixture to ingest a consistent set of data for each test.
     """
     ingestion_url = api_endpoints["ingestion"]
     portfolio_id = f"E2E_API_TEST_{uuid.uuid4()}"
