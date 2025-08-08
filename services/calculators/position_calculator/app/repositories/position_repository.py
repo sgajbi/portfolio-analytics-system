@@ -6,6 +6,7 @@ from typing import List, Optional
 from sqlalchemy import select, func, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from portfolio_common.database_models import PositionHistory, Transaction
+from portfolio_common.utils import async_timed # <-- IMPORT DECORATOR
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +17,7 @@ class PositionRepository:
     def __init__(self, db: AsyncSession):
         self.db = db
 
+    @async_timed(repository="PositionRepository", method="get_last_position_before")
     async def get_last_position_before(
         self, portfolio_id: str, security_id: str, a_date: date
     ) -> Optional[PositionHistory]:
@@ -32,6 +34,7 @@ class PositionRepository:
         result = await self.db.execute(stmt)
         return result.scalars().first()
 
+    @async_timed(repository="PositionRepository", method="get_transactions_on_or_after")
     async def get_transactions_on_or_after(
         self, portfolio_id: str, security_id: str, a_date: date
     ) -> List[Transaction]:
@@ -48,6 +51,7 @@ class PositionRepository:
         result = await self.db.execute(stmt)
         return result.scalars().all()
 
+    @async_timed(repository="PositionRepository", method="delete_positions_from")
     async def delete_positions_from(
         self, portfolio_id: str, security_id: str, a_date: date
     ) -> int:
@@ -69,6 +73,7 @@ class PositionRepository:
         )
         return deleted_count
 
+    @async_timed(repository="PositionRepository", method="save_positions")
     async def save_positions(self, positions: List[PositionHistory]):
         """
         Bulk saves new position history records.
