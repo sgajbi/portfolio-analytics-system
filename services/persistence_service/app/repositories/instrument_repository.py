@@ -1,7 +1,7 @@
 # services/persistence_service/app/repositories/instrument_repository.py
 import logging
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from portfolio_common.database_models import Instrument as DBInstrument
 from portfolio_common.events import InstrumentEvent
 
@@ -12,23 +12,27 @@ class InstrumentRepository:
         self.db = db
 
     async def create_or_update_instrument(self, event: InstrumentEvent) -> DBInstrument:
+        """
+        Idempotently creates or updates an instrument using a native PostgreSQL UPSERT.
+        """
         try:
-            stmt = select(DBInstrument).filter_by(security_id=event.security_id)
-            result = await self.db.execute(stmt)
-            db_instrument = result.scalars().first()
-            
             instrument_data = event.model_dump()
 
-            if db_instrument:
-                for key, value in instrument_data.items():
-                    setattr(db_instrument, key, value)
-                logger.info(f"Instrument '{event.security_id}' found, staging for update.")
-            else:
-                db_instrument = DBInstrument(**instrument_data)
-                self.db.add(db_instrument)
-                logger.info(f"Instrument '{event.security_id}' not found, staging for creation.")
+            stmt = pg_insert(DBInstrument).values(**instrument_data)
 
-            return db_instrument
+            update_dict = {
+                c.name: c for c in stmt.excluded if c.name not in ["id", "security_id"]
+            }
+
+            final_stmt = stmt.on_conflict_do_update(
+                index_elements=['security_id'],
+                set_=update_dict
+            )
+            
+            await self.db.execute(final_stmt)
+            logger.info(f"Successfully staged UPSERT for instrument '{event.security_id}'.")
+            
+            return DBInstrument(**instrument_data)
         except Exception as e:
-            logger.error(f"Failed to stage upsert for instrument '{event.security_id}': {e}", exc_info=True)
+            logger.error(f"Failed to stage UPSERT for instrument '{event.security_id}': {e}", exc_info=True)
             raise

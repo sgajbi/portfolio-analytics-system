@@ -1,7 +1,7 @@
 # services/persistence_service/app/repositories/market_price_repository.py
 import logging
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from portfolio_common.database_models import MarketPrice as DBMarketPrice
 from portfolio_common.events import MarketPriceEvent
 
@@ -12,26 +12,28 @@ class MarketPriceRepository:
         self.db = db
 
     async def create_market_price(self, event: MarketPriceEvent) -> DBMarketPrice:
+        """
+        Idempotently creates or updates a market price using a native PostgreSQL UPSERT.
+        """
         try:
-            stmt = select(DBMarketPrice).filter_by(
-                security_id=event.security_id,
-                price_date=event.price_date
-            )
-            result = await self.db.execute(stmt)
-            db_price = result.scalars().first()
-
             market_price_data = event.model_dump()
 
-            if db_price:
-                for key, value in market_price_data.items():
-                    setattr(db_price, key, value)
-                logger.info(f"Price for '{event.security_id}' on {event.price_date} found, staging for update.")
-            else:
-                db_price = DBMarketPrice(**market_price_data)
-                self.db.add(db_price)
-                logger.info(f"Price for '{event.security_id}' on {event.price_date} not found, staging for creation.")
+            stmt = pg_insert(DBMarketPrice).values(**market_price_data)
 
-            return db_price
+            update_dict = {
+                c.name: c for c in stmt.excluded if c.name not in ["id", "security_id", "price_date"]
+            }
+
+            # Use the unique constraint name for conflict resolution
+            final_stmt = stmt.on_conflict_on_constraint(
+                constraint='_security_price_date_uc',
+                set_=update_dict
+            )
+            
+            await self.db.execute(final_stmt)
+            logger.info(f"Successfully staged UPSERT for market price for '{event.security_id}' on '{event.price_date}'.")
+
+            return DBMarketPrice(**market_price_data)
         except Exception as e:
-            logger.error(f"Failed to stage upsert for market price for '{event.security_id}' on '{event.price_date}': {e}", exc_info=True)
+            logger.error(f"Failed to stage UPSERT for market price for '{event.security_id}' on '{event.price_date}': {e}", exc_info=True)
             raise
