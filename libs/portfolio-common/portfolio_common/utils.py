@@ -1,4 +1,4 @@
-# services/query-service/app/utils.py
+# libs/portfolio-common/portfolio_common/utils.py
 import time
 import functools
 from typing import Callable, Any
