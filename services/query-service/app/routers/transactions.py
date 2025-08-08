@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from portfolio_common.db import get_async_db_session
 from ..services.transaction_service import TransactionService
 from ..dtos.transaction_dto import PaginatedTransactionResponse
-from ..dependencies import pagination_params
+from ..dependencies import pagination_params, sorting_params # <-- IMPORT NEW DEPENDENCY
 
 router = APIRouter(
     prefix="/portfolios",
@@ -21,6 +21,7 @@ async def get_transactions(
     start_date: Optional[date] = Query(None, description="The start date for the date range filter (inclusive)."),
     end_date: Optional[date] = Query(None, description="The end date for the date range filter (inclusive)."),
     pagination: Dict[str, int] = Depends(pagination_params),
+    sorting: Dict[str, Optional[str]] = Depends(sorting_params), # <-- USE NEW DEPENDENCY
     db: AsyncSession = Depends(get_async_db_session)
 ):
     service = TransactionService(db)
@@ -29,5 +30,6 @@ async def get_transactions(
         security_id=security_id,
         start_date=start_date,
         end_date=end_date,
-        **pagination
+        **pagination,
+        **sorting
     )
