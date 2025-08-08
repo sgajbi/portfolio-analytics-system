@@ -3,6 +3,7 @@ import logging
 import json
 import asyncio
 from pydantic import ValidationError
+from decimal import Decimal
 
 from confluent_kafka import Message
 from portfolio_common.kafka_consumer import BaseConsumer
@@ -22,8 +23,8 @@ SERVICE_NAME = "position-valuation-calculator-from-position"
 
 class PositionHistoryConsumer(BaseConsumer):
     """
-    Consumes transaction-driven position history events, values them, and
-    saves the result as a daily position snapshot. This process is idempotent.
+    Consumes position history events, values them in the instrument's currency,
+    and saves the result as a daily position snapshot.
     """
     async def process_message(self, msg: Message):
         key = msg.key().decode('utf-8') if msg.key() else "NoKey"
@@ -54,25 +55,43 @@ class PositionHistoryConsumer(BaseConsumer):
                         await idempotency_repo.mark_event_processed(event_id, position_event.portfolio_id, SERVICE_NAME, correlation_id)
                         return
 
+                    instrument = await repo.get_instrument(position.security_id)
+                    if not instrument:
+                        logger.error(f"Instrument '{position.security_id}' not found. Cannot value position. Skipping.")
+                        await idempotency_repo.mark_event_processed(event_id, position.portfolio_id, SERVICE_NAME, correlation_id)
+                        return
+
                     price = await repo.get_latest_price_for_position(
                         security_id=position.security_id,
                         position_date=position.position_date
                     )
-
-                    # --- MODIFIED LOGIC FOR EVENTUAL CONSISTENCY ---
-                    market_price, market_value, unrealized_gain_loss = None, None, None
+                    
+                    market_value = None
+                    market_price = None
                     valuation_status = 'UNVALUED'
 
                     if price:
-                        valuation_status = 'VALUED'
                         market_price = price.price
-                        market_value, unrealized_gain_loss = ValuationLogic.calculate(
+                        fx_rate_value = None
+                        if price.currency != instrument.currency:
+                            fx_rate = await repo.get_fx_rate(price.currency, instrument.currency, position.position_date)
+                            if fx_rate:
+                                fx_rate_value = fx_rate.rate
+                        
+                        market_value = ValuationLogic.calculate_market_value(
                             quantity=position.quantity,
-                            cost_basis=position.cost_basis,
-                            market_price=market_price
+                            market_price=market_price,
+                            price_currency=price.currency,
+                            instrument_currency=instrument.currency,
+                            fx_rate=fx_rate_value
                         )
+
+                    if market_value is not None:
+                        valuation_status = 'VALUED'
                     else:
-                        logger.warning(f"No market price for {position.security_id} on or before {position.position_date}. Creating un-valued snapshot.")
+                        reason = "market price" if price is None else "FX rate to align price currency"
+                        logger.warning(f"Missing {reason} for {position.security_id} on or before {position.position_date}. Creating un-valued snapshot.")
+                        market_price = None # Clear price if valuation failed
 
                     snapshot_to_save = DailyPositionSnapshot(
                         portfolio_id=position.portfolio_id,
@@ -82,8 +101,8 @@ class PositionHistoryConsumer(BaseConsumer):
                         cost_basis=position.cost_basis,
                         market_price=market_price,
                         market_value=market_value,
-                        unrealized_gain_loss=unrealized_gain_loss,
-                        valuation_status=valuation_status # Set the status explicitly
+                        unrealized_gain_loss=None, # Set to None as cost_basis currency is ambiguous
+                        valuation_status=valuation_status
                     )
 
                     persisted_snapshot = await repo.upsert_daily_snapshot(snapshot_to_save)
