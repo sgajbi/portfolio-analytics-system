@@ -1,7 +1,7 @@
 # services/persistence_service/app/repositories/transaction_db_repo.py
 import logging
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from portfolio_common.database_models import Transaction as DBTransaction
 from portfolio_common.events import TransactionEvent
 
@@ -13,26 +13,36 @@ class TransactionDBRepository:
 
     async def create_or_update_transaction(self, event: TransactionEvent) -> DBTransaction:
         """
-        Idempotently creates or updates a transaction using a
-        get-then-update/create pattern.
+        Idempotently creates or updates a transaction using a native PostgreSQL
+        UPSERT (INSERT ... ON CONFLICT DO UPDATE) for high performance and concurrency safety.
         """
         try:
-            stmt = select(DBTransaction).filter_by(transaction_id=event.transaction_id)
-            result = await self.db.execute(stmt)
-            db_transaction = result.scalars().first()
-            
             event_dict = event.model_dump()
+            
+            # The statement to execute.
+            stmt = pg_insert(DBTransaction).values(
+                **event_dict
+            )
 
-            if db_transaction:
-                for key, value in event_dict.items():
-                    setattr(db_transaction, key, value)
-                logger.info(f"Transaction '{event.transaction_id}' found, staging for update.")
-            else:
-                db_transaction = DBTransaction(**event_dict)
-                self.db.add(db_transaction)
-                logger.info(f"Transaction '{event.transaction_id}' not found, staging for creation.")
+            # Define which columns to update if a conflict on 'transaction_id' occurs.
+            # We exclude the primary key and the unique identifier itself from the update set.
+            update_dict = {
+                c.name: c for c in stmt.excluded if c.name not in ["id", "transaction_id"]
+            }
 
-            return db_transaction
+            # The final UPSERT statement with the conflict resolution.
+            final_stmt = stmt.on_conflict_do_update(
+                index_elements=['transaction_id'],
+                set_=update_dict
+            )
+            
+            await self.db.execute(final_stmt)
+            logger.info(f"Successfully staged UPSERT for transaction '{event.transaction_id}'.")
+            
+            # Note: Since UPSERT doesn't easily return the model, we can assume success.
+            # The calling consumer logic doesn't depend on the returned object.
+            return DBTransaction(**event_dict)
+
         except Exception as e:
-            logger.error(f"Failed to stage upsert for transaction '{event.transaction_id}': {e}", exc_info=True)
+            logger.error(f"Failed to stage UPSERT for transaction '{event.transaction_id}': {e}", exc_info=True)
             raise
