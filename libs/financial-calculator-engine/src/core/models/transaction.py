@@ -38,9 +38,12 @@ class Transaction(BaseModel):
     accrued_interest: Optional[condecimal(ge=0)] = Field(default=Decimal(0), description="Accrued interest")
     average_price: Optional[condecimal(ge=0)] = Field(None, description="Average price of the instrument")
     trade_currency: str = Field(..., alias="tradeCurrency", description="Currency of the transaction")
-    net_cost: Optional[condecimal()] = Field(None, description="Calculated net cost for BUYs")
-    gross_cost: Optional[condecimal()] = Field(None, description="Calculated gross cost for BUYs")
-    realized_gain_loss: Optional[condecimal()] = Field(None, description="Calculated realized gain/loss for SELLs")
+    # --- NEW FIELD ---
+    portfolio_base_currency: str = Field(..., description="The base currency of the portfolio")
+
+    net_cost: Optional[condecimal()] = Field(None, description="Calculated net cost for BUYs in portfolio base currency")
+    gross_cost: Optional[condecimal()] = Field(None, description="Calculated gross cost for BUYs in portfolio base currency")
+    realized_gain_loss: Optional[condecimal()] = Field(None, description="Calculated realized gain/loss for SELLs in portfolio base currency")
     error_reason: Optional[str] = Field(None, description="Reason for transaction processing failure")
 
     @field_validator('transaction_date', 'settlement_date', mode='before')
