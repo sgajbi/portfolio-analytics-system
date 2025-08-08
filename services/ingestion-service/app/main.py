@@ -3,8 +3,8 @@ import logging
 from contextlib import asynccontextmanager
 import asyncio
 
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse # <-- IMPORT ADDED
+from fastapi import FastAPI, Request, status
+from fastapi.responses import JSONResponse
 from portfolio_common.kafka_utils import get_kafka_producer, KafkaProducer
 from portfolio_common.logging_utils import setup_logging, correlation_id_var, generate_correlation_id
 from portfolio_common.config import KAFKA_BOOTSTRAP_SERVERS
@@ -65,9 +65,29 @@ async def add_correlation_id_middleware(request: Request, call_next):
     
     return response
 
+# --- NEW: Global Exception Handler ---
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    """
+    Catches any unhandled exceptions and returns a standardized 500 error response.
+    """
+    correlation_id = correlation_id_var.get()
+    logger.critical(
+        f"Unhandled exception for request {request.method} {request.url}",
+        exc_info=exc,
+        extra={"correlation_id": correlation_id}
+    )
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={
+            "error": "Internal Server Error",
+            "message": "An unexpected error occurred. Please contact support.",
+            "correlation_id": correlation_id
+        },
+    )
+
 async def check_kafka_health():
     """Checks if a connection can be established with Kafka."""
-    # This is a more robust way to check health without relying on the producer's internal state.
     try:
         conf = {'bootstrap.servers': KAFKA_BOOTSTRAP_SERVERS}
         admin_client = AdminClient(conf)
