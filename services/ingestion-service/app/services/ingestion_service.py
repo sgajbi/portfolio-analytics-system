@@ -41,7 +41,7 @@ class IngestionService:
                 value=portfolio_payload,
                 headers=headers
             )
-            KAFKA_MESSAGES_PUBLISHED_TOTAL.labels(topic=KAFKA_RAW_PORTFOLIOS_TOPIC).inc() # <-- INCREMENT METRIC
+            KAFKA_MESSAGES_PUBLISHED_TOTAL.labels(topic=KAFKA_RAW_PORTFOLIOS_TOPIC).inc()
 
     async def publish_transaction(self, transaction: Transaction) -> None:
         """Publishes a single transaction to the raw transactions topic."""
@@ -49,11 +49,11 @@ class IngestionService:
         transaction_payload = transaction.model_dump()
         self._kafka_producer.publish_message(
             topic=KAFKA_RAW_TRANSACTIONS_TOPIC,
-            key=transaction.transaction_id,
+            key=transaction.portfolio_id,
             value=transaction_payload,
             headers=headers
         )
-        KAFKA_MESSAGES_PUBLISHED_TOTAL.labels(topic=KAFKA_RAW_TRANSACTIONS_TOPIC).inc() # <-- INCREMENT METRIC
+        KAFKA_MESSAGES_PUBLISHED_TOTAL.labels(topic=KAFKA_RAW_TRANSACTIONS_TOPIC).inc()
 
     async def publish_transactions(self, transactions: List[Transaction]) -> None:
         """Publishes a list of transactions to the raw transactions topic."""
@@ -62,11 +62,11 @@ class IngestionService:
             transaction_payload = transaction.model_dump()
             self._kafka_producer.publish_message(
                 topic=KAFKA_RAW_TRANSACTIONS_TOPIC,
-                key=transaction.transaction_id,
+                key=transaction.portfolio_id,
                 value=transaction_payload,
                 headers=headers
             )
-            KAFKA_MESSAGES_PUBLISHED_TOTAL.labels(topic=KAFKA_RAW_TRANSACTIONS_TOPIC).inc() # <-- INCREMENT METRIC
+            KAFKA_MESSAGES_PUBLISHED_TOTAL.labels(topic=KAFKA_RAW_TRANSACTIONS_TOPIC).inc()
 
     async def publish_instruments(self, instruments: List[Instrument]) -> None:
         """Publishes a list of instruments to the instruments topic."""
@@ -79,7 +79,7 @@ class IngestionService:
                 value=instrument_payload,
                 headers=headers
             )
-            KAFKA_MESSAGES_PUBLISHED_TOTAL.labels(topic=KAFKA_INSTRUMENTS_TOPIC).inc() # <-- INCREMENT METRIC
+            KAFKA_MESSAGES_PUBLISHED_TOTAL.labels(topic=KAFKA_INSTRUMENTS_TOPIC).inc()
 
     async def publish_market_prices(self, market_prices: List[MarketPrice]) -> None:
         """Publishes a list of market prices to the market prices topic."""
@@ -92,7 +92,7 @@ class IngestionService:
                 value=price_payload,
                 headers=headers
             )
-            KAFKA_MESSAGES_PUBLISHED_TOTAL.labels(topic=KAFKA_MARKET_PRICES_TOPIC).inc() # <-- INCREMENT METRIC
+            KAFKA_MESSAGES_PUBLISHED_TOTAL.labels(topic=KAFKA_MARKET_PRICES_TOPIC).inc()
 
     async def publish_fx_rates(self, fx_rates: List[FxRate]) -> None:
         """Publishes a list of FX rates to the fx_rates topic."""
@@ -106,7 +106,7 @@ class IngestionService:
                 value=rate_payload,
                 headers=headers
             )
-            KAFKA_MESSAGES_PUBLISHED_TOTAL.labels(topic=KAFKA_FX_RATES_TOPIC).inc() # <-- INCREMENT METRIC
+            KAFKA_MESSAGES_PUBLISHED_TOTAL.labels(topic=KAFKA_FX_RATES_TOPIC).inc()
 
 def get_ingestion_service(
     kafka_producer: KafkaProducer = Depends(get_kafka_producer)
