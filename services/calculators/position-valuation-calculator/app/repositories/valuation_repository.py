@@ -7,10 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from portfolio_common.database_models import (
-    PositionHistory, MarketPrice, DailyPositionSnapshot, Portfolio, FxRate, Instrument
+    PositionHistory, MarketPrice, DailyPositionSnapshot, FxRate, Instrument
 )
-from portfolio_common.events import MarketPriceEvent
-from ..logic.valuation_logic import ValuationLogic
 
 logger = logging.getLogger(__name__)
 
@@ -23,12 +21,11 @@ class ValuationRepository:
 
     async def get_instrument(self, security_id: str) -> Optional[Instrument]:
         """Fetches an instrument by its security ID."""
-        # This is still needed to get the instrument's currency
         result = await self.db.execute(select(Instrument).filter_by(security_id=security_id))
         return result.scalars().first()
 
     async def get_fx_rate(self, from_currency: str, to_currency: str, a_date: date) -> Optional[FxRate]:
-        """Fetches the latest FX rate on or before a given date to align price currency with instrument currency."""
+        """Fetches the latest FX rate on or before a given date."""
         stmt = select(FxRate).filter(
             FxRate.from_currency == from_currency,
             FxRate.to_currency == to_currency,
@@ -47,19 +44,19 @@ class ValuationRepository:
         ).order_by(MarketPrice.price_date.desc())
         result = await self.db.execute(stmt)
         return result.scalars().first()
-
-    async def get_latest_position_on_or_before(self, portfolio_id: str, security_id: str, a_date: date) -> Optional[PositionHistory]:
+    
+    async def find_snapshots_to_update(self, security_id: str, a_date: date) -> List[DailyPositionSnapshot]:
         """
-        Finds the single most recent transactional position history record for a security
-        on or before a given date.
+        Finds all snapshots for a security on a given date. This is typically used
+        by the MarketPriceConsumer to find positions that need re-valuation.
         """
-        stmt = select(PositionHistory).filter(
-            PositionHistory.portfolio_id == portfolio_id,
-            PositionHistory.security_id == security_id,
-            PositionHistory.position_date <= a_date
-        ).order_by(PositionHistory.position_date.desc(), PositionHistory.id.desc())
+        stmt = select(DailyPositionSnapshot).filter(
+            DailyPositionSnapshot.security_id == security_id,
+            DailyPositionSnapshot.date == a_date,
+            DailyPositionSnapshot.quantity > 0
+        )
         result = await self.db.execute(stmt)
-        return result.scalars().first()
+        return result.scalars().all()
 
     async def upsert_daily_snapshot(self, snapshot: DailyPositionSnapshot) -> DailyPositionSnapshot:
         """
@@ -83,51 +80,3 @@ class ValuationRepository:
         except Exception as e:
             logger.error(f"Failed to stage upsert for daily snapshot: {e}", exc_info=True)
             raise
-
-    async def update_snapshots_for_market_price(self, price_event: MarketPriceEvent) -> List[DailyPositionSnapshot]:
-        """
-        Finds all positions affected by a market price update, recalculates their
-        valuation, and upserts their daily snapshots.
-        """
-        updated_snapshots = []
-        
-        # This method's logic will be updated in a subsequent step to handle the new FX rules
-        stmt = select(distinct(PositionHistory.portfolio_id)).filter_by(security_id=price_event.security_id)
-        result = await self.db.execute(stmt)
-        portfolios_with_security = result.scalars().all()
-
-        for portfolio_id in portfolios_with_security:
-            latest_position = await self.get_latest_position_on_or_before(
-                portfolio_id=portfolio_id,
-                security_id=price_event.security_id,
-                a_date=price_event.price_date
-            )
-
-            if not latest_position or latest_position.quantity.is_zero():
-                continue
-
-            # Placeholder for logic that will be updated
-            market_value, unrealized_gain_loss = ValuationLogic.calculate(
-                quantity=latest_position.quantity,
-                cost_basis=latest_position.cost_basis,
-                market_price=price_event.price,
-                instrument_currency=price_event.currency, # Temporarily assume price currency is instrument currency
-                portfolio_currency=price_event.currency
-            )
-
-            snapshot_to_save = DailyPositionSnapshot(
-                portfolio_id=portfolio_id,
-                security_id=price_event.security_id,
-                date=price_event.price_date,
-                quantity=latest_position.quantity,
-                cost_basis=latest_position.cost_basis,
-                market_price=price_event.price,
-                market_value=market_value,
-                unrealized_gain_loss=unrealized_gain_loss,
-                valuation_status="VALUED" # Placeholder
-            )
-            
-            persisted_snapshot = await self.upsert_daily_snapshot(snapshot_to_save)
-            updated_snapshots.append(persisted_snapshot)
-            
-        return updated_snapshots
