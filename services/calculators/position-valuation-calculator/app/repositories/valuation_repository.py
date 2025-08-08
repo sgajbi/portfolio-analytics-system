@@ -6,7 +6,9 @@ from sqlalchemy import select, func, distinct
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-from portfolio_common.database_models import PositionHistory, MarketPrice, DailyPositionSnapshot
+from portfolio_common.database_models import (
+    PositionHistory, MarketPrice, DailyPositionSnapshot, Portfolio, FxRate, Instrument
+)
 from portfolio_common.events import MarketPriceEvent
 from ..logic.valuation_logic import ValuationLogic
 
@@ -18,6 +20,24 @@ class ValuationRepository:
     """
     def __init__(self, db: AsyncSession):
         self.db = db
+
+    async def get_portfolio(self, portfolio_id: str) -> Optional[Portfolio]:
+        """Fetches a portfolio by its ID."""
+        return await self.db.get(Portfolio, portfolio_id)
+
+    async def get_instrument(self, security_id: str) -> Optional[Instrument]:
+        """Fetches an instrument by its security ID."""
+        return await self.db.get(Instrument, security_id)
+
+    async def get_fx_rate(self, from_currency: str, to_currency: str, a_date: date) -> Optional[FxRate]:
+        """Fetches the latest FX rate on or before a given date."""
+        stmt = select(FxRate).filter(
+            FxRate.from_currency == from_currency,
+            FxRate.to_currency == to_currency,
+            FxRate.rate_date <= a_date
+        ).order_by(FxRate.rate_date.desc())
+        result = await self.db.execute(stmt)
+        return result.scalars().first()
 
     async def get_latest_price_for_position(self, security_id: str, position_date: date) -> Optional[MarketPrice]:
         """
