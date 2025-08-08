@@ -1,7 +1,6 @@
 # services/ingestion-service/app/routers/portfolios.py
 import logging
-from fastapi import APIRouter, Depends, status, HTTPException
-from pydantic import ValidationError
+from fastapi import APIRouter, Depends, status
 
 from app.DTOs.portfolio_dto import PortfolioIngestionRequest
 from app.services.ingestion_service import IngestionService, get_ingestion_service
@@ -19,21 +18,10 @@ async def ingest_portfolios(
     """
     num_portfolios = len(request.portfolios)
     logger.info("Received request to ingest portfolios.", extra={"num_portfolios": num_portfolios})
-    try:
-        await ingestion_service.publish_portfolios(request.portfolios)
-        logger.info("Portfolios successfully queued.", extra={"num_portfolios": num_portfolios})
-        return {
-            "message": f"Successfully queued {num_portfolios} portfolios for processing."
-        }
-    except ValidationError as e:
-        logger.error("Validation error during portfolio ingestion.", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid portfolio data: {e.errors()}"
-        )
-    except Exception as e:
-        logger.error("Failed to publish bulk portfolios due to an unexpected error.", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An unexpected error occurred while processing portfolios."
-        )
+    
+    await ingestion_service.publish_portfolios(request.portfolios)
+
+    logger.info("Portfolios successfully queued.", extra={"num_portfolios": num_portfolios})
+    return {
+        "message": f"Successfully queued {num_portfolios} portfolios for processing."
+    }

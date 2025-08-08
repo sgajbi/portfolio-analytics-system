@@ -1,12 +1,11 @@
 # services/ingestion-service/app/routers/fx_rates.py
-import logging # UPDATED
-from fastapi import APIRouter, Depends, status, HTTPException
-from pydantic import ValidationError
+import logging
+from fastapi import APIRouter, Depends, status
 
 from app.DTOs.fx_rate_dto import FxRateIngestionRequest
 from app.services.ingestion_service import IngestionService, get_ingestion_service
 
-logger = logging.getLogger(__name__) # UPDATED
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 @router.post("/ingest/fx-rates", status_code=status.HTTP_202_ACCEPTED, tags=["FX Rates"])
@@ -19,21 +18,10 @@ async def ingest_fx_rates(
     """
     num_rates = len(request.fx_rates)
     logger.info("Received request to ingest fx rates.", extra={"num_rates": num_rates})
-    try:
-        await ingestion_service.publish_fx_rates(request.fx_rates)
-        logger.info("FX rates successfully queued.", extra={"num_rates": num_rates})
-        return {
-            "message": f"Successfully queued {num_rates} FX rates for processing."
-        }
-    except ValidationError as e:
-        logger.error("Validation error during FX rates ingestion.", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid FX rate data: {e.errors()}"
-        )
-    except Exception as e:
-        logger.error("Failed to publish bulk FX rates due to an unexpected error.", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An unexpected error occurred while processing FX rates."
-        )
+    
+    await ingestion_service.publish_fx_rates(request.fx_rates)
+    
+    logger.info("FX rates successfully queued.", extra={"num_rates": num_rates})
+    return {
+        "message": f"Successfully queued {num_rates} FX rates for processing."
+    }
