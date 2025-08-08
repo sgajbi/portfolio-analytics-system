@@ -12,57 +12,55 @@ class TransactionCostStrategy(Protocol):
 
 class BuyStrategy:
     def calculate_costs(self, transaction: Transaction, disposition_engine: DispositionEngine, error_reporter: ErrorReporter) -> None:
-        transaction.gross_cost = Decimal(str(transaction.gross_transaction_amount))
+        total_fees_local = transaction.fees.total_fees if transaction.fees else Decimal(0)
+        accrued_interest_local = transaction.accrued_interest or Decimal(0)
         
-        total_fees = transaction.fees.total_fees if transaction.fees else Decimal(0)
+        # Calculate cost in the original trade currency
+        transaction.net_cost_local = transaction.gross_transaction_amount + total_fees_local + accrued_interest_local
         
-        accrued_interest = Decimal(str(transaction.accrued_interest)) if transaction.accrued_interest is not None else Decimal(0)
-        transaction.net_cost = transaction.gross_cost + total_fees + accrued_interest
-
+        # Convert to portfolio base currency
+        fx_rate = transaction.transaction_fx_rate or Decimal(1.0)
+        transaction.net_cost = transaction.net_cost_local * fx_rate
+        
         if transaction.quantity > Decimal(0):
-            calculated_average_price = transaction.net_cost / transaction.quantity
-            if transaction.average_price is None:
-                transaction.average_price = calculated_average_price
             try:
                 disposition_engine.add_buy_lot(transaction)
             except ValueError as e:
                 error_reporter.add_error(transaction.transaction_id, str(e))
-        else:
-            transaction.average_price = Decimal(0)
 
 class SellStrategy:
     def calculate_costs(self, transaction: Transaction, disposition_engine: DispositionEngine, error_reporter: ErrorReporter) -> None:
-        sell_quantity = Decimal(str(transaction.quantity))
-        gross_sell_proceeds = Decimal(str(transaction.gross_transaction_amount))
+        sell_quantity = transaction.quantity
+        sell_fees_local = transaction.fees.total_fees if transaction.fees else Decimal(0)
 
-        sell_fees = transaction.fees.total_fees if transaction.fees else Decimal(0)
-        net_sell_proceeds = gross_sell_proceeds - sell_fees
+        # Calculate proceeds in local currency
+        net_sell_proceeds_local = transaction.gross_transaction_amount - sell_fees_local
 
-        total_matched_cost, consumed_quantity, error_reason = disposition_engine.consume_sell_quantity(transaction)
+        # Convert proceeds to portfolio base currency
+        fx_rate = transaction.transaction_fx_rate or Decimal(1.0)
+        net_sell_proceeds_base = net_sell_proceeds_local * fx_rate
+        
+        # Consume from lots to get cost of goods sold (COGS) in both currencies
+        cogs_base, cogs_local, consumed_quantity, error_reason = disposition_engine.consume_sell_quantity(transaction)
         
         if error_reason:
             error_reporter.add_error(transaction.transaction_id, error_reason)
             return
 
         if consumed_quantity > Decimal(0):
-            transaction.realized_gain_loss = net_sell_proceeds - total_matched_cost
-            transaction.gross_cost = -total_matched_cost
-            transaction.net_cost = -total_matched_cost
-        
-        if sell_quantity > Decimal(0):
-            transaction.average_price = gross_sell_proceeds / sell_quantity
-        else:
-            transaction.average_price = Decimal(0)
+            # Calculate PnL in both currencies
+            transaction.realized_gain_loss_local = net_sell_proceeds_local - cogs_local
+            transaction.realized_gain_loss = net_sell_proceeds_base - cogs_base
+            
+            # Net cost for a sell is the negative COGS in the base currency
+            transaction.net_cost = -cogs_base
+            transaction.net_cost_local = -cogs_local
 
 class DefaultStrategy:
     def calculate_costs(self, transaction: Transaction, disposition_engine: DispositionEngine, error_reporter: ErrorReporter) -> None:
-        transaction.gross_cost = Decimal(str(transaction.gross_transaction_amount))
-        if transaction.net_transaction_amount is not None:
-            transaction.net_cost = Decimal(str(transaction.net_transaction_amount))
-        else:
-            transaction.net_cost = transaction.gross_cost
-        transaction.realized_gain_loss = None
-        transaction.average_price = None
+        transaction.net_cost_local = transaction.gross_transaction_amount
+        fx_rate = transaction.transaction_fx_rate or Decimal(1.0)
+        transaction.net_cost = transaction.net_cost_local * fx_rate
 
 class CostCalculator:
     def __init__(self, disposition_engine: DispositionEngine, error_reporter: ErrorReporter):
@@ -81,10 +79,15 @@ class CostCalculator:
         self._default_strategy = DefaultStrategy()
 
     def calculate_transaction_costs(self, transaction: Transaction):
+        if transaction.trade_currency != transaction.portfolio_base_currency and not transaction.transaction_fx_rate:
+            self._error_reporter.add_error(transaction.transaction_id, f"Missing FX rate for cross-currency transaction from {transaction.trade_currency} to {transaction.portfolio_base_currency}.")
+            return
+
         try:
             transaction_type_enum = TransactionType(transaction.transaction_type)
         except ValueError:
             self._error_reporter.add_error(transaction.transaction_id, f"Unknown transaction type '{transaction.transaction_type}'.")
             return
+            
         strategy = self._strategies.get(transaction_type_enum, self._default_strategy)
         strategy.calculate_costs(transaction, self._disposition_engine, self._error_reporter)
