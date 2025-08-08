@@ -3,13 +3,22 @@ import logging
 from datetime import date
 from typing import List, Optional
 
-from sqlalchemy import select, func
+from sqlalchemy import select, func, desc, asc
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from portfolio_common.database_models import Transaction, Cashflow
 from portfolio_common.utils import async_timed
 
 logger = logging.getLogger(__name__)
+
+# Whitelist of columns that clients are allowed to sort by.
+# This prevents sorting on unindexed or sensitive columns.
+ALLOWED_SORT_FIELDS = {
+    "transaction_date",
+    "quantity",
+    "price",
+    "gross_transaction_amount"
+}
 
 class TransactionRepository:
     """
@@ -44,6 +53,8 @@ class TransactionRepository:
         portfolio_id: str,
         skip: int,
         limit: int,
+        sort_by: Optional[str] = None,
+        sort_order: Optional[str] = "desc",
         security_id: Optional[str] = None,
         start_date: Optional[date] = None,
         end_date: Optional[date] = None
@@ -52,7 +63,19 @@ class TransactionRepository:
         Retrieves a paginated list of transactions with optional filters.
         """
         stmt = self._get_base_query(portfolio_id, security_id, start_date, end_date)
-        results = await self.db.execute(stmt.order_by(Transaction.transaction_date.desc()).offset(skip).limit(limit))
+
+        # --- NEW: DYNAMIC SORTING LOGIC ---
+        sort_field = "transaction_date" # Default sort field
+        if sort_by and sort_by in ALLOWED_SORT_FIELDS:
+            sort_field = sort_by
+
+        sort_direction = desc if sort_order == "desc" else asc
+        order_clause = sort_direction(getattr(Transaction, sort_field))
+
+        stmt = stmt.order_by(order_clause)
+        # --- END DYNAMIC SORTING LOGIC ---
+
+        results = await self.db.execute(stmt.offset(skip).limit(limit))
         transactions = results.scalars().all()
         logger.info(f"Found {len(transactions)} transactions for portfolio '{portfolio_id}' with given filters.")
         return transactions
