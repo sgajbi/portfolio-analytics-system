@@ -1,4 +1,4 @@
-# services/query-service/app/monitoring.py
+# libs/portfolio-common/portfolio_common/monitoring.py
 from prometheus_client import Histogram
 
 # Define a histogram to measure the duration of database operations.
