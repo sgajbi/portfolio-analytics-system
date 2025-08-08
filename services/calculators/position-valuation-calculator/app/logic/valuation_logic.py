@@ -7,39 +7,54 @@ logger = logging.getLogger(__name__)
 
 class ValuationLogic:
     """
-    A stateless calculator for determining the market value of a position
-    in the instrument's local currency.
+    A stateless calculator for determining the market value and unrealized
+    gain/loss of a position, with full dual-currency support.
     """
     @staticmethod
-    def calculate_market_value(
+    def calculate_valuation(
         quantity: Decimal,
         market_price: Decimal,
+        cost_basis_base: Decimal,
+        cost_basis_local: Decimal,
         price_currency: str,
         instrument_currency: str,
-        fx_rate: Optional[Decimal] = None
-    ) -> Optional[Decimal]:
+        portfolio_currency: str,
+        price_to_instrument_fx_rate: Optional[Decimal] = None,
+        instrument_to_portfolio_fx_rate: Optional[Decimal] = None
+    ) -> Optional[Tuple[Decimal, Decimal, Decimal, Decimal]]:
         """
-        Calculates the market value in the instrument's currency, converting the
-        price if necessary. Returns None if conversion is needed but no rate is provided.
+        Calculates market value and unrealized PnL in both local and base currencies.
+
+        Returns:
+            A tuple of (market_value_base, market_value_local, pnl_base, pnl_local),
+            or None if a required FX rate is missing.
         """
         if quantity.is_zero():
-            return Decimal(0)
+            return Decimal(0), Decimal(0), Decimal(0), Decimal(0)
 
         # 1. Determine the price in the instrument's currency
-        valuation_price = market_price
+        valuation_price_local = market_price
         if price_currency != instrument_currency:
-            if fx_rate is None:
-                logger.warning(
-                    f"FX conversion for price required from {price_currency} to {instrument_currency} but no rate was provided. "
-                    "Cannot calculate market value."
-                )
-                return None # Cannot proceed without a valid price
-            valuation_price = market_price * fx_rate
-
-        # 2. Calculate market value in the instrument's local currency
-        market_value = quantity * valuation_price
+            if price_to_instrument_fx_rate is None:
+                logger.warning(f"Missing FX rate from {price_currency} to {instrument_currency} to align price. Cannot value.")
+                return None
+            valuation_price_local = market_price * price_to_instrument_fx_rate
         
-        logger.debug(
-            f"Calculated market value: {market_value} {instrument_currency}"
-        )
-        return market_value
+        # 2. Calculate Market Value in local currency
+        market_value_local = quantity * valuation_price_local
+
+        # 3. Calculate Unrealized PnL in local currency
+        unrealized_pnl_local = market_value_local - cost_basis_local
+
+        # 4. Convert Market Value to portfolio's base currency
+        market_value_base = market_value_local
+        if instrument_currency != portfolio_currency:
+            if instrument_to_portfolio_fx_rate is None:
+                logger.warning(f"Missing FX rate from {instrument_currency} to {portfolio_currency} for reporting. Cannot value.")
+                return None
+            market_value_base = market_value_local * instrument_to_portfolio_fx_rate
+        
+        # 5. Calculate Unrealized PnL in portfolio's base currency
+        unrealized_pnl_base = market_value_base - cost_basis_base
+        
+        return market_value_base, market_value_local, unrealized_pnl_base, unrealized_pnl_local
