@@ -1,3 +1,4 @@
+# services/query-service/app/dtos/transaction_dto.py
 from pydantic import BaseModel, Field, ConfigDict
 from decimal import Decimal
 from datetime import datetime
@@ -12,14 +13,20 @@ class TransactionRecord(BaseModel):
     transaction_id: str
     transaction_date: datetime
     transaction_type: str
-    instrument_id: str  # <-- FIELD ADDED
+    instrument_id: str
     security_id: str
     quantity: Decimal
     price: Decimal
     gross_transaction_amount: Decimal
+    currency: str
+
     net_cost: Optional[Decimal] = None
     realized_gain_loss: Optional[Decimal] = None
-    currency: str
+    
+    net_cost_local: Optional[Decimal] = None
+    realized_gain_loss_local: Optional[Decimal] = None
+    
+    transaction_fx_rate: Optional[Decimal] = None
     cashflow: Optional[CashflowRecord] = None
     
     model_config = ConfigDict(

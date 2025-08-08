@@ -1,3 +1,4 @@
+# services/query-service/app/dtos/position_dto.py
 from pydantic import BaseModel, Field, ConfigDict
 from decimal import Decimal
 from datetime import date
@@ -5,23 +6,24 @@ from typing import List, Optional
 
 from .valuation_dto import ValuationData
 
-# DTO for the "latest positions" endpoint
 class Position(BaseModel):
     security_id: str
     quantity: Decimal
-    cost_basis: Decimal
     instrument_name: str
     position_date: date
+    
+    cost_basis: Decimal
+    
+    cost_basis_local: Optional[Decimal] = None
+    
     valuation: Optional[ValuationData] = None
     
     model_config = ConfigDict(from_attributes=True)
 
-# Response DTO for the "latest positions" endpoint
 class PortfolioPositionsResponse(BaseModel):
     portfolio_id: str
     positions: List[Position]
 
-# --- DTOs for the "position history" endpoint ---
 
 class PositionHistoryRecord(BaseModel):
     """
@@ -31,7 +33,11 @@ class PositionHistoryRecord(BaseModel):
     position_date: date = Field(..., description="The date of this position snapshot.")
     transaction_id: str = Field(..., description="The ID of the transaction that created this position state.")
     quantity: Decimal = Field(..., description="The number of shares held as of this record.")
+    
     cost_basis: Decimal = Field(..., description="The total cost basis of the holding as of this record.")
+    
+    cost_basis_local: Optional[Decimal] = Field(None, description="The total cost basis in the instrument's local currency.")
+
     valuation: Optional[ValuationData] = None
     
     model_config = ConfigDict(
