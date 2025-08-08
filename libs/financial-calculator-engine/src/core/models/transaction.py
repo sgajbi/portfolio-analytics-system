@@ -1,4 +1,4 @@
-# src/core/models/transaction.py
+# libs/financial-calculator-engine/src/core/models/transaction.py
 
 from datetime import date, datetime, timezone
 from typing import Optional, Any
@@ -40,7 +40,7 @@ class Transaction(BaseModel):
     trade_currency: str = Field(..., alias="tradeCurrency", description="Currency of the transaction")
     
     # --- UPDATED & NEW FIELDS ---
-    portfolio_base_currency: Optional[str] = Field(None, description="The base currency of the portfolio")
+    portfolio_base_currency: str = Field(..., description="The base currency of the portfolio")
     transaction_fx_rate: Optional[condecimal(gt=0)] = Field(None, description="FX rate used for this transaction (Local to Base)")
 
     # Values in Portfolio Base Currency
@@ -73,5 +73,6 @@ class Transaction(BaseModel):
     model_config = ConfigDict(
         populate_by_name=True,
         from_attributes=True,
-        arbitrary_types_allowed=False
+        arbitrary_types_allowed=False,
+        extra='allow'
     )
