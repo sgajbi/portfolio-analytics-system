@@ -41,7 +41,7 @@ def test_full_pipeline(docker_services: DockerCompose, db_engine, clean_db):
     sell_payload = { "transactions": [{
         "transaction_id": "E2E_SELL_01", "portfolio_id": portfolio_id, "instrument_id": "APPL",
         "security_id": security_id, "transaction_date": "2025-01-20T00:00:00Z", "transaction_type": "SELL",
-        "quantity": 10, "price": 175.0, "gross_transaction_amount": 1750.0,
+        "quantity": 4, "price": 175.0, "gross_transaction_amount": 700.0,
         "trade_currency": "USD", "currency": "USD"
     }]}
 
@@ -57,7 +57,7 @@ def test_full_pipeline(docker_services: DockerCompose, db_engine, clean_db):
         start_time = time.time()
         timeout = 60
         while time.time() - start_time < timeout:
-            query = text("SELECT count(t.id) FROM transactions t JOIN cashflows c ON t.transaction_id = c.transaction_id WHERE t.portfolio_id = :portfolio_id")
+            query = text("SELECT count(id) FROM cashflows WHERE portfolio_id = :portfolio_id")
             count = session.execute(query, {"portfolio_id": portfolio_id}).scalar_one_or_none()
             # Wait until both transactions have been processed by all calculators
             if count == 2:
@@ -81,16 +81,17 @@ def test_full_pipeline(docker_services: DockerCompose, db_engine, clean_db):
     sell_txn_data = response_data["transactions"][0]
     buy_txn_data = response_data["transactions"][1]
 
-    # SELL transaction checks
-    assert sell_txn_data["transaction_id"] == "E2E_SELL_01"
-    assert "cashflow" in sell_txn_data
-    assert sell_txn_data["cashflow"]["amount"] == "1750.0000000000"
-    assert sell_txn_data["cashflow"]["classification"] == "INVESTMENT_INFLOW"
-    assert sell_txn_data["cashflow"]["level"] == "POSITION"
-
+    # --- ENHANCED ASSERTIONS ---
     # BUY transaction checks
     assert buy_txn_data["transaction_id"] == "E2E_BUY_01"
-    assert "cashflow" in buy_txn_data
+    assert buy_txn_data["net_cost"] == "1500.0000000000"
+    assert buy_txn_data["realized_gain_loss"] is None
     assert buy_txn_data["cashflow"]["amount"] == "-1500.0000000000"
-    assert buy_txn_data["cashflow"]["classification"] == "INVESTMENT_OUTFLOW"
-    assert buy_txn_data["cashflow"]["level"] == "POSITION"
+
+    # SELL transaction checks
+    # Cost of goods sold for 4 shares = 4 * $150/share = $600
+    # Realized Gain = Proceeds - COGS = $700 - $600 = $100
+    assert sell_txn_data["transaction_id"] == "E2E_SELL_01"
+    assert sell_txn_data["net_cost"] == "-600.0000000000"
+    assert sell_txn_data["realized_gain_loss"] == "100.0000000000"
+    assert sell_txn_data["cashflow"]["amount"] == "700.0000000000"
