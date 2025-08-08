@@ -26,14 +26,11 @@ SERVICE_NAME = "position-valuation-calculator-from-price"
 class MarketPriceConsumer(BaseConsumer):
     """
     Consumes market price events and re-values all daily position snapshots
-    for all affected portfolios with the new valuation, respecting instrument currency.
+    for all affected portfolios with the new valuation, respecting all currencies.
     """
     @retry(
-        wait=wait_fixed(2),
-        stop=stop_after_attempt(3),
-        before=before_log(logger, logging.INFO),
-        retry=retry_if_exception_type(DBAPIError),
-        reraise=True  # Reraise the exception after retries are exhausted
+        wait=wait_fixed(2), stop=stop_after_attempt(3), before=before_log(logger, logging.INFO),
+        retry=retry_if_exception_type(DBAPIError), reraise=True
     )
     async def process_message(self, msg: Message):
         key = msg.key().decode('utf-8') if msg.key() else "NoKey"
@@ -44,7 +41,6 @@ class MarketPriceConsumer(BaseConsumer):
         try:
             event_data = json.loads(value)
             price_event = MarketPriceEvent.model_validate(event_data)
-            
             logger.info(f"Processing market price for {price_event.security_id} on {price_event.price_date}")
             
             async for db in get_async_db_session():
@@ -57,40 +53,45 @@ class MarketPriceConsumer(BaseConsumer):
                         return
 
                     repo = ValuationRepository(db)
-                    
                     instrument = await repo.get_instrument(price_event.security_id)
                     if not instrument:
                         logger.error(f"Instrument '{price_event.security_id}' not found for price event. Skipping.")
                         await idempotency_repo.mark_event_processed(event_id, "N/A", SERVICE_NAME, correlation_id)
                         return
                     
-                    fx_rate_value = None
-                    if price_event.currency != instrument.currency:
-                        fx_rate = await repo.get_fx_rate(price_event.currency, instrument.currency, price_event.price_date)
-                        if fx_rate:
-                            fx_rate_value = fx_rate.rate
-
                     snapshots_to_update = await repo.find_snapshots_to_update(price_event.security_id, price_event.price_date)
-                    
                     if not snapshots_to_update:
                         logger.info(f"No existing positions found needing valuation for {price_event.security_id} on {price_event.price_date}.")
                         await idempotency_repo.mark_event_processed(event_id, "N/A", SERVICE_NAME, correlation_id)
                         return
 
+                    price_to_instrument_fx = await repo.get_fx_rate(price_event.currency, instrument.currency, price_event.price_date)
+                    
                     updated_snapshots_count = 0
                     for snapshot in snapshots_to_update:
-                        market_value = ValuationLogic.calculate_market_value(
-                            quantity=snapshot.quantity,
-                            market_price=price_event.price,
-                            price_currency=price_event.currency,
-                            instrument_currency=instrument.currency,
-                            fx_rate=fx_rate_value
+                        if not snapshot.cost_basis_local: continue
+
+                        portfolio = await repo.get_portfolio(snapshot.portfolio_id)
+                        if not portfolio: continue
+
+                        instrument_to_portfolio_fx = await repo.get_fx_rate(instrument.currency, portfolio.base_currency, price_event.price_date)
+                        
+                        valuation_result = ValuationLogic.calculate_valuation(
+                            quantity=snapshot.quantity, market_price=price_event.price,
+                            cost_basis_base=snapshot.cost_basis, cost_basis_local=snapshot.cost_basis_local,
+                            price_currency=price_event.currency, instrument_currency=instrument.currency,
+                            portfolio_currency=portfolio.base_currency,
+                            price_to_instrument_fx_rate=price_to_instrument_fx.rate if price_to_instrument_fx else None,
+                            instrument_to_portfolio_fx_rate=instrument_to_portfolio_fx.rate if instrument_to_portfolio_fx else None
                         )
 
-                        if market_value is not None:
+                        if valuation_result:
+                            mv_base, mv_local, pnl_base, pnl_local = valuation_result
                             snapshot.market_price = price_event.price
-                            snapshot.market_value = market_value
-                            snapshot.unrealized_gain_loss = None # Still ambiguous
+                            snapshot.market_value = mv_base
+                            snapshot.market_value_local = mv_local
+                            snapshot.unrealized_gain_loss = pnl_base
+                            snapshot.unrealized_gain_loss_local = pnl_local
                             snapshot.valuation_status = 'VALUED'
                             updated_snapshots_count += 1
                             
@@ -98,13 +99,10 @@ class MarketPriceConsumer(BaseConsumer):
 
                             completion_event = DailyPositionSnapshotPersistedEvent.model_validate(persisted_snapshot)
                             outbox_repo.create_outbox_event(
-                                db_session=db,
-                                aggregate_type='DailyPositionSnapshot',
-                                aggregate_id=str(persisted_snapshot.id),
-                                event_type='DailyPositionSnapshotPersisted',
+                                db_session=db, aggregate_type='DailyPositionSnapshot',
+                                aggregate_id=str(persisted_snapshot.id), event_type='DailyPositionSnapshotPersisted',
                                 topic=KAFKA_DAILY_POSITION_SNAPSHOT_PERSISTED_TOPIC,
-                                payload=completion_event.model_dump(mode='json'),
-                                correlation_id=correlation_id
+                                payload=completion_event.model_dump(mode='json'), correlation_id=correlation_id
                             )
                     
                     logger.info(f"Successfully valued and staged updates for {updated_snapshots_count} snapshots.")
@@ -115,7 +113,7 @@ class MarketPriceConsumer(BaseConsumer):
             await self._send_to_dlq_async(msg, e)
         except DBAPIError:
             logger.warning(f"Database API error for event {event_id}. Retrying...", exc_info=True)
-            raise # Reraise to trigger tenacity retry
+            raise
         except Exception as e:
             logger.error(f"Unexpected error processing message with key '{key}': {e}", exc_info=True)
             await self._send_to_dlq_async(msg, e)

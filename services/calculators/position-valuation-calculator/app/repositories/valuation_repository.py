@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from portfolio_common.database_models import (
-    PositionHistory, MarketPrice, DailyPositionSnapshot, FxRate, Instrument
+    PositionHistory, MarketPrice, DailyPositionSnapshot, FxRate, Instrument, Portfolio
 )
 from portfolio_common.utils import async_timed
 
@@ -20,10 +20,20 @@ class ValuationRepository:
     def __init__(self, db: AsyncSession):
         self.db = db
 
+    @async_timed(repository="ValuationRepository", method="get_portfolio")
+    async def get_portfolio(self, portfolio_id: str) -> Optional[Portfolio]:
+        """Fetches a portfolio by its ID."""
+        # Using .get() is efficient for primary key lookups, but portfolio_id is not the PK.
+        # A select is more appropriate here.
+        stmt = select(Portfolio).filter_by(portfolio_id=portfolio_id)
+        result = await self.db.execute(stmt)
+        return result.scalars().first()
+
     @async_timed(repository="ValuationRepository", method="get_instrument")
     async def get_instrument(self, security_id: str) -> Optional[Instrument]:
         """Fetches an instrument by its security ID."""
-        result = await self.db.execute(select(Instrument).filter_by(security_id=security_id))
+        stmt = select(Instrument).filter_by(security_id=security_id)
+        result = await self.db.execute(stmt)
         return result.scalars().first()
 
     @async_timed(repository="ValuationRepository", method="get_fx_rate")
