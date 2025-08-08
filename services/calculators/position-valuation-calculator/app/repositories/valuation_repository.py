@@ -21,16 +21,14 @@ class ValuationRepository:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def get_portfolio(self, portfolio_id: str) -> Optional[Portfolio]:
-        """Fetches a portfolio by its ID."""
-        return await self.db.get(Portfolio, portfolio_id)
-
     async def get_instrument(self, security_id: str) -> Optional[Instrument]:
         """Fetches an instrument by its security ID."""
-        return await self.db.get(Instrument, security_id)
+        # This is still needed to get the instrument's currency
+        result = await self.db.execute(select(Instrument).filter_by(security_id=security_id))
+        return result.scalars().first()
 
     async def get_fx_rate(self, from_currency: str, to_currency: str, a_date: date) -> Optional[FxRate]:
-        """Fetches the latest FX rate on or before a given date."""
+        """Fetches the latest FX rate on or before a given date to align price currency with instrument currency."""
         stmt = select(FxRate).filter(
             FxRate.from_currency == from_currency,
             FxRate.to_currency == to_currency,
@@ -93,6 +91,7 @@ class ValuationRepository:
         """
         updated_snapshots = []
         
+        # This method's logic will be updated in a subsequent step to handle the new FX rules
         stmt = select(distinct(PositionHistory.portfolio_id)).filter_by(security_id=price_event.security_id)
         result = await self.db.execute(stmt)
         portfolios_with_security = result.scalars().all()
@@ -107,10 +106,13 @@ class ValuationRepository:
             if not latest_position or latest_position.quantity.is_zero():
                 continue
 
+            # Placeholder for logic that will be updated
             market_value, unrealized_gain_loss = ValuationLogic.calculate(
                 quantity=latest_position.quantity,
                 cost_basis=latest_position.cost_basis,
-                market_price=price_event.price
+                market_price=price_event.price,
+                instrument_currency=price_event.currency, # Temporarily assume price currency is instrument currency
+                portfolio_currency=price_event.currency
             )
 
             snapshot_to_save = DailyPositionSnapshot(
@@ -121,7 +123,8 @@ class ValuationRepository:
                 cost_basis=latest_position.cost_basis,
                 market_price=price_event.price,
                 market_value=market_value,
-                unrealized_gain_loss=unrealized_gain_loss
+                unrealized_gain_loss=unrealized_gain_loss,
+                valuation_status="VALUED" # Placeholder
             )
             
             persisted_snapshot = await self.upsert_daily_snapshot(snapshot_to_save)
