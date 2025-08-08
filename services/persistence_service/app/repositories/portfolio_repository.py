@@ -1,7 +1,7 @@
 # services/persistence_service/app/repositories/portfolio_repository.py
 import logging
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from portfolio_common.database_models import Portfolio as DBPortfolio
 from portfolio_common.events import PortfolioEvent
 
@@ -16,26 +16,29 @@ class PortfolioRepository:
 
     async def create_or_update_portfolio(self, event: PortfolioEvent) -> DBPortfolio:
         """
-        Idempotently creates a new portfolio or updates an existing one
-        using a get-then-update/create pattern.
+        Idempotently creates or updates a portfolio using a native PostgreSQL
+        UPSERT (INSERT ... ON CONFLICT DO UPDATE).
         """
         try:
-            stmt = select(DBPortfolio).filter_by(portfolio_id=event.portfolio_id)
-            result = await self.db.execute(stmt)
-            db_portfolio = result.scalars().first()
-            
             portfolio_data = event.model_dump()
-
-            if db_portfolio:
-                for key, value in portfolio_data.items():
-                    setattr(db_portfolio, key, value)
-                logger.info(f"Portfolio '{event.portfolio_id}' found, staging for update.")
-            else:
-                db_portfolio = DBPortfolio(**portfolio_data)
-                self.db.add(db_portfolio)
-                logger.info(f"Portfolio '{event.portfolio_id}' not found, staging for creation.")
             
-            return db_portfolio
+            stmt = pg_insert(DBPortfolio).values(
+                **portfolio_data
+            )
+
+            update_dict = {
+                c.name: c for c in stmt.excluded if c.name not in ["id", "portfolio_id"]
+            }
+
+            final_stmt = stmt.on_conflict_do_update(
+                index_elements=['portfolio_id'],
+                set_=update_dict
+            )
+            
+            await self.db.execute(final_stmt)
+            logger.info(f"Successfully staged UPSERT for portfolio '{event.portfolio_id}'.")
+
+            return DBPortfolio(**portfolio_data)
         except Exception as e:
-            logger.error(f"Failed to stage upsert for portfolio '{event.portfolio_id}': {e}", exc_info=True)
+            logger.error(f"Failed to stage UPSERT for portfolio '{event.portfolio_id}': {e}", exc_info=True)
             raise
