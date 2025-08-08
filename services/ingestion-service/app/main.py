@@ -1,28 +1,32 @@
 # services/ingestion-service/app/main.py
-from fastapi import FastAPI, status, HTTPException, Request
-from contextlib import asynccontextmanager
 import logging
+from contextlib import asynccontextmanager
+import asyncio
 
-# NEW: Import shared logging utility
-from portfolio_common.logging_utils import setup_logging, correlation_id_var, generate_correlation_id
+from fastapi import FastAPI, Request
 from portfolio_common.kafka_utils import get_kafka_producer, KafkaProducer
+from portfolio_common.logging_utils import setup_logging, correlation_id_var, generate_correlation_id
 from app.routers import transactions, instruments, market_prices, fx_rates, portfolios
+from confluent_kafka.admin import AdminClient
 
 SERVICE_PREFIX = "ING"
 setup_logging()
 logger = logging.getLogger(__name__)
 
-# Application state
+# Application state to hold shared resources like the producer
 app_state = {}
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """
+    Manages application startup and shutdown events for graceful operation.
+    """
     logger.info("Ingestion Service starting up...")
     try:
         app_state["kafka_producer"] = get_kafka_producer()
         logger.info("Kafka producer initialized successfully.")
-    except Exception as e:
-        logger.critical("Failed to initialize Kafka producer on startup", exc_info=True)
+    except Exception:
+        logger.critical("FATAL: Could not initialize Kafka producer on startup.", exc_info=True)
         app_state["kafka_producer"] = None
     
     yield
@@ -30,8 +34,10 @@ async def lifespan(app: FastAPI):
     logger.info("Ingestion Service shutting down...")
     producer = app_state.get("kafka_producer")
     if producer:
+        logger.info("Flushing Kafka producer to send all buffered messages...")
         producer.flush(timeout=5)
-        logger.info("Kafka producer flushed.")
+        logger.info("Kafka producer flushed successfully.")
+    logger.info("Ingestion Service has shut down gracefully.")
 
 # Main FastAPI app instance
 app = FastAPI(
@@ -57,10 +63,36 @@ async def add_correlation_id_middleware(request: Request, call_next):
     
     return response
 
-# Health check endpoint
-@app.get("/health")
+async def check_kafka_health():
+    """Checks if a connection can be established with Kafka."""
+    producer = app_state.get("kafka_producer")
+    if not producer or not producer.producer:
+        return False
+    try:
+        # Use the underlying AdminClient from the producer for a lightweight check
+        admin_client = AdminClient.from_conf(producer.producer.cimpl.conf())
+        # Listing topics is a reliable way to check broker connectivity
+        await asyncio.to_thread(admin_client.list_topics, timeout=5)
+        return True
+    except Exception as e:
+        logger.error(f"Health Check: Kafka connection failed: {e}", exc_info=False)
+        return False
+
+# Enhanced health check endpoint (now a readiness probe)
+@app.get("/health", tags=["Health"])
 async def health_check():
-    return {"status": "ok", "service": "Ingestion Service"}
+    """
+    Checks the health and readiness of the service.
+    Returns OK if the service is running and can connect to Kafka.
+    """
+    kafka_ok = await check_kafka_health()
+    if kafka_ok:
+        return {"status": "ok", "dependencies": {"kafka": "ok"}}
+    return JSONResponse(
+        status_code=503,
+        content={"status": "unavailable", "dependencies": {"kafka": "unavailable"}}
+    )
+
 
 # Include the API routers
 app.include_router(portfolios.router)
@@ -68,16 +100,3 @@ app.include_router(transactions.router)
 app.include_router(instruments.router)
 app.include_router(market_prices.router)
 app.include_router(fx_rates.router)
-
-# Custom dependency
-def get_producer_dependency() -> KafkaProducer:
-    producer = app_state.get("kafka_producer")
-    if not producer:
-        logger.error("Kafka producer is not available")
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Kafka producer is not available. The service may be starting up or in a failed state."
-        )
-    return producer
-
-app.dependency_overrides[get_kafka_producer] = get_producer_dependency
