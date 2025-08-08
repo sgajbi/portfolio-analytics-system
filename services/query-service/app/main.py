@@ -1,22 +1,40 @@
 # services/query-service/app/main.py
 import logging
 import asyncio
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, status, HTTPException
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from prometheus_fastapi_instrumentator import Instrumentator
 from portfolio_common.logging_utils import setup_logging, correlation_id_var, generate_correlation_id
-from portfolio_common.db import AsyncSessionLocal # <-- UPDATED IMPORT
+from portfolio_common.db import AsyncSessionLocal
 from .routers import positions, transactions, instruments, prices, fx_rates, portfolios
 
 SERVICE_PREFIX = "QRY"
 setup_logging()
 logger = logging.getLogger(__name__)
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Manages application startup and shutdown events.
+    This is crucial for graceful shutdowns in production environments.
+    """
+    logger.info("Query Service starting up...")
+    # --- Future startup logic can go here (e.g., initializing resources) ---
+    yield
+    # --- Shutdown logic ---
+    logger.info("Query Service shutting down. Waiting for in-flight requests to complete...")
+    # Uvicorn will handle the graceful wait period.
+    # Future resource cleanup can go here.
+    logger.info("Query Service has shut down gracefully.")
+
+
 app = FastAPI(
     title="Query Service",
     description="Service for querying portfolio analytics data.",
-    version="0.2.0"
+    version="0.2.0",
+    lifespan=lifespan  # <-- ADDED LIFESPAN MANAGER
 )
 
 # --- Prometheus Metrics Instrumentation ---
