@@ -1,3 +1,4 @@
+# services/calculators/position-valuation-calculator/app/logic/valuation_logic.py
 import logging
 from typing import Tuple, Optional
 from decimal import Decimal
@@ -6,49 +7,39 @@ logger = logging.getLogger(__name__)
 
 class ValuationLogic:
     """
-    A stateless calculator for determining the market value and unrealized
-    gain/loss of a position, now with FX conversion capabilities.
+    A stateless calculator for determining the market value of a position
+    in the instrument's local currency.
     """
     @staticmethod
-    def calculate(
+    def calculate_market_value(
         quantity: Decimal,
-        cost_basis: Decimal,
         market_price: Decimal,
+        price_currency: str,
         instrument_currency: str,
-        portfolio_currency: str,
         fx_rate: Optional[Decimal] = None
-    ) -> Tuple[Decimal, Decimal]:
+    ) -> Optional[Decimal]:
         """
-        Calculates market value and unrealized gain/loss, converting to the
-        portfolio's base currency if necessary.
+        Calculates the market value in the instrument's currency, converting the
+        price if necessary. Returns None if conversion is needed but no rate is provided.
         """
         if quantity.is_zero():
-            return Decimal(0), Decimal(0)
+            return Decimal(0)
 
-        # 1. Calculate market value in the instrument's local currency
-        local_market_value = quantity * market_price
-        
-        # 2. Convert to portfolio's base currency if currencies differ
-        if instrument_currency != portfolio_currency:
+        # 1. Determine the price in the instrument's currency
+        valuation_price = market_price
+        if price_currency != instrument_currency:
             if fx_rate is None:
-                # This should be handled by the caller, but as a safeguard:
                 logger.warning(
-                    f"FX conversion required from {instrument_currency} to {portfolio_currency} but no rate was provided. "
-                    "Valuation will be incorrect."
+                    f"FX conversion for price required from {price_currency} to {instrument_currency} but no rate was provided. "
+                    "Cannot calculate market value."
                 )
-                fx_rate = Decimal(1.0)
-            
-            # The cost basis is already in the portfolio currency.
-            # We only need to convert the market value.
-            final_market_value = local_market_value * fx_rate
-        else:
-            final_market_value = local_market_value
+                return None # Cannot proceed without a valid price
+            valuation_price = market_price * fx_rate
 
-        # 3. Calculate unrealized gain/loss in the portfolio's currency
-        unrealized_gain_loss = final_market_value - cost_basis
+        # 2. Calculate market value in the instrument's local currency
+        market_value = quantity * valuation_price
         
         logger.debug(
-            f"Calculated valuation: MV={final_market_value} {portfolio_currency}, UPL={unrealized_gain_loss} {portfolio_currency}"
+            f"Calculated market value: {market_value} {instrument_currency}"
         )
-        
-        return final_market_value, unrealized_gain_loss
+        return market_value
