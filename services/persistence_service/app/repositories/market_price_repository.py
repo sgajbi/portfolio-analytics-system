@@ -24,9 +24,9 @@ class MarketPriceRepository:
                 c.name: c for c in stmt.excluded if c.name not in ["id", "security_id", "price_date"]
             }
 
-            # Use the unique constraint name for conflict resolution
-            final_stmt = stmt.on_conflict_on_constraint(
-                constraint='_security_price_date_uc',
+            # --- FIX: Switched to on_conflict_do_update with index_elements ---
+            final_stmt = stmt.on_conflict_do_update(
+                index_elements=['security_id', 'price_date'],
                 set_=update_dict
             )
             

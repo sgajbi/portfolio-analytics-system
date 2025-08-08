@@ -28,9 +28,9 @@ class FxRateRepository:
                 c.name: c for c in stmt.excluded if c.name not in ["id", "from_currency", "to_currency", "rate_date"]
             }
 
-            # Use the unique constraint name for conflict resolution
-            final_stmt = stmt.on_conflict_on_constraint(
-                constraint='_currency_pair_date_uc',
+            # --- FIX: Switched to on_conflict_do_update with index_elements ---
+            final_stmt = stmt.on_conflict_do_update(
+                index_elements=['from_currency', 'to_currency', 'rate_date'],
                 set_=update_dict
             )
 
