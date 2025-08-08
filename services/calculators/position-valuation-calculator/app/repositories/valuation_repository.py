@@ -9,6 +9,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from portfolio_common.database_models import (
     PositionHistory, MarketPrice, DailyPositionSnapshot, FxRate, Instrument
 )
+from portfolio_common.utils import async_timed
 
 logger = logging.getLogger(__name__)
 
@@ -19,11 +20,13 @@ class ValuationRepository:
     def __init__(self, db: AsyncSession):
         self.db = db
 
+    @async_timed(repository="ValuationRepository", method="get_instrument")
     async def get_instrument(self, security_id: str) -> Optional[Instrument]:
         """Fetches an instrument by its security ID."""
         result = await self.db.execute(select(Instrument).filter_by(security_id=security_id))
         return result.scalars().first()
 
+    @async_timed(repository="ValuationRepository", method="get_fx_rate")
     async def get_fx_rate(self, from_currency: str, to_currency: str, a_date: date) -> Optional[FxRate]:
         """Fetches the latest FX rate on or before a given date."""
         stmt = select(FxRate).filter(
@@ -34,6 +37,7 @@ class ValuationRepository:
         result = await self.db.execute(stmt)
         return result.scalars().first()
 
+    @async_timed(repository="ValuationRepository", method="get_latest_price_for_position")
     async def get_latest_price_for_position(self, security_id: str, position_date: date) -> Optional[MarketPrice]:
         """
         Finds the most recent market price for a given security on or before the position's date.
@@ -45,6 +49,7 @@ class ValuationRepository:
         result = await self.db.execute(stmt)
         return result.scalars().first()
     
+    @async_timed(repository="ValuationRepository", method="find_snapshots_to_update")
     async def find_snapshots_to_update(self, security_id: str, a_date: date) -> List[DailyPositionSnapshot]:
         """
         Finds all snapshots for a security on a given date. This is typically used
@@ -58,6 +63,7 @@ class ValuationRepository:
         result = await self.db.execute(stmt)
         return result.scalars().all()
 
+    @async_timed(repository="ValuationRepository", method="upsert_daily_snapshot")
     async def upsert_daily_snapshot(self, snapshot: DailyPositionSnapshot) -> DailyPositionSnapshot:
         """
         Idempotently inserts or updates a daily position snapshot and returns the result.
