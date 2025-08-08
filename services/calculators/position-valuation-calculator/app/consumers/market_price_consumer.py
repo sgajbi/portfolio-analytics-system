@@ -4,8 +4,10 @@ import json
 import asyncio
 from pydantic import ValidationError
 from decimal import Decimal
+from sqlalchemy.exc import DBAPIError
 
 from confluent_kafka import Message
+from tenacity import retry, stop_after_attempt, wait_fixed, before_log, retry_if_exception_type
 from portfolio_common.kafka_consumer import BaseConsumer
 from portfolio_common.logging_utils import correlation_id_var
 from portfolio_common.events import MarketPriceEvent, DailyPositionSnapshotPersistedEvent
@@ -26,6 +28,13 @@ class MarketPriceConsumer(BaseConsumer):
     Consumes market price events and re-values all daily position snapshots
     for all affected portfolios with the new valuation, respecting instrument currency.
     """
+    @retry(
+        wait=wait_fixed(2),
+        stop=stop_after_attempt(3),
+        before=before_log(logger, logging.INFO),
+        retry=retry_if_exception_type(DBAPIError),
+        reraise=True  # Reraise the exception after retries are exhausted
+    )
     async def process_message(self, msg: Message):
         key = msg.key().decode('utf-8') if msg.key() else "NoKey"
         value = msg.value().decode('utf-8')
@@ -49,7 +58,6 @@ class MarketPriceConsumer(BaseConsumer):
 
                     repo = ValuationRepository(db)
                     
-                    # --- NEW: Orchestration logic moved from repository to consumer ---
                     instrument = await repo.get_instrument(price_event.security_id)
                     if not instrument:
                         logger.error(f"Instrument '{price_event.security_id}' not found for price event. Skipping.")
@@ -62,8 +70,6 @@ class MarketPriceConsumer(BaseConsumer):
                         if fx_rate:
                             fx_rate_value = fx_rate.rate
 
-                    # Find all snapshots for this security on this date that are unvalued OR
-                    # could be updated by this new price info.
                     snapshots_to_update = await repo.find_snapshots_to_update(price_event.security_id, price_event.price_date)
                     
                     if not snapshots_to_update:
@@ -88,8 +94,6 @@ class MarketPriceConsumer(BaseConsumer):
                             snapshot.valuation_status = 'VALUED'
                             updated_snapshots_count += 1
                             
-                            # The snapshot object is managed by SQLAlchemy, so changes are tracked.
-                            # We will upsert it to be safe.
                             persisted_snapshot = await repo.upsert_daily_snapshot(snapshot)
 
                             completion_event = DailyPositionSnapshotPersistedEvent.model_validate(persisted_snapshot)
@@ -109,6 +113,9 @@ class MarketPriceConsumer(BaseConsumer):
         except (json.JSONDecodeError, ValidationError) as e:
             logger.error(f"Message validation failed for key '{key}': {e}. Value: '{value}'", exc_info=True)
             await self._send_to_dlq_async(msg, e)
+        except DBAPIError:
+            logger.warning(f"Database API error for event {event_id}. Retrying...", exc_info=True)
+            raise # Reraise to trigger tenacity retry
         except Exception as e:
             logger.error(f"Unexpected error processing message with key '{key}': {e}", exc_info=True)
             await self._send_to_dlq_async(msg, e)

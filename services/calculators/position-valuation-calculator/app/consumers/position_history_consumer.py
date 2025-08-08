@@ -4,8 +4,10 @@ import json
 import asyncio
 from pydantic import ValidationError
 from decimal import Decimal
+from sqlalchemy.exc import DBAPIError
 
 from confluent_kafka import Message
+from tenacity import retry, stop_after_attempt, wait_fixed, before_log, retry_if_exception_type
 from portfolio_common.kafka_consumer import BaseConsumer
 from portfolio_common.events import PositionHistoryPersistedEvent, DailyPositionSnapshotPersistedEvent
 from portfolio_common.db import get_async_db_session
@@ -23,9 +25,16 @@ SERVICE_NAME = "position-valuation-calculator-from-position"
 
 class PositionHistoryConsumer(BaseConsumer):
     """
-    Consumes position history events, values them in the instrument's currency,
-    and saves the result as a daily position snapshot.
+    Consumes transaction-driven position history events, values them with FX conversion,
+    and saves the result as a daily position snapshot. This process is idempotent.
     """
+    @retry(
+        wait=wait_fixed(2),
+        stop=stop_after_attempt(3),
+        before=before_log(logger, logging.INFO),
+        retry=retry_if_exception_type(DBAPIError),
+        reraise=True  # Reraise the exception after retries are exhausted
+    )
     async def process_message(self, msg: Message):
         key = msg.key().decode('utf-8') if msg.key() else "NoKey"
         value = msg.value().decode('utf-8')
@@ -123,6 +132,9 @@ class PositionHistoryConsumer(BaseConsumer):
         except (json.JSONDecodeError, ValidationError) as e:
             logger.error(f"Message validation failed for key '{key}': {e}. Value: '{value}'", exc_info=True)
             await self._send_to_dlq_async(msg, e)
+        except DBAPIError:
+            logger.warning(f"Database API error for event {event_id}. Retrying...", exc_info=True)
+            raise # Reraise to trigger tenacity retry
         except Exception as e:
             logger.error(f"Unexpected error processing message with key '{key}': {e}", exc_info=True)
             await self._send_to_dlq_async(msg, e)
