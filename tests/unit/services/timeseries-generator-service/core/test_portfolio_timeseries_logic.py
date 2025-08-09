@@ -5,7 +5,7 @@ from datetime import date
 from decimal import Decimal
 
 from portfolio_common.database_models import (
-    Portfolio, PositionTimeseries, Cashflow, Instrument, FxRate
+    Portfolio, PositionTimeseries, Cashflow, Instrument, FxRate, PortfolioTimeseries
 )
 from services.timeseries_generator_service.app.core.portfolio_timeseries_logic import PortfolioTimeseriesLogic, FxRateNotFoundError
 
