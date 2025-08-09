@@ -34,6 +34,3 @@ markers = [
 filterwarnings = [
     "ignore:Please use `import python_multipart` instead.:PendingDeprecationWarning"
 ]
-
-[tool.pytest.ini_options]
-asyncio_default_fixture_loop_scope = "function"
