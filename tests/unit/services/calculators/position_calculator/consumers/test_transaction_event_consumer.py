@@ -1,11 +1,11 @@
-# services/calculators/position_calculator/tests/unit/consumers/test_transaction_event_consumer.py
+# src/tests/unit/services/calculators/position_calculator/consumers/test_transaction_event_consumer.py
 import pytest
 from unittest.mock import MagicMock, patch, AsyncMock
 from datetime import datetime, date
 from decimal import Decimal
 
-from services.calculators.position_calculator.app.consumers.transaction_event_consumer import TransactionEventConsumer
-from services.calculators.position_calculator.app.core.position_logic import PositionCalculator
+from src.services.calculators.position_calculator.app.consumers.transaction_event_consumer import TransactionEventConsumer
+from src.services.calculators.position_calculator.app.core.position_logic import PositionCalculator
 from portfolio_common.events import TransactionEvent, PositionHistoryPersistedEvent
 from portfolio_common.database_models import PositionHistory
 from portfolio_common.config import KAFKA_POSITION_HISTORY_PERSISTED_TOPIC
@@ -67,23 +67,21 @@ async def test_process_message_success(position_consumer: TransactionEventConsum
     mock_idempotency_repo = AsyncMock()
     mock_idempotency_repo.is_event_processed.return_value = False
 
-    # --- FINAL FIX: Correctly mock the async context manager ---
     mock_db_session = AsyncMock()
-    mock_transaction_context = AsyncMock()
-    mock_db_session.begin.return_value = mock_transaction_context
+    mock_db_session.begin.return_value = AsyncMock()
     async def mock_get_db_session_generator():
         yield mock_db_session
     
     with patch(
-        "services.calculators.position_calculator.app.consumers.transaction_event_consumer.get_async_db_session", new=mock_get_db_session_generator
+        "src.services.calculators.position_calculator.app.consumers.transaction_event_consumer.get_async_db_session", new=mock_get_db_session_generator
     ), patch(
-        "services.calculators.position_calculator.app.consumers.transaction_event_consumer.IdempotencyRepository", return_value=mock_idempotency_repo
+        "src.services.calculators.position_calculator.app.consumers.transaction_event_consumer.IdempotencyRepository", return_value=mock_idempotency_repo
     ), patch(
-        "services.calculators.position_calculator.app.consumers.transaction_event_consumer.PositionRepository"
+        "src.services.calculators.position_calculator.app.consumers.transaction_event_consumer.PositionRepository"
     ), patch(
-        "services.calculators.position_calculator.app.consumers.transaction_event_consumer.OutboxRepository"
+        "src.services.calculators.position_calculator.app.consumers.transaction_event_consumer.OutboxRepository"
     ) as mock_outbox_repo_class, patch(
-        "services.calculators.position_calculator.app.consumers.transaction_event_consumer.PositionCalculator.calculate", return_value=new_positions
+        "src.services.calculators.position_calculator.app.consumers.transaction_event_consumer.PositionCalculator.calculate", return_value=new_positions
     ) as mock_calculate:
         
         mock_outbox_instance = mock_outbox_repo_class.return_value
@@ -108,19 +106,17 @@ async def test_process_message_skips_processed_event(position_consumer: Transact
     mock_idempotency_repo = AsyncMock()
     mock_idempotency_repo.is_event_processed.return_value = True # DUPLICATE event
 
-    # --- FINAL FIX: Correctly mock the async context manager ---
     mock_db_session = AsyncMock()
-    mock_transaction_context = AsyncMock()
-    mock_db_session.begin.return_value = mock_transaction_context
+    mock_db_session.begin.return_value = AsyncMock()
     async def mock_get_db_session_generator():
         yield mock_db_session
 
     with patch(
-        "services.calculators.position_calculator.app.consumers.transaction_event_consumer.get_async_db_session", new=mock_get_db_session_generator
+        "src.services.calculators.position_calculator.app.consumers.transaction_event_consumer.get_async_db_session", new=mock_get_db_session_generator
     ), patch(
-        "services.calculators.position_calculator.app.consumers.transaction_event_consumer.IdempotencyRepository", return_value=mock_idempotency_repo
+        "src.services.calculators.position_calculator.app.consumers.transaction_event_consumer.IdempotencyRepository", return_value=mock_idempotency_repo
     ), patch(
-        "services.calculators.position_calculator.app.consumers.transaction_event_consumer.PositionCalculator.calculate"
+        "src.services.calculators.position_calculator.app.consumers.transaction_event_consumer.PositionCalculator.calculate"
     ) as mock_calculate:
         
         # Act

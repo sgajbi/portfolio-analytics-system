@@ -1,4 +1,4 @@
-# services/calculators/cashflow_calculator_service/tests/unit/consumers/test_cashflow_transaction_consumer.py
+# src/tests/unit/services/calculators/cashflow_calculator_service/unit/consumers/test_cashflow_transaction_consumer.py
 import pytest
 from unittest.mock import MagicMock, patch, AsyncMock, ANY
 from datetime import datetime, date
@@ -8,7 +8,7 @@ from portfolio_common.logging_utils import correlation_id_var
 from portfolio_common.events import TransactionEvent, CashflowCalculatedEvent
 from portfolio_common.database_models import Cashflow
 from portfolio_common.config import KAFKA_CASHFLOW_CALCULATED_TOPIC
-from services.calculators.cashflow_calculator_service.app.consumers.transaction_consumer import CashflowCalculatorConsumer
+from src.services.calculators.cashflow_calculator_service.app.consumers.transaction_consumer import CashflowCalculatorConsumer
 
 # Mark all tests in this file as asyncio
 pytestmark = pytest.mark.asyncio
@@ -82,23 +82,22 @@ async def test_process_message_success(
     )
     mock_cashflow_repo.create_cashflow.return_value = mock_saved_cashflow
 
-    # --- FIX: Correct async generator mocking ---
     mock_db_session = AsyncMock()
-    mock_db_session.begin.return_value = AsyncMock() # This returns the async context manager
+    mock_db_session.begin.return_value = AsyncMock()
     async def mock_get_db_session_generator():
         yield mock_db_session
 
     with patch(
-        "services.calculators.cashflow_calculator_service.app.consumers.transaction_consumer.get_async_db_session",
+        "src.services.calculators.cashflow_calculator_service.app.consumers.transaction_consumer.get_async_db_session",
         new=mock_get_db_session_generator
     ), patch(
-        "services.calculators.cashflow_calculator_service.app.consumers.transaction_consumer.CashflowRepository",
+        "src.services.calculators.cashflow_calculator_service.app.consumers.transaction_consumer.CashflowRepository",
         return_value=mock_cashflow_repo
     ), patch(
-        "services.calculators.cashflow_calculator_service.app.consumers.transaction_consumer.IdempotencyRepository",
+        "src.services.calculators.cashflow_calculator_service.app.consumers.transaction_consumer.IdempotencyRepository",
         return_value=mock_idempotency_repo
     ), patch(
-        "services.calculators.cashflow_calculator_service.app.consumers.transaction_consumer.OutboxRepository",
+        "src.services.calculators.cashflow_calculator_service.app.consumers.transaction_consumer.OutboxRepository",
         return_value=mock_outbox_repo
     ):
         # Act
@@ -126,23 +125,22 @@ async def test_process_message_skips_processed_event(
     mock_idempotency_repo.is_event_processed.return_value = True # Simulate processed event
     mock_outbox_repo = MagicMock()
 
-    # --- FIX: Correct async generator mocking ---
     mock_db_session = AsyncMock()
     mock_db_session.begin.return_value = AsyncMock()
     async def mock_get_db_session_generator():
         yield mock_db_session
 
     with patch(
-        "services.calculators.cashflow_calculator_service.app.consumers.transaction_consumer.get_async_db_session",
+        "src.services.calculators.cashflow_calculator_service.app.consumers.transaction_consumer.get_async_db_session",
         new=mock_get_db_session_generator
     ), patch(
-        "services.calculators.cashflow_calculator_service.app.consumers.transaction_consumer.CashflowRepository",
+        "src.services.calculators.cashflow_calculator_service.app.consumers.transaction_consumer.CashflowRepository",
         return_value=mock_cashflow_repo
     ), patch(
-        "services.calculators.cashflow_calculator_service.app.consumers.transaction_consumer.IdempotencyRepository",
+        "src.services.calculators.cashflow_calculator_service.app.consumers.transaction_consumer.IdempotencyRepository",
         return_value=mock_idempotency_repo
     ), patch(
-        "services.calculators.cashflow_calculator_service.app.consumers.transaction_consumer.OutboxRepository",
+        "src.services.calculators.cashflow_calculator_service.app.consumers.transaction_consumer.OutboxRepository",
         return_value=mock_outbox_repo
     ):
         # Act

@@ -1,4 +1,4 @@
-# services/calculators/cost_calculator_service/tests/unit/consumer/test_consumer.py
+# src/tests/unit/services/calculators/cost_calculator_service/consumer/test_consumer.py
 import pytest
 from unittest.mock import MagicMock, patch, AsyncMock
 from datetime import datetime
@@ -7,9 +7,9 @@ from decimal import Decimal
 from portfolio_common.events import TransactionEvent
 from portfolio_common.database_models import Transaction as DBTransaction, Portfolio
 from portfolio_common.config import KAFKA_PROCESSED_TRANSACTIONS_COMPLETED_TOPIC
-from core.models.transaction import Transaction as EngineTransaction
-from services.calculators.cost_calculator_service.app.consumer import CostCalculatorConsumer
-from services.calculators.cost_calculator_service.app.repository import CostCalculatorRepository
+from src.libs.financial_calculator_engine.src.core.models.transaction import Transaction as EngineTransaction
+from src.services.calculators.cost_calculator_service.app.consumer import CostCalculatorConsumer
+from src.services.calculators.cost_calculator_service.app.repository import CostCalculatorRepository
 from portfolio_common.idempotency_repository import IdempotencyRepository
 
 pytestmark = pytest.mark.asyncio
@@ -68,19 +68,17 @@ async def test_process_message_with_existing_history(cost_calculator_consumer: C
     mock_processor_instance = MagicMock()
     mock_processor_instance.process_transactions.return_value = ([processed_sell_txn], [])
 
-    # --- FINAL FIX: Correctly mock the async context manager ---
     mock_db_session = AsyncMock()
-    mock_transaction_context = AsyncMock()
-    mock_db_session.begin.return_value = mock_transaction_context
+    mock_db_session.begin.return_value = AsyncMock()
     async def mock_get_db_session_generator():
         yield mock_db_session
 
     # ACT
     with patch.object(cost_calculator_consumer, '_get_transaction_processor', return_value=mock_processor_instance), \
-         patch("services.calculators.cost_calculator_service.app.consumer.get_async_db_session", new=mock_get_db_session_generator), \
-         patch("services.calculators.cost_calculator_service.app.consumer.CostCalculatorRepository", return_value=mock_repo_instance), \
-         patch("services.calculators.cost_calculator_service.app.consumer.IdempotencyRepository", return_value=mock_idempotency_repo), \
-         patch("services.calculators.cost_calculator_service.app.consumer.OutboxRepository", return_value=mock_outbox_repo):
+         patch("src.services.calculators.cost_calculator_service.app.consumer.get_async_db_session", new=mock_get_db_session_generator), \
+         patch("src.services.calculators.cost_calculator_service.app.consumer.CostCalculatorRepository", return_value=mock_repo_instance), \
+         patch("src.services.calculators.cost_calculator_service.app.consumer.IdempotencyRepository", return_value=mock_idempotency_repo), \
+         patch("src.services.calculators.cost_calculator_service.app.consumer.OutboxRepository", return_value=mock_outbox_repo):
 
         await cost_calculator_consumer.process_message(mock_kafka_message)
 
@@ -104,19 +102,17 @@ async def test_process_message_skips_processed_event(cost_calculator_consumer: C
     mock_outbox_repo = MagicMock()
     mock_processor_instance = MagicMock()
 
-    # --- FINAL FIX: Correctly mock the async context manager ---
     mock_db_session = AsyncMock()
-    mock_transaction_context = AsyncMock()
-    mock_db_session.begin.return_value = mock_transaction_context
+    mock_db_session.begin.return_value = AsyncMock()
     async def mock_get_db_session_generator():
         yield mock_db_session
 
     # ACT
     with patch.object(cost_calculator_consumer, '_get_transaction_processor', return_value=mock_processor_instance), \
-         patch("services.calculators.cost_calculator_service.app.consumer.get_async_db_session", new=mock_get_db_session_generator), \
-         patch("services.calculators.cost_calculator_service.app.consumer.CostCalculatorRepository", return_value=mock_repo_instance), \
-         patch("services.calculators.cost_calculator_service.app.consumer.IdempotencyRepository", return_value=mock_idempotency_repo), \
-         patch("services.calculators.cost_calculator_service.app.consumer.OutboxRepository", return_value=mock_outbox_repo):
+         patch("src.services.calculators.cost_calculator_service.app.consumer.get_async_db_session", new=mock_get_db_session_generator), \
+         patch("src.services.calculators.cost_calculator_service.app.consumer.CostCalculatorRepository", return_value=mock_repo_instance), \
+         patch("src.services.calculators.cost_calculator_service.app.consumer.IdempotencyRepository", return_value=mock_idempotency_repo), \
+         patch("src.services.calculators.cost_calculator_service.app.consumer.OutboxRepository", return_value=mock_outbox_repo):
 
         await cost_calculator_consumer.process_message(mock_kafka_message)
 
