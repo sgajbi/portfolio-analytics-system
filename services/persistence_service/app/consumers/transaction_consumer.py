@@ -12,7 +12,8 @@ from portfolio_common.logging_utils import correlation_id_var
 from portfolio_common.events import TransactionEvent
 from portfolio_common.db import get_async_db_session
 from portfolio_common.config import KAFKA_RAW_TRANSACTIONS_COMPLETED_TOPIC
-from repositories.transaction_db_repo import TransactionDBRepository
+# Corrected relative import
+from ..repositories.transaction_db_repo import TransactionDBRepository
 from portfolio_common.outbox_repository import OutboxRepository
 from portfolio_common.idempotency_repository import IdempotencyRepository
 

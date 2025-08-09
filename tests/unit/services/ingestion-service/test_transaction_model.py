@@ -1,9 +1,10 @@
 import pytest
 from datetime import date, datetime
-from pydantic import ValidationError
+from pantic import ValidationError
 from decimal import Decimal
 
-from app.DTOs.transaction_dto import Transaction
+# Corrected absolute import path
+from services.ingestion_service.app.DTOs.transaction_dto import Transaction
 
 def test_transaction_model_success():
     """
