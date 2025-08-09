@@ -68,9 +68,10 @@ async def test_process_message_with_existing_history(cost_calculator_consumer: C
     mock_processor_instance = MagicMock()
     mock_processor_instance.process_transactions.return_value = ([processed_sell_txn], [])
 
-    # --- FIX: Correct async generator mocking ---
+    # --- FINAL FIX: Correctly mock the async context manager ---
     mock_db_session = AsyncMock()
-    mock_db_session.begin.return_value = AsyncMock()
+    mock_transaction_context = AsyncMock()
+    mock_db_session.begin.return_value = mock_transaction_context
     async def mock_get_db_session_generator():
         yield mock_db_session
 
@@ -103,9 +104,10 @@ async def test_process_message_skips_processed_event(cost_calculator_consumer: C
     mock_outbox_repo = MagicMock()
     mock_processor_instance = MagicMock()
 
-    # --- FIX: Correct async generator mocking ---
+    # --- FINAL FIX: Correctly mock the async context manager ---
     mock_db_session = AsyncMock()
-    mock_db_session.begin.return_value = AsyncMock()
+    mock_transaction_context = AsyncMock()
+    mock_db_session.begin.return_value = mock_transaction_context
     async def mock_get_db_session_generator():
         yield mock_db_session
 

@@ -69,9 +69,10 @@ async def test_process_message_success(
     mock_idempotency_repo = AsyncMock()
     mock_idempotency_repo.is_event_processed.return_value = False
 
-    # --- FIX: Correct async generator mocking ---
+    # --- FINAL FIX: Correctly mock the async context manager ---
     mock_db_session = AsyncMock()
-    mock_db_session.begin.return_value = AsyncMock()
+    mock_transaction_context = AsyncMock()
+    mock_db_session.begin.return_value = mock_transaction_context
     async def mock_get_db_session_generator():
         yield mock_db_session
 
