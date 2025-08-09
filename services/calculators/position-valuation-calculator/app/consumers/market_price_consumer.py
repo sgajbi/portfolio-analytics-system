@@ -100,7 +100,9 @@ class MarketPriceConsumer(BaseConsumer):
                             completion_event = DailyPositionSnapshotPersistedEvent.model_validate(persisted_snapshot)
                             outbox_repo.create_outbox_event(
                                 db_session=db, aggregate_type='DailyPositionSnapshot',
-                                aggregate_id=str(persisted_snapshot.id), event_type='DailyPositionSnapshotPersisted',
+                                # --- CHANGE: Key by portfolio_id for partition affinity ---
+                                aggregate_id=persisted_snapshot.portfolio_id,
+                                event_type='DailyPositionSnapshotPersisted',
                                 topic=KAFKA_DAILY_POSITION_SNAPSHOT_PERSISTED_TOPIC,
                                 payload=completion_event.model_dump(mode='json'), correlation_id=correlation_id
                             )
