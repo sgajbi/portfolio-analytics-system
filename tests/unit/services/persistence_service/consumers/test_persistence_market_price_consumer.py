@@ -1,4 +1,4 @@
-# src/tests/unit/services/persistence_service/consumers/test_persistence_market_price_consumer.py
+# tests/unit/services/persistence_service/consumers/test_persistence_market_price_consumer.py
 import pytest
 from unittest.mock import MagicMock, patch, AsyncMock
 from datetime import date

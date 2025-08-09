@@ -1,4 +1,4 @@
-# src/tests/unit/services/persistence_service/consumers/test_persistence_transaction_consumer.py
+# tests/unit/services/persistence_service/consumers/test_persistence_transaction_consumer.py
 import json
 import pytest
 from unittest.mock import MagicMock, patch, AsyncMock

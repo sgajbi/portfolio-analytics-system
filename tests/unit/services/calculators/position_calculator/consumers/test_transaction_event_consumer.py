@@ -1,4 +1,4 @@
-# src/tests/unit/services/calculators/position_calculator/consumers/test_transaction_event_consumer.py
+# tests/unit/services/calculators/position_calculator/consumers/test_transaction_event_consumer.py
 import pytest
 from unittest.mock import MagicMock, patch, AsyncMock
 from datetime import datetime, date

@@ -1,4 +1,4 @@
-# src/tests/unit/services/calculators/cashflow_calculator_service/unit/consumers/test_cashflow_transaction_consumer.py
+# tests/unit/services/calculators/cashflow_calculator_service/unit/consumers/test_cashflow_transaction_consumer.py
 import pytest
 from unittest.mock import MagicMock, patch, AsyncMock, ANY
 from datetime import datetime, date
