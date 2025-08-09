@@ -12,8 +12,8 @@ def test_cashflow_pipeline(docker_services, db_engine, clean_db):
     verifies that a corresponding cashflow record is created correctly.
     """
     # 1. Get the API endpoints from the running docker-compose stack
-    host = docker_services.get_service_host("ingestion-service", 8000)
-    port = docker_services.get_service_port("ingestion-service", 8000)
+    host = docker_services.get_service_host("ingestion_service", 8000)
+    port = docker_services.get_service_port("ingestion_service", 8000)
     portfolio_url = f"http://{host}:{port}/ingest/portfolios"
     instrument_url = f"http://{host}:{port}/ingest/instruments"
     transaction_url = f"http://{host}:{port}/ingest/transactions"

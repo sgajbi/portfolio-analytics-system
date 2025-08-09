@@ -1,4 +1,4 @@
-# services/ingestion-service/app/routers/portfolios.py
+# services/ingestion_service/app/routers/portfolios.py
 import logging
 from fastapi import APIRouter, Depends, status
 

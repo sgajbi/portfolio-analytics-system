@@ -12,7 +12,12 @@ from alembic import context
 # --- CUSTOM SETUP ---
 # Add the project root directory to the Python path.
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-portfolio_common_path = os.path.join(project_root, 'libs', 'portfolio-common')
+# Add the new src directory to the path
+src_path = os.path.join(project_root, 'src')
+if src_path not in sys.path:
+    sys.path.insert(0, src_path)
+# Update the path to portfolio-common inside src
+portfolio_common_path = os.path.join(project_root, 'src', 'libs', 'portfolio-common')
 if portfolio_common_path not in sys.path:
     sys.path.insert(0, portfolio_common_path)
 
@@ -31,8 +36,9 @@ if config.config_file_name:
 # Import the Base and all models that inherit from it so that
 # the metadata is populated correctly for autogenerate and upgrade.
 from portfolio_common.database_models import (
-    Base, Transaction, TransactionCost, Instrument, MarketPrice, FxRate, 
-    PositionHistory, OutboxEvent, ProcessedEvent
+    Base, Transaction, TransactionCost, Instrument, MarketPrice, FxRate,
+    PositionHistory, OutboxEvent, ProcessedEvent, DailyPositionSnapshot,
+    Cashflow, Portfolio, PortfolioAggregationJob, PortfolioTimeseries, PositionTimeseries
 )
 target_metadata = Base.metadata
 
@@ -48,11 +54,11 @@ def get_db_url():
             "Neither HOST_DATABASE_URL nor DATABASE_URL are set. "
             "Please check your .env file."
         )
-    
+
     # Ensure the URL uses a synchronous scheme for alembic
     if "asyncpg" in url:
         url = url.replace("postgresql+asyncpg://", "postgresql://")
-    
+
     return url
 
 

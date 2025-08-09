@@ -19,14 +19,14 @@ if project_root not in sys.path:
 def docker_services(request):
     """
     A session-scoped fixture that starts the Docker Compose stack and waits for the
-    ingestion-service to become healthy before yielding to the tests.
+    ingestion_service to become healthy before yielding to the tests.
     """
     compose = DockerCompose(".", compose_file_name="docker-compose.yml")
     with compose:
         print("\n--- Waiting for services to become healthy ---")
 
-        host = compose.get_service_host("ingestion-service", 8000)
-        port = compose.get_service_port("ingestion-service", 8000)
+        host = compose.get_service_host("ingestion_service", 8000)
+        port = compose.get_service_port("ingestion_service", 8000)
         health_url = f"http://{host}:{port}/health"
         
         start_time = time.time()

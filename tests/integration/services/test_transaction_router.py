@@ -1,4 +1,4 @@
-# services/ingestion-service/tests/integration/test_transaction_router.py
+# services/ingestion_service/tests/integration/test_transaction_router.py
 import pytest
 from httpx import AsyncClient
 from unittest.mock import MagicMock, call

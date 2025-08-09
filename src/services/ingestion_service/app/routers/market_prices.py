@@ -1,4 +1,4 @@
-# services/ingestion-service/app/routers/market_prices.py
+# services/ingestion_service/app/routers/market_prices.py
 import logging
 from fastapi import APIRouter, Depends, status
 

@@ -54,7 +54,7 @@ To guarantee that all events related to a single portfolio are processed in the 
 graph TD
     subgraph "API Layer"
         direction LR
-        Client[User/Client] -- POST Data --> IngestionService[ingestion-service:8000];
+        Client[User/Client] -- POST Data --> IngestionService[ingestion_service:8000];
         Client -- GET Data --> QueryService[query-service:8001];
     end
 
@@ -91,7 +91,7 @@ graph TD
 
 ## 2\. Core Services
 
-  - **`ingestion-service`**: A write-only FastAPI application serving as the single entry point for all incoming data (portfolios, instruments, transactions, etc.). It validates and publishes raw events to Kafka.
+  - **`ingestion_service`**: A write-only FastAPI application serving as the single entry point for all incoming data (portfolios, instruments, transactions, etc.). It validates and publishes raw events to Kafka.
   - **`persistence-service`**: A generic consumer responsible for persisting raw data from Kafka to the PostgreSQL database. On successful persistence, it publishes a `_completed` event.
   - **`query-service`**: A read-only FastAPI application providing access to all processed and calculated data for reporting and analytics.
   - **Calculator Services (`services/calculators/`)**: A suite of specialized, idempotent consumers that perform core business logic:
@@ -108,7 +108,7 @@ graph TD
 The system relies on a well-defined sequence of events published to Kafka topics.
 
   - **Raw Data Topics**: `raw_portfolios`, `raw_transactions`, `raw_instruments`, `raw_market_prices`, `raw_fx_rates`
-      - **Published by**: `ingestion-service`
+      - **Published by**: `ingestion_service`
       - **Consumed by**: `persistence-service`
   - **Persistence Completion Topics**: `raw_transactions_completed`, `market_price_persisted`
       - **Published by**: `persistence-service`
@@ -121,7 +121,7 @@ The system relies on a well-defined sequence of events published to Kafka topics
 
 ## 4\. API Endpoints
 
-### Write API (`ingestion-service` @ `http://localhost:8000`)
+### Write API (`ingestion_service` @ `http://localhost:8000`)
 
   - `POST /ingest/portfolios`: Ingests a list of portfolios.
   - `POST /ingest/instruments`: Ingests a list of financial instruments.
@@ -211,7 +211,7 @@ Services with a web server also expose an endpoint for metrics in the Prometheus
     ```bash
     pip install -r tests/requirements.txt && pip install -e libs/financial-calculator-engine \
             -e libs/portfolio-common \
-            -e services/ingestion-service \
+            -e services/ingestion_service \
             -e services/persistence_service \
             -e services/calculators/cost_calculator_service \
             -e services/calculators/cashflow_calculator_service \
@@ -298,7 +298,7 @@ sgajbi-portfolio-analytics-system/
 │   ├── portfolio-common/     # Common DB models, events, and utilities
 │   └── financial-calculator-engine/ # Core financial calculation logic
 ├── services/                 # Individual microservices
-│   ├── ingestion-service/    # The Write API
+│   ├── ingestion_service/    # The Write API
 │   ├── persistence-service/  # Generic data persistence consumer
 │   ├── query-service/        # The Read API
 │   └── calculators/          # Business logic consumers

@@ -1,4 +1,4 @@
-# services/ingestion-service/app/DTOs/instrument_dto.py
+# services/ingestion_service/app/DTOs/instrument_dto.py
 from typing import List
 from pydantic import BaseModel, Field, ConfigDict
 

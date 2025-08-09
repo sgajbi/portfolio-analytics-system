@@ -11,7 +11,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 
 [tool.setuptools.packages.find]
-where = ["."]
+where = ["src"]
 exclude = ["tests*", "deployment*"]
 
 # --- UPDATED: Pytest Configuration ---
@@ -22,9 +22,9 @@ testpaths = [
 ]
 # --- NEW: Add source roots to the Python path for test discovery ---
 pythonpath = [
-    ".",
-    "libs/portfolio-common",
-    "libs/financial-calculator-engine/src",
+    "src",
+    "src/libs/portfolio-common",
+    "src/libs/financial-calculator-engine/src",
 ]
 addopts = "--strict-markers"
 minversion = "6.0"

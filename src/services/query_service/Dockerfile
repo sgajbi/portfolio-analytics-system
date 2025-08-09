@@ -1,4 +1,4 @@
-# services/query-service/Dockerfile
+# src/services/query-service/Dockerfile
 
 # Stage 1: Base image setup
 FROM python:3.11-slim-bookworm as python-base
@@ -22,21 +22,21 @@ WORKDIR /app
 # Stage 2: Builder stage
 FROM python-base as builder
 
-ENV PYTHONPATH="/app/libs/portfolio-common:/app/services/query-service"
+ENV PYTHONPATH="/app/src/libs/portfolio-common:/app/src/services/query-service"
 
-COPY libs/portfolio-common/ /app/libs/portfolio-common/
-RUN pip install -e /app/libs/portfolio-common
+COPY src/libs/portfolio-common/ /app/src/libs/portfolio-common/
+RUN pip install -e /app/src/libs/portfolio-common
 
-COPY services/query-service/pyproject.toml /app/services/query-service/pyproject.toml
-COPY services/query-service/app /app/services/query-service/app
-RUN pip install /app/services/query-service
+COPY src/services/query-service/pyproject.toml /app/src/services/query-service/pyproject.toml
+COPY src/services/query-service/app /app/src/services/query-service/app
+RUN pip install /app/src/services/query-service
 
 # Stage 3: Final production stage
 FROM python-base as final
 
 COPY --from=builder --chown=appuser:appuser /opt/venv /opt/venv
-COPY --from=builder --chown=appuser:appuser /app/services/query-service/app /app/app
-COPY --from=builder --chown=appuser:appuser /app/libs /app/libs
+COPY --from=builder --chown=appuser:appuser /app/src/services/query-service/app /app/app
+COPY --from=builder --chown=appuser:appuser /app/src/libs /app/src/libs
 
 USER appuser
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8001"]

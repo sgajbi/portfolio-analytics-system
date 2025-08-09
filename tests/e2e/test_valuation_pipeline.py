@@ -9,8 +9,8 @@ def test_full_valuation_pipeline(docker_services, db_engine, clean_db):
     the final API response from the query service.
     """
     # 1. Define API endpoints
-    ingestion_host = docker_services.get_service_host("ingestion-service", 8000)
-    ingestion_port = docker_services.get_service_port("ingestion-service", 8000)
+    ingestion_host = docker_services.get_service_host("ingestion_service", 8000)
+    ingestion_port = docker_services.get_service_port("ingestion_service", 8000)
     ingestion_url = f"http://{ingestion_host}:{ingestion_port}"
     
     query_host = docker_services.get_service_host("query-service", 8001)

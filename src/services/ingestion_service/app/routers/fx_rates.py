@@ -1,4 +1,4 @@
-# services/ingestion-service/app/routers/fx_rates.py
+# services/ingestion_service/app/routers/fx_rates.py
 import logging
 from fastapi import APIRouter, Depends, status
 

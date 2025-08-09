@@ -34,8 +34,8 @@ def test_db_outage_recovery(docker_services, db_engine, clean_db):
     message to the DLQ.
     """
     # 1. ARRANGE: Get service URLs and define test data
-    ingestion_host = docker_services.get_service_host("ingestion-service", 8000)
-    ingestion_port = docker_services.get_service_port("ingestion-service", 8000)
+    ingestion_host = docker_services.get_service_host("ingestion_service", 8000)
+    ingestion_port = docker_services.get_service_port("ingestion_service", 8000)
     ingestion_url = f"http://{ingestion_host}:{ingestion_port}"
 
     portfolio_id = f"E2E_FAIL_PORT_{uuid.uuid4()}"

@@ -12,8 +12,8 @@ def test_portfolio_ingestion_pipeline(docker_services, db_engine, clean_db):
     correctly in the database.
     """
     # 1. Get the API endpoint from the running docker-compose stack
-    host = docker_services.get_service_host("ingestion-service", 8000)
-    port = docker_services.get_service_port("ingestion-service", 8000)
+    host = docker_services.get_service_host("ingestion_service", 8000)
+    port = docker_services.get_service_port("ingestion_service", 8000)
     api_url = f"http://{host}:{port}/ingest/portfolios"
 
     # 2. Define a test portfolio payload

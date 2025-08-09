@@ -1,4 +1,4 @@
-# services/ingestion-service/Dockerfile
+# src/services/ingestion_service/Dockerfile
 
 # Stage 1: Base image setup. This replaces the dependency on a pre-built image.
 FROM python:3.11-slim-bookworm as python-base
@@ -17,21 +17,21 @@ WORKDIR /app
 # Stage 2: Builder stage
 FROM python-base as builder
 
-ENV PYTHONPATH="/app/libs/portfolio-common:/app/services/ingestion-service"
+ENV PYTHONPATH="/app/src/libs/portfolio-common:/app/src/services/ingestion_service"
 
-COPY ./libs/portfolio-common /app/libs/portfolio-common
-RUN pip install -e /app/libs/portfolio-common
+COPY ./src/libs/portfolio-common /app/src/libs/portfolio-common
+RUN pip install -e /app/src/libs/portfolio-common
 
-COPY ./services/ingestion-service/pyproject.toml /app/services/ingestion-service/pyproject.toml
-COPY ./services/ingestion-service/app /app/services/ingestion-service/app
-RUN pip install /app/services/ingestion-service
+COPY ./src/services/ingestion_service/pyproject.toml /app/src/services/ingestion_service/pyproject.toml
+COPY ./src/services/ingestion_service/app /app/src/services/ingestion_service/app
+RUN pip install /app/src/services/ingestion_service
 
 # Stage 3: Final production stage
 FROM python-base as final
 
 COPY --from=builder --chown=appuser:appuser /opt/venv /opt/venv
-COPY --from=builder --chown=appuser:appuser /app/services/ingestion-service/app /app/app
-COPY --from=builder --chown=appuser:appuser /app/libs /app/libs
+COPY --from=builder --chown=appuser:appuser /app/src/services/ingestion_service/app /app/app
+COPY --from=builder --chown=appuser:appuser /app/src/libs /app/src/libs
 
 USER appuser
 EXPOSE 8000

@@ -1,4 +1,4 @@
-# services/ingestion-service/app/DTOs/market_price_dto.py
+# services/ingestion_service/app/DTOs/market_price_dto.py
 from datetime import date
 from typing import List
 from pydantic import BaseModel, Field, condecimal, ConfigDict

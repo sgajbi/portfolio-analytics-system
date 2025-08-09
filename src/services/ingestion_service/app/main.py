@@ -1,4 +1,4 @@
-# services/ingestion-service/app/main.py
+# services/ingestion_service/app/main.py
 import logging
 from contextlib import asynccontextmanager
 import asyncio

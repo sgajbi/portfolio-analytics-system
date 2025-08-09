@@ -12,8 +12,8 @@ def test_transaction_ingestion_is_idempotent(docker_services, db_engine, clean_d
     record is created in the database.
     """
     # 1. Get API endpoints
-    ingestion_host = docker_services.get_service_host("ingestion-service", 8000)
-    ingestion_port = docker_services.get_service_port("ingestion-service", 8000)
+    ingestion_host = docker_services.get_service_host("ingestion_service", 8000)
+    ingestion_port = docker_services.get_service_port("ingestion_service", 8000)
     ingestion_url = f"http://{ingestion_host}:{ingestion_port}"
 
     # 2. Define unique IDs for this test run

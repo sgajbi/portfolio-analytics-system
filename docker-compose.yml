@@ -7,7 +7,7 @@ services:
     ports:
       - "2181:2181"
     environment:
-      ZOOKeeper_CLIENT_PORT: 2181
+      ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
       ZOOKEEPER_4LW_COMMANDS_WHITELIST: "ruok,stat,mntr,conf"
       KAFKA_OPTS: "-Dzookeeper.4lw.commands.whitelist=ruok,stat,mntr,conf"
@@ -51,7 +51,7 @@ services:
   kafka-topic-creator:
     build:
       context: .
-      dockerfile: ./services/persistence_service/Dockerfile
+      dockerfile: ./src/services/persistence_service/Dockerfile
     hostname: kafka-topic-creator
     container_name: kafka-topic-creator
     depends_on:
@@ -59,7 +59,7 @@ services:
         condition: service_healthy
     command: ["python", "-m", "tools.kafka_setup"]
     environment:
-      PYTHONPATH: "/app:/app/libs/portfolio-common"
+      PYTHONPATH: "/app:/app/src/libs/portfolio-common"
       KAFKA_BOOTSTRAP_SERVERS: kafka:9093
     networks:
       - app_network
@@ -87,11 +87,11 @@ services:
   migration-runner:
     build:
       context: .
-      dockerfile: ./services/persistence_service/Dockerfile
+      dockerfile: ./src/services/persistence_service/Dockerfile
     hostname: migration-runner
     container_name: migration-runner
     environment:
-      PYTHONPATH: "/app:/app/libs/portfolio-common"
+      PYTHONPATH: "/app:/app/src/libs/portfolio-common"
       DATABASE_URL: postgresql://user:password@postgres:5432/portfolio_db
     depends_on:
       postgres:
@@ -103,20 +103,20 @@ services:
   ingestion_service:
     build:
       context: .
-      dockerfile: ./services/ingestion_service/Dockerfile
-    hostname: ingestion-service
-    container_name: ingestion-service
+      dockerfile: ./src/services/ingestion_service/Dockerfile
+    hostname: ingestion_service
+    container_name: ingestion_service
     ports:
       - "8000:8000"
     environment:
-      PYTHONPATH: "/app:/app/libs/portfolio-common"
+      PYTHONPATH: "/app:/app/src/libs/portfolio-common"
       KAFKA_BOOTSTRAP_SERVERS: kafka:9093
     depends_on:
       kafka-topic-creator:
         condition: service_completed_successfully
     volumes:
-      - ./services/ingestion_service/app:/app/app
-      - ./libs/portfolio-common:/app/libs/portfolio-common
+      - ./src/services/ingestion_service/app:/app/app
+      - ./src/libs/portfolio-common:/app/src/libs/portfolio-common
     command: >
       uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4 --timeout-keep-alive 30
     networks:
@@ -125,20 +125,20 @@ services:
   query_service:
     build:
       context: .
-      dockerfile: ./services/query_service/Dockerfile
+      dockerfile: ./src/services/query_service/Dockerfile
     hostname: query-service
     container_name: query-service
     ports:
       - "8001:8001"
     environment:
-      PYTHONPATH: "/app:/app/libs/portfolio-common"
+      PYTHONPATH: "/app:/app/src/libs/portfolio-common"
       DATABASE_URL: postgresql://user:password@postgres:5432/portfolio_db
     depends_on:
       migration-runner:
         condition: service_completed_successfully
     volumes:
-      - ./services/query_service/app:/app/app
-      - ./libs/portfolio-common:/app/libs/portfolio-common
+      - ./src/services/query_service/app:/app/app
+      - ./src/libs/portfolio-common:/app/src/libs/portfolio-common
     command: uvicorn app.main:app --host 0.0.0.0 --port 8001
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8001/health/ready || exit 1"]
@@ -152,13 +152,13 @@ services:
   persistence_service:
     build:
       context: .
-      dockerfile: ./services/persistence_service/Dockerfile
+      dockerfile: ./src/services/persistence_service/Dockerfile
     hostname: persistence-service
     container_name: persistence-service
     ports:
       - "8080:8080"
     environment:
-      PYTHONPATH: "/app:/app/libs/portfolio-common"
+      PYTHONPATH: "/app:/app/src/libs/portfolio-common"
       KAFKA_BOOTSTRAP_SERVERS: kafka:9093
       DATABASE_URL: postgresql://user:password@postgres:5432/portfolio_db
     depends_on:
@@ -173,8 +173,8 @@ services:
       retries: 5
       start_period: 30s
     volumes:
-      - ./services/persistence_service/app:/app/app
-      - ./libs/portfolio-common:/app/libs/portfolio-common
+      - ./src/services/persistence_service/app:/app/app
+      - ./src/libs/portfolio-common:/app/src/libs/portfolio-common
     command: ["python", "-m", "app.main"]
     networks:
       - app_network
@@ -182,13 +182,13 @@ services:
   cost_calculator_service:
     build:
       context: .
-      dockerfile: ./services/calculators/cost_calculator_service/Dockerfile
+      dockerfile: ./src/services/calculators/cost_calculator_service/Dockerfile
     hostname: cost-calculator-service
     container_name: cost-calculator-service
     ports:
       - "8083:8083"
     environment:
-      PYTHONPATH: "/app:/app/libs/portfolio-common:/app/libs/financial-calculator-engine/src"
+      PYTHONPATH: "/app:/app/src/libs/portfolio-common:/app/src/libs/financial-calculator-engine/src"
       KAFKA_BOOTSTRAP_SERVERS: kafka:9093
       DATABASE_URL: postgresql://user:password@postgres:5432/portfolio_db # Added for health check
     depends_on:
@@ -197,9 +197,9 @@ services:
       migration-runner:
         condition: service_completed_successfully
     volumes:
-      - ./services/calculators/cost_calculator_service/app:/app/app
-      - ./libs/portfolio-common:/app/libs/portfolio-common
-      - ./libs/financial-calculator-engine:/app/libs/financial-calculator-engine
+      - ./src/services/calculators/cost_calculator_service/app:/app/app
+      - ./src/libs/portfolio-common:/app/src/libs/portfolio-common
+      - ./src/libs/financial-calculator-engine:/app/src/libs/financial-calculator-engine
     command: ["python", "-m", "app.main"]
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8083/health/ready || exit 1"]
@@ -213,13 +213,13 @@ services:
   cashflow_calculator_service:
     build:
       context: .
-      dockerfile: ./services/calculators/cashflow_calculator_service/Dockerfile
+      dockerfile: ./src/services/calculators/cashflow_calculator_service/Dockerfile
     hostname: cashflow-calculator-service
     container_name: cashflow-calculator-service
     ports:
       - "8082:8082"
     environment:
-      PYTHONPATH: "/app:/app/libs/portfolio-common"
+      PYTHONPATH: "/app:/app/src/libs/portfolio-common"
       KAFKA_BOOTSTRAP_SERVERS: kafka:9093
       DATABASE_URL: postgresql://user:password@postgres:5432/portfolio_db
     depends_on:
@@ -228,8 +228,8 @@ services:
       migration-runner:
         condition: service_completed_successfully
     volumes:
-      - ./services/calculators/cashflow_calculator_service/app:/app/app
-      - ./libs/portfolio-common:/app/libs/portfolio-common
+      - ./src/services/calculators/cashflow_calculator_service/app:/app/app
+      - ./src/libs/portfolio-common:/app/src/libs/portfolio-common
     command: ["python", "-m", "app.main"]
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8082/health/ready || exit 1"]
@@ -243,13 +243,13 @@ services:
   position_calculator_service:
     build:
       context: .
-      dockerfile: ./services/calculators/position_calculator/Dockerfile
+      dockerfile: ./src/services/calculators/position_calculator/Dockerfile
     hostname: position-calculator-service
     container_name: position-calculator-service
     ports:
       - "8081:8081"
     environment:
-      PYTHONPATH: "/app:/app/libs/portfolio-common"
+      PYTHONPATH: "/app:/app/src/libs/portfolio-common"
       KAFKA_BOOTSTRAP_SERVERS: kafka:9093
       DATABASE_URL: postgresql://user:password@postgres:5432/portfolio_db
     depends_on:
@@ -258,8 +258,8 @@ services:
       migration-runner:
         condition: service_completed_successfully
     volumes:
-      - ./services/calculators/position_calculator/app:/app/app
-      - ./libs/portfolio-common:/app/libs/portfolio-common
+      - ./src/services/calculators/position_calculator/app:/app/app
+      - ./src/libs/portfolio-common:/app/src/libs/portfolio-common
     command: ["python", "-m", "app.main"]
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8081/health/ready || exit 1"]
@@ -273,13 +273,13 @@ services:
   position_valuation_calculator:
     build:
       context: .
-      dockerfile: ./services/calculators/position_valuation_calculator/Dockerfile
+      dockerfile: ./src/services/calculators/position_valuation_calculator/Dockerfile
     hostname: position-valuation-calculator
     container_name: position-valuation-calculator
     ports:
       - "8084:8084"
     environment:
-      PYTHONPATH: "/app:/app/libs/portfolio-common"
+      PYTHONPATH: "/app:/app/src/libs/portfolio-common"
       KAFKA_BOOTSTRAP_SERVERS: kafka:9093
       DATABASE_URL: postgresql://user:password@postgres:5432/portfolio_db
     depends_on:
@@ -288,8 +288,8 @@ services:
       migration-runner:
         condition: service_completed_successfully
     volumes:
-      - ./services/calculators/position_valuation_calculator/app:/app/app
-      - ./libs/portfolio-common:/app/libs/portfolio-common
+      - ./src/services/calculators/position_valuation_calculator/app:/app/app
+      - ./src/libs/portfolio-common:/app/src/libs/portfolio-common
     command: ["python", "-m", "app.main"]
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8084/health/ready || exit 1"]
@@ -303,13 +303,13 @@ services:
   timeseries_generator_service:
     build:
       context: .
-      dockerfile: ./services/timeseries_generator_service/Dockerfile
+      dockerfile: ./src/services/timeseries_generator_service/Dockerfile
     hostname: timeseries-generator-service
     container_name: timeseries-generator-service
     ports:
       - "8085:8085"
     environment:
-      PYTHONPATH: "/app:/app/libs/portfolio-common"
+      PYTHONPATH: "/app:/app/src/libs/portfolio-common"
       KAFKA_BOOTSTRAP_SERVERS: kafka:9093
       DATABASE_URL: postgresql://user:password@postgres:5432/portfolio_db
     depends_on:
@@ -318,8 +318,8 @@ services:
       migration-runner:
         condition: service_completed_successfully
     volumes:
-      - ./services/timeseries_generator_service/app:/app/app
-      - ./libs/portfolio-common:/app/libs/portfolio-common
+      - ./src/services/timeseries_generator_service/app:/app/app
+      - ./src/libs/portfolio-common:/app/src/libs/portfolio-common
     command: ["python", "-m", "app.main"]
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8085/health/ready || exit 1"]

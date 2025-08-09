@@ -20,8 +20,8 @@ def wait_for_portfolio_timeseries(db_engine, portfolio_id, expected_date, timeou
 @pytest.fixture(scope="function")
 def setup_timeseries_data(docker_services, db_engine, clean_db):
     """A function-scoped fixture to ingest all necessary data for the time series tests."""
-    ingestion_host = docker_services.get_service_host("ingestion-service", 8000)
-    ingestion_port = docker_services.get_service_port("ingestion-service", 8000)
+    ingestion_host = docker_services.get_service_host("ingestion_service", 8000)
+    ingestion_port = docker_services.get_service_port("ingestion_service", 8000)
 
     # Helper to post data to endpoints
     def post_data(endpoint, payload):

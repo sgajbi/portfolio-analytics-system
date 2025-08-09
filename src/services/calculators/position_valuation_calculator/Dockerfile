@@ -1,4 +1,4 @@
-# services/calculators/position-valuation-calculator/Dockerfile
+# src/services/calculators/position-valuation-calculator/Dockerfile
 
 # Stage 1: Base image setup
 FROM python:3.11-slim-bookworm as python-base
@@ -22,21 +22,21 @@ WORKDIR /app
 # Stage 2: Builder stage
 FROM python-base as builder
 
-ENV PYTHONPATH="/app/libs/portfolio-common:/app/services/calculators/position-valuation-calculator"
+ENV PYTHONPATH="/app/src/libs/portfolio-common:/app/src/services/calculators/position-valuation-calculator"
 
-COPY libs/portfolio-common/ /app/libs/portfolio-common/
-RUN pip install -e /app/libs/portfolio-common
+COPY src/libs/portfolio-common/ /app/src/libs/portfolio-common/
+RUN pip install -e /app/src/libs/portfolio-common
 
-COPY services/calculators/position-valuation-calculator/pyproject.toml /app/services/calculators/position-valuation-calculator/pyproject.toml
-COPY services/calculators/position-valuation-calculator/app /app/services/calculators/position-valuation-calculator/app
-RUN pip install /app/services/calculators/position-valuation-calculator
+COPY src/services/calculators/position-valuation-calculator/pyproject.toml /app/src/services/calculators/position-valuation-calculator/pyproject.toml
+COPY src/services/calculators/position-valuation-calculator/app /app/src/services/calculators/position-valuation-calculator/app
+RUN pip install /app/src/services/calculators/position-valuation-calculator
 
 # Stage 3: Final production stage
 FROM python-base as final
 
 COPY --from=builder --chown=appuser:appuser /opt/venv /opt/venv
-COPY --from=builder --chown=appuser:appuser /app/services/calculators/position-valuation-calculator/app /app/app
-COPY --from=builder --chown=appuser:appuser /app/libs /app/libs
+COPY --from=builder --chown=appuser:appuser /app/src/services/calculators/position-valuation-calculator/app /app/app
+COPY --from=builder --chown=appuser:appuser /app/src/libs /app/src/libs
 
 USER appuser
 

@@ -1,4 +1,4 @@
-# services/ingestion-service/app/services/ingestion_service.py
+# services/ingestion_service/app/services/ingestion_service.py
 from fastapi import Depends
 from typing import List
 
