@@ -49,44 +49,71 @@ class CashflowCalculatorConsumer(BaseConsumer):
             event = TransactionEvent.model_validate(event_data)
 
             async for db in get_async_db_session():
-                async with db.begin():
+                tx = await db.begin()
+                try:
                     idempotency_repo = IdempotencyRepository(db)
                     cashflow_repo = CashflowRepository(db)
                     outbox_repo = OutboxRepository()
 
+                    # idempotency guard
                     if await idempotency_repo.is_event_processed(event_id, SERVICE_NAME):
                         logger.warning(f"Event {event_id} already processed. Skipping.")
+                        await tx.rollback()
                         return
 
                     rule = get_rule_for_transaction(event.transaction_type)
                     if not rule:
-                        await idempotency_repo.mark_event_processed(event_id, event.portfolio_id, SERVICE_NAME, correlation_id)
+                        # No cashflow rule -> still mark as processed to be idempotent
+                        await idempotency_repo.mark_event_processed(
+                            event_id, event.portfolio_id, SERVICE_NAME, correlation_id
+                        )
+                        await db.commit()
                         return
 
-                    cashflow_to_save = CashflowLogic.calculate(event, rule)
-                    saved_cashflow = await cashflow_repo.create_cashflow(cashflow_to_save)
-                    
-                    completion_event = CashflowCalculatedEvent.model_validate(saved_cashflow)
-                    
+                    cashflow_to_save = CashflowLogic.calculate(
+                        event, rule
+                    )
+                    saved = await cashflow_repo.create_cashflow(cashflow_to_save)
+
                     outbox_repo.create_outbox_event(
                         db_session=db,
                         aggregate_type='Cashflow',
-                        # --- CHANGE: Key by portfolio_id for partition affinity ---
-                        aggregate_id=str(event.portfolio_id),
+                        aggregate_id=saved.transaction_id,
                         event_type='CashflowCalculated',
                         topic=KAFKA_CASHFLOW_CALCULATED_TOPIC,
-                        payload=completion_event.model_dump(mode='json', by_alias=True),
+                        payload=CashflowCalculatedEvent(
+                            transaction_id=saved.transaction_id,
+                            portfolio_id=saved.portfolio_id,
+                            security_id=saved.security_id,
+                            amount=saved.amount,
+                            currency=saved.currency,
+                            classification=saved.classification,
+                            timing=saved.timing,
+                            level=saved.level,
+                            calculationType=saved.calculation_type
+                        ).model_dump(mode='json'),
                         correlation_id=correlation_id
                     )
 
-                    await idempotency_repo.mark_event_processed(event_id, event.portfolio_id, SERVICE_NAME, correlation_id)
+                    await idempotency_repo.mark_event_processed(
+                        event_id, event.portfolio_id, SERVICE_NAME, correlation_id
+                    )
+                    await db.commit()
 
-        except (json.JSONDecodeError, ValidationError) as e:
-            logger.error(f"Message validation failed for key '{key}': {e}. Sending to DLQ.", exc_info=True)
-            await self._send_to_dlq_async(msg, e)
+                except Exception:
+                    await tx.rollback()
+                    raise
+
+        except (json.JSONDecodeError, ValidationError):
+            logger.error("Message validation failed. Sending to DLQ.", exc_info=True)
+            await self._send_to_dlq_async(msg, ValueError("invalid cashflow event payload"))
         except IntegrityError:
-            logger.warning(f"Caught IntegrityError for transaction {getattr(event, 'transaction_id', 'UNKNOWN')}. Will retry...")
+            # retriable by tenacity
+            logger.warning("DB integrity error; will retry...", exc_info=False)
             raise
         except Exception as e:
-            logger.error(f"Unexpected error processing message with key '{key}'. Sending to DLQ.", exc_info=True)
+            logger.error(
+                f"Unexpected error processing message with key '{key}'. Sending to DLQ.",
+                exc_info=True
+            )
             await self._send_to_dlq_async(msg, e)

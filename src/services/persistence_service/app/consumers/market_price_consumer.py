@@ -12,7 +12,6 @@ from portfolio_common.logging_utils import correlation_id_var
 from portfolio_common.events import MarketPriceEvent
 from portfolio_common.db import get_async_db_session
 from portfolio_common.config import KAFKA_MARKET_PRICE_PERSISTED_TOPIC
-# Corrected relative import
 from ..repositories.market_price_repository import MarketPriceRepository
 from portfolio_common.idempotency_repository import IdempotencyRepository
 from portfolio_common.outbox_repository import OutboxRepository
@@ -46,18 +45,20 @@ class MarketPriceConsumer(BaseConsumer):
         correlation_id = correlation_id_var.get()
         event = None
         event_id = f"{msg.topic()}-{msg.partition()}-{msg.offset()}"
-        
-        logger.info("MarketPriceConsumer received message", 
-            extra={"key": key, "event_id": event_id})
+
+        logger.info("MarketPriceConsumer received message", extra={"key": key, "event_id": event_id})
 
         try:
             market_price_data = json.loads(value)
             event = MarketPriceEvent.model_validate(market_price_data)
-            logger.info("Successfully validated event", 
-                extra={"security_id": event.security_id, "price_date": event.price_date})
+            logger.info(
+                "Successfully validated event",
+                extra={"security_id": event.security_id, "price_date": event.price_date},
+            )
 
             async for db in get_async_db_session():
-                async with db.begin():
+                tx = await db.begin()
+                try:
                     repo = MarketPriceRepository(db)
                     idempotency_repo = IdempotencyRepository(db)
                     outbox_repo = OutboxRepository()
@@ -65,40 +66,54 @@ class MarketPriceConsumer(BaseConsumer):
                     if await idempotency_repo.is_event_processed(event_id, SERVICE_NAME):
                         logger.warning(
                             "Event has already been processed. Skipping.",
-                            extra={"event_id": event_id, "service_name": SERVICE_NAME}
+                            extra={"event_id": event_id, "service_name": SERVICE_NAME},
                         )
+                        await tx.rollback()
                         return
 
                     await repo.create_market_price(event)
-            
+
                     outbox_repo.create_outbox_event(
                         db_session=db,
-                        aggregate_type='MarketPrice',
+                        aggregate_type="MarketPrice",
                         aggregate_id=event.security_id,
-                        event_type='MarketPricePersisted',
+                        event_type="MarketPricePersisted",
                         topic=KAFKA_MARKET_PRICE_PERSISTED_TOPIC,
-                        payload=event.model_dump(mode='json'),
-                        correlation_id=correlation_id
+                        payload=event.model_dump(mode="json"),
+                        correlation_id=correlation_id,
                     )
 
                     await idempotency_repo.mark_event_processed(
                         event_id=event_id,
-                        portfolio_id="N/A", 
+                        portfolio_id="N/A",
                         service_name=SERVICE_NAME,
-                        correlation_id=correlation_id
+                        correlation_id=correlation_id,
                     )
+
+                    await db.commit()
+                except Exception:
+                    await tx.rollback()
+                    raise
 
             logger.info("Database transaction for market price was successful.")
 
         except (json.JSONDecodeError, ValidationError) as e:
-            logger.error("Message validation failed. Sending to DLQ.", 
-                extra={"key": key, "event_id": event_id}, exc_info=True)
+            logger.error(
+                "Message validation failed. Sending to DLQ.",
+                extra={"key": key, "event_id": event_id},
+                exc_info=True,
+            )
             await self._send_to_dlq_async(msg, e)
         except (DBAPIError, IntegrityError):
-            logger.warning(f"Caught a DB error for price {getattr(event, 'security_id', 'UNKNOWN')}. Will retry...",
-                extra={"event_id": event_id})
+            logger.warning(
+                f"Caught a DB error for price {getattr(event, 'security_id', 'UNKNOWN')}. Will retry...",
+                extra={"event_id": event_id},
+            )
             raise
         except Exception as e:
-            logger.error(f"An unexpected error occurred for price {getattr(event, 'security_id', 'UNKNOWN')}. Sending to DLQ.", 
-                extra={"key": key, "event_id": event_id}, exc_info=True)
+            logger.error(
+                f"An unexpected error occurred for price {getattr(event, 'security_id', 'UNKNOWN')}. Sending to DLQ.",
+                extra={"key": key, "event_id": event_id},
+                exc_info=True,
+            )
             await self._send_to_dlq_async(msg, e)

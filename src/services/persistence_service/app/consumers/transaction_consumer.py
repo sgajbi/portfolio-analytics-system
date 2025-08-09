@@ -12,7 +12,6 @@ from portfolio_common.logging_utils import correlation_id_var
 from portfolio_common.events import TransactionEvent
 from portfolio_common.db import get_async_db_session
 from portfolio_common.config import KAFKA_RAW_TRANSACTIONS_COMPLETED_TOPIC
-# Corrected relative import
 from ..repositories.transaction_db_repo import TransactionDBRepository
 from portfolio_common.outbox_repository import OutboxRepository
 from portfolio_common.idempotency_repository import IdempotencyRepository
@@ -52,15 +51,18 @@ class TransactionPersistenceConsumer(BaseConsumer):
         correlation_id = correlation_id_var.get()
         event = None
         event_id = f"{msg.topic()}-{msg.partition()}-{msg.offset()}"
-        
+
         try:
             transaction_data = json.loads(value)
             event = TransactionEvent.model_validate(transaction_data)
-            logger.info("Successfully validated event", 
-                extra={"transaction_id": event.transaction_id, "event_id": event_id})
+            logger.info(
+                "Successfully validated event",
+                extra={"transaction_id": event.transaction_id, "event_id": event_id}
+            )
 
             async for db in get_async_db_session():
-                async with db.begin(): 
+                tx = await db.begin()
+                try:
                     repo = TransactionDBRepository(db)
                     outbox_repo = OutboxRepository()
                     idempotency_repo = IdempotencyRepository(db)
@@ -68,17 +70,18 @@ class TransactionPersistenceConsumer(BaseConsumer):
                     if await idempotency_repo.is_event_processed(event_id, SERVICE_NAME):
                         logger.warning(
                             "Event has already been processed. Skipping.",
-                            extra={"event_id": event_id, "service_name": SERVICE_NAME}
+                            extra={"event_id": event_id, "service_name": SERVICE_NAME},
                         )
+                        await tx.rollback()
                         return
 
                     await repo.create_or_update_transaction(event)
-            
+
                     outbox_repo.create_outbox_event(
                         db_session=db,
-                        aggregate_type='Transaction',
+                        aggregate_type='RawTransaction',
                         aggregate_id=event.transaction_id,
-                        event_type='TransactionPersisted',
+                        event_type='RawTransactionPersisted',
                         topic=KAFKA_RAW_TRANSACTIONS_COMPLETED_TOPIC,
                         payload=event.model_dump(mode='json'),
                         correlation_id=correlation_id
@@ -91,22 +94,31 @@ class TransactionPersistenceConsumer(BaseConsumer):
                         correlation_id=correlation_id
                     )
 
+                    await db.commit()
+                except Exception:
+                    await tx.rollback()
+                    raise
+
             logger.info(
-                "Successfully persisted transaction, staged outbox event, and marked as processed.",
+                "Successfully persisted transaction and marked event as processed",
                 extra={"transaction_id": event.transaction_id, "event_id": event_id}
             )
 
         except (json.JSONDecodeError, ValidationError) as e:
-            logger.error("Message validation failed. Sending to DLQ.", 
-                extra={"key": key, "event_id": event_id}, exc_info=True)
+            logger.error(
+                "Message validation failed. Sending to DLQ.",
+                extra={"key": key, "event_id": event_id}, exc_info=True
+            )
             await self._send_to_dlq_async(msg, e)
         except (DBAPIError, IntegrityError):
             logger.warning(
                 f"Caught a DB error for transaction {getattr(event, 'transaction_id', 'UNKNOWN')}. Will retry...",
                 extra={"event_id": event_id},
             )
-            raise 
+            raise
         except Exception as e:
-            logger.error(f"An unexpected error occurred for transaction {getattr(event, 'transaction_id', 'UNKNOWN')}. Sending to DLQ.", 
-                extra={"event_id": event_id}, exc_info=True)
+            logger.error(
+                f"Unexpected error processing message for transaction {getattr(event, 'transaction_id', 'UNKNOWN')}. Sending to DLQ.",
+                extra={"key": key, "event_id": event_id}, exc_info=True
+            )
             await self._send_to_dlq_async(msg, e)

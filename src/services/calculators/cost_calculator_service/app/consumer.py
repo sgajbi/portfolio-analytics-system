@@ -1,191 +1,114 @@
 # services/calculators/cost_calculator_service/app/consumer.py
-import json
 import logging
-import asyncio
-from confluent_kafka import Message
+import json
+from datetime import datetime
+from decimal import Decimal
 from pydantic import ValidationError
-from sqlalchemy.exc import IntegrityError, DBAPIError
+from confluent_kafka import Message
+from sqlalchemy.exc import DBAPIError, IntegrityError
 from tenacity import retry, stop_after_attempt, wait_fixed, before_log, retry_if_exception_type
 
-from portfolio_common.config import KAFKA_PROCESSED_TRANSACTIONS_COMPLETED_TOPIC
-from portfolio_common.db import get_async_db_session
-from portfolio_common.events import TransactionEvent
 from portfolio_common.kafka_consumer import BaseConsumer
+from portfolio_common.logging_utils import correlation_id_var
+from portfolio_common.events import TransactionEvent
+from portfolio_common.db import get_async_db_session
 from portfolio_common.idempotency_repository import IdempotencyRepository
 from portfolio_common.outbox_repository import OutboxRepository
-from portfolio_common.logging_utils import correlation_id_var
+from portfolio_common.config import KAFKA_PROCESSED_TRANSACTIONS_COMPLETED_TOPIC
 
-from engine.transaction_processor import TransactionProcessor
-from core.models.transaction import Transaction as EngineTransaction
-from logic.parser import TransactionParser
-from logic.sorter import TransactionSorter
-from logic.disposition_engine import DispositionEngine
-from logic.cost_calculator import CostCalculator
-from logic.error_reporter import ErrorReporter
-from core.enums.cost_method import CostMethod
-from logic.cost_basis_strategies import FIFOBasisStrategy, AverageCostBasisStrategy
-from core.config.settings import Settings
 from .repository import CostCalculatorRepository
+from ...libs.financial_calculator_engine.engine.transaction_processor import TransactionProcessor
+from ...libs.financial_calculator_engine.models.transaction import EngineTransaction
 
 logger = logging.getLogger(__name__)
 
 SERVICE_NAME = "cost-calculator"
 
-class RequiredDataMissingError(Exception):
-    """Custom exception to signal a retry due to missing dependent data."""
-    pass
-
 class CostCalculatorConsumer(BaseConsumer):
     """
-    Consumes transaction events, recalculates cost basis for the full history
-    of a security, persists the results, and writes a completion event to the outbox.
+    Consumes raw transaction events, calculates costs/realized P&L,
+    persists, and emits processed event via outbox.
     """
     def _get_transaction_processor(self) -> TransactionProcessor:
-        settings = Settings()
-        error_reporter = ErrorReporter()
-        strategy = FIFOBasisStrategy() if settings.COST_BASIS_METHOD == CostMethod.FIFO else AverageCostBasisStrategy()
-        disposition_engine = DispositionEngine(cost_basis_strategy=strategy)
-        cost_calculator = CostCalculator(disposition_engine, error_reporter)
-        return TransactionProcessor(
-            parser=TransactionParser(error_reporter),
-            sorter=TransactionSorter(),
-            disposition_engine=disposition_engine,
-            cost_calculator=cost_calculator,
-            error_reporter=error_reporter
-        )
+        return TransactionProcessor()
 
     @retry(
-        wait=wait_fixed(3),
-        stop=stop_after_attempt(5),
+        wait=wait_fixed(2),
+        stop=stop_after_attempt(3),
         before=before_log(logger, logging.INFO),
-        retry=retry_if_exception_type((DBAPIError, IntegrityError, RequiredDataMissingError)),
+        retry=retry_if_exception_type((DBAPIError, IntegrityError)),
         reraise=True
     )
     async def process_message(self, msg: Message):
-        """ Wrapper to call the retryable logic. """
+        key = msg.key().decode('utf-8') if msg.key() else "NoKey"
+        value = msg.value().decode('utf-8')
         event_id = f"{msg.topic()}-{msg.partition()}-{msg.offset()}"
         correlation_id = correlation_id_var.get()
-        event = None
 
         try:
-            data = json.loads(msg.value().decode('utf-8'))
+            data = json.loads(value)
             event = TransactionEvent.model_validate(data)
-        except (json.JSONDecodeError, ValidationError) as e:
-            logger.error(f"Validation error for event {event_id}. Sending to DLQ.", exc_info=True)
-            await self._send_to_dlq_async(msg, e)
-            return
 
-        processor = self._get_transaction_processor()
-        
-        try:
             async for db in get_async_db_session():
-                async with db.begin():
+                tx = await db.begin()
+                try:
+                    repo = CostCalculatorRepository(db)
                     idempotency_repo = IdempotencyRepository(db)
                     outbox_repo = OutboxRepository()
-                    repo = CostCalculatorRepository(db)
 
                     if await idempotency_repo.is_event_processed(event_id, SERVICE_NAME):
-                        logger.warning(f"Event {event_id} already processed. Skipping.")
+                        logger.warning("Event already processed. Skipping.")
+                        await tx.rollback()
                         return
 
-                    # --- Fetch Portfolio and Base Currency ---
-                    portfolio = await repo.get_portfolio(event.portfolio_id)
-                    if not portfolio:
-                        raise RequiredDataMissingError(f"Portfolio {event.portfolio_id} not found. Retrying...")
-                    base_ccy = portfolio.base_currency
-                    if not base_ccy:
-                        raise RequiredDataMissingError(f"Portfolio {event.portfolio_id} missing base currency. Retrying...")
-
-                    # --- Build new transaction (FX-enriched) ---
-                    if event.trade_currency != base_ccy:
-                        fx_rate_record = await repo.get_fx_rate(
-                            event.trade_currency,
-                            base_ccy,
-                            event.transaction_date.date()
-                        )
-                        if not fx_rate_record or not fx_rate_record.rate or fx_rate_record.rate <= 0:
-                            raise RequiredDataMissingError(
-                                f"FX Rate from {event.trade_currency} to {base_ccy} not found/invalid for {event.transaction_date.date()}. Retrying..."
-                            )
-                        fx_rate = fx_rate_record.rate
-                    else:
-                        fx_rate = 1
-
-                    new_txn_raw_dict = event.model_dump()
-                    new_txn_raw_dict['portfolio_base_currency'] = base_ccy
-                    new_txn_raw_dict['transaction_fx_rate'] = fx_rate
-                    new_txn_raw = [new_txn_raw_dict]
-
-                    # --- Load & FX-enrich existing history (excluding current event) ---
-                    existing_db_txns = await repo.get_transaction_history(
+                    # fetch prior history + portfolio base currency / FX if needed
+                    history = await repo.get_transaction_history(
                         portfolio_id=event.portfolio_id,
-                        security_id=event.security_id,
-                        exclude_id=event.transaction_id
+                        security_id=event.security_id
                     )
-                    
-                    existing_txns_raw = []
-                    for t in existing_db_txns:
-                        # Convert SQLAlchemy model to dict
-                        txn_dict = {c.name: getattr(t, c.name) for c in t.__table__.columns}
-                        txn_dict['portfolio_base_currency'] = base_ccy
-
-                        trade_ccy = txn_dict.get('trade_currency') or txn_dict.get('currency')
-                        txn_date = txn_dict.get('transaction_date') or txn_dict.get('trade_date') or txn_dict.get('settlement_date')
-
-                        # If trade_ccy missing, let parser/engine surface error, but avoid silent bad FX
-                        if trade_ccy and txn_date:
-                            if trade_ccy == base_ccy:
-                                txn_dict['transaction_fx_rate'] = 1
-                            else:
-                                fx_hist = await repo.get_fx_rate(trade_ccy, base_ccy, txn_date.date())
-                                if not fx_hist or not fx_hist.rate or fx_hist.rate <= 0:
-                                    raise RequiredDataMissingError(
-                                        f"Missing/invalid FX rate {trade_ccy}->{base_ccy} as of {txn_date.date()} for historical txn {txn_dict.get('transaction_id')}."
-                                    )
-                                txn_dict['transaction_fx_rate'] = fx_hist.rate
-                        else:
-                            # No currency/date context → force engine to fail loudly rather than compute zeros
-                            txn_dict['transaction_fx_rate'] = None
-
-                        existing_txns_raw.append(txn_dict)
-
-                    # --- Process ---
-                    processed, errored = processor.process_transactions(
-                        existing_transactions_raw=existing_txns_raw,
-                        new_transactions_raw=new_txn_raw
+                    portfolio = await repo.get_portfolio(event.portfolio_id)
+                    fx_rate = await repo.get_fx_rate(
+                        event.trade_currency, portfolio.base_currency, event.transaction_date.date()
                     )
 
-                    if errored:
-                        for e in errored:
-                            logger.error(f"Transaction {e.transaction_id} failed processing: {e.error_reason}")
-                        await idempotency_repo.mark_event_processed(event_id, event.portfolio_id, SERVICE_NAME, correlation_id)
-                        return
+                    processor = self._get_transaction_processor()
+                    processed, _ = processor.process_transactions(
+                        history, [event], portfolio.base_currency, fx_rate
+                    )
 
-                    if processed:
-                        processed_result = processed[0]
-                        db_txn_to_update = await repo.update_transaction_costs(processed_result)
-
-                        if not db_txn_to_update:
-                            raise Exception(f"Failed to find transaction {processed_result.transaction_id} in DB to update.")
-
-                        completion_event_payload = TransactionEvent.model_validate(processed_result.model_dump())
+                    # persist updates
+                    for p in processed:
+                        await repo.update_transaction_costs(p)
 
                         outbox_repo.create_outbox_event(
                             db_session=db,
-                            aggregate_type='Transaction',
-                            aggregate_id=event.transaction_id,
-                            event_type='TransactionCostCalculated',
+                            aggregate_type='ProcessedTransaction',
+                            aggregate_id=p.transaction_id,
+                            event_type='ProcessedTransactionPersisted',
                             topic=KAFKA_PROCESSED_TRANSACTIONS_COMPLETED_TOPIC,
-                            payload=completion_event_payload.model_dump(mode='json'),
+                            payload={
+                                "transaction_id": p.transaction_id,
+                                "portfolio_id": p.portfolio_id,
+                                "security_id": p.security_id
+                            },
                             correlation_id=correlation_id
                         )
-                        
-                        await idempotency_repo.mark_event_processed(event_id, event.portfolio_id, SERVICE_NAME, correlation_id)
-                        logger.info(f"Successfully calculated costs for transaction {processed_result.transaction_id}.")
 
-        except (DBAPIError, IntegrityError, RequiredDataMissingError) as e:
-             logger.warning(f"A recoverable error occurred for transaction {getattr(event, 'transaction_id', 'UNKNOWN')}: {e}. Retrying...", exc_info=True)
-             raise
+                    await idempotency_repo.mark_event_processed(
+                        event_id, event.portfolio_id, SERVICE_NAME, correlation_id
+                    )
+                    await db.commit()
+
+                except Exception:
+                    await tx.rollback()
+                    raise
+
+        except (json.JSONDecodeError, ValidationError):
+            logger.error("Invalid TransactionEvent; sending to DLQ.", exc_info=True)
+            await self._send_to_dlq_async(msg, ValueError("invalid payload"))
+        except (DBAPIError, IntegrityError):
+            logger.warning("DB error; will retry...", exc_info=False)
+            raise
         except Exception as e:
-            logger.error(f"Unexpected error processing transaction {getattr(event, 'transaction_id', 'UNKNOWN')}. Sending to DLQ.", exc_info=True)
+            logger.error(f"Unexpected error processing transaction {getattr(event,'transaction_id','UNKNOWN')}. Sending to DLQ.", exc_info=True)
             await self._send_to_dlq_async(msg, e)
