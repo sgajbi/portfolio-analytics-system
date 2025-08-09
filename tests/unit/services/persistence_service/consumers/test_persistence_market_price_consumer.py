@@ -1,4 +1,4 @@
-# services/persistence_service/tests/unit/consumers/test_persistence_market_price_consumer.py
+# services/persistence_service/tests/unit/consumers/test_market_price_consumer.py
 import pytest
 from unittest.mock import MagicMock, patch, AsyncMock
 from datetime import date
@@ -7,7 +7,6 @@ from decimal import Decimal
 from portfolio_common.logging_utils import correlation_id_var
 from portfolio_common.events import MarketPriceEvent
 from portfolio_common.config import KAFKA_MARKET_PRICE_PERSISTED_TOPIC
-# Corrected absolute import
 from services.persistence_service.app.consumers.market_price_consumer import MarketPriceConsumer
 
 # Mark all tests in this file as asyncio
@@ -66,11 +65,14 @@ async def test_process_message_success(
     mock_idempotency_repo.is_event_processed.return_value = False
     mock_outbox_repo = MagicMock()
 
+    # --- FIX: Correct async generator mocking ---
     mock_db_session = AsyncMock()
-    mock_db_session.__aenter__.return_value.begin.return_value.__aenter__.return_value = None
+    mock_db_session.begin.return_value.__aenter__.return_value = None
+    async def mock_get_db_session_generator():
+        yield mock_db_session
 
     with patch(
-        "services.persistence_service.app.consumers.market_price_consumer.get_async_db_session", return_value=mock_db_session
+        "services.persistence_service.app.consumers.market_price_consumer.get_async_db_session", new=mock_get_db_session_generator
     ), patch(
         "services.persistence_service.app.consumers.market_price_consumer.MarketPriceRepository", return_value=mock_repo
     ), patch(

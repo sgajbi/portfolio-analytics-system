@@ -5,7 +5,6 @@ from unittest.mock import MagicMock, patch, AsyncMock
 
 from portfolio_common.logging_utils import correlation_id_var
 from portfolio_common.events import TransactionEvent
-# Corrected absolute import
 from services.persistence_service.app.consumers.transaction_consumer import TransactionPersistenceConsumer
 
 # Mark all tests in this file as asyncio
@@ -71,11 +70,14 @@ async def test_process_message_success(
     mock_idempotency_repo = AsyncMock()
     mock_idempotency_repo.is_event_processed.return_value = False
 
+    # --- FIX: Correct async generator mocking ---
     mock_db_session = AsyncMock()
-    mock_db_session.__aenter__.return_value.begin.return_value.__aenter__.return_value = None
+    mock_db_session.begin.return_value.__aenter__.return_value = None
+    async def mock_get_db_session_generator():
+        yield mock_db_session
 
     with patch(
-        "services.persistence_service.app.consumers.transaction_consumer.get_async_db_session", return_value=mock_db_session
+        "services.persistence_service.app.consumers.transaction_consumer.get_async_db_session", new=mock_get_db_session_generator
     ), patch(
         "services.persistence_service.app.consumers.transaction_consumer.TransactionDBRepository", return_value=mock_repo
     ), patch(

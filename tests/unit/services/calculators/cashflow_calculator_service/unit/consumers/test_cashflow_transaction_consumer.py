@@ -1,4 +1,4 @@
-# services/calculators/cashflow_calculator_service/tests/unit/consumers/test_transaction_consumer.py
+# services/calculators/cashflow_calculator_service/tests/unit/consumers/test_cashflow_transaction_consumer.py
 import pytest
 from unittest.mock import MagicMock, patch, AsyncMock, ANY
 from datetime import datetime, date
@@ -82,21 +82,23 @@ async def test_process_message_success(
     )
     mock_cashflow_repo.create_cashflow.return_value = mock_saved_cashflow
 
-    # Mock the async context manager for the DB session
+    # --- FIX: Correct async generator mocking ---
     mock_db_session = AsyncMock()
-    mock_db_session.__aenter__.return_value.begin.return_value.__aenter__.return_value = None
+    mock_db_session.begin.return_value.__aenter__.return_value = None
+    async def mock_get_db_session_generator():
+        yield mock_db_session
 
     with patch(
-        "app.consumers.transaction_consumer.get_async_db_session",
-        return_value=mock_db_session
+        "services.calculators.cashflow_calculator_service.app.consumers.transaction_consumer.get_async_db_session",
+        new=mock_get_db_session_generator
     ), patch(
-        "app.consumers.transaction_consumer.CashflowRepository",
+        "services.calculators.cashflow_calculator_service.app.consumers.transaction_consumer.CashflowRepository",
         return_value=mock_cashflow_repo
     ), patch(
-        "app.consumers.transaction_consumer.IdempotencyRepository",
+        "services.calculators.cashflow_calculator_service.app.consumers.transaction_consumer.IdempotencyRepository",
         return_value=mock_idempotency_repo
     ), patch(
-        "app.consumers.transaction_consumer.OutboxRepository",
+        "services.calculators.cashflow_calculator_service.app.consumers.transaction_consumer.OutboxRepository",
         return_value=mock_outbox_repo
     ):
         # Act
@@ -107,7 +109,6 @@ async def test_process_message_success(
         mock_cashflow_repo.create_cashflow.assert_called_once()
         mock_outbox_repo.create_outbox_event.assert_called_once()
         mock_idempotency_repo.mark_event_processed.assert_called_once()
-
         cashflow_consumer._send_to_dlq_async.assert_not_called()
 
 async def test_process_message_skips_processed_event(
@@ -125,20 +126,23 @@ async def test_process_message_skips_processed_event(
     mock_idempotency_repo.is_event_processed.return_value = True # Simulate processed event
     mock_outbox_repo = MagicMock()
 
+    # --- FIX: Correct async generator mocking ---
     mock_db_session = AsyncMock()
-    mock_db_session.__aenter__.return_value.begin.return_value.__aenter__.return_value = None
+    mock_db_session.begin.return_value.__aenter__.return_value = None
+    async def mock_get_db_session_generator():
+        yield mock_db_session
 
     with patch(
-        "app.consumers.transaction_consumer.get_async_db_session",
-        return_value=mock_db_session
+        "services.calculators.cashflow_calculator_service.app.consumers.transaction_consumer.get_async_db_session",
+        new=mock_get_db_session_generator
     ), patch(
-        "app.consumers.transaction_consumer.CashflowRepository",
+        "services.calculators.cashflow_calculator_service.app.consumers.transaction_consumer.CashflowRepository",
         return_value=mock_cashflow_repo
     ), patch(
-        "app.consumers.transaction_consumer.IdempotencyRepository",
+        "services.calculators.cashflow_calculator_service.app.consumers.transaction_consumer.IdempotencyRepository",
         return_value=mock_idempotency_repo
     ), patch(
-        "app.consumers.transaction_consumer.OutboxRepository",
+        "services.calculators.cashflow_calculator_service.app.consumers.transaction_consumer.OutboxRepository",
         return_value=mock_outbox_repo
     ):
         # Act
@@ -146,8 +150,6 @@ async def test_process_message_skips_processed_event(
 
         # Assert
         mock_idempotency_repo.is_event_processed.assert_called_once_with("raw_transactions_completed-0-123", "cashflow-calculator")
-
-        # Verify that no business logic was executed
         mock_cashflow_repo.create_cashflow.assert_not_called()
         mock_outbox_repo.create_outbox_event.assert_not_called()
         mock_idempotency_repo.mark_event_processed.assert_not_called()

@@ -4,8 +4,6 @@ from unittest.mock import MagicMock, patch, AsyncMock
 from datetime import datetime, date
 from decimal import Decimal
 
-from sqlalchemy.orm import Session # Import Session for spec
-
 from services.calculators.position_calculator.app.consumers.transaction_event_consumer import TransactionEventConsumer
 from services.calculators.position_calculator.app.core.position_logic import PositionCalculator
 from portfolio_common.events import TransactionEvent, PositionHistoryPersistedEvent
@@ -23,8 +21,7 @@ def position_consumer():
         group_id="test_group",
         dlq_topic="test.dlq"
     )
-    consumer._producer = MagicMock()
-    consumer._send_to_dlq = AsyncMock()
+    consumer._send_to_dlq_async = AsyncMock()
     return consumer
 
 @pytest.fixture
@@ -52,6 +49,7 @@ def mock_kafka_message(mock_transaction_event: TransactionEvent):
     mock_msg.partition.return_value = 0
     mock_msg.offset.return_value = 200
     mock_msg.error.return_value = None
+    mock_msg.headers.return_value = []
     return mock_msg
 
 async def test_process_message_success(position_consumer: TransactionEventConsumer, mock_kafka_message: MagicMock):
@@ -66,24 +64,28 @@ async def test_process_message_success(position_consumer: TransactionEventConsum
         PositionHistory(id=102, transaction_id="TXN_POS_CALC_02", security_id="SEC_POS_CALC_01", portfolio_id="PORT_POS_CALC_01", position_date=date(2025, 8, 6))
     ]
 
-    mock_db_session = MagicMock(spec=Session)
-    mock_transaction_context = MagicMock()
-    mock_transaction_context.__enter__.return_value = None
-    mock_transaction_context.__exit__.return_value = (None, None, None) # Simulate successful exit
-    mock_db_session.begin.return_value = mock_transaction_context
-
-    mock_idempotency_repo = MagicMock()
+    mock_idempotency_repo = AsyncMock()
     mock_idempotency_repo.is_event_processed.return_value = False
 
+    # --- FIX: Correct async generator mocking ---
+    mock_db_session = AsyncMock()
+    mock_db_session.begin.return_value.__aenter__.return_value = None
+    async def mock_get_db_session_generator():
+        yield mock_db_session
+    
     with patch(
-        "services.calculators.position_calculator.app.consumers.transaction_event_consumer.get_db_session", return_value=iter([mock_db_session])
+        "services.calculators.position_calculator.app.consumers.transaction_event_consumer.get_async_db_session", new=mock_get_db_session_generator
     ), patch(
         "services.calculators.position_calculator.app.consumers.transaction_event_consumer.IdempotencyRepository", return_value=mock_idempotency_repo
     ), patch(
         "services.calculators.position_calculator.app.consumers.transaction_event_consumer.PositionRepository"
     ), patch(
+        "services.calculators.position_calculator.app.consumers.transaction_event_consumer.OutboxRepository"
+    ) as mock_outbox_repo_class, patch(
         "services.calculators.position_calculator.app.consumers.transaction_event_consumer.PositionCalculator.calculate", return_value=new_positions
     ) as mock_calculate:
+        
+        mock_outbox_instance = mock_outbox_repo_class.return_value
 
         # Act
         await position_consumer.process_message(mock_kafka_message)
@@ -93,11 +95,10 @@ async def test_process_message_success(position_consumer: TransactionEventConsum
         mock_idempotency_repo.mark_event_processed.assert_called_once()
         mock_calculate.assert_called_once()
         
-        # Verify that the publishing logic is reached and executed correctly.
-        assert position_consumer._producer.publish_message.call_count == len(new_positions)
-        first_call_args = position_consumer._producer.publish_message.call_args_list[0].kwargs
+        assert mock_outbox_instance.create_outbox_event.call_count == len(new_positions)
+        first_call_args = mock_outbox_instance.create_outbox_event.call_args_list[0].kwargs
         assert first_call_args['topic'] == KAFKA_POSITION_HISTORY_PERSISTED_TOPIC
-        assert first_call_args['value']['id'] == 101
+        assert first_call_args['payload']['id'] == 101
 
 async def test_process_message_skips_processed_event(position_consumer: TransactionEventConsumer, mock_kafka_message: MagicMock):
     """
@@ -106,17 +107,17 @@ async def test_process_message_skips_processed_event(position_consumer: Transact
     THEN it should skip all logic and not publish any events.
     """
     # Arrange
-    mock_db_session = MagicMock(spec=Session)
-    mock_transaction_context = MagicMock()
-    mock_transaction_context.__enter__.return_value = None
-    mock_transaction_context.__exit__.return_value = (None, None, None)
-    mock_db_session.begin.return_value = mock_transaction_context
-
-    mock_idempotency_repo = MagicMock()
+    mock_idempotency_repo = AsyncMock()
     mock_idempotency_repo.is_event_processed.return_value = True # DUPLICATE event
 
+    # --- FIX: Correct async generator mocking ---
+    mock_db_session = AsyncMock()
+    mock_db_session.begin.return_value.__aenter__.return_value = None
+    async def mock_get_db_session_generator():
+        yield mock_db_session
+
     with patch(
-        "services.calculators.position_calculator.app.consumers.transaction_event_consumer.get_db_session", return_value=iter([mock_db_session])
+        "services.calculators.position_calculator.app.consumers.transaction_event_consumer.get_async_db_session", new=mock_get_db_session_generator
     ), patch(
         "services.calculators.position_calculator.app.consumers.transaction_event_consumer.IdempotencyRepository", return_value=mock_idempotency_repo
     ), patch(
@@ -132,5 +133,4 @@ async def test_process_message_skips_processed_event(position_consumer: Transact
         # Verify no other logic was executed
         mock_calculate.assert_not_called()
         mock_idempotency_repo.mark_event_processed.assert_not_called()
-        position_consumer._producer.publish_message.assert_not_called()
-        position_consumer._send_to_dlq.assert_not_called()
+        position_consumer._send_to_dlq_async.assert_not_called()
