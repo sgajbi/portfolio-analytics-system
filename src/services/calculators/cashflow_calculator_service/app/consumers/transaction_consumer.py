@@ -1,7 +1,6 @@
 # services/calculators/cashflow_calculator_service/app/consumers/transaction_consumer.py
 import logging
 import json
-import asyncio
 from pydantic import ValidationError
 from confluent_kafka import Message
 from sqlalchemy.exc import IntegrityError
@@ -29,7 +28,6 @@ class CashflowCalculatorConsumer(BaseConsumer):
     cashflow, persists it, and writes a completion event to the outbox.
     """
     async def process_message(self, msg: Message):
-        """Wrapper to call the retryable logic."""
         await self._process_message_with_retry(msg)
 
     @retry(
@@ -42,7 +40,6 @@ class CashflowCalculatorConsumer(BaseConsumer):
         value = msg.value().decode('utf-8')
         event_id = f"{msg.topic()}-{msg.partition()}-{msg.offset()}"
         correlation_id = correlation_id_var.get()
-        event = None
 
         try:
             event_data = json.loads(value)
@@ -70,10 +67,24 @@ class CashflowCalculatorConsumer(BaseConsumer):
                         await db.commit()
                         return
 
-                    cashflow_to_save = CashflowLogic.calculate(
-                        event, rule
-                    )
+                    # Calculate and persist cashflow
+                    cashflow_to_save = CashflowLogic.calculate(event, rule)
                     saved = await cashflow_repo.create_cashflow(cashflow_to_save)
+
+                    # Build the event with ALL required fields
+                    completion_evt = CashflowCalculatedEvent(
+                        id=saved.id,
+                        transaction_id=saved.transaction_id,
+                        portfolio_id=saved.portfolio_id,
+                        security_id=saved.security_id,
+                        cashflow_date=saved.cashflow_date,
+                        amount=saved.amount,
+                        currency=saved.currency,
+                        classification=saved.classification,
+                        timing=saved.timing,
+                        level=saved.level,
+                        calculationType=saved.calculation_type
+                    )
 
                     outbox_repo.create_outbox_event(
                         db_session=db,
@@ -81,17 +92,7 @@ class CashflowCalculatorConsumer(BaseConsumer):
                         aggregate_id=saved.transaction_id,
                         event_type='CashflowCalculated',
                         topic=KAFKA_CASHFLOW_CALCULATED_TOPIC,
-                        payload=CashflowCalculatedEvent(
-                            transaction_id=saved.transaction_id,
-                            portfolio_id=saved.portfolio_id,
-                            security_id=saved.security_id,
-                            amount=saved.amount,
-                            currency=saved.currency,
-                            classification=saved.classification,
-                            timing=saved.timing,
-                            level=saved.level,
-                            calculationType=saved.calculation_type
-                        ).model_dump(mode='json'),
+                        payload=completion_evt.model_dump(mode='json'),
                         correlation_id=correlation_id
                     )
 
@@ -108,7 +109,6 @@ class CashflowCalculatorConsumer(BaseConsumer):
             logger.error("Message validation failed. Sending to DLQ.", exc_info=True)
             await self._send_to_dlq_async(msg, ValueError("invalid cashflow event payload"))
         except IntegrityError:
-            # retriable by tenacity
             logger.warning("DB integrity error; will retry...", exc_info=False)
             raise
         except Exception as e:
