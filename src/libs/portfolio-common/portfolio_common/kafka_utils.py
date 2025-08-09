@@ -1,4 +1,3 @@
-# common/kafka_utils.py
 import logging
 from confluent_kafka import Producer, KafkaException
 from .config import KAFKA_BOOTSTRAP_SERVERS
@@ -9,6 +8,16 @@ logger = logging.getLogger(__name__)
 
 
 class KafkaProducer:
+    """
+    Thin wrapper around confluent_kafka.Producer with production-safe defaults:
+    - Idempotence enabled for exactly-once produce within a session
+    - Strong durability (acks=all) and bounded in-flight requests
+    - Moderate batching and compression for throughput
+    Notes:
+      * We do NOT enable transactions here; outbox DB state + idempotent produces is
+        already a strong reliability baseline. Transactions can be added later if desired.
+    """
+
     def __init__(self, bootstrap_servers: str = KAFKA_BOOTSTRAP_SERVERS):
         self.producer = None
         self.bootstrap_servers = bootstrap_servers
@@ -16,16 +25,29 @@ class KafkaProducer:
 
     def _initialize_producer(self):
         try:
-            self.producer = Producer(
-                {
-                    "bootstrap.servers": self.bootstrap_servers,
-                    "client.id": "portfolio-analytics-producer",
-                    "acks": "all",
-                    "retries": 3,
-                    "linger.ms": 5,
-                    # NOTE: keep defaults minimal; advanced tuning/idempotence can be added later via config
-                }
-            )
+            conf = {
+                # Broker connectivity
+                "bootstrap.servers": self.bootstrap_servers,
+                "client.id": "portfolio-analytics-producer",
+
+                # Reliability
+                "enable.idempotence": True,             # ensure de-dup on broker
+                "acks": "all",
+                "retries": 5,
+                "max.in.flight.requests.per.connection": 5,  # safe with idempotence
+
+                # Throughput (tune as needed per env)
+                "linger.ms": 5,
+                "batch.num.messages": 1000,
+                "compression.type": "zstd",
+
+                # Timeouts & keepalive
+                "delivery.timeout.ms": 120000,          # cap end-to-end delivery
+                "request.timeout.ms": 30000,
+                "socket.keepalive.enable": True,
+            }
+
+            self.producer = Producer(conf)
             logger.info(f"Kafka producer initialized for brokers: {self.bootstrap_servers}")
         except KafkaException as e:
             logger.error(f"Failed to initialize Kafka producer: {e}")
@@ -44,7 +66,6 @@ class KafkaProducer:
     ):
         """
         Publish a message and optionally invoke an external on_delivery callback with the original outbox_id.
-
         on_delivery(outbox_id, success, error_message)
         """
         if not self.producer:
@@ -54,13 +75,12 @@ class KafkaProducer:
         try:
             json_value = json.dumps(value, default=str)
 
-            # ensure headers list
+            # Ensure headers list
             headers = headers[:] if headers else []
             if outbox_id:
                 headers.append(("outbox_id", outbox_id.encode("utf-8")))
 
             def delivery_report(err, msg):
-                # Prefer the provided outbox_id; fall back to headers if needed
                 _oid = outbox_id
                 if _oid is None:
                     try:
