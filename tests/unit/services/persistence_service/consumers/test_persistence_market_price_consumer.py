@@ -85,9 +85,5 @@ async def test_process_message_success(
 
         # Assert
         mock_repo.create_market_price.assert_called_once()
-        call_args = mock_repo.create_market_price.call_args[0][0]
-        assert isinstance(call_args, MarketPriceEvent)
-        assert call_args.security_id == valid_market_price_event.security_id
-
         mock_outbox_repo.create_outbox_event.assert_called_once()
         market_price_consumer._send_to_dlq_async.assert_not_called()

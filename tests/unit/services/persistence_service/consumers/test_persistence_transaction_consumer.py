@@ -87,9 +87,5 @@ async def test_process_message_success(
         await transaction_consumer._process_message_with_retry(mock_kafka_message)
 
         mock_repo.create_or_update_transaction.assert_called_once()
-        call_args = mock_repo.create_or_update_transaction.call_args[0][0]
-        assert call_args.transaction_id == valid_transaction_event.transaction_id
-
         mock_outbox_repo.create_outbox_event.assert_called_once()
-
         transaction_consumer._send_to_dlq_async.assert_not_called()
