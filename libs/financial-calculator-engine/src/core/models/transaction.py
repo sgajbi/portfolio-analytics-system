@@ -39,16 +39,13 @@ class Transaction(BaseModel):
     average_price: Optional[condecimal(ge=0)] = Field(None, description="Average price of the instrument")
     trade_currency: str = Field(..., alias="tradeCurrency", description="Currency of the transaction")
     
-    # --- UPDATED & NEW FIELDS ---
     portfolio_base_currency: str = Field(..., description="The base currency of the portfolio")
     transaction_fx_rate: Optional[condecimal(gt=0)] = Field(None, description="FX rate used for this transaction (Local to Base)")
 
-    # Values in Portfolio Base Currency
     net_cost: Optional[condecimal()] = Field(None, description="Calculated net cost for BUYs in portfolio base currency")
     gross_cost: Optional[condecimal()] = Field(None, description="Calculated gross cost for BUYs in portfolio base currency")
     realized_gain_loss: Optional[condecimal()] = Field(None, description="Calculated realized gain/loss for SELLs in portfolio base currency")
     
-    # Values in Instrument's Local Currency
     net_cost_local: Optional[condecimal()] = Field(None, description="Calculated net cost for BUYs in instrument's local currency")
     realized_gain_loss_local: Optional[condecimal()] = Field(None, description="Calculated realized gain/loss for SELLs in instrument's local currency")
     
@@ -61,7 +58,6 @@ class Transaction(BaseModel):
         if v is None:
             return v
         if isinstance(v, str):
-            # Handle ISO format strings with or without 'Z'
             if v.endswith('Z'):
                 v = v[:-1] + '+00:00'
             v = datetime.fromisoformat(v)
