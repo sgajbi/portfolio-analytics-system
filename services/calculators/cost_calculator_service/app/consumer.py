@@ -88,7 +88,7 @@ class CostCalculatorConsumer(BaseConsumer):
                         logger.warning(f"Event {event_id} already processed. Skipping.")
                         return
 
-                    # --- NEW: Fetch Portfolio and FX Rate ---
+                    # --- Fetch Portfolio and FX Rate ---
                     portfolio = await repo.get_portfolio(event.portfolio_id)
                     if not portfolio:
                         raise RequiredDataMissingError(f"Portfolio {event.portfolio_id} not found. Retrying...")
@@ -113,7 +113,8 @@ class CostCalculatorConsumer(BaseConsumer):
                     
                     existing_txns_raw = []
                     for t in existing_db_txns:
-                        txn_dict = EngineTransaction.model_validate(t).model_dump(by_alias=True)
+                        # Convert SQLAlchemy model to dict and ADD the required base currency
+                        txn_dict = {c.name: getattr(t, c.name) for c in t.__table__.columns}
                         txn_dict['portfolio_base_currency'] = portfolio.base_currency
                         existing_txns_raw.append(txn_dict)
 
