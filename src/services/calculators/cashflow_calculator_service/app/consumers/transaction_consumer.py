@@ -86,10 +86,11 @@ class CashflowCalculatorConsumer(BaseConsumer):
                         calculationType=saved.calculation_type
                     )
 
+                    # 🔑 Keying policy: use portfolio_id for strict partition affinity
                     outbox_repo.create_outbox_event(
-                        db_session=db,
+                        db=db,  # align with repository signature from Step 2
                         aggregate_type='Cashflow',
-                        aggregate_id=saved.transaction_id,
+                        aggregate_id=str(saved.portfolio_id),
                         event_type='CashflowCalculated',
                         topic=KAFKA_CASHFLOW_CALCULATED_TOPIC,
                         payload=completion_evt.model_dump(mode='json'),
