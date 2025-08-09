@@ -88,23 +88,35 @@ class CostCalculatorConsumer(BaseConsumer):
                         logger.warning(f"Event {event_id} already processed. Skipping.")
                         return
 
-                    # --- Fetch Portfolio and FX Rate ---
+                    # --- Fetch Portfolio and Base Currency ---
                     portfolio = await repo.get_portfolio(event.portfolio_id)
                     if not portfolio:
                         raise RequiredDataMissingError(f"Portfolio {event.portfolio_id} not found. Retrying...")
+                    base_ccy = portfolio.base_currency
+                    if not base_ccy:
+                        raise RequiredDataMissingError(f"Portfolio {event.portfolio_id} missing base currency. Retrying...")
 
-                    fx_rate = None
-                    if event.trade_currency != portfolio.base_currency:
-                        fx_rate_record = await repo.get_fx_rate(event.trade_currency, portfolio.base_currency, event.transaction_date.date())
-                        if not fx_rate_record:
-                            raise RequiredDataMissingError(f"FX Rate from {event.trade_currency} to {portfolio.base_currency} not found for {event.transaction_date.date()}. Retrying...")
+                    # --- Build new transaction (FX-enriched) ---
+                    if event.trade_currency != base_ccy:
+                        fx_rate_record = await repo.get_fx_rate(
+                            event.trade_currency,
+                            base_ccy,
+                            event.transaction_date.date()
+                        )
+                        if not fx_rate_record or not fx_rate_record.rate or fx_rate_record.rate <= 0:
+                            raise RequiredDataMissingError(
+                                f"FX Rate from {event.trade_currency} to {base_ccy} not found/invalid for {event.transaction_date.date()}. Retrying..."
+                            )
                         fx_rate = fx_rate_record.rate
-                    
+                    else:
+                        fx_rate = 1
+
                     new_txn_raw_dict = event.model_dump()
-                    new_txn_raw_dict['portfolio_base_currency'] = portfolio.base_currency
+                    new_txn_raw_dict['portfolio_base_currency'] = base_ccy
                     new_txn_raw_dict['transaction_fx_rate'] = fx_rate
                     new_txn_raw = [new_txn_raw_dict]
 
+                    # --- Load & FX-enrich existing history (excluding current event) ---
                     existing_db_txns = await repo.get_transaction_history(
                         portfolio_id=event.portfolio_id,
                         security_id=event.security_id,
@@ -113,11 +125,31 @@ class CostCalculatorConsumer(BaseConsumer):
                     
                     existing_txns_raw = []
                     for t in existing_db_txns:
-                        # Convert SQLAlchemy model to dict and ADD the required base currency
+                        # Convert SQLAlchemy model to dict
                         txn_dict = {c.name: getattr(t, c.name) for c in t.__table__.columns}
-                        txn_dict['portfolio_base_currency'] = portfolio.base_currency
+                        txn_dict['portfolio_base_currency'] = base_ccy
+
+                        trade_ccy = txn_dict.get('trade_currency') or txn_dict.get('currency')
+                        txn_date = txn_dict.get('transaction_date') or txn_dict.get('trade_date') or txn_dict.get('settlement_date')
+
+                        # If trade_ccy missing, let parser/engine surface error, but avoid silent bad FX
+                        if trade_ccy and txn_date:
+                            if trade_ccy == base_ccy:
+                                txn_dict['transaction_fx_rate'] = 1
+                            else:
+                                fx_hist = await repo.get_fx_rate(trade_ccy, base_ccy, txn_date.date())
+                                if not fx_hist or not fx_hist.rate or fx_hist.rate <= 0:
+                                    raise RequiredDataMissingError(
+                                        f"Missing/invalid FX rate {trade_ccy}->{base_ccy} as of {txn_date.date()} for historical txn {txn_dict.get('transaction_id')}."
+                                    )
+                                txn_dict['transaction_fx_rate'] = fx_hist.rate
+                        else:
+                            # No currency/date context → force engine to fail loudly rather than compute zeros
+                            txn_dict['transaction_fx_rate'] = None
+
                         existing_txns_raw.append(txn_dict)
 
+                    # --- Process ---
                     processed, errored = processor.process_transactions(
                         existing_transactions_raw=existing_txns_raw,
                         new_transactions_raw=new_txn_raw

@@ -15,11 +15,11 @@ class BuyStrategy:
         total_fees_local = transaction.fees.total_fees if transaction.fees else Decimal(0)
         accrued_interest_local = transaction.accrued_interest or Decimal(0)
         
-        # Calculate cost in the original trade currency
+        # Calculate cost in the original trade currency (local)
         transaction.net_cost_local = transaction.gross_transaction_amount + total_fees_local + accrued_interest_local
         
         # Convert to portfolio base currency
-        fx_rate = transaction.transaction_fx_rate or Decimal(1.0)
+        fx_rate = transaction.transaction_fx_rate or Decimal(1)
         transaction.net_cost = transaction.net_cost_local * fx_rate
         
         if transaction.quantity > Decimal(0):
@@ -33,14 +33,14 @@ class SellStrategy:
         sell_quantity = transaction.quantity
         sell_fees_local = transaction.fees.total_fees if transaction.fees else Decimal(0)
 
-        # Calculate proceeds in local currency
+        # Proceeds in local (trade) currency
         net_sell_proceeds_local = transaction.gross_transaction_amount - sell_fees_local
 
         # Convert proceeds to portfolio base currency
-        fx_rate = transaction.transaction_fx_rate or Decimal(1.0)
+        fx_rate = transaction.transaction_fx_rate or Decimal(1)
         net_sell_proceeds_base = net_sell_proceeds_local * fx_rate
         
-        # Consume from lots to get cost of goods sold (COGS) in both currencies
+        # Consume from lots to get COGS in both currencies
         cogs_base, cogs_local, consumed_quantity, error_reason = disposition_engine.consume_sell_quantity(transaction)
         
         if error_reason:
@@ -48,18 +48,18 @@ class SellStrategy:
             return
 
         if consumed_quantity > Decimal(0):
-            # Calculate PnL in both currencies
+            # PnL in both currencies
             transaction.realized_gain_loss_local = net_sell_proceeds_local - cogs_local
             transaction.realized_gain_loss = net_sell_proceeds_base - cogs_base
             
-            # Net cost for a sell is the negative COGS in the base currency
+            # Net cost for a sell is negative COGS
             transaction.net_cost = -cogs_base
             transaction.net_cost_local = -cogs_local
 
 class DefaultStrategy:
     def calculate_costs(self, transaction: Transaction, disposition_engine: DispositionEngine, error_reporter: ErrorReporter) -> None:
         transaction.net_cost_local = transaction.gross_transaction_amount
-        fx_rate = transaction.transaction_fx_rate or Decimal(1.0)
+        fx_rate = transaction.transaction_fx_rate or Decimal(1)
         transaction.net_cost = transaction.net_cost_local * fx_rate
 
 class CostCalculator:
@@ -78,9 +78,27 @@ class CostCalculator:
         }
         self._default_strategy = DefaultStrategy()
 
+    def _validate_fx(self, t: Transaction) -> bool:
+        """Return True if FX context is valid, else report error and return False."""
+        # Same-currency is always fine
+        if t.trade_currency == t.portfolio_base_currency:
+            # Normalize missing rate to 1 for same-currency
+            if not t.transaction_fx_rate:
+                t.transaction_fx_rate = Decimal(1)
+            return True
+
+        # Cross-currency must have a positive FX rate
+        if t.transaction_fx_rate is None or t.transaction_fx_rate <= 0:
+            self._error_reporter.add_error(
+                t.transaction_id,
+                f"Missing/invalid FX rate for cross-currency transaction from {t.trade_currency} to {t.portfolio_base_currency}."
+            )
+            return False
+        return True
+
     def calculate_transaction_costs(self, transaction: Transaction):
-        if transaction.trade_currency != transaction.portfolio_base_currency and not transaction.transaction_fx_rate:
-            self._error_reporter.add_error(transaction.transaction_id, f"Missing FX rate for cross-currency transaction from {transaction.trade_currency} to {transaction.portfolio_base_currency}.")
+        # Strict FX validation (prevents silent zeroing)
+        if not self._validate_fx(transaction):
             return
 
         try:
