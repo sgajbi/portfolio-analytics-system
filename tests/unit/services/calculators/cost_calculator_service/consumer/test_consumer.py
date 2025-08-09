@@ -1,4 +1,4 @@
-# src/tests/unit/services/calculators/cost_calculator_service/consumer/test_consumer.py
+# tests/unit/services/calculators/cost_calculator_service/consumer/test_consumer.py
 import pytest
 from unittest.mock import MagicMock, patch, AsyncMock
 from datetime import datetime
@@ -7,7 +7,7 @@ from decimal import Decimal
 from portfolio_common.events import TransactionEvent
 from portfolio_common.database_models import Transaction as DBTransaction, Portfolio
 from portfolio_common.config import KAFKA_PROCESSED_TRANSACTIONS_COMPLETED_TOPIC
-from src.libs.financial_calculator_engine.src.core.models.transaction import Transaction as EngineTransaction
+from core.models.transaction import Transaction as EngineTransaction
 from src.services.calculators.cost_calculator_service.app.consumer import CostCalculatorConsumer
 from src.services.calculators.cost_calculator_service.app.repository import CostCalculatorRepository
 from portfolio_common.idempotency_repository import IdempotencyRepository
