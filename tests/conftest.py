@@ -27,7 +27,8 @@ def docker_services(request):
 
         host = compose.get_service_host("ingestion_service", 8000)
         port = compose.get_service_port("ingestion_service", 8000)
-        health_url = f"http://{host}:{port}/health"
+        # FIX: Poll the new /health/ready endpoint
+        health_url = f"http://{host}:{port}/health/ready"
         
         start_time = time.time()
         timeout = 180
@@ -35,12 +36,12 @@ def docker_services(request):
             try:
                 response = requests.get(health_url)
                 if response.status_code == 200:
-                    print(f"Ingestion service is healthy at {health_url}")
+                    print(f"Ingestion service is ready at {health_url}")
                     break
             except requests.ConnectionError:
                 time.sleep(2)
         else:
-            pytest.fail(f"Ingestion service did not become healthy within {timeout} seconds.")
+            pytest.fail(f"Ingestion service did not become ready within {timeout} seconds.")
             
         yield compose
 
@@ -69,7 +70,7 @@ def clean_db(db_engine):
 
     # List of all tables to be cleaned, in an order that respects potential (though unlikely) FK issues.
     TABLES = [
-        "transaction_costs", "cashflows", "position_history", "daily_position_snapshots",
+        "portfolio_aggregation_jobs", "transaction_costs", "cashflows", "position_history", "daily_position_snapshots",
         "position_timeseries", "portfolio_timeseries", "transactions", "market_prices",
         "instruments", "fx_rates", "portfolios", "processed_events", "outbox_events"
     ]
