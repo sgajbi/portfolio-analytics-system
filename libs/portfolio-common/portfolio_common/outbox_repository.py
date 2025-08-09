@@ -31,7 +31,7 @@ class OutboxRepository:
         Args:
             db_session: The SQLAlchemy Session for the current transaction.
             aggregate_type: The type of the domain entity (e.g., 'Transaction', 'Cashflow').
-            aggregate_id: The unique identifier of the entity instance.
+            aggregate_id: The unique identifier of the entity instance. Used as the Kafka key.
             event_type: The specific type of the event (e.g., 'TransactionPersisted').
             topic: The Kafka topic to which this event should be published.
             payload: The dictionary event payload.
@@ -39,7 +39,14 @@ class OutboxRepository:
 
         Returns:
             The created OutboxEvent instance.
+        
+        Raises:
+            ValueError: If aggregate_id is missing.
         """
+        # --- NEW: Defensive check for aggregate_id ---
+        if not aggregate_id:
+            raise ValueError("aggregate_id is required for outbox events to ensure proper Kafka keying.")
+
         try:
             # Explicitly serialize the payload to a JSON string before storing
             payload_str = json.dumps(payload, default=str)
