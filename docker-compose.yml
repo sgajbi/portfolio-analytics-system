@@ -122,7 +122,7 @@ services:
     networks:
       - app_network
 
-  query_service:
+  query-service:
     build:
       context: .
       dockerfile: ./src/services/query_service/Dockerfile
