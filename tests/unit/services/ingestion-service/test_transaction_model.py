@@ -1,6 +1,7 @@
 import pytest
 from datetime import date, datetime
-from pantic import ValidationError
+# Corrected typo from "pantic" to "pydantic"
+from pydantic import ValidationError
 from decimal import Decimal
 
 # Corrected absolute import path
