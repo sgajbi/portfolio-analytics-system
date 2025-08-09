@@ -73,8 +73,9 @@ class MarketPriceConsumer(BaseConsumer):
 
                     await repo.create_market_price(event)
 
+                    # FIX: pass db= instead of db_session=
                     outbox_repo.create_outbox_event(
-                        db_session=db,
+                        db=db,
                         aggregate_type="MarketPrice",
                         aggregate_id=event.security_id,
                         event_type="MarketPricePersisted",
