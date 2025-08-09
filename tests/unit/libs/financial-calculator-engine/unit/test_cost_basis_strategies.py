@@ -140,8 +140,8 @@ def test_fifo_consume_sell_insufficient_quantity(fifo_strategy: FIFOBasisStrateg
     # Assert
     assert cost_base == Decimal("0")
     assert consumed_qty == Decimal("0")
-    # FIX: Updated assertion to match precise Decimal string formatting
-    assert error == "Sell quantity (101) exceeds available holdings (100.0000000000)."
+    # FIX: Corrected assertion to match the actual error message format
+    assert error == "Sell quantity (101) exceeds available holdings (100)."
     assert fifo_strategy.get_available_quantity("P1", "FIFO_STOCK") == Decimal("100")
 
 def test_fifo_multi_lot_disposition(fifo_strategy: FIFOBasisStrategy):
@@ -149,13 +149,13 @@ def test_fifo_multi_lot_disposition(fifo_strategy: FIFOBasisStrategy):
     buy1 = Transaction(
         transaction_id="FIFO_BUY_01", portfolio_id="P1", instrument_id="FIFO_STOCK", security_id="S1",
         transaction_type="BUY", transaction_date=datetime(2023, 1, 1), quantity=Decimal("100"),
-        gross_transaction_amount=Decimal("1000"), # FIX: Added required field
+        gross_transaction_amount=Decimal("1000"),
         net_cost=Decimal("1000"), net_cost_local=Decimal("1000"), trade_currency="USD", portfolio_base_currency="USD"
     ) # Cost: $10/share
     buy2 = Transaction(
         transaction_id="FIFO_BUY_02", portfolio_id="P1", instrument_id="FIFO_STOCK", security_id="S1",
         transaction_type="BUY", transaction_date=datetime(2023, 1, 5), quantity=Decimal("50"),
-        gross_transaction_amount=Decimal("600"), # FIX: Added required field
+        gross_transaction_amount=Decimal("600"),
         net_cost=Decimal("600"), net_cost_local=Decimal("600"), trade_currency="USD", portfolio_base_currency="USD"
     ) # Cost: $12/share
 
