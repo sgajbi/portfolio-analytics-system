@@ -5,7 +5,8 @@ from unittest.mock import MagicMock, patch, AsyncMock
 
 from portfolio_common.logging_utils import correlation_id_var
 from portfolio_common.events import TransactionEvent
-from consumers.transaction_consumer import TransactionPersistenceConsumer
+# Corrected absolute import
+from services.persistence_service.app.consumers.transaction_consumer import TransactionPersistenceConsumer
 
 # Mark all tests in this file as asyncio
 pytestmark = pytest.mark.asyncio
@@ -74,13 +75,13 @@ async def test_process_message_success(
     mock_db_session.__aenter__.return_value.begin.return_value.__aenter__.return_value = None
 
     with patch(
-        "app.consumers.transaction_consumer.get_async_db_session", return_value=mock_db_session
+        "services.persistence_service.app.consumers.transaction_consumer.get_async_db_session", return_value=mock_db_session
     ), patch(
-        "app.consumers.transaction_consumer.TransactionDBRepository", return_value=mock_repo
+        "services.persistence_service.app.consumers.transaction_consumer.TransactionDBRepository", return_value=mock_repo
     ), patch(
-        "app.consumers.transaction_consumer.OutboxRepository", return_value=mock_outbox_repo
+        "services.persistence_service.app.consumers.transaction_consumer.OutboxRepository", return_value=mock_outbox_repo
     ), patch(
-        "app.consumers.transaction_consumer.IdempotencyRepository", return_value=mock_idempotency_repo
+        "services.persistence_service.app.consumers.transaction_consumer.IdempotencyRepository", return_value=mock_idempotency_repo
     ):
         await transaction_consumer._process_message_with_retry(mock_kafka_message)
 
@@ -118,9 +119,9 @@ async def test_process_message_sends_to_dlq_on_validation_error(
 
     # Act
     with patch(
-        "app.consumers.transaction_consumer.get_async_db_session"
+        "services.persistence_service.app.consumers.transaction_consumer.get_async_db_session"
     ), patch(
-        "app.consumers.transaction_consumer.TransactionDBRepository", return_value=mock_repo
+        "services.persistence_service.app.consumers.transaction_consumer.TransactionDBRepository", return_value=mock_repo
     ):
         await transaction_consumer._process_message_with_retry(mock_invalid_message)
 

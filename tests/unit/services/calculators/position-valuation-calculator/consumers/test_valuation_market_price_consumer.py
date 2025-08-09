@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch, AsyncMock
 from datetime import date
 from decimal import Decimal
 
+from sqlalchemy.ext.asyncio import AsyncSession
 # Corrected imports using underscores for the package name
 from services.calculators.position_valuation_calculator.app.consumers.market_price_consumer import MarketPriceConsumer
 from portfolio_common.events import MarketPriceEvent
@@ -52,7 +53,7 @@ async def test_process_message_success_and_keys_by_portfolio_id(consumer: Market
     THEN it should update the snapshot and publish an outbox event keyed by portfolio_id.
     """
     # Arrange
-    mock_db_session = AsyncMock()
+    mock_db_session = AsyncMock(spec=AsyncSession)
     # Make the async context manager work
     mock_db_session.__aenter__.return_value.begin.return_value.__aenter__.return_value = None
     
