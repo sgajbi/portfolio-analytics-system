@@ -48,12 +48,15 @@ class PositionService:
                 market_price=row.market_price,
                 market_value=row.market_value,
                 unrealized_gain_loss=row.unrealized_gain_loss,
+                market_value_local=row.market_value_local,
+                unrealized_gain_loss_local=row.unrealized_gain_loss_local
             )
             record = PositionHistoryRecord(
                 position_date=row.position_date,
                 transaction_id=row.transaction_id,
                 quantity=row.quantity,
                 cost_basis=row.cost_basis,
+                cost_basis_local=row.cost_basis_local,
                 valuation=valuation_dto
             )
             positions.append(record)
@@ -78,11 +81,14 @@ class PositionService:
                 market_price=pos_snapshot.market_price,
                 market_value=pos_snapshot.market_value,
                 unrealized_gain_loss=pos_snapshot.unrealized_gain_loss,
+                market_value_local=pos_snapshot.market_value_local,
+                unrealized_gain_loss_local=pos_snapshot.unrealized_gain_loss_local
             )
             position_dto = Position(
                 security_id=pos_snapshot.security_id,
                 quantity=pos_snapshot.quantity,
                 cost_basis=pos_snapshot.cost_basis,
+                cost_basis_local=pos_snapshot.cost_basis_local,
                 instrument_name=instrument_name or "N/A",
                 position_date=pos_snapshot.date,
                 valuation=valuation_dto

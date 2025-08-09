@@ -22,8 +22,8 @@ class TransactionService:
         portfolio_id: str,
         skip: int,
         limit: int,
-        sort_by: Optional[str] = None,      # <-- ADD PARAMETER
-        sort_order: Optional[str] = "desc", # <-- ADD PARAMETER
+        sort_by: Optional[str] = None,
+        sort_order: Optional[str] = "desc",
         security_id: Optional[str] = None,
         start_date: Optional[date] = None,
         end_date: Optional[date] = None
