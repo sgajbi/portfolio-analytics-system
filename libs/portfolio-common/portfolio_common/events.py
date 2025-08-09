@@ -67,6 +67,11 @@ class TransactionEvent(BaseModel):
     net_cost: Optional[Decimal] = None
     gross_cost: Optional[Decimal] = None
     realized_gain_loss: Optional[Decimal] = None
+    
+    # --- NEW FIELDS ---
+    transaction_fx_rate: Optional[Decimal] = None
+    net_cost_local: Optional[Decimal] = None
+    realized_gain_loss_local: Optional[Decimal] = None
 
 class PositionHistoryPersistedEvent(BaseModel):
     model_config = ConfigDict(from_attributes=True)
