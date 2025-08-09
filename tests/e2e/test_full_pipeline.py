@@ -86,7 +86,13 @@ def test_full_pipeline(docker_services: DockerCompose, db_engine, clean_db):
     assert buy_txn_data["transaction_id"] == "E2E_BUY_01"
     assert buy_txn_data["net_cost"] == "1500.0000000000"
     assert buy_txn_data["realized_gain_loss"] is None
-    assert buy_txn_data["cashflow"]["amount"] == "-1500.0000000000"
+    
+    # Assert BUY cashflow details
+    buy_cf = buy_txn_data["cashflow"]
+    assert buy_cf["amount"] == "-1500.0000000000"
+    assert buy_cf["classification"] == "INVESTMENT_OUTFLOW"
+    assert buy_cf["timing"] == "EOD"
+    assert buy_cf["level"] == "POSITION"
 
     # SELL transaction checks
     # Cost of goods sold for 4 shares = 4 * $150/share = $600
@@ -94,4 +100,10 @@ def test_full_pipeline(docker_services: DockerCompose, db_engine, clean_db):
     assert sell_txn_data["transaction_id"] == "E2E_SELL_01"
     assert sell_txn_data["net_cost"] == "-600.0000000000"
     assert sell_txn_data["realized_gain_loss"] == "100.0000000000"
-    assert sell_txn_data["cashflow"]["amount"] == "700.0000000000"
+    
+    # Assert SELL cashflow details
+    sell_cf = sell_txn_data["cashflow"]
+    assert sell_cf["amount"] == "700.0000000000"
+    assert sell_cf["classification"] == "INVESTMENT_INFLOW"
+    assert sell_cf["timing"] == "EOD"
+    assert sell_cf["level"] == "POSITION"
