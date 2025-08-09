@@ -45,8 +45,9 @@ def test_average_cost_simple_disposition(avco_strategy: AverageCostBasisStrategy
 
     # Act: Consume a partial sell
     sell_quantity = Decimal("50")
+    # --- FIX: Changed keyword argument from 'sell_quantity' to 'required_quantity' ---
     total_matched_cost_base, total_matched_cost_local, consumed_quantity, error = avco_strategy.consume_sell_quantity(
-        portfolio_id="P1", instrument_id="AVCO_STOCK", sell_quantity=sell_quantity
+        portfolio_id="P1", instrument_id="AVCO_STOCK", required_quantity=sell_quantity
     )
 
     # Assert the results of the disposition

@@ -84,7 +84,7 @@ async def test_process_message_success(
 
     # --- FIX: Correct async generator mocking ---
     mock_db_session = AsyncMock()
-    mock_db_session.begin.return_value.__aenter__.return_value = None
+    mock_db_session.begin.return_value = AsyncMock() # This returns the async context manager
     async def mock_get_db_session_generator():
         yield mock_db_session
 
@@ -128,7 +128,7 @@ async def test_process_message_skips_processed_event(
 
     # --- FIX: Correct async generator mocking ---
     mock_db_session = AsyncMock()
-    mock_db_session.begin.return_value.__aenter__.return_value = None
+    mock_db_session.begin.return_value = AsyncMock()
     async def mock_get_db_session_generator():
         yield mock_db_session
 
