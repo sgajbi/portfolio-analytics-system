@@ -25,9 +25,6 @@ class TransactionPersistenceConsumer(BaseConsumer):
     A concrete consumer for validating and persisting raw transaction events.
     """
     async def process_message(self, msg: Message):
-        """
-        Wrapper method to call the retryable logic.
-        """
         try:
             await self._process_message_with_retry(msg)
         except Exception as e:
@@ -42,10 +39,6 @@ class TransactionPersistenceConsumer(BaseConsumer):
         reraise=True
     )
     async def _process_message_with_retry(self, msg: Message):
-        """
-        Processes a single raw transaction message from Kafka atomically and idempotently.
-        Retries on database connection errors or integrity errors.
-        """
         key = msg.key().decode('utf-8') if msg.key() else "NoKey"
         value = msg.value().decode('utf-8')
         correlation_id = correlation_id_var.get()
@@ -77,10 +70,11 @@ class TransactionPersistenceConsumer(BaseConsumer):
 
                     await repo.create_or_update_transaction(event)
 
+                    # 🔑 Keying policy: use portfolio_id for partition affinity
                     outbox_repo.create_outbox_event(
-                        db_session=db,
+                        db=db,
                         aggregate_type='RawTransaction',
-                        aggregate_id=event.transaction_id,
+                        aggregate_id=str(event.portfolio_id),
                         event_type='RawTransactionPersisted',
                         topic=KAFKA_RAW_TRANSACTIONS_COMPLETED_TOPIC,
                         payload=event.model_dump(mode='json'),
