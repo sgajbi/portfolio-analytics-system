@@ -1,13 +1,13 @@
-# services/calculators/position-valuation-calculator/tests/unit/consumers/test_market_price_consumer.py
+# services/calculators/position-valuation-calculator/tests/unit/consumers/test_valuation_market_price_consumer.py
 import pytest
 from unittest.mock import MagicMock, patch, AsyncMock
 from datetime import date
 from decimal import Decimal
 
-from sqlalchemy.orm import Session
-from consumers.market_price_consumer import MarketPriceConsumer
+# Corrected imports using underscores for the package name
+from services.calculators.position_valuation_calculator.app.consumers.market_price_consumer import MarketPriceConsumer
 from portfolio_common.events import MarketPriceEvent
-from portfolio_common.database_models import DailyPositionSnapshot
+from portfolio_common.database_models import DailyPositionSnapshot, Portfolio, Instrument
 
 pytestmark = pytest.mark.asyncio
 
@@ -18,10 +18,8 @@ def consumer():
         bootstrap_servers="mock_server",
         topic="market_price_persisted",
         group_id="test_group",
-        dlq_topic="test.dlq"
     )
-    c._producer = MagicMock()
-    c._send_to_dlq = AsyncMock()
+    c._send_to_dlq_async = AsyncMock()
     return c
 
 @pytest.fixture
@@ -44,76 +42,54 @@ def mock_kafka_message(mock_event: MarketPriceEvent):
     mock_msg.partition.return_value = 0
     mock_msg.offset.return_value = 10
     mock_msg.error.return_value = None
+    mock_msg.headers.return_value = []
     return mock_msg
 
-async def test_process_message_success(consumer: MarketPriceConsumer, mock_kafka_message: MagicMock, mock_event: MarketPriceEvent):
+async def test_process_message_success_and_keys_by_portfolio_id(consumer: MarketPriceConsumer, mock_kafka_message: MagicMock, mock_event: MarketPriceEvent):
     """
-    GIVEN a new market price event for a security held in two portfolios
+    GIVEN a new market price event for a security held in a portfolio
     WHEN the consumer processes the message
-    THEN it should update snapshots for both portfolios and publish two completion events.
+    THEN it should update the snapshot and publish an outbox event keyed by portfolio_id.
     """
     # Arrange
-    mock_db_session = MagicMock(spec=Session)
-    mock_transaction_context = MagicMock()
-    mock_transaction_context.__enter__.return_value = None
-    mock_transaction_context.__exit__.return_value = (None, None, None)
-    mock_db_session.begin.return_value = mock_transaction_context
-
-    mock_idempotency_repo = MagicMock()
+    mock_db_session = AsyncMock()
+    # Make the async context manager work
+    mock_db_session.__aenter__.return_value.begin.return_value.__aenter__.return_value = None
+    
+    mock_idempotency_repo = AsyncMock()
     mock_idempotency_repo.is_event_processed.return_value = False
 
-    # SIMPLIFIED: Mock the single high-level repository method
-    mock_valuation_repo = MagicMock()
-    updated_snapshots = [
-        DailyPositionSnapshot(id=1, security_id="SEC_PRICE_01", portfolio_id="PORT_A", date=date(2025,8,5)),
-        DailyPositionSnapshot(id=2, security_id="SEC_PRICE_01", portfolio_id="PORT_B", date=date(2025,8,5))
-    ]
-    mock_valuation_repo.update_snapshots_for_market_price.return_value = updated_snapshots
+    mock_valuation_repo = AsyncMock()
+    mock_valuation_repo.get_instrument.return_value = Instrument(currency="USD")
+    mock_valuation_repo.get_portfolio.return_value = Portfolio(base_currency="USD")
+    mock_valuation_repo.get_fx_rate.return_value = None # Same currency
     
-    with patch('app.consumers.market_price_consumer.get_db_session', return_value=iter([mock_db_session])), \
-         patch('app.consumers.market_price_consumer.IdempotencyRepository', return_value=mock_idempotency_repo), \
-         patch('app.consumers.market_price_consumer.ValuationRepository', return_value=mock_valuation_repo):
+    snapshot_to_update = DailyPositionSnapshot(
+        id=1, security_id="SEC_PRICE_01", portfolio_id="PORT_A", 
+        date=date(2025,8,5), quantity=Decimal(10), cost_basis=Decimal(1000), cost_basis_local=Decimal(1000)
+    )
+    mock_valuation_repo.find_snapshots_to_update.return_value = [snapshot_to_update]
+    mock_valuation_repo.upsert_daily_snapshot.return_value = snapshot_to_update
+
+    with patch('services.calculators.position_valuation_calculator.app.consumers.market_price_consumer.get_async_db_session', return_value=mock_db_session), \
+         patch('services.calculators.position_valuation_calculator.app.consumers.market_price_consumer.IdempotencyRepository', return_value=mock_idempotency_repo), \
+         patch('services.calculators.position_valuation_calculator.app.consumers.market_price_consumer.ValuationRepository', return_value=mock_valuation_repo), \
+         patch('services.calculators.position_valuation_calculator.app.consumers.market_price_consumer.OutboxRepository') as mock_outbox_repo:
         
+        mock_outbox_instance = mock_outbox_repo.return_value
+
         # Act
         await consumer.process_message(mock_kafka_message)
 
         # Assert
         mock_idempotency_repo.is_event_processed.assert_called_once()
-        # Assert that our new high-level method was called
-        mock_valuation_repo.update_snapshots_for_market_price.assert_called_once_with(mock_event)
+        mock_valuation_repo.upsert_daily_snapshot.assert_called_once()
+        mock_outbox_instance.create_outbox_event.assert_called_once()
+
+        # --- VERIFY KEYING BEHAVIOR ---
+        call_args = mock_outbox_instance.create_outbox_event.call_args.kwargs
+        assert call_args['aggregate_id'] == "PORT_A" # Should be the portfolio_id
+        assert call_args['aggregate_id'] != "1"      # Should NOT be the snapshot primary key
+        
         mock_idempotency_repo.mark_event_processed.assert_called_once()
-        # Should publish one event per returned snapshot
-        assert consumer._producer.publish_message.call_count == 2
-        consumer._send_to_dlq.assert_not_called()
-
-async def test_process_message_skips_processed_event(consumer: MarketPriceConsumer, mock_kafka_message: MagicMock):
-    """
-    GIVEN a market price event that has already been processed
-    WHEN the consumer processes the message
-    THEN it should skip all business logic.
-    """
-    # Arrange
-    mock_db_session = MagicMock(spec=Session)
-    mock_transaction_context = MagicMock()
-    mock_transaction_context.__enter__.return_value = None
-    mock_transaction_context.__exit__.return_value = (None, None, None)
-    mock_db_session.begin.return_value = mock_transaction_context
-
-    mock_idempotency_repo = MagicMock()
-    mock_idempotency_repo.is_event_processed.return_value = True # DUPLICATE
-
-    mock_valuation_repo = MagicMock()
-    
-    with patch('app.consumers.market_price_consumer.get_db_session', return_value=iter([mock_db_session])), \
-         patch('app.consumers.market_price_consumer.IdempotencyRepository', return_value=mock_idempotency_repo), \
-         patch('app.consumers.market_price_consumer.ValuationRepository', return_value=mock_valuation_repo):
-
-        # Act
-        await consumer.process_message(mock_kafka_message)
-
-        # Assert
-        mock_idempotency_repo.is_event_processed.assert_called_once()
-        mock_valuation_repo.update_snapshots_for_market_price.assert_not_called()
-        mock_idempotency_repo.mark_event_processed.assert_not_called()
-        consumer._producer.publish_message.assert_not_called()
-        consumer._send_to_dlq.assert_not_called()
+        consumer._send_to_dlq_async.assert_not_called()

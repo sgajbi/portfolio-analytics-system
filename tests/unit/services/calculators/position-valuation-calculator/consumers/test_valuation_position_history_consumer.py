@@ -5,9 +5,10 @@ from datetime import date
 from decimal import Decimal
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from consumers.position_history_consumer import PositionHistoryConsumer
+# Corrected imports using underscores for the package name
+from services.calculators.position_valuation_calculator.app.consumers.position_history_consumer import PositionHistoryConsumer
 from portfolio_common.events import PositionHistoryPersistedEvent
-from portfolio_common.database_models import PositionHistory, MarketPrice, DailyPositionSnapshot
+from portfolio_common.database_models import PositionHistory, MarketPrice, DailyPositionSnapshot, Instrument, Portfolio
 
 pytestmark = pytest.mark.asyncio
 
@@ -18,7 +19,6 @@ def consumer():
         bootstrap_servers="mock_server",
         topic="position_history_persisted",
         group_id="test_group",
-        dlq_topic="test.dlq"
     )
     c._send_to_dlq_async = AsyncMock()
     return c
@@ -46,33 +46,40 @@ def mock_kafka_message(mock_event: PositionHistoryPersistedEvent):
     mock_msg.headers.return_value = []
     return mock_msg
 
-async def test_process_message_success(consumer: PositionHistoryConsumer, mock_kafka_message: MagicMock, mock_event: PositionHistoryPersistedEvent):
+async def test_process_message_success_and_keys_by_portfolio_id(consumer: PositionHistoryConsumer, mock_kafka_message: MagicMock, mock_event: PositionHistoryPersistedEvent):
     """
     GIVEN a new position history event
     WHEN the consumer processes the message
-    THEN it should create a valued snapshot, mark as processed, and publish a completion event.
+    THEN it should create a snapshot and publish an outbox event keyed by portfolio_id.
     """
     # Arrange
     mock_db_session = AsyncMock(spec=AsyncSession)
-
     mock_idempotency_repo = AsyncMock()
     mock_idempotency_repo.is_event_processed.return_value = False
 
-    mock_position_history = PositionHistory(id=123, quantity=Decimal(100), cost_basis=Decimal(10000), security_id="SEC_VAL_01", portfolio_id="PORT_VAL_01", position_date=date(2025, 8, 1))
-
-    mock_returned_snapshot = DailyPositionSnapshot(id=1, portfolio_id="PORT_VAL_01", security_id="SEC_VAL_01", date=date(2025, 8, 1))
-
+    mock_position_history = PositionHistory(
+        id=123, quantity=Decimal(100), cost_basis=Decimal(10000), cost_basis_local=Decimal(10000),
+        security_id="SEC_VAL_01", portfolio_id="PORT_VAL_01", position_date=date(2025, 8, 1)
+    )
+    mock_returned_snapshot = DailyPositionSnapshot(
+        id=1, portfolio_id="PORT_VAL_01", security_id="SEC_VAL_01", date=date(2025, 8, 1)
+    )
     mock_valuation_repo = AsyncMock()
-    mock_valuation_repo.get_latest_price_for_position.return_value = MarketPrice(price=Decimal("150"))
+    mock_valuation_repo.get_instrument.return_value = Instrument(currency="USD")
+    mock_valuation_repo.get_portfolio.return_value = Portfolio(base_currency="USD")
+    mock_valuation_repo.get_latest_price_for_position.return_value = MarketPrice(price=Decimal("150"), currency="USD")
     mock_valuation_repo.upsert_daily_snapshot.return_value = mock_returned_snapshot
-
+    
     mock_db_session.get.return_value = mock_position_history
+    mock_db_session.__aenter__.return_value.begin.return_value.__aenter__.return_value = None
 
 
-    with patch('consumers.position_history_consumer.get_async_db_session', return_value=mock_db_session), \
-         patch('consumers.position_history_consumer.IdempotencyRepository', return_value=mock_idempotency_repo), \
-         patch('consumers.position_history_consumer.ValuationRepository', return_value=mock_valuation_repo), \
-         patch('consumers.position_history_consumer.OutboxRepository') as mock_outbox_repo:
+    with patch('services.calculators.position_valuation_calculator.app.consumers.position_history_consumer.get_async_db_session', return_value=mock_db_session), \
+         patch('services.calculators.position_valuation_calculator.app.consumers.position_history_consumer.IdempotencyRepository', return_value=mock_idempotency_repo), \
+         patch('services.calculators.position_valuation_calculator.app.consumers.position_history_consumer.ValuationRepository', return_value=mock_valuation_repo), \
+         patch('services.calculators.position_valuation_calculator.app.consumers.position_history_consumer.OutboxRepository') as mock_outbox_repo:
+
+        mock_outbox_instance = mock_outbox_repo.return_value
 
         # Act
         await consumer.process_message(mock_kafka_message)
@@ -80,6 +87,12 @@ async def test_process_message_success(consumer: PositionHistoryConsumer, mock_k
         # Assert
         mock_idempotency_repo.is_event_processed.assert_called_once()
         mock_valuation_repo.upsert_daily_snapshot.assert_called_once()
+        
+        # --- VERIFY KEYING BEHAVIOR ---
+        mock_outbox_instance.create_outbox_event.assert_called_once()
+        call_args = mock_outbox_instance.create_outbox_event.call_args.kwargs
+        assert call_args['aggregate_id'] == mock_event.portfolio_id
+        assert call_args['aggregate_id'] != str(mock_event.id)
+
         mock_idempotency_repo.mark_event_processed.assert_called_once()
-        mock_outbox_repo.return_value.create_outbox_event.assert_called_once()
         consumer._send_to_dlq_async.assert_not_called()

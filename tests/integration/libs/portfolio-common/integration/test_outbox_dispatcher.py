@@ -10,6 +10,7 @@ from sqlalchemy import text
 from portfolio_common.database_models import OutboxEvent
 from portfolio_common.kafka_utils import KafkaProducer
 from portfolio_common.outbox_dispatcher import OutboxDispatcher
+from portfolio_common.outbox_repository import OutboxRepository
 
 pytestmark = pytest.mark.asyncio
 
@@ -20,6 +21,38 @@ def mock_kafka_producer() -> MagicMock:
     mock.publish_message = MagicMock()
     mock.flush = MagicMock()
     return mock
+
+# This test is synchronous, but runs correctly within an async-marked file.
+def test_create_outbox_event_fails_with_missing_aggregate_id(db_engine, clean_db):
+    """
+    GIVEN an attempt to create an outbox event with a missing or empty aggregate_id
+    WHEN create_outbox_event is called
+    THEN it should raise a ValueError.
+    """
+    with Session(db_engine) as session:
+        repo = OutboxRepository()
+        
+        # Test with a None value
+        with pytest.raises(ValueError, match="aggregate_id is required for outbox events to ensure proper Kafka keying."):
+            repo.create_outbox_event(
+                db_session=session,
+                aggregate_type="Test",
+                aggregate_id=None,
+                event_type="TestEvent",
+                topic="test.topic",
+                payload={}
+            )
+
+        # Test with an empty string
+        with pytest.raises(ValueError, match="aggregate_id is required for outbox events to ensure proper Kafka keying."):
+            repo.create_outbox_event(
+                db_session=session,
+                aggregate_type="Test",
+                aggregate_id="",
+                event_type="TestEvent",
+                topic="test.topic",
+                payload={}
+            )
 
 async def test_dispatcher_processes_and_updates_pending_events(db_engine, clean_db, mock_kafka_producer):
     """
@@ -50,6 +83,10 @@ async def test_dispatcher_processes_and_updates_pending_events(db_engine, clean_
 
     # ASSERT
     mock_kafka_producer.publish_message.assert_called_once()
+    # --- VERIFY KEYING BEHAVIOR ---
+    call_args = mock_kafka_producer.publish_message.call_args.kwargs
+    assert call_args['key'] == aggregate_id
+
     with Session(db_engine) as session:
         result = session.execute(text("SELECT status FROM outbox_events WHERE aggregate_id = :id"), {"id": aggregate_id}).scalar_one()
         assert result == "PROCESSED"
