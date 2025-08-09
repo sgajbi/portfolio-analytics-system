@@ -7,7 +7,7 @@ services:
     ports:
       - "2181:2181"
     environment:
-      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKeeper_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
       ZOOKEEPER_4LW_COMMANDS_WHITELIST: "ruok,stat,mntr,conf"
       KAFKA_OPTS: "-Dzookeeper.4lw.commands.whitelist=ruok,stat,mntr,conf"
@@ -59,8 +59,8 @@ services:
         condition: service_healthy
     command: >
       bash -c "
-        # Loop until the kafka hostname is resolvable by DNS
-        until nslookup kafka; do
+        # Loop until the kafka hostname is resolvable by the system's name service
+        until getent hosts kafka; do
           echo 'Waiting for Kafka to be resolvable...';
           sleep 2;
         done;
