@@ -1,8 +1,6 @@
 # services/calculators/cost_calculator_service/app/consumer.py
 import logging
 import json
-from datetime import datetime
-from decimal import Decimal
 from pydantic import ValidationError
 from confluent_kafka import Message
 from sqlalchemy.exc import DBAPIError, IntegrityError
@@ -16,9 +14,8 @@ from portfolio_common.idempotency_repository import IdempotencyRepository
 from portfolio_common.outbox_repository import OutboxRepository
 from portfolio_common.config import KAFKA_PROCESSED_TRANSACTIONS_COMPLETED_TOPIC
 
+from financial_calculator_engine.engine.transaction_processor import TransactionProcessor  # absolute import
 from .repository import CostCalculatorRepository
-from ...libs.financial_calculator_engine.engine.transaction_processor import TransactionProcessor
-from ...libs.financial_calculator_engine.models.transaction import EngineTransaction
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +24,7 @@ SERVICE_NAME = "cost-calculator"
 class CostCalculatorConsumer(BaseConsumer):
     """
     Consumes raw transaction events, calculates costs/realized P&L,
-    persists, and emits processed event via outbox.
+    persists updates, and emits a *full TransactionEvent* payload downstream.
     """
     def _get_transaction_processor(self) -> TransactionProcessor:
         return TransactionProcessor()
@@ -61,7 +58,7 @@ class CostCalculatorConsumer(BaseConsumer):
                         await tx.rollback()
                         return
 
-                    # fetch prior history + portfolio base currency / FX if needed
+                    # Pull prior history, base currency, and fx rate needed by the engine
                     history = await repo.get_transaction_history(
                         portfolio_id=event.portfolio_id,
                         security_id=event.security_id
@@ -76,23 +73,20 @@ class CostCalculatorConsumer(BaseConsumer):
                         history, [event], portfolio.base_currency, fx_rate
                     )
 
-                    # persist updates
+                    # Persist results produced by the engine
                     for p in processed:
                         await repo.update_transaction_costs(p)
 
-                        outbox_repo.create_outbox_event(
-                            db_session=db,
-                            aggregate_type='ProcessedTransaction',
-                            aggregate_id=p.transaction_id,
-                            event_type='ProcessedTransactionPersisted',
-                            topic=KAFKA_PROCESSED_TRANSACTIONS_COMPLETED_TOPIC,
-                            payload={
-                                "transaction_id": p.transaction_id,
-                                "portfolio_id": p.portfolio_id,
-                                "security_id": p.security_id
-                            },
-                            correlation_id=correlation_id
-                        )
+                    # Emit the *same* TransactionEvent downstream so consumers can revalidate/rehydrate as needed
+                    outbox_repo.create_outbox_event(
+                        db_session=db,
+                        aggregate_type='ProcessedTransaction',
+                        aggregate_id=event.transaction_id,
+                        event_type='ProcessedTransactionPersisted',
+                        topic=KAFKA_PROCESSED_TRANSACTIONS_COMPLETED_TOPIC,
+                        payload=event.model_dump(mode='json'),
+                        correlation_id=correlation_id
+                    )
 
                     await idempotency_repo.mark_event_processed(
                         event_id, event.portfolio_id, SERVICE_NAME, correlation_id
@@ -110,5 +104,8 @@ class CostCalculatorConsumer(BaseConsumer):
             logger.warning("DB error; will retry...", exc_info=False)
             raise
         except Exception as e:
-            logger.error(f"Unexpected error processing transaction {getattr(event,'transaction_id','UNKNOWN')}. Sending to DLQ.", exc_info=True)
+            logger.error(
+                f"Unexpected error processing transaction {getattr(event,'transaction_id','UNKNOWN')}. Sending to DLQ.",
+                exc_info=True
+            )
             await self._send_to_dlq_async(msg, e)

@@ -8,15 +8,14 @@ from tenacity import retry, stop_after_attempt, wait_fixed, before_log, retry_if
 
 from portfolio_common.kafka_consumer import BaseConsumer
 from portfolio_common.logging_utils import correlation_id_var
-from portfolio_common.events import ProcessedTransactionsCompletedEvent
+from portfolio_common.events import TransactionEvent, PositionHistoryPersistedEvent
 from portfolio_common.db import get_async_db_session
 from portfolio_common.idempotency_repository import IdempotencyRepository
 from portfolio_common.outbox_repository import OutboxRepository
 from portfolio_common.config import KAFKA_POSITION_HISTORY_PERSISTED_TOPIC
 
-from ..core.position_logic import PositionLogic
 from ..repositories.position_repository import PositionRepository
-from ..repositories.state_store_repo import StateStoreRepository
+from ..core.position_logic import PositionCalculator  # <-- correct class
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +23,8 @@ SERVICE_NAME = "position-calculator"
 
 class TransactionEventConsumer(BaseConsumer):
     """
-    Consumes processed transaction completion events and updates/maintains position history.
+    Consumes processed transaction completion events (payload is a TransactionEvent),
+    recalculates positions using PositionCalculator, persists, and emits completion.
     """
 
     @retry(
@@ -42,33 +42,36 @@ class TransactionEventConsumer(BaseConsumer):
 
         try:
             data = json.loads(value)
-            event = ProcessedTransactionsCompletedEvent.model_validate(data)
+            event = TransactionEvent.model_validate(data)
 
             async for db in get_async_db_session():
                 tx = await db.begin()
                 try:
                     idempotency_repo = IdempotencyRepository(db)
-                    outbox_repo = OutboxRepository()
-                    repo = PositionRepository(db)
-                    state_repo = StateStoreRepository(db)
-
                     if await idempotency_repo.is_event_processed(event_id, SERVICE_NAME):
                         logger.warning("Event already processed. Skipping.")
                         await tx.rollback()
                         return
 
-                    logic = PositionLogic(repo, state_repo)
-                    await logic.apply_transactions_and_persist(event.portfolio_id, event.transactions)
+                    repo = PositionRepository(db)
+                    # Recalculate & stage all affected position history rows
+                    new_positions = await PositionCalculator.calculate(event, db, repo=repo)
 
-                    outbox_repo.create_outbox_event(
-                        db_session=db,
-                        aggregate_type='PositionHistory',
-                        aggregate_id=event.portfolio_id,
-                        event_type='PositionHistoryPersisted',
-                        topic=KAFKA_POSITION_HISTORY_PERSISTED_TOPIC,
-                        payload={"portfolio_id": event.portfolio_id},
-                        correlation_id=correlation_id
-                    )
+                    outbox_repo = OutboxRepository()
+                    # Emit an event for each position record persisted (or a single portfolio-level event)
+                    for record in new_positions:
+                        # This assumes PositionHistoryPersistedEvent can validate from the ORM/dict shape
+                        completion_event = PositionHistoryPersistedEvent.model_validate(record)
+
+                        outbox_repo.create_outbox_event(
+                            db_session=db,
+                            aggregate_type='PositionHistory',
+                            aggregate_id=completion_event.portfolio_id,
+                            event_type='PositionHistoryPersisted',
+                            topic=KAFKA_POSITION_HISTORY_PERSISTED_TOPIC,
+                            payload=completion_event.model_dump(mode="json"),
+                            correlation_id=correlation_id
+                        )
 
                     await idempotency_repo.mark_event_processed(
                         event_id, event.portfolio_id, SERVICE_NAME, correlation_id
@@ -80,7 +83,7 @@ class TransactionEventConsumer(BaseConsumer):
                     raise
 
         except (json.JSONDecodeError, ValidationError):
-            logger.error("Invalid ProcessedTransactionsCompletedEvent; sending to DLQ.", exc_info=True)
+            logger.error("Invalid processed transaction event; sending to DLQ.", exc_info=True)
             await self._send_to_dlq_async(msg, ValueError("invalid payload"))
         except (DBAPIError, IntegrityError):
             logger.warning("DB error; will retry...", exc_info=False)
