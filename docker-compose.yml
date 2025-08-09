@@ -7,7 +7,7 @@ services:
     ports:
       - "2181:2181"
     environment:
-      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKeeper_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
       ZOOKEEPER_4LW_COMMANDS_WHITELIST: "ruok,stat,mntr,conf"
       KAFKA_OPTS: "-Dzookeeper.4lw.commands.whitelist=ruok,stat,mntr,conf"
@@ -100,10 +100,10 @@ services:
     networks:
       - app_network
 
-  ingestion-service:
+  ingestion_service:
     build:
       context: .
-      dockerfile: ./services/ingestion-service/Dockerfile
+      dockerfile: ./services/ingestion_service/Dockerfile
     hostname: ingestion-service
     container_name: ingestion-service
     ports:
@@ -115,17 +115,17 @@ services:
       kafka-topic-creator:
         condition: service_completed_successfully
     volumes:
-      - ./services/ingestion-service/app:/app/app
+      - ./services/ingestion_service/app:/app/app
       - ./libs/portfolio-common:/app/libs/portfolio-common
     command: >
       uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4 --timeout-keep-alive 30
     networks:
       - app_network
 
-  query-service:
+  query_service:
     build:
       context: .
-      dockerfile: ./services/query-service/Dockerfile
+      dockerfile: ./services/query_service/Dockerfile
     hostname: query-service
     container_name: query-service
     ports:
@@ -137,7 +137,7 @@ services:
       migration-runner:
         condition: service_completed_successfully
     volumes:
-      - ./services/query-service/app:/app/app
+      - ./services/query_service/app:/app/app
       - ./libs/portfolio-common:/app/libs/portfolio-common
     command: uvicorn app.main:app --host 0.0.0.0 --port 8001
     healthcheck:
@@ -149,7 +149,7 @@ services:
     networks:
       - app_network
 
-  persistence-service:
+  persistence_service:
     build:
       context: .
       dockerfile: ./services/persistence_service/Dockerfile
@@ -179,7 +179,7 @@ services:
     networks:
       - app_network
 
-  cost-calculator-service:
+  cost_calculator_service:
     build:
       context: .
       dockerfile: ./services/calculators/cost_calculator_service/Dockerfile
@@ -210,7 +210,7 @@ services:
     networks:
       - app_network
 
-  cashflow-calculator-service:
+  cashflow_calculator_service:
     build:
       context: .
       dockerfile: ./services/calculators/cashflow_calculator_service/Dockerfile
@@ -240,7 +240,7 @@ services:
     networks:
       - app_network
 
-  position-calculator-service:
+  position_calculator_service:
     build:
       context: .
       dockerfile: ./services/calculators/position_calculator/Dockerfile
@@ -270,10 +270,10 @@ services:
     networks:
       - app_network
 
-  position-valuation-calculator:
+  position_valuation_calculator:
     build:
       context: .
-      dockerfile: ./services/calculators/position-valuation-calculator/Dockerfile
+      dockerfile: ./services/calculators/position_valuation_calculator/Dockerfile
     hostname: position-valuation-calculator
     container_name: position-valuation-calculator
     ports:
@@ -288,7 +288,7 @@ services:
       migration-runner:
         condition: service_completed_successfully
     volumes:
-      - ./services/calculators/position-valuation-calculator/app:/app/app
+      - ./services/calculators/position_valuation_calculator/app:/app/app
       - ./libs/portfolio-common:/app/libs/portfolio-common
     command: ["python", "-m", "app.main"]
     healthcheck:
@@ -300,10 +300,10 @@ services:
     networks:
       - app_network
 
-  timeseries-generator-service:
+  timeseries_generator_service:
     build:
       context: .
-      dockerfile: ./services/timeseries-generator-service/Dockerfile
+      dockerfile: ./services/timeseries_generator_service/Dockerfile
     hostname: timeseries-generator-service
     container_name: timeseries-generator-service
     ports:
@@ -318,7 +318,7 @@ services:
       migration-runner:
         condition: service_completed_successfully
     volumes:
-      - ./services/timeseries-generator-service/app:/app/app
+      - ./services/timeseries_generator_service/app:/app/app
       - ./libs/portfolio-common:/app/libs/portfolio-common
     command: ["python", "-m", "app.main"]
     healthcheck:
