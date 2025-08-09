@@ -55,7 +55,8 @@ class TransactionEventConsumer(BaseConsumer):
                         outbox_repo.create_outbox_event(
                             db_session=db,
                             aggregate_type='PositionHistory',
-                            aggregate_id=str(record.id),
+                            # --- CHANGE: Key by portfolio_id for partition affinity ---
+                            aggregate_id=str(event.portfolio_id),
                             event_type='PositionHistoryPersisted',
                             topic=KAFKA_POSITION_HISTORY_PERSISTED_TOPIC,
                             payload=completion_event.model_dump(mode='json', by_alias=True),
