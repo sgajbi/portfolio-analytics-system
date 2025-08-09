@@ -1,3 +1,4 @@
+
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/sgajbi/portfolio-analytics-system)
  
 # Portfolio Analytics System
@@ -43,8 +44,9 @@ Before any consumer service begins polling for messages, it performs a startup h
 To ensure data consistency and prevent duplicate calculations from event replays, all calculator services are **idempotent**. This is achieved by:
 1.  Generating a unique ID for each incoming Kafka message (from its topic, partition, and offset).
 2.  Using a shared `processed_events` table in the database.
-3.  Wrapping the business logic in an atomic transaction: the service first checks if the event ID exists in the table. If not, it processes the data, saves the results, and inserts the event ID into the table as a single, atomic operation.
-4.  If the event ID already exists, the entire operation is skipped.
+3.  Wrapping the business logic in an atomic transaction: the service first checks if the event ID exists in the table.
+4.  If not, it processes the data, saves the results, and inserts the event ID into the table as a single, atomic operation.
+5.  If the event ID already exists, the entire operation is skipped.
 
 ### 1.2 Partition Affinity & Ordering
 
@@ -76,9 +78,11 @@ graph TD
         
         PersistenceCompleted -- "raw_transactions_completed" --> CashflowCalculator[cashflow-calculator-service];
         CashflowCalculator -- Writes --> DB;
+
         CalculationsCompleted -- "processed_transactions_completed" --> PositionCalculator[position-calculator-service];
         PositionCalculator -- Writes --> DB;
         PositionCalculator -- Publishes --> CalculationsCompleted;
+
         CalculationsCompleted -- "position_history_persisted" --> ValuationCalculator[position-valuation-calculator];
         PersistenceCompleted -- "market_price_persisted" --> ValuationCalculator;
         ValuationCalculator -- Updates --> DB;
@@ -250,9 +254,10 @@ The project contains a comprehensive suite of tests to ensure correctness and re
     ```bash
     pytest
     ```
-3.  **Run Only Unit Tests**:
+3.  **Run Tests for a Specific Module**:
+    To run tests for a single part of the application, specify the directory.
     ```bash
-    pytest tests/unit/
+    pytest tests/unit/libs/financial-calculator-engine/
     ```
 4.  **Run Only E2E Tests**:
     These tests require the full Docker environment to be running.
@@ -261,10 +266,11 @@ The project contains a comprehensive suite of tests to ensure correctness and re
     pytest tests/e2e/
     ```
 5.  **Generate a Coverage Report**:
+    To measure which lines of code are executed by the tests, run pytest with the `coverage` flags.
     ```bash
-    pytest --cov=. --cov-report=html
+    pytest --cov=src --cov-report=html
     ```
-    Open the `htmlcov/index.html` file in your browser to view the detailed report.
+    Open the `htmlcov/index.html` file in your browser to view the detailed interactive report.
 
 -----
 
@@ -482,5 +488,3 @@ This example demonstrates the full flow from ingesting a cross-currency trade to
     ```
 
 <!-- end list -->
-
- 
