@@ -63,7 +63,7 @@ class PortfolioTimeseriesConsumer(BaseConsumer):
         """
         try:
             async for db in get_async_db_session():
-                async with db.begin(): # Main atomic transaction
+                async with db.begin():  # Main atomic transaction
                     repo = TimeseriesRepository(db)
                     outbox_repo = OutboxRepository()
                     
@@ -85,10 +85,11 @@ class PortfolioTimeseriesConsumer(BaseConsumer):
                     await repo.upsert_portfolio_timeseries(new_portfolio_record)
 
                     completion_event = PortfolioTimeseriesGeneratedEvent.model_validate(new_portfolio_record)
+                    # 🔑 Keying policy: use portfolio_id for strict partition affinity
                     outbox_repo.create_outbox_event(
-                        db_session=db,
+                        db=db,
                         aggregate_type='PortfolioTimeseries',
-                        aggregate_id=f"{portfolio_id}:{a_date.isoformat()}",
+                        aggregate_id=str(portfolio_id),
                         event_type='PortfolioTimeseriesGenerated',
                         topic=KAFKA_PORTFOLIO_TIMESERIES_GENERATED_TOPIC,
                         payload=completion_event.model_dump(mode='json'),
