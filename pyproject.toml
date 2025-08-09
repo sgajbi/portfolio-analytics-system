@@ -14,17 +14,23 @@ requires-python = ">=3.11"
 where = ["."]
 exclude = ["tests*", "deployment*"]
 
-# --- UPDATED: Pytest Configuration ---
 [tool.pytest.ini_options]
 # The test root is now the single top-level tests directory
 testpaths = [
     "tests"
 ]
-# --- NEW: Add source roots to the Python path for test discovery ---
 pythonpath = [
     ".",
     "libs/portfolio-common",
     "libs/financial-calculator-engine/src",
+    "services/ingestion_service",
+    "services/persistence_service",
+    "services/query_service",
+    "services/calculators/cashflow_calculator_service",
+    "services/calculators/cost_calculator_service",
+    "services/calculators/position_calculator",
+    "services/calculators/position_valuation_calculator",
+    "services/timeseries_generator_service",
 ]
 addopts = "--strict-markers"
 minversion = "6.0"
