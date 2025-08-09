@@ -50,5 +50,7 @@ class TransactionParser:
             quantity=raw_data.get("quantity", Decimal(0)),
             gross_transaction_amount=raw_data.get("gross_transaction_amount", Decimal(0)),
             trade_currency=raw_data.get("trade_currency", "UNK"),
+            # --- FIX: Add required field with a sensible default ---
+            portfolio_base_currency=raw_data.get("portfolio_base_currency", "UNK"),
             error_reason=error_reason
         )

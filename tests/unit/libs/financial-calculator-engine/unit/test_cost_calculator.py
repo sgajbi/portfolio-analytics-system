@@ -1,7 +1,7 @@
 # libs/financial-calculator-engine/tests/unit/test_cost_calculator.py
 
 import pytest
-from datetime import date
+from datetime import datetime
 from decimal import Decimal
 from unittest.mock import MagicMock
 
@@ -29,18 +29,22 @@ def cost_calculator(mock_disposition_engine, error_reporter):
 def buy_transaction():
     return Transaction(
         transaction_id="BUY001", portfolio_id="P1", instrument_id="AAPL", security_id="S1",
-        transaction_type=TransactionType.BUY, transaction_date=date(2023, 1, 1), settlement_date=date(2023, 1, 3),
+        transaction_type=TransactionType.BUY, transaction_date=datetime(2023, 1, 1), settlement_date=datetime(2023, 1, 3),
         quantity=Decimal("10"), gross_transaction_amount=Decimal("1500"), trade_currency="USD",
-        fees=Fees(brokerage=Decimal("5.5")), accrued_interest=Decimal("10.0")
+        fees=Fees(brokerage=Decimal("5.5")), accrued_interest=Decimal("10.0"),
+        # --- FIX: Add required field ---
+        portfolio_base_currency="USD", transaction_fx_rate=Decimal("1.0")
     )
 
 @pytest.fixture
 def sell_transaction():
     return Transaction(
         transaction_id="SELL001", portfolio_id="P1", instrument_id="AAPL", security_id="S1",
-        transaction_type=TransactionType.SELL, transaction_date=date(2023, 1, 10), settlement_date=date(2023, 1, 12),
+        transaction_type=TransactionType.SELL, transaction_date=datetime(2023, 1, 10), settlement_date=datetime(2023, 1, 12),
         quantity=Decimal("5"), gross_transaction_amount=Decimal("800"), trade_currency="USD",
-        fees=Fees(brokerage=Decimal("3.0"))
+        fees=Fees(brokerage=Decimal("3.0")),
+        # --- FIX: Add required field ---
+        portfolio_base_currency="USD", transaction_fx_rate=Decimal("1.0")
     )
 
 def test_buy_strategy(cost_calculator, mock_disposition_engine, buy_transaction):
@@ -50,9 +54,10 @@ def test_buy_strategy(cost_calculator, mock_disposition_engine, buy_transaction)
     mock_disposition_engine.add_buy_lot.assert_called_once_with(buy_transaction)
 
 def test_sell_strategy_gain(cost_calculator, mock_disposition_engine, sell_transaction):
-    mock_disposition_engine.consume_sell_quantity.return_value = (Decimal("500"), Decimal("5"), None)
+    # cogs_base, cogs_local, consumed_quantity, error_reason
+    mock_disposition_engine.consume_sell_quantity.return_value = (Decimal("500"), Decimal("500"), Decimal("5"), None)
     cost_calculator.calculate_transaction_costs(sell_transaction)
-    assert sell_transaction.realized_gain_loss == Decimal("297.0") # 800 - 500 - 3.0
+    assert sell_transaction.realized_gain_loss == Decimal("297.0") # 800 - 3.0 - 500
     mock_disposition_engine.consume_sell_quantity.assert_called_once_with(sell_transaction)
 
 # --- NEW: A more comprehensive integration test for the calculator logic ---
@@ -76,25 +81,30 @@ def test_sell_strategy_multi_lot_fifo():
     # Act: Process the transactions in chronological order.
     buy_txn_1 = Transaction(
         transaction_id="BUY001", portfolio_id="P1", instrument_id="AAPL", security_id="S1",
-        transaction_type="BUY", transaction_date=date(2023, 1, 1),
-        quantity=Decimal("100"), gross_transaction_amount=Decimal("1000"), trade_currency="USD"
+        transaction_type="BUY", transaction_date=datetime(2023, 1, 1),
+        quantity=Decimal("100"), gross_transaction_amount=Decimal("1000"), trade_currency="USD",
+        # --- FIX: Add required fields ---
+        portfolio_base_currency="USD", transaction_fx_rate=Decimal("1.0")
     )
     cost_calculator.calculate_transaction_costs(buy_txn_1) # This calculates net_cost=1000 and adds the lot.
 
     buy_txn_2 = Transaction(
         transaction_id="BUY002", portfolio_id="P1", instrument_id="AAPL", security_id="S1",
-        transaction_type="BUY", transaction_date=date(2023, 1, 5),
-        quantity=Decimal("50"), gross_transaction_amount=Decimal("600"), trade_currency="USD"
+        transaction_type="BUY", transaction_date=datetime(2023, 1, 5),
+        quantity=Decimal("50"), gross_transaction_amount=Decimal("600"), trade_currency="USD",
+        # --- FIX: Add required fields ---
+        portfolio_base_currency="USD", transaction_fx_rate=Decimal("1.0")
     )
     cost_calculator.calculate_transaction_costs(buy_txn_2) # This calculates net_cost=600 and adds the second lot.
 
     sell_txn = Transaction(
         transaction_id="SELL001", portfolio_id="P1", instrument_id="AAPL", security_id="S1",
-        transaction_type="SELL", transaction_date=date(2023, 1, 10),
-        quantity=Decimal("120"), gross_transaction_amount=Decimal("1800"), trade_currency="USD"
+        transaction_type="SELL", transaction_date=datetime(2023, 1, 10),
+        quantity=Decimal("120"), gross_transaction_amount=Decimal("1800"), trade_currency="USD",
+        # --- FIX: Add required fields ---
+        portfolio_base_currency="USD", transaction_fx_rate=Decimal("1.0")
     )
     cost_calculator.calculate_transaction_costs(sell_txn) # This calculates the gain/loss.
-
     # Assert: Verify the calculated realized gain and the state of the remaining lots.
     # Cost of goods sold = (100 shares * $10) + (20 shares * $12) = 1000 + 240 = 1240
     # Realized Gain/Loss = Net Proceeds - COGS = 1800 - 1240 = 560
