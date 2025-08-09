@@ -20,7 +20,7 @@ def api_endpoints(docker_services):
 
 def poll_for_position_valuation(url: str, timeout: int = 60):
     """
-    Polls the positions endpoint until a VALUED position is found.
+    Polls the positions endpoint until a VALUED position with both local and base P&L is found.
     """
     start_time = time.time()
     last_response_data = None
@@ -30,7 +30,10 @@ def poll_for_position_valuation(url: str, timeout: int = 60):
             if response.status_code == 200:
                 last_response_data = response.json()
                 positions = last_response_data.get("positions", [])
-                if positions and positions[0].get("valuation"):
+                if (positions and 
+                    positions[0].get("valuation") and
+                    positions[0]["valuation"].get("unrealized_gain_loss") is not None and
+                    positions[0]["valuation"].get("unrealized_gain_loss_local") is not None):
                     return last_response_data
         except requests.ConnectionError:
             pass 
@@ -39,10 +42,11 @@ def poll_for_position_valuation(url: str, timeout: int = 60):
     pytest.fail(f"Polling timed out after {timeout} seconds for URL {url}. Last response: {last_response_data}")
 
 
-def test_cross_currency_valuation_is_in_instrument_currency(api_endpoints, clean_db):
+def test_cross_currency_valuation_calculates_dual_currency_pnl(api_endpoints, clean_db):
     """
-    Tests that a position's market value is calculated in the instrument's
-    local currency, not the portfolio's base currency.
+    Tests that a position's market value and unrealized P&L are correctly
+    calculated in both the instrument's local currency (EUR) and the portfolio's
+    base currency (USD).
     """
     # ARRANGE
     ingestion_url = api_endpoints["ingestion"]
@@ -60,7 +64,12 @@ def test_cross_currency_valuation_is_in_instrument_currency(api_endpoints, clean
         {"securityId": security_id, "name": "Airbus SE", "isin": "NL0000235190", "instrumentCurrency": "EUR", "productType": "Equity"}
     ]})
     
-    # 3. Ingest a BUY transaction in EUR
+    # 3. Ingest FX Rate for the transaction and valuation date
+    requests.post(f"{ingestion_url}/ingest/fx-rates", json={"fx_rates": [
+      {"fromCurrency": "EUR", "toCurrency": "USD", "rateDate": tx_date, "rate": "1.10"}
+    ]})
+
+    # 4. Ingest a BUY transaction in EUR
     requests.post(f"{ingestion_url}/ingest/transactions", json={"transactions": [{
         "transaction_id": f"TXN_{security_id}", "portfolio_id": portfolio_id, "instrument_id": "AIR",
         "security_id": security_id, "transaction_date": f"{tx_date}T10:00:00Z", "transaction_type": "BUY",
@@ -68,7 +77,7 @@ def test_cross_currency_valuation_is_in_instrument_currency(api_endpoints, clean
         "trade_currency": "EUR", "currency": "EUR"
     }]})
     
-    # 4. Ingest a market price in EUR
+    # 5. Ingest a market price in EUR for valuation
     requests.post(f"{ingestion_url}/ingest/market-prices", json={"market_prices": [{
         "securityId": security_id, "priceDate": tx_date, "price": 160.0, "currency": "EUR"
     }]})
@@ -82,13 +91,21 @@ def test_cross_currency_valuation_is_in_instrument_currency(api_endpoints, clean
     position = response_data["positions"][0]
     valuation = position["valuation"]
 
-    # Expected Market Value = 100 shares * €160/share = €16,000
-    # The cost_basis is in the portfolio's currency (USD), so we cannot compare
-    # it directly to the market value in EUR.
-    
+    # Assert Cost Basis (Local and Base)
+    # Cost (Local) = 100 shares * €150/share = €15,000
+    assert Decimal(position["cost_basis_local"]).quantize(Decimal("0.01")) == Decimal("15000.00")
+    # Cost (Base) = €15,000 * 1.10 FX Rate = $16,500
+    assert Decimal(position["cost_basis"]).quantize(Decimal("0.01")) == Decimal("16500.00")
+
+    # Assert Valuation (Local and Base)
     assert valuation["market_price"] == "160.0000000000"
-    assert valuation["market_value"] == "16000.0000000000"
-    
-    # Crucially, assert that unrealized_gain_loss is null because its
-    # calculation would be invalid (EUR market_value vs. USD cost_basis).
-    assert valuation["unrealized_gain_loss"] is None
+    # Market Value (Local) = 100 shares * €160/share = €16,000
+    assert Decimal(valuation["market_value_local"]).quantize(Decimal("0.01")) == Decimal("16000.00")
+    # Market Value (Base) = €16,000 * 1.10 FX Rate = $17,600
+    assert Decimal(valuation["market_value"]).quantize(Decimal("0.01")) == Decimal("17600.00")
+
+    # Assert Unrealized P&L (Local and Base)
+    # P&L (Local) = €16,000 (MV) - €15,000 (Cost) = €1,000
+    assert Decimal(valuation["unrealized_gain_loss_local"]).quantize(Decimal("0.01")) == Decimal("1000.00")
+    # P&L (Base) = $17,600 (MV) - $16,500 (Cost) = $1,100
+    assert Decimal(valuation["unrealized_gain_loss"]).quantize(Decimal("0.01")) == Decimal("1100.00")
