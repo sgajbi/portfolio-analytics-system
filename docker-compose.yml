@@ -57,7 +57,16 @@ services:
     depends_on:
       kafka:
         condition: service_healthy
-    command: ["python", "-m", "tools.kafka_setup"]
+    command: >
+      bash -c "
+        # Loop until the kafka hostname is resolvable by DNS
+        until nslookup kafka; do
+          echo 'Waiting for Kafka to be resolvable...';
+          sleep 2;
+        done;
+        # Now run the original command
+        python -m tools.kafka_setup
+      "
     environment:
       PYTHONPATH: "/app:/app/src/libs/portfolio-common"
       KAFKA_BOOTSTRAP_SERVERS: kafka:9093
