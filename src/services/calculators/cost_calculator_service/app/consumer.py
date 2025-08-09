@@ -14,8 +14,14 @@ from portfolio_common.idempotency_repository import IdempotencyRepository
 from portfolio_common.outbox_repository import OutboxRepository
 from portfolio_common.config import KAFKA_PROCESSED_TRANSACTIONS_COMPLETED_TOPIC
 
-# IMPORTANT: the engine is installed with top-level modules `engine/`, `core/`, `logic/`
+# IMPORTANT: Import all necessary components from the engine
 from engine.transaction_processor import TransactionProcessor
+from logic.parser import TransactionParser
+from logic.sorter import TransactionSorter
+from logic.cost_basis_strategies import FIFOBasisStrategy
+from logic.disposition_engine import DispositionEngine
+from logic.cost_calculator import CostCalculator
+from logic.error_reporter import ErrorReporter
 
 from .repository import CostCalculatorRepository
 
@@ -28,7 +34,26 @@ class CostCalculatorConsumer(BaseConsumer):
     persists updates, and emits a full TransactionEvent downstream.
     """
     def _get_transaction_processor(self) -> TransactionProcessor:
-        return TransactionProcessor()
+        """
+        Correctly builds and returns an instance of the TransactionProcessor
+        with all its required dependencies.
+        """
+        error_reporter = ErrorReporter()
+        parser = TransactionParser(error_reporter=error_reporter)
+        sorter = TransactionSorter()
+        # The service is configured to use the FIFO cost basis method
+        strategy = FIFOBasisStrategy()
+        disposition_engine = DispositionEngine(cost_basis_strategy=strategy)
+        cost_calculator = CostCalculator(
+            disposition_engine=disposition_engine, error_reporter=error_reporter
+        )
+        return TransactionProcessor(
+            parser=parser,
+            sorter=sorter,
+            disposition_engine=disposition_engine,
+            cost_calculator=cost_calculator,
+            error_reporter=error_reporter
+        )
 
     @retry(
         wait=wait_fixed(2),
@@ -42,9 +67,11 @@ class CostCalculatorConsumer(BaseConsumer):
         value = msg.value().decode('utf-8')
         event_id = f"{msg.topic()}-{msg.partition()}-{msg.offset()}"
         correlation_id = correlation_id_var.get()
+        event = None
 
         try:
             data = json.loads(value)
+            # The entire payload is the event, not nested
             event = TransactionEvent.model_validate(data)
 
             async for db in get_async_db_session():
@@ -59,32 +86,54 @@ class CostCalculatorConsumer(BaseConsumer):
                         await tx.rollback()
                         return
 
-                    history = await repo.get_transaction_history(
+                    history_db = await repo.get_transaction_history(
                         portfolio_id=event.portfolio_id,
-                        security_id=event.security_id
+                        security_id=event.security_id,
+                        exclude_id=event.transaction_id
                     )
+                    
+                    history_raw = [TransactionEvent.model_validate(t).model_dump() for t in history_db]
+
                     portfolio = await repo.get_portfolio(event.portfolio_id)
-                    fx_rate = await repo.get_fx_rate(
-                        event.trade_currency, portfolio.base_currency, event.transaction_date.date()
-                    )
+                    if not portfolio:
+                        raise ValueError(f"Portfolio {event.portfolio_id} not found.")
+
+                    # Inject required fields into the raw event data for the engine
+                    event_raw = event.model_dump()
+                    event_raw['portfolio_base_currency'] = portfolio.base_currency
+
+                    # Inject fx rate if it's a cross-currency trade
+                    if event.trade_currency != portfolio.base_currency:
+                        fx_rate = await repo.get_fx_rate(
+                            event.trade_currency, portfolio.base_currency, event.transaction_date.date()
+                        )
+                        if fx_rate:
+                            event_raw['transaction_fx_rate'] = fx_rate.rate
 
                     processor = self._get_transaction_processor()
-                    processed, _ = processor.process_transactions(
-                        history, [event], portfolio.base_currency, fx_rate
+                    processed, errored = processor.process_transactions(
+                        existing_transactions_raw=history_raw,
+                        new_transactions_raw=[event_raw]
                     )
+                    
+                    if errored:
+                        # For simplicity in this consumer, we raise the first error
+                        raise ValueError(f"Transaction engine failed: {errored[0].error_reason}")
+                    
+                    for p_txn in processed:
+                        updated_txn = await repo.update_transaction_costs(p_txn)
+                        # Re-read the full model for the outbox event to include all fields
+                        full_event_to_publish = TransactionEvent.model_validate(updated_txn)
 
-                    for p in processed:
-                        await repo.update_transaction_costs(p)
-
-                    outbox_repo.create_outbox_event(
-                        db_session=db,
-                        aggregate_type='ProcessedTransaction',
-                        aggregate_id=event.transaction_id,
-                        event_type='ProcessedTransactionPersisted',
-                        topic=KAFKA_PROCESSED_TRANSACTIONS_COMPLETED_TOPIC,
-                        payload=event.model_dump(mode='json'),
-                        correlation_id=correlation_id
-                    )
+                        outbox_repo.create_outbox_event(
+                            db=db,
+                            aggregate_type='ProcessedTransaction',
+                            aggregate_id=str(p_txn.portfolio_id),
+                            event_type='ProcessedTransactionPersisted',
+                            topic=KAFKA_PROCESSED_TRANSACTIONS_COMPLETED_TOPIC,
+                            payload=full_event_to_publish.model_dump(mode='json'),
+                            correlation_id=correlation_id
+                        )
 
                     await idempotency_repo.mark_event_processed(
                         event_id, event.portfolio_id, SERVICE_NAME, correlation_id
@@ -95,15 +144,15 @@ class CostCalculatorConsumer(BaseConsumer):
                     await tx.rollback()
                     raise
 
-        except (json.JSONDecodeError, ValidationError):
-            logger.error("Invalid TransactionEvent; sending to DLQ.", exc_info=True)
+        except (json.JSONDecodeError, ValidationError) as e:
+            logger.error(f"Invalid TransactionEvent; sending to DLQ. Error: {e}", exc_info=True)
             await self._send_to_dlq_async(msg, ValueError("invalid payload"))
         except (DBAPIError, IntegrityError):
             logger.warning("DB error; will retry...", exc_info=False)
             raise
         except Exception as e:
             logger.error(
-                f"Unexpected error processing transaction {getattr(event,'transaction_id','UNKNOWN')}. Sending to DLQ.",
+                f"Unexpected error processing transaction {getattr(event, 'transaction_id', 'UNKNOWN')}. Sending to DLQ.",
                 exc_info=True
             )
             await self._send_to_dlq_async(msg, e)
