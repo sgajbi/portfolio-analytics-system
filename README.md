@@ -1,4 +1,4 @@
-
+````markdown
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/sgajbi/portfolio-analytics-system)
  
 # Portfolio Analytics System
@@ -10,7 +10,8 @@
 [![Postgres](https://img.shields.io/badge/postgresql-4169E1?style=for-the-badge&logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-005571?style=for-the-badge&logo=fastapi)](https://fastapi.tiangolo.com/)
 
-[cite_start]An event-driven, microservices-based platform for comprehensive portfolio analytics. [cite: 58] [cite_start]Designed for wealth management, this system ingests financial data, performs complex calculations (cost basis, positions, valuation), and exposes the results through a clean, scalable API. [cite: 58]
+An event-driven, microservices-based platform for comprehensive portfolio analytics. Designed for wealth management, this system ingests financial data, performs complex calculations (cost basis, positions, valuation), and exposes the results through a clean, scalable API.
+
 ---
 ## Table of Contents
 
@@ -23,81 +24,81 @@
 7.  [Testing](#7-testing)
 8.  [Database Migrations](#8-database-migrations)
 9.  [Directory Structure](#9-directory-structure)
+10. [Full Usage Example](#10-full-usage-example)
 
 ---
 ## 1. System Architecture
 
-[cite_start]The system is architected around a central **Apache Kafka** message bus, promoting a highly decoupled and scalable environment. [cite: 60] [cite_start]Data flows through a choreographed pipeline of specialized microservices, each responsible for a distinct business capability. [cite: 60] [cite_start]Raw data is ingested, persisted, enriched through a series of calculations, and finally made available for query. [cite: 61]
+The system is architected around a central **Apache Kafka** message bus, promoting a highly decoupled and scalable environment. Data flows through a choreographed pipeline of specialized microservices, each responsible for a distinct business capability. Raw data is ingested, persisted, enriched through a series of calculations, and finally made available for query.
 ### 1.1 Startup Sequence & Reliability
 
-[cite_start]To guarantee data integrity and prevent errors during startup, the system employs a strict, automated startup sequence. [cite: 62]
+To guarantee data integrity and prevent errors during startup, the system employs a strict, automated startup sequence.
 #### Topic Creation
-[cite_start]On startup, a dedicated `kafka-topic-creator` service runs first. [cite: 63] [cite_start]It connects to Kafka and idempotently creates every topic required by the entire platform, ensuring they are configured with production-ready settings (e.g., replication factor, retention). [cite: 64] [cite_start]All other services explicitly depend on the successful completion of this service. [cite: 65]
+On startup, a dedicated `kafka-topic-creator` service runs first. It connects to Kafka and idempotently creates every topic required by the entire platform, ensuring they are configured with production-ready settings (e.g., replication factor, retention). All other services explicitly depend on the successful completion of this service.
 #### Service Health Checks
-[cite_start]Before any consumer service begins polling for messages, it performs a startup health check. [cite: 66] [cite_start]It connects to the Kafka AdminClient and verifies that all of the topics it needs to subscribe to already exist. [cite: 67] [cite_start]The service will retry this check for up to 60 seconds. [cite: 68] [cite_start]If the topics do not appear, the service will exit with a critical error, preventing it from running in an invalid state. [cite: 69]
+Before any consumer service begins polling for messages, it performs a startup health check. It connects to the Kafka AdminClient and verifies that all of the topics it needs to subscribe to already exist. The service will retry this check for up to 60 seconds. If the topics do not appear, the service will exit with a critical error, preventing it from running in an invalid state.
 #### Idempotent Processing
-[cite_start]To ensure data consistency and prevent duplicate calculations from event replays, all calculator services are **idempotent**. [cite: 70] This is achieved by:
-1.  [cite_start]Generating a unique ID for each incoming Kafka message (from its topic, partition, and offset). [cite: 71]
-2.  [cite_start]Using a shared `processed_events` table in the database. [cite: 72]
-3.  [cite_start]Wrapping the business logic in an atomic transaction: the service first checks if the event ID exists in the table. [cite: 73] [cite_start]If not, it processes the data, saves the results, and inserts the event ID into the table as a single, atomic operation. [cite: 74]
-4.  [cite_start]If the event ID already exists, the entire operation is skipped. [cite: 75]
+To ensure data consistency and prevent duplicate calculations from event replays, all calculator services are **idempotent**. This is achieved by:
+1.  Generating a unique ID for each incoming Kafka message (from its topic, partition, and offset).
+2.  Using a shared `processed_events` table in the database.
+3.  Wrapping the business logic in an atomic transaction: the service first checks if the event ID exists in the table. If not, it processes the data, saves the results, and inserts the event ID into the table as a single, atomic operation.
+4.  If the event ID already exists, the entire operation is skipped.
 ```mermaid
 graph TD
     subgraph "API Layer"
         direction LR
         Client[User/Client] -- POST Data --> IngestionService[ingestion-service:8000];
-        [cite_start]Client -- GET Data --> QueryService[query-service:8001]; [cite: 77]
+        Client -- GET Data --> QueryService[query-service:8001];
     end
 
     subgraph "Kafka Message Bus"
         RawData((raw_events));
-        [cite_start]PersistenceCompleted((persistence_completed)); [cite: 78]
-        [cite_start]CalculationsCompleted((calculations_completed)); [cite: 78]
+        PersistenceCompleted((persistence_completed));
+        CalculationsCompleted((calculations_completed));
     end
 
     subgraph "Data Processing Pipeline"
         IngestionService -- Publishes --> RawData;
-        [cite_start]RawData --> PersistenceService[persistence-service]; [cite: 79]
+        RawData --> PersistenceService[persistence-service];
         PersistenceService -- Writes --> DB[(PostgreSQL)];
         PersistenceService -- Publishes --> PersistenceCompleted;
 
         PersistenceCompleted -- "raw_transactions_completed" --> CostCalculator[cost-calculator-service];
-        [cite_start]CostCalculator -- Updates --> DB; [cite: 80]
-        [cite_start]CostCalculator -- Publishes --> CalculationsCompleted; [cite: 80]
+        CostCalculator -- Updates --> DB;
+        CostCalculator -- Publishes --> CalculationsCompleted;
         
         PersistenceCompleted -- "raw_transactions_completed" --> CashflowCalculator[cashflow-calculator-service];
         CashflowCalculator -- Writes --> DB;
-        [cite_start]CalculationsCompleted -- "processed_transactions_completed" --> PositionCalculator[position-calculator-service]; [cite: 81]
+        CalculationsCompleted -- "processed_transactions_completed" --> PositionCalculator[position-calculator-service];
         PositionCalculator -- Writes --> DB;
         PositionCalculator -- Publishes --> CalculationsCompleted;
-
         CalculationsCompleted -- "position_history_persisted" --> ValuationCalculator[position-valuation-calculator];
-        [cite_start]PersistenceCompleted -- "market_price_persisted" --> ValuationCalculator; [cite: 82]
-        [cite_start]ValuationCalculator -- Updates --> DB; [cite: 82]
+        PersistenceCompleted -- "market_price_persisted" --> ValuationCalculator;
+        ValuationCalculator -- Updates --> DB;
     end
 
     subgraph "Data Query Layer"
-        [cite_start]QueryService -- Reads --> DB; [cite: 83]
+        QueryService -- Reads --> DB;
     end
 ````
 
 ## 2\. Core Services
 
-  - [cite\_start]**`ingestion-service`**: A write-only FastAPI application serving as the single entry point for all incoming data (portfolios, instruments, transactions, etc.). [cite: 84] [cite\_start]It validates and publishes raw events to Kafka. [cite: 85]
-  - [cite\_start]**`persistence-service`**: A generic consumer responsible for persisting raw data from Kafka to the PostgreSQL database. [cite: 85] [cite\_start]On successful persistence, it publishes a `_completed` event. [cite: 86]
-  - [cite\_start]**`query-service`**: A read-only FastAPI application providing access to all processed and calculated data for reporting and analytics. [cite: 86]
+  - **`ingestion-service`**: A write-only FastAPI application serving as the single entry point for all incoming data (portfolios, instruments, transactions, etc.). It validates and publishes raw events to Kafka.
+  - **`persistence-service`**: A generic consumer responsible for persisting raw data from Kafka to the PostgreSQL database. On successful persistence, it publishes a `_completed` event.
+  - **`query-service`**: A read-only FastAPI application providing access to all processed and calculated data for reporting and analytics.
   - **Calculator Services (`services/calculators/`)**: A suite of specialized, idempotent consumers that perform core business logic:
-      - [cite\_start]**`cost-calculator-service`**: Calculates cost basis, realized gains/losses for transactions. [cite: 87]
-      - [cite\_start]**`cashflow-calculator-service`**: Generates cashflow records from transactions. [cite: 88]
-      - [cite\_start]**`position-calculator-service`**: Computes and maintains a historical time series of portfolio positions. [cite: 88]
-      - [cite\_start]**`position-valuation-calculator`**: Calculates the market value and unrealized gain/loss of positions using the latest market prices. [cite: 89]
-      - [cite\_start]**`timeseries-generator-service`**: Consumes position and cashflow data to generate daily time series records for performance and attribution analysis. [cite: 90]
+      - **`cost-calculator-service`**: Calculates cost basis and realized gains/losses for transactions, supporting dual-currency trades.
+      - **`cashflow-calculator-service`**: Generates cashflow records from transactions.
+      - **`position-calculator-service`**: Computes and maintains a historical time series of portfolio positions, including local currency cost basis.
+      - **`position-valuation-calculator`**: Calculates the market value and unrealized gain/loss of positions using the latest market prices.
+      - **`timeseries-generator-service`**: Consumes position and cashflow data to generate daily time series records for performance and attribution analysis.
 
 -----
 
 ## 3\. Data Flow & Kafka Topics
 
-[cite\_start]The system relies on a well-defined sequence of events published to Kafka topics. [cite: 91]
+The system relies on a well-defined sequence of events published to Kafka topics.
 
   - **Raw Data Topics**: `raw_portfolios`, `raw_transactions`, `raw_instruments`, `raw_market_prices`, `raw_fx_rates`
       - **Published by**: `ingestion-service`
@@ -115,18 +116,18 @@ graph TD
 
 ### Write API (`ingestion-service` @ `http://localhost:8000`)
 
-  - [cite\_start]`POST /ingest/portfolios`: Ingests a list of portfolios. [cite: 93]
-  - [cite\_start]`POST /ingest/instruments`: Ingests a list of financial instruments. [cite: 94]
-  - [cite\_start]`POST /ingest/transactions`: Ingests a list of financial transactions. [cite: 94]
-  - [cite\_start]`POST /ingest/market-prices`: Ingests a list of market prices. [cite: 95]
-  - [cite\_start]`POST /ingest/fx-rates`: Ingests a list of foreign exchange rates. [cite: 95]
-  - [cite\_start]`GET /health`: Health check for the service. [cite: 96]
+  - `POST /ingest/portfolios`: Ingests a list of portfolios.
+  - `POST /ingest/instruments`: Ingests a list of financial instruments.
+  - `POST /ingest/transactions`: Ingests a list of financial transactions.
+  - `POST /ingest/market-prices`: Ingests a list of market prices.
+  - `POST /ingest/fx-rates`: Ingests a list of foreign exchange rates.
+  - `GET /health`: Health check for the service.
 
 ### Read API (`query-service` @ `http://localhost:8001`)
 
-  - [cite\_start]`GET /portfolios/{portfolio_id}/positions`: Retrieves the latest position for each security in a portfolio. [cite: 96]
-  - [cite\_start]`GET /portfolios/{portfolio_id}/transactions`: Retrieves a paginated list of transactions for a portfolio. [cite: 97]
-  - [cite\_start]`GET /health`: Health check for the service. [cite: 97]
+  - `GET /portfolios/{portfolio_id}/positions`: Retrieves the latest position for each security in a portfolio, including dual-currency valuation.
+  - `GET /portfolios/{portfolio_id}/transactions`: Retrieves a paginated list of transactions for a portfolio, including dual-currency costs and P\&L.
+  - `GET /health`: Health check for the service.
 
 -----
 
@@ -145,30 +146,30 @@ curl "http://localhost:8001/portfolios/EXAMPLE_PORT_01/transactions?sort_by=quan
 
 ## 5\. Observability
 
-[cite\_start]The system is designed with observability in mind, exposing metrics, health checks, and structured logs to allow for effective monitoring in a production environment. [cite: 98]
+The system is designed with observability in mind, exposing metrics, health checks, and structured logs to allow for effective monitoring in a production environment.
 
 ### 5.1 Structured Logging
 
-[cite\_start]All services output structured JSON logs. [cite: 99] [cite\_start]Every log entry is enriched with a `correlation_id` that is propagated through HTTP headers and Kafka messages, allowing for easy tracing of a single request or event flow across multiple services. [cite: 99]
+All services output structured JSON logs. Every log entry is enriched with a `correlation_id` that is propagated through HTTP headers and Kafka messages, allowing for easy tracing of a single request or event flow across multiple services.
 
 ### 5.2 Health Probes
 
-[cite\_start]Services that run background consumers (like the `persistence-service`) expose a web server with health check endpoints, making them compatible with orchestrators like Kubernetes. [cite: 100]
+Services that run background consumers (like the `persistence-service`) expose a web server with health check endpoints, making them compatible with orchestrators like Kubernetes.
 
   - **`persistence-service` @ `http://localhost:8080`**:
-      - [cite\_start]`GET /health/live`: Liveness probe. [cite: 101] [cite\_start]Returns `200 OK` if the service's process is running and responsive. [cite: 102]
-      - [cite\_start]`GET /health/ready`: Readiness probe. [cite: 102] [cite\_start]Returns `200 OK` only if the service can successfully connect to its dependencies (PostgreSQL and Kafka). [cite: 103]
+      - `GET /health/live`: Liveness probe. Returns `200 OK` if the service's process is running and responsive.
+      - `GET /health/ready`: Readiness probe. Returns `200 OK` only if the service can successfully connect to its dependencies (PostgreSQL and Kafka).
 
 ### 5.3 Prometheus Metrics
 
-[cite\_start]Services with a web server also expose an endpoint for metrics in the Prometheus format. [cite: 104]
+Services with a web server also expose an endpoint for metrics in the Prometheus format.
 
   - **`persistence-service` @ `http://localhost:8080/metrics`**:
-      - [cite\_start]Provides default metrics for the health-probe API (e.g., `http_requests_total`). [cite: 105]
+      - Provides default metrics for the health-probe API (e.g., `http_requests_total`).
       - Provides custom metrics for Kafka consumer performance:
-          - [cite\_start]`events_processed_total`: A counter for successfully processed messages, labeled by topic and consumer group. [cite: 106]
-          - [cite\_start]`events_dlqd_total`: A counter for messages that failed all retries and were sent to the Dead-Letter Queue. [cite: 107]
-          - [cite\_start]`event_processing_latency_seconds`: A histogram measuring the time taken to process each message. [cite: 108]
+          - `events_processed_total`: A counter for successfully processed messages, labeled by topic and consumer group.
+          - `events_dlqd_total`: A counter for messages that failed all retries and were sent to the Dead-Letter Queue.
+          - `event_processing_latency_seconds`: A histogram measuring the time taken to process each message.
   - **`query-service` @ `http://localhost:8001/metrics`**:
       - Provides default metrics for the query API (e.g., `http_requests_total`).
       - Provides custom metrics for database performance:
@@ -180,8 +181,8 @@ curl "http://localhost:8001/portfolios/EXAMPLE_PORT_01/transactions?sort_by=quan
 
 ### Prerequisites
 
-  - [cite\_start]**Docker Desktop**: Must be installed and running. [cite: 109]
-  - [cite\_start]**Python 3.11**: Must be installed and available in your system's PATH. [cite: 110] [cite\_start]You can download it from the [official Python website](https://www.python.org/downloads/release/python-3110/). [cite: 111] [cite\_start]Newer versions may not be compatible with all project dependencies. [cite: 111]
+  - **Docker Desktop**: Must be installed and running.
+  - **Python 3.11**: Must be installed and available in your system's PATH. You can download it from the [official Python website](https://www.python.org/downloads/release/python-3110/). Newer versions may not be compatible with all project dependencies.
 
 ### Initial Setup
 
@@ -194,12 +195,12 @@ curl "http://localhost:8001/portfolios/EXAMPLE_PORT_01/transactions?sort_by=quan
     cp .env.example .env
     ```
 3.  **Create & Activate Virtual Environment**:
-    [cite\_start]This command explicitly creates the virtual environment using Python 3.11. [cite: 112] [cite\_start]On Windows with Git Bash, the `py` launcher is the most reliable way to select a specific version. [cite: 113]
+    This command explicitly creates the virtual environment using Python 3.11. On Windows with Git Bash, the `py` launcher is the most reliable way to select a specific version.
     ```bash
     py -3.11 -m venv .venv
     source .venv/Scripts/activate
     ```
-4.  [cite\_start]**Install All Dependencies**: This single command will install all core tools and then install all local libraries and services in "editable" mode. [cite: 114]
+4.  **Install All Dependencies**: This single command will install all core tools and then install all local libraries and services in "editable" mode.
     ```bash
     pip install -r tests/requirements.txt && pip install -e libs/financial-calculator-engine \
             -e libs/portfolio-common \
@@ -232,22 +233,26 @@ curl "http://localhost:8001/portfolios/EXAMPLE_PORT_01/transactions?sort_by=quan
 
 ## 7\. Testing
 
-[cite\_start]The project includes a suite of end-to-end tests that validate the full data pipeline. [cite: 117]
+The project includes a suite of end-to-end tests that validate the full data pipeline.
 
 1.  **Install Test Dependencies**:
     ```bash
     pip install -r tests/requirements.txt
     ```
-2.  **Run Tests**:
+2.  **Run All E2E Tests**:
     ```bash
     pytest tests/e2e/
+    ```
+3.  **Run a Specific Test File (e.g., the dual currency pipeline)**:
+    ```bash
+    pytest tests/e2e/test_dual_currency_pipeline.py
     ```
 
 -----
 
 ## 8\. Database Migrations
 
-[cite\_start]Database schema changes are managed by Alembic. [cite: 119]
+Database schema changes are managed by Alembic.
 
 1.  **Ensure Postgres is Running**:
     ```bash
@@ -273,18 +278,18 @@ sgajbi-portfolio-analytics-system/
 │   └── base/                 # Base Docker image for Python services
 ├── libs/                     # Shared Python libraries
 │   ├── portfolio-common/     # Common DB models, events, and utilities
-[cite_start]│   └── financial-calculator-engine/ # Core financial calculation logic [cite: 120]
+│   └── financial-calculator-engine/ # Core financial calculation logic
 ├── services/                 # Individual microservices
-[cite_start]│   ├── ingestion-service/    # The Write API [cite: 121]
-[cite_start]│   ├── persistence-service/  # Generic data persistence consumer [cite: 121]
-[cite_start]│   ├── query-service/        # The Read API [cite: 121]
+│   ├── ingestion-service/    # The Write API
+│   ├── persistence-service/  # Generic data persistence consumer
+│   ├── query-service/        # The Read API
 │   └── calculators/          # Business logic consumers
-│       ├── cost\_calculator\_service/
-│       ├── cashflow\_calculator\_service/
-│       ├── position\_calculator/
-[cite_start]│       └── position-valuation-calculator/ [cite: 122]
+│       ├── cost_calculator_service/
+│       ├── cashflow_calculator_service/
+│       ├── position_calculator/
+│       └── position-valuation-calculator/
 ├── tests/
-[cite_start]│   ├── e2e/                  # End-to-end tests for the whole system [cite: 122]
+│   ├── e2e/                  # End-to-end tests for the whole system
 │   ├── integration/
 │   └── unit/
 ├── docker-compose.yml        # Orchestrates all services for local development
@@ -295,7 +300,7 @@ sgajbi-portfolio-analytics-system/
 
 ## 10\. Full Usage Example
 
-[cite\_start]This example demonstrates the full flow from ingestion to querying the final calculated position. [cite: 123]
+This example demonstrates the full flow from ingesting a cross-currency trade to querying the final calculated position with dual-currency P\&L.
 
 1.  **Start the entire system**:
 
@@ -303,101 +308,127 @@ sgajbi-portfolio-analytics-system/
     docker compose up --build -d
     ```
 
-    [cite\_start]Wait about a minute for all services to become healthy. [cite: 124]
+    Wait about a minute for all services to become healthy.
 
-2.  **Ingest an Instrument (e.g., Apple Inc.)**:
+2.  **Ingest a USD-based Portfolio**:
+
+    ```bash
+    curl -X 'POST' 'http://localhost:8000/ingest/portfolios' -H 'Content-Type: application/json' -d '{
+    "portfolios": [{"portfolioId": "DUAL_CURRENCY_PORT_01", "baseCurrency": "USD", "openDate": "2025-01-01", "cifId": "DC_CIF", "status": "ACTIVE", "riskExposure":"High", "investmentTimeHorizon":"Long", "portfolioType":"Discretionary", "bookingCenter":"SG"}]
+    }'
+    ```
+
+3.  **Ingest a EUR-based Instrument (e.g., Daimler)**:
 
     ```bash
     curl -X 'POST' 'http://localhost:8000/ingest/instruments' -H 'Content-Type: application/json' -d '{
-    "instruments": [{"securityId": "SEC_AAPL", "name": "Apple Inc.", "isin": "US0378331005", "instrumentCurrency": "USD", "productType": "Equity"}]
+    "instruments": [{"securityId": "SEC_DAI_DE", "name": "Daimler AG", "isin": "DE0007100000", "instrumentCurrency": "EUR", "productType": "Equity"}]
     }'
     ```
 
-3.  **Ingest a BUY Transaction**:
+4.  **Ingest FX Rates** for the trade and valuation dates:
+
+    ```bash
+    curl -X 'POST' 'http://localhost:8000/ingest/fx-rates' -H 'Content-Type: application/json' -d '{
+    "fx_rates": [
+      {"fromCurrency": "EUR", "toCurrency": "USD", "rateDate": "2025-08-10", "rate": "1.10"},
+      {"fromCurrency": "EUR", "toCurrency": "USD", "rateDate": "2025-08-15", "rate": "1.20"}
+    ]
+    }'
+    ```
+
+5.  **Ingest a BUY Transaction (in EUR)**:
 
     ```bash
     curl -X 'POST' 'http://localhost:8000/ingest/transactions' -H 'Content-Type: application/json' -d '{
-    "transactions": [{"transaction_id": "EXAMPLE_BUY_01", "portfolio_id": "EXAMPLE_PORT_01", "instrument_id": "AAPL", "security_id": "SEC_AAPL", "transaction_date": "2025-07-20", "transaction_type": "BUY", "quantity": 100, "price": 150, "gross_transaction_amount": 15000, "trade_currency": "USD", "currency": "USD"}]
+    "transactions": [{"transaction_id": "DC_BUY_01", "portfolio_id": "DUAL_CURRENCY_PORT_01", "instrument_id": "DAI", "security_id": "SEC_DAI_DE", "transaction_date": "2025-08-10T10:00:00Z", "transaction_type": "BUY", "quantity": 100, "price": 150.0, "gross_transaction_amount": 15000.0, "trade_currency": "EUR", "currency": "EUR"}]
     }'
     ```
 
-4.  **Ingest a SELL Transaction**:
+6.  **Ingest a SELL Transaction (in EUR)**:
 
     ```bash
     curl -X 'POST' 'http://localhost:8000/ingest/transactions' -H 'Content-type: application/json' -d '{
-    "transactions": [{"transaction_id": "EXAMPLE_SELL_01", "portfolio_id": "EXAMPLE_PORT_01", "instrument_id": "AAPL", "security_id": "SEC_AAPL", "transaction_date": "2025-07-25", "transaction_type": "SELL", "quantity": 40, "price": 170, "gross_transaction_amount": 6800, "trade_currency": "USD", "currency": "USD"}]
+    "transactions": [{"transaction_id": "DC_SELL_01", "portfolio_id": "DUAL_CURRENCY_PORT_01", "instrument_id": "DAI", "security_id": "SEC_DAI_DE", "transaction_date": "2025-08-15T10:00:00Z", "transaction_type": "SELL", "quantity": 40, "price": 170, "gross_transaction_amount": 6800, "trade_currency": "EUR", "currency": "EUR"}]
     }'
     ```
 
-5.  **Ingest a Market Price** to value the final position:
+7.  **Ingest a Market Price (in EUR)** to value the final position:
 
     ```bash
     curl -X 'POST' 'http://localhost:8000/ingest/market-prices' -H 'Content-Type: application/json' -d '{
-    "market_prices": [{"securityId": "SEC_AAPL", "priceDate": "2025-07-25", "price": 180.0, "currency": "USD"}]
+    "market_prices": [{"securityId": "SEC_DAI_DE", "priceDate": "2025-08-15", "price": 180.0, "currency": "EUR"}]
     }'
     ```
 
-6.  [cite\_start]**Wait a few seconds** for all services to process these events. [cite: 127]
+8.  **Wait a few seconds** for all services to process these events.
 
-7.  **Query the Final Position**:
-    [cite\_start]Call the `query-service` to see the final state of your holding. [cite: 128]
+9.  **Query the Final Position**:
+    Call the `query-service` to see the final state, including dual-currency valuation.
 
     ```bash
-    curl http://localhost:8001/portfolios/EXAMPLE_PORT_01/positions
+    curl http://localhost:8001/portfolios/DUAL_CURRENCY_PORT_01/positions
     ```
 
-    [cite\_start]**Expected Response**: You will get a JSON response showing the final position of 60 shares, now including valuation details. [cite: 129]
+    **Expected Response**:
 
     ```json
     {
-      "portfolio_id": "EXAMPLE_PORT_01",
+      "portfolio_id": "DUAL_CURRENCY_PORT_01",
       "positions": [
         {
-          "security_id": "SEC_AAPL",
+          "security_id": "SEC_DAI_DE",
           "quantity": "60.0000000000",
-          "cost_basis": "9000.0000000000",
-          "instrument_name": "Apple Inc.",
-          "position_date": "2025-07-25",
+          "instrument_name": "Daimler AG",
+          "position_date": "2025-08-15",
+          "cost_basis": "9900.0000000000",
+          "cost_basis_local": "9000.0000000000",
           "valuation": {
             "market_price": "180.0000000000",
-            "market_value": "10800.0000000000",
-            "unrealized_gain_loss": "1800.0000000000"
+            "market_value": "12960.0000000000",
+            "unrealized_gain_loss": "3060.0000000000",
+            "market_value_local": "10800.0000000000",
+            "unrealized_gain_loss_local": "1800.0000000000"
           }
         }
       ]
     }
     ```
 
-8.  **Query Transactions with Cashflows**:
-    [cite\_start]Call the `query-service` to see the transaction details, including the calculated cashflow. [cite: 131]
+10. **Query Transactions with Realized P\&L**:
+    Call the `query-service` to see the transaction details, including the calculated dual-currency P\&L on the sale.
 
     ```bash
-    curl http://localhost:8001/portfolios/EXAMPLE_PORT_01/transactions
+    curl http://localhost:8001/portfolios/DUAL_CURRENCY_PORT_01/transactions
     ```
 
-    [cite\_start]**Expected Response**: You will see the transactions, with the BUY showing a negative (outgoing) cashflow and the SELL showing a positive (incoming) cashflow. [cite: 132]
+    **Expected Response**:
 
     ```json
     {
-      "portfolio_id": "EXAMPLE_PORT_01",
+      "portfolio_id": "DUAL_CURRENCY_PORT_01",
       "total": 2,
       "skip": 0,
       "limit": 100,
       "transactions": [
         {
-          "transaction_id": "EXAMPLE_SELL_01",
-          "transaction_date": "2025-07-25T00:00:00",
+          "transaction_id": "DC_SELL_01",
+          "transaction_date": "2025-08-15T10:00:00",
           "transaction_type": "SELL",
-          "security_id": "SEC_AAPL",
+          "instrument_id": "DAI",
+          "security_id": "SEC_DAI_DE",
           "quantity": "40.0000000000",
           "price": "170.0000000000",
           "gross_transaction_amount": "6800.0000000000",
-          "net_cost": "-6000.0000000000",
-          "realized_gain_loss": "800.0000000000",
-          "currency": "USD",
+          "currency": "EUR",
+          "net_cost": "-6600.0000000000",
+          "realized_gain_loss": "1560.0000000000",
+          "net_cost_local": "-6000.0000000000",
+          "realized_gain_loss_local": "800.0000000000",
+          "transaction_fx_rate": "1.2000000000",
           "cashflow": {
             "amount": "6800.0000000000",
-            "currency": "USD",
+            "currency": "EUR",
             "classification": "INVESTMENT_INFLOW",
             "timing": "EOD",
             "level": "POSITION",
@@ -405,19 +436,23 @@ sgajbi-portfolio-analytics-system/
           }
         },
         {
-          "transaction_id": "EXAMPLE_BUY_01",
-          "transaction_date": "2025-07-20T00:00:00",
+          "transaction_id": "DC_BUY_01",
+          "transaction_date": "2025-08-10T10:00:00",
           "transaction_type": "BUY",
-          "security_id": "SEC_AAPL",
+          "instrument_id": "DAI",
+          "security_id": "SEC_DAI_DE",
           "quantity": "100.0000000000",
           "price": "150.0000000000",
           "gross_transaction_amount": "15000.0000000000",
-          "net_cost": "15000.0000000000",
+          "currency": "EUR",
+          "net_cost": "16500.0000000000",
           "realized_gain_loss": null,
-          "currency": "USD",
+          "net_cost_local": "15000.0000000000",
+          "realized_gain_loss_local": null,
+          "transaction_fx_rate": "1.1000000000",
           "cashflow": {
             "amount": "-15000.0000000000",
-            "currency": "USD",
+            "currency": "EUR",
             "classification": "INVESTMENT_OUTFLOW",
             "timing": "EOD",
             "level": "POSITION",
