@@ -1,3 +1,4 @@
+
 ````markdown
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/sgajbi/portfolio-analytics-system)
  
@@ -11,7 +12,6 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-005571?style=for-the-badge&logo=fastapi)](https://fastapi.tiangolo.com/)
 
 An event-driven, microservices-based platform for comprehensive portfolio analytics. Designed for wealth management, this system ingests financial data, performs complex calculations (cost basis, positions, valuation), and exposes the results through a clean, scalable API.
-
 ---
 ## Table of Contents
 
@@ -30,19 +30,28 @@ An event-driven, microservices-based platform for comprehensive portfolio analyt
 ## 1. System Architecture
 
 The system is architected around a central **Apache Kafka** message bus, promoting a highly decoupled and scalable environment. Data flows through a choreographed pipeline of specialized microservices, each responsible for a distinct business capability. Raw data is ingested, persisted, enriched through a series of calculations, and finally made available for query.
+
 ### 1.1 Startup Sequence & Reliability
 
 To guarantee data integrity and prevent errors during startup, the system employs a strict, automated startup sequence.
+
 #### Topic Creation
 On startup, a dedicated `kafka-topic-creator` service runs first. It connects to Kafka and idempotently creates every topic required by the entire platform, ensuring they are configured with production-ready settings (e.g., replication factor, retention). All other services explicitly depend on the successful completion of this service.
+
 #### Service Health Checks
 Before any consumer service begins polling for messages, it performs a startup health check. It connects to the Kafka AdminClient and verifies that all of the topics it needs to subscribe to already exist. The service will retry this check for up to 60 seconds. If the topics do not appear, the service will exit with a critical error, preventing it from running in an invalid state.
+
 #### Idempotent Processing
 To ensure data consistency and prevent duplicate calculations from event replays, all calculator services are **idempotent**. This is achieved by:
 1.  Generating a unique ID for each incoming Kafka message (from its topic, partition, and offset).
 2.  Using a shared `processed_events` table in the database.
 3.  Wrapping the business logic in an atomic transaction: the service first checks if the event ID exists in the table. If not, it processes the data, saves the results, and inserts the event ID into the table as a single, atomic operation.
 4.  If the event ID already exists, the entire operation is skipped.
+
+### 1.2 Partition Affinity & Ordering
+
+To guarantee that all events related to a single portfolio are processed in the correct order, events are keyed by **`portfolio_id`**. This ensures that all messages for a given portfolio land on the same Kafka partition, preventing race conditions and ensuring that downstream consumers receive updates for a specific portfolio sequentially.
+
 ```mermaid
 graph TD
     subgraph "API Layer"
@@ -233,20 +242,31 @@ Services with a web server also expose an endpoint for metrics in the Prometheus
 
 ## 7\. Testing
 
-The project includes a suite of end-to-end tests that validate the full data pipeline.
+The project contains a comprehensive suite of tests to ensure correctness and reliability.
 
 1.  **Install Test Dependencies**:
     ```bash
     pip install -r tests/requirements.txt
     ```
-2.  **Run All E2E Tests**:
+2.  **Run All Tests (Unit, Integration, E2E)**:
     ```bash
+    pytest
+    ```
+3.  **Run Only Unit Tests**:
+    ```bash
+    pytest tests/unit/
+    ```
+4.  **Run Only E2E Tests**:
+    These tests require the full Docker environment to be running.
+    ```bash
+    docker compose up -d
     pytest tests/e2e/
     ```
-3.  **Run a Specific Test File (e.g., the dual currency pipeline)**:
+5.  **Generate a Coverage Report**:
     ```bash
-    pytest tests/e2e/test_dual_currency_pipeline.py
+    pytest --cov=. --cov-report=html
     ```
+    Open the `htmlcov/index.html` file in your browser to view the detailed report.
 
 -----
 
