@@ -1,4 +1,4 @@
-# tests/unit/services/calculators/cost_calculator_service/consumer/test_consumer.py
+# tests/unit/services/calculators/cost_calculator_service/consumer/test_cost_calculator_consumer.py
 import pytest
 from unittest.mock import MagicMock, patch, AsyncMock
 from datetime import datetime
@@ -6,11 +6,10 @@ from decimal import Decimal
 
 from portfolio_common.events import TransactionEvent
 from portfolio_common.database_models import Transaction as DBTransaction, Portfolio
-from portfolio_common.config import KAFKA_PROCESSED_TRANSACTIONS_COMPLETED_TOPIC
-from core.models.transaction import Transaction as EngineTransaction
 from src.services.calculators.cost_calculator_service.app.consumer import CostCalculatorConsumer
 from src.services.calculators.cost_calculator_service.app.repository import CostCalculatorRepository
 from portfolio_common.idempotency_repository import IdempotencyRepository
+from core.models.transaction import Transaction as EngineTransaction
 
 pytestmark = pytest.mark.asyncio
 
@@ -27,7 +26,7 @@ def cost_calculator_consumer():
 
 @pytest.fixture
 def mock_kafka_message():
-    """Provides a reusable mock Kafka message."""
+    """Provides a reusable mock Kafka message for a SELL transaction."""
     sell_event = TransactionEvent(
         transaction_id="SELL01", portfolio_id="PORT_COST_01", instrument_id="AAPL",
         security_id="SEC_COST_01", transaction_date=datetime(2025, 1, 20),
@@ -42,31 +41,30 @@ def mock_kafka_message():
     mock_msg.headers.return_value = []
     return mock_msg
 
-async def test_process_message_with_existing_history(cost_calculator_consumer: CostCalculatorConsumer, mock_kafka_message: MagicMock):
+async def test_consumer_integration_with_engine(cost_calculator_consumer: CostCalculatorConsumer, mock_kafka_message: MagicMock):
     """
-    GIVEN a new transaction message
-    WHEN the process_message method is called
-    THEN it should process the event, update the DB, and publish to the outbox.
+    GIVEN a new SELL transaction message
+    WHEN the consumer processes it, using the real TransactionProcessor
+    THEN it should fetch history, calculate the realized P&L, and update the database.
     """
     # ARRANGE
     mock_repo_instance = AsyncMock(spec=CostCalculatorRepository)
-    mock_repo_instance.get_transaction_history.return_value = []
-    mock_repo_instance.update_transaction_costs.return_value = DBTransaction(transaction_id="SELL01")
-    mock_repo_instance.get_portfolio.return_value = Portfolio(base_currency="USD")
-    mock_repo_instance.get_fx_rate.return_value = None
-
     mock_idempotency_repo = AsyncMock(spec=IdempotencyRepository)
-    mock_idempotency_repo.is_event_processed.return_value = False
-
     mock_outbox_repo = MagicMock()
 
-    processed_sell_txn = EngineTransaction(
-        transaction_id="SELL01", realized_gain_loss=Decimal("250.0"), portfolio_id="P1",
-        instrument_id="I1", security_id="S1", transaction_type="SELL", transaction_date=datetime.now(),
-        quantity=1, gross_transaction_amount=1, trade_currency="USD", portfolio_base_currency="USD"
+    # Simulate the repository returning the previous BUY transaction history
+    buy_history = DBTransaction(
+        transaction_id="BUY01", portfolio_id="PORT_COST_01", security_id="SEC_COST_01",
+        transaction_type="BUY", transaction_date=datetime(2025, 1, 10),
+        quantity=Decimal("10"), price=Decimal("150.0"), gross_transaction_amount=Decimal("1500.0"),
+        trade_currency="USD", currency="USD", net_cost=Decimal("1500"), net_cost_local=Decimal("1500"),
+        transaction_fx_rate=Decimal("1.0")
     )
-    mock_processor_instance = MagicMock()
-    mock_processor_instance.process_transactions.return_value = ([processed_sell_txn], [])
+    mock_repo_instance.get_transaction_history.return_value = [buy_history]
+    mock_repo_instance.get_portfolio.return_value = Portfolio(base_currency="USD")
+    mock_repo_instance.get_fx_rate.return_value = None # Same currency
+
+    mock_idempotency_repo.is_event_processed.return_value = False
 
     mock_db_session = AsyncMock()
     mock_db_session.begin.return_value = AsyncMock()
@@ -74,8 +72,7 @@ async def test_process_message_with_existing_history(cost_calculator_consumer: C
         yield mock_db_session
 
     # ACT
-    with patch.object(cost_calculator_consumer, '_get_transaction_processor', return_value=mock_processor_instance), \
-         patch("src.services.calculators.cost_calculator_service.app.consumer.get_async_db_session", new=mock_get_db_session_generator), \
+    with patch("src.services.calculators.cost_calculator_service.app.consumer.get_async_db_session", new=mock_get_db_session_generator), \
          patch("src.services.calculators.cost_calculator_service.app.consumer.CostCalculatorRepository", return_value=mock_repo_instance), \
          patch("src.services.calculators.cost_calculator_service.app.consumer.IdempotencyRepository", return_value=mock_idempotency_repo), \
          patch("src.services.calculators.cost_calculator_service.app.consumer.OutboxRepository", return_value=mock_outbox_repo):
@@ -85,7 +82,14 @@ async def test_process_message_with_existing_history(cost_calculator_consumer: C
     # ASSERT
     mock_idempotency_repo.is_event_processed.assert_called_once()
     mock_repo_instance.get_transaction_history.assert_called_once()
+
+    # Verify that the real engine was called and produced the correct result
+    # PnL = (10 * 175) - (10 * 150) = 1750 - 1500 = 250
     mock_repo_instance.update_transaction_costs.assert_called_once()
+    updated_transaction_arg = mock_repo_instance.update_transaction_costs.call_args[0][0]
+    assert isinstance(updated_transaction_arg, EngineTransaction)
+    assert updated_transaction_arg.realized_gain_loss == Decimal("250.0")
+
     mock_idempotency_repo.mark_event_processed.assert_called_once()
     mock_outbox_repo.create_outbox_event.assert_called_once()
 
@@ -118,5 +122,6 @@ async def test_process_message_skips_processed_event(cost_calculator_consumer: C
 
     # ASSERT
     mock_idempotency_repo.is_event_processed.assert_called_once()
+    # The real processor should not be called because of the idempotency check
     mock_processor_instance.process_transactions.assert_not_called()
     mock_outbox_repo.create_outbox_event.assert_not_called()
