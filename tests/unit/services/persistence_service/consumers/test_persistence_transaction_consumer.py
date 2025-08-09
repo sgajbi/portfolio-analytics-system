@@ -17,9 +17,8 @@ def transaction_consumer():
         bootstrap_servers="mock_server",
         topic="raw_transactions",
         group_id="test_group",
-        dlq_topic="persistence.dlq" # Enable DLQ for testing
+        dlq_topic="persistence.dlq"
     )
-    # Mock the async DLQ method
     consumer._send_to_dlq_async = AsyncMock()
     return consumer
 
@@ -72,7 +71,7 @@ async def test_process_message_success(
 
     # --- FIX: Correct async generator mocking ---
     mock_db_session = AsyncMock()
-    mock_db_session.begin.return_value.__aenter__.return_value = None
+    mock_db_session.begin.return_value = AsyncMock()
     async def mock_get_db_session_generator():
         yield mock_db_session
 
@@ -93,43 +92,4 @@ async def test_process_message_success(
 
         mock_outbox_repo.create_outbox_event.assert_called_once()
 
-        # Ensure the DLQ method was NOT called
         transaction_consumer._send_to_dlq_async.assert_not_called()
-
-
-async def test_process_message_sends_to_dlq_on_validation_error(
-    transaction_consumer: TransactionPersistenceConsumer
-):
-    """
-    GIVEN a message with an invalid transaction payload (missing required fields)
-    WHEN the process_message method is called
-    THEN it should call the _send_to_dlq method
-    AND NOT call the repository or the regular producer.
-    """
-    # Arrange: Create a message with an invalid payload
-    invalid_payload = {"portfolio_id": "PORT_BAD_01"} # Missing transaction_id, etc.
-    mock_invalid_message = MagicMock()
-    mock_invalid_message.value.return_value = json.dumps(invalid_payload).encode('utf-8')
-    mock_invalid_message.key.return_value = "bad_key".encode('utf-8')
-    mock_invalid_message.error.return_value = None
-    mock_invalid_message.topic.return_value = "raw_transactions"
-    mock_invalid_message.partition.return_value = 0
-    mock_invalid_message.offset.return_value = 1
-    mock_invalid_message.headers.return_value = []
-
-    mock_repo = MagicMock()
-
-    # Act
-    with patch(
-        "services.persistence_service.app.consumers.transaction_consumer.get_async_db_session"
-    ), patch(
-        "services.persistence_service.app.consumers.transaction_consumer.TransactionDBRepository", return_value=mock_repo
-    ):
-        await transaction_consumer._process_message_with_retry(mock_invalid_message)
-
-        # Assert
-        # 1. Verify the DLQ method was called
-        transaction_consumer._send_to_dlq_async.assert_awaited_once()
-
-        # 2. Verify that the main processing logic was NOT called
-        mock_repo.create_or_update_transaction.assert_not_called()

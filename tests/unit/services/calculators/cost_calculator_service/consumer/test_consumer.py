@@ -22,7 +22,6 @@ def cost_calculator_consumer():
         topic="raw_transactions_completed",
         group_id="test_group"
     )
-    # The consumer uses the outbox pattern, so we don't mock a producer directly on it
     return consumer
 
 @pytest.fixture
@@ -52,12 +51,12 @@ async def test_process_message_with_existing_history(cost_calculator_consumer: C
     mock_repo_instance = AsyncMock(spec=CostCalculatorRepository)
     mock_repo_instance.get_transaction_history.return_value = []
     mock_repo_instance.update_transaction_costs.return_value = DBTransaction(transaction_id="SELL01")
-    # Add a mock for get_portfolio
     mock_repo_instance.get_portfolio.return_value = Portfolio(base_currency="USD")
+    mock_repo_instance.get_fx_rate.return_value = None # Assume same currency for simplicity
 
     mock_idempotency_repo = AsyncMock(spec=IdempotencyRepository)
-    mock_idempotency_repo.is_event_processed.return_value = False # It's a new event
-    
+    mock_idempotency_repo.is_event_processed.return_value = False 
+
     mock_outbox_repo = MagicMock()
 
     processed_sell_txn = EngineTransaction(
@@ -70,7 +69,7 @@ async def test_process_message_with_existing_history(cost_calculator_consumer: C
 
     # --- FIX: Correct async generator mocking ---
     mock_db_session = AsyncMock()
-    mock_db_session.begin.return_value.__aenter__.return_value = None
+    mock_db_session.begin.return_value = AsyncMock() 
     async def mock_get_db_session_generator():
         yield mock_db_session
 
@@ -99,13 +98,13 @@ async def test_process_message_skips_processed_event(cost_calculator_consumer: C
     # ARRANGE
     mock_repo_instance = AsyncMock(spec=CostCalculatorRepository)
     mock_idempotency_repo = AsyncMock(spec=IdempotencyRepository)
-    mock_idempotency_repo.is_event_processed.return_value = True # It's a DUPLICATE event
+    mock_idempotency_repo.is_event_processed.return_value = True 
     mock_outbox_repo = MagicMock()
     mock_processor_instance = MagicMock()
 
     # --- FIX: Correct async generator mocking ---
     mock_db_session = AsyncMock()
-    mock_db_session.begin.return_value.__aenter__.return_value = None
+    mock_db_session.begin.return_value = AsyncMock()
     async def mock_get_db_session_generator():
         yield mock_db_session
 

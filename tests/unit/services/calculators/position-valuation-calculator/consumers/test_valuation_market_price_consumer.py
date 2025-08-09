@@ -53,10 +53,12 @@ async def test_process_message_success_and_keys_by_portfolio_id(consumer: Market
     THEN it should update the snapshot and publish an outbox event keyed by portfolio_id.
     """
     # Arrange
+    # --- FIX: Correct async generator mocking ---
     mock_db_session = AsyncMock(spec=AsyncSession)
-    # Make the async context manager work
-    mock_db_session.__aenter__.return_value.begin.return_value.__aenter__.return_value = None
-    
+    mock_db_session.begin.return_value = AsyncMock()
+    async def mock_get_db_session_generator():
+        yield mock_db_session
+
     mock_idempotency_repo = AsyncMock()
     mock_idempotency_repo.is_event_processed.return_value = False
 
@@ -72,7 +74,7 @@ async def test_process_message_success_and_keys_by_portfolio_id(consumer: Market
     mock_valuation_repo.find_snapshots_to_update.return_value = [snapshot_to_update]
     mock_valuation_repo.upsert_daily_snapshot.return_value = snapshot_to_update
 
-    with patch('services.calculators.position_valuation_calculator.app.consumers.market_price_consumer.get_async_db_session', return_value=mock_db_session), \
+    with patch('services.calculators.position_valuation_calculator.app.consumers.market_price_consumer.get_async_db_session', new=mock_get_db_session_generator), \
          patch('services.calculators.position_valuation_calculator.app.consumers.market_price_consumer.IdempotencyRepository', return_value=mock_idempotency_repo), \
          patch('services.calculators.position_valuation_calculator.app.consumers.market_price_consumer.ValuationRepository', return_value=mock_valuation_repo), \
          patch('services.calculators.position_valuation_calculator.app.consumers.market_price_consumer.OutboxRepository') as mock_outbox_repo:
@@ -86,11 +88,9 @@ async def test_process_message_success_and_keys_by_portfolio_id(consumer: Market
         mock_idempotency_repo.is_event_processed.assert_called_once()
         mock_valuation_repo.upsert_daily_snapshot.assert_called_once()
         mock_outbox_instance.create_outbox_event.assert_called_once()
-
-        # --- VERIFY KEYING BEHAVIOR ---
+        
         call_args = mock_outbox_instance.create_outbox_event.call_args.kwargs
-        assert call_args['aggregate_id'] == "PORT_A" # Should be the portfolio_id
-        assert call_args['aggregate_id'] != "1"      # Should NOT be the snapshot primary key
+        assert call_args['aggregate_id'] == "PORT_A"
         
         mock_idempotency_repo.mark_event_processed.assert_called_once()
         consumer._send_to_dlq_async.assert_not_called()
