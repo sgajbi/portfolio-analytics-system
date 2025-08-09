@@ -81,6 +81,14 @@ async def test_consumer_uses_real_position_logic(position_consumer: TransactionE
     transaction_from_db = DBTransaction(**mock_transaction_event.model_dump())
     mock_position_repo.get_transactions_on_or_after.return_value = [transaction_from_db]
 
+    # FIX: Simulate the database assigning an ID to new PositionHistory objects
+    def simulate_save_positions(positions: list[PositionHistory]):
+        for i, pos in enumerate(positions, start=101): # Start IDs at 101
+            pos.id = i
+    
+    mock_position_repo.save_positions.side_effect = simulate_save_positions
+
+
     mock_db_session = AsyncMock()
     mock_db_session.begin.return_value = AsyncMock()
     async def mock_get_db_session_generator():
@@ -112,6 +120,7 @@ async def test_consumer_uses_real_position_logic(position_consumer: TransactionE
         new_pos = saved_positions[0]
         assert new_pos.quantity == Decimal(60) # 100 (anchor) - 40 (sell)
         assert new_pos.cost_basis == Decimal(6000) # 10000 (anchor) - 4000 (COGS)
+        assert new_pos.id is not None # Check that the ID was populated by our side_effect
 
         mock_outbox_repo.create_outbox_event.assert_called_once()
         mock_idempotency_repo.mark_event_processed.assert_called_once()
