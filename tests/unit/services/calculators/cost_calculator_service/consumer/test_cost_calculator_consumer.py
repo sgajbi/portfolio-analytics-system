@@ -72,7 +72,8 @@ async def test_consumer_integration_with_engine(cost_calculator_consumer: CostCa
     def create_db_transaction_from_engine(engine_txn: EngineTransaction) -> DBTransaction:
         data = engine_txn.model_dump(exclude_none=True)
         data.pop('portfolio_base_currency', None)
-        data.pop('fees', None) # <-- FIX: Remove the incompatible 'fees' object
+        data.pop('fees', None)
+        data.pop('accrued_interest', None) # <-- FIX: Remove the incompatible 'accrued_interest' field
         return DBTransaction(**data)
 
     mock_repo_instance.update_transaction_costs.side_effect = create_db_transaction_from_engine
