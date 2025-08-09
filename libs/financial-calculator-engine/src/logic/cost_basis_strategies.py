@@ -61,6 +61,7 @@ class FIFOBasisStrategy:
                 consumed_quantity += required_quantity
                 current_lot.remaining_quantity -= required_quantity
                 required_quantity = Decimal(0)
+        
                 if current_lot.remaining_quantity == Decimal(0):
                     lots_for_instrument.popleft()
             else:
