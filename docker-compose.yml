@@ -10,6 +10,7 @@ services:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
       ZOOKEEPER_4LW_COMMANDS_WHITELIST: "ruok,stat,mntr,conf"
+      KAFKA_OPTS: "-Dzookeeper.4lw.commands.whitelist=ruok,stat,mntr,conf"
     healthcheck:
       test: ["CMD", "bash", "-c", "echo ruok | nc localhost 2181 | grep imok"]
       interval: 10s
@@ -56,16 +57,7 @@ services:
     depends_on:
       kafka:
         condition: service_healthy
-    command: >
-      bash -c "
-        # Loop until the kafka hostname is resolvable by the system's name service
-        until getent hosts kafka; do
-          echo 'Waiting for Kafka to be resolvable...';
-          sleep 2;
-        done;
-        # Now run the original command
-        python -m tools.kafka_setup
-      "
+    command: ["python", "-m", "tools.kafka_setup"]
     environment:
       PYTHONPATH: "/app:/app/src/libs/portfolio-common"
       KAFKA_BOOTSTRAP_SERVERS: kafka:9093

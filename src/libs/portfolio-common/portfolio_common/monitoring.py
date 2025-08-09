@@ -1,6 +1,5 @@
 # src/libs/portfolio-common/portfolio_common/monitoring.py
 import logging
-from typing import Optional
 from prometheus_client import Counter, Gauge, Histogram
 
 logger = logging.getLogger(__name__)
@@ -15,7 +14,6 @@ DB_OPERATION_LATENCY_SECONDS = Histogram(
     buckets=(0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10),
 )
 
-# Example helper to time an operation manually:
 def db_timer(operation: str):
     """
     Context manager / decorator-style timer for DB operations.
@@ -72,3 +70,73 @@ def set_outbox_pending(total_pending: int) -> None:
 def outbox_batch_timer():
     """Context manager that observes outbox batch duration."""
     return _OUTBOX_BATCH_SECONDS.time()
+
+# --------------------------------------------------------------------------------------
+# Kafka Metrics (added to fix ImportError in ingestion_service)
+# --------------------------------------------------------------------------------------
+KAFKA_MESSAGES_PUBLISHED_TOTAL = Counter(
+    "kafka_messages_published_total",
+    "Total number of messages published to Kafka",
+    labelnames=("topic",),
+)
+
+KAFKA_MESSAGES_CONSUMED_TOTAL = Counter(
+    "kafka_messages_consumed_total",
+    "Total number of messages consumed from Kafka",
+    labelnames=("topic", "group_id"),
+)
+
+KAFKA_PUBLISH_ERRORS_TOTAL = Counter(
+    "kafka_publish_errors_total",
+    "Total number of Kafka publish errors",
+    labelnames=("topic", "error"),
+)
+
+KAFKA_CONSUME_ERRORS_TOTAL = Counter(
+    "kafka_consume_errors_total",
+    "Total number of Kafka consume/handler errors",
+    labelnames=("topic", "error"),
+)
+
+KAFKA_PUBLISH_LATENCY_SECONDS = Histogram(
+    "kafka_publish_latency_seconds",
+    "Time spent publishing a message to Kafka",
+    labelnames=("topic",),
+    buckets=(0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5),
+)
+
+def observe_kafka_published(topic: str, count: int = 1) -> None:
+    KAFKA_MESSAGES_PUBLISHED_TOTAL.labels(topic).inc(count)
+
+def observe_kafka_publish_error(topic: str, error: str, count: int = 1) -> None:
+    KAFKA_PUBLISH_ERRORS_TOTAL.labels(topic, error).inc(count)
+
+def observe_kafka_consumed(topic: str, group_id: str, count: int = 1) -> None:
+    KAFKA_MESSAGES_CONSUMED_TOTAL.labels(topic, group_id).inc(count)
+
+def observe_kafka_consume_error(topic: str, error: str, count: int = 1) -> None:
+    KAFKA_CONSUME_ERRORS_TOTAL.labels(topic, error).inc(count)
+
+def kafka_publish_timer(topic: str):
+    """Context manager that observes Kafka publish latency for a topic."""
+    return KAFKA_PUBLISH_LATENCY_SECONDS.labels(topic).time()
+
+# --------------------------------------------------------------------------------------
+# Optional generic HTTP metrics (use across services if helpful)
+# --------------------------------------------------------------------------------------
+HTTP_REQUESTS_TOTAL = Counter(
+    "http_requests_total",
+    "HTTP requests total",
+    labelnames=("service", "method", "path", "status"),
+)
+
+HTTP_REQUEST_LATENCY_SECONDS = Histogram(
+    "http_request_latency_seconds",
+    "HTTP request latency in seconds",
+    labelnames=("service", "method", "path"),
+    buckets=(0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10),
+)
+
+def http_request_timer(service: str, method: str, path: str):
+    """Context manager for timing an HTTP request handler."""
+    return HTTP_REQUEST_LATENCY_SECONDS.labels(service, method, path).time()
