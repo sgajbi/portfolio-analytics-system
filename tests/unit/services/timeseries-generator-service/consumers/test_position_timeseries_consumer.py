@@ -60,7 +60,10 @@ async def test_process_message_success_subsequent_day(consumer: PositionTimeseri
     """
     # ARRANGE
     mock_db_session = AsyncMock()
-    mock_db_session.begin.return_value = AsyncMock() # mock transaction context
+    # FIX: Correctly configure the mock for the 'async with db.begin()' pattern.
+    mock_transaction_context = AsyncMock()
+    mock_db_session.begin.return_value = mock_transaction_context
+    
     async def get_db_session_gen():
         yield mock_db_session
 
