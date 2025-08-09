@@ -71,7 +71,8 @@ async def test_consumer_integration_with_engine(cost_calculator_consumer: CostCa
     # FIX: Configure the mock to return a realistic DB object from the input it receives.
     def create_db_transaction_from_engine(engine_txn: EngineTransaction) -> DBTransaction:
         data = engine_txn.model_dump(exclude_none=True)
-        data.pop('portfolio_base_currency', None) # This field is not in the DB model
+        data.pop('portfolio_base_currency', None)
+        data.pop('fees', None) # <-- FIX: Remove the incompatible 'fees' object
         return DBTransaction(**data)
 
     mock_repo_instance.update_transaction_costs.side_effect = create_db_transaction_from_engine
