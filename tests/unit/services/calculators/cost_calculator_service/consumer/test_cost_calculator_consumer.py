@@ -53,21 +53,29 @@ async def test_consumer_integration_with_engine(cost_calculator_consumer: CostCa
     mock_outbox_repo = MagicMock()
 
     # Simulate the repository returning the previous BUY transaction history
-    # FIX: Added missing 'instrument_id' and 'trade_fee' fields to match Pydantic model
     buy_history = DBTransaction(
         transaction_id="BUY01", portfolio_id="PORT_COST_01", security_id="SEC_COST_01",
-        instrument_id="AAPL",  # <-- FIX: Added missing required field
+        instrument_id="AAPL",
         transaction_type="BUY", transaction_date=datetime(2025, 1, 10),
         quantity=Decimal("10"), price=Decimal("150.0"), gross_transaction_amount=Decimal("1500.0"),
         trade_currency="USD", currency="USD", net_cost=Decimal("1500"), net_cost_local=Decimal("1500"),
         transaction_fx_rate=Decimal("1.0"),
-        trade_fee=Decimal("0.0") # <-- FIX: Added missing required field
+        trade_fee=Decimal("0.0")
     )
     mock_repo_instance.get_transaction_history.return_value = [buy_history]
     mock_repo_instance.get_portfolio.return_value = Portfolio(base_currency="USD", portfolio_id="PORT_COST_01")
-    mock_repo_instance.get_fx_rate.return_value = None # Same currency
+    mock_repo_instance.get_fx_rate.return_value = None
 
     mock_idempotency_repo.is_event_processed.return_value = False
+
+    # FIX: Configure the mock to return a realistic DB object from the input it receives.
+    def create_db_transaction_from_engine(engine_txn: EngineTransaction) -> DBTransaction:
+        data = engine_txn.model_dump(exclude_none=True)
+        data.pop('portfolio_base_currency', None) # This field is not in the DB model
+        return DBTransaction(**data)
+
+    mock_repo_instance.update_transaction_costs.side_effect = create_db_transaction_from_engine
+
 
     mock_db_session = AsyncMock()
     mock_db_session.begin.return_value = AsyncMock()
