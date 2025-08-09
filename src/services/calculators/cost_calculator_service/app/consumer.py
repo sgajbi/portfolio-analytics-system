@@ -14,17 +14,18 @@ from portfolio_common.idempotency_repository import IdempotencyRepository
 from portfolio_common.outbox_repository import OutboxRepository
 from portfolio_common.config import KAFKA_PROCESSED_TRANSACTIONS_COMPLETED_TOPIC
 
-from financial_calculator_engine.engine.transaction_processor import TransactionProcessor  # absolute import
+# IMPORTANT: the engine is installed with top-level modules `engine/`, `core/`, `logic/`
+from engine.transaction_processor import TransactionProcessor
+
 from .repository import CostCalculatorRepository
 
 logger = logging.getLogger(__name__)
-
 SERVICE_NAME = "cost-calculator"
 
 class CostCalculatorConsumer(BaseConsumer):
     """
     Consumes raw transaction events, calculates costs/realized P&L,
-    persists updates, and emits a *full TransactionEvent* payload downstream.
+    persists updates, and emits a full TransactionEvent downstream.
     """
     def _get_transaction_processor(self) -> TransactionProcessor:
         return TransactionProcessor()
@@ -58,7 +59,6 @@ class CostCalculatorConsumer(BaseConsumer):
                         await tx.rollback()
                         return
 
-                    # Pull prior history, base currency, and fx rate needed by the engine
                     history = await repo.get_transaction_history(
                         portfolio_id=event.portfolio_id,
                         security_id=event.security_id
@@ -73,11 +73,9 @@ class CostCalculatorConsumer(BaseConsumer):
                         history, [event], portfolio.base_currency, fx_rate
                     )
 
-                    # Persist results produced by the engine
                     for p in processed:
                         await repo.update_transaction_costs(p)
 
-                    # Emit the *same* TransactionEvent downstream so consumers can revalidate/rehydrate as needed
                     outbox_repo.create_outbox_event(
                         db_session=db,
                         aggregate_type='ProcessedTransaction',
