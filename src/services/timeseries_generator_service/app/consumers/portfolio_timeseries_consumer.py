@@ -105,7 +105,8 @@ class PortfolioTimeseriesConsumer(BaseConsumer):
     
     async def _update_job_status(self, portfolio_id: str, a_date: date, status: str, db_session=None):
         """
-        Updates a job's status. If no session is provided, it creates a new one.
+        Updates a job's status.
+        If no session is provided, it creates a new one.
         """
         update_stmt = update(PortfolioAggregationJob).where(
             PortfolioAggregationJob.portfolio_id == portfolio_id,
@@ -113,7 +114,7 @@ class PortfolioTimeseriesConsumer(BaseConsumer):
         ).values(status=status)
 
         if db_session:
-            await db.execute(update_stmt)
+            await db_session.execute(update_stmt)
         else:
             async for db in get_async_db_session():
                 async with db.begin():
