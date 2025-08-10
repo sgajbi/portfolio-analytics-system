@@ -1,6 +1,7 @@
 # src/services/calculators/cost_calculator_service/app/consumer.py
 import logging
 import json
+from datetime import datetime
 from typing import List, Any
 from pydantic import ValidationError
 from confluent_kafka import Message
@@ -16,6 +17,7 @@ from portfolio_common.outbox_repository import OutboxRepository
 from portfolio_common.config import KAFKA_PROCESSED_TRANSACTIONS_COMPLETED_TOPIC
 from portfolio_common.database_models import Portfolio
 
+# IMPORTANT: Import all necessary components from the engine
 from engine.transaction_processor import TransactionProcessor
 from logic.parser import TransactionParser
 from logic.sorter import TransactionSorter
