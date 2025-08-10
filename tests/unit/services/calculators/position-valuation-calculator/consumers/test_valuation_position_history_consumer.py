@@ -52,9 +52,8 @@ async def test_process_message_success_and_keys_by_portfolio_id(consumer: Positi
     THEN it should create a snapshot and publish an outbox event keyed by portfolio_id.
     """
     # Arrange
-    # --- FIX: Correct async generator mocking ---
     mock_db_session = AsyncMock(spec=AsyncSession)
-    mock_db_session.begin.return_value = AsyncMock()
+    mock_db_session.begin.return_value = AsyncMock().__aenter__()
     async def mock_get_db_session_generator():
         yield mock_db_session
 
@@ -82,7 +81,9 @@ async def test_process_message_success_and_keys_by_portfolio_id(consumer: Positi
          patch('services.calculators.position_valuation_calculator.app.consumers.position_history_consumer.ValuationRepository', return_value=mock_valuation_repo), \
          patch('services.calculators.position_valuation_calculator.app.consumers.position_history_consumer.OutboxRepository') as mock_outbox_repo:
 
-        mock_outbox_instance = mock_outbox_repo.return_value
+        # FIX: Ensure the instance returned by the patch is an AsyncMock
+        mock_outbox_instance = AsyncMock()
+        mock_outbox_repo.return_value = mock_outbox_instance
 
         # Act
         await consumer.process_message(mock_kafka_message)

@@ -26,7 +26,8 @@ def position_consumer():
 
 @pytest.fixture
 def mock_transaction_event() -> TransactionEvent:
-    """Provides a consistent transaction event for tests. This represents the new event being processed."""
+    """Provides a consistent transaction event for tests.
+    This represents the new event being processed."""
     return TransactionEvent(
         transaction_id="TXN_POS_CALC_02",
         portfolio_id="PORT_POS_CALC_01",
@@ -66,7 +67,7 @@ async def test_consumer_uses_real_position_logic(position_consumer: TransactionE
     mock_idempotency_repo = AsyncMock(spec=IdempotencyRepository)
     mock_idempotency_repo.is_event_processed.return_value = False
     
-    mock_outbox_repo = MagicMock()
+    mock_outbox_repo = AsyncMock() # <-- FIX: Use AsyncMock
     mock_position_repo = AsyncMock(spec=PositionRepository)
 
     # Setup mock repository to return data needed by PositionCalculator.calculate

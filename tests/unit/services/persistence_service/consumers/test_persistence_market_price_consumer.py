@@ -63,10 +63,10 @@ async def test_process_message_success(
     mock_repo = AsyncMock()
     mock_idempotency_repo = AsyncMock()
     mock_idempotency_repo.is_event_processed.return_value = False
-    mock_outbox_repo = MagicMock()
+    mock_outbox_repo = AsyncMock() # <-- FIX: Use AsyncMock
 
     mock_db_session = AsyncMock()
-    mock_db_session.begin.return_value = AsyncMock()
+    mock_db_session.begin.return_value = AsyncMock().__aenter__()
     async def mock_get_db_session_generator():
         yield mock_db_session
 
