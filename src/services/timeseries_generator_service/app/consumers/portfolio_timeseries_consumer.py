@@ -13,7 +13,7 @@ from portfolio_common.logging_utils import correlation_id_var
 from portfolio_common.events import PortfolioAggregationRequiredEvent, PortfolioTimeseriesGeneratedEvent
 from portfolio_common.db import get_async_db_session
 from portfolio_common.database_models import PortfolioAggregationJob
-from portfolio_common.config import KAFA_PORTFOLIO_TIMESERIES_GENERATED_TOPIC
+from portfolio_common.config import KAFKA_PORTFOLIO_TIMESERIES_GENERATED_TOPIC
 from portfolio_common.outbox_repository import OutboxRepository
 
 from ..core.portfolio_timeseries_logic import PortfolioTimeseriesLogic
@@ -90,7 +90,7 @@ class PortfolioTimeseriesConsumer(BaseConsumer):
                         aggregate_type='PortfolioTimeseries',
                         aggregate_id=str(portfolio_id),
                         event_type='PortfolioTimeseriesGenerated',
-                        topic=KAFA_PORTFOLIO_TIMESERIES_GENERATED_TOPIC,
+                        topic=KAFKA_PORTFOLIO_TIMESERIES_GENERATED_TOPIC,
                         payload=completion_event.model_dump(mode='json'),
                         correlation_id=correlation_id
                     )
@@ -113,7 +113,7 @@ class PortfolioTimeseriesConsumer(BaseConsumer):
         ).values(status=status)
 
         if db_session:
-            await db_session.execute(update_stmt)
+            await db.execute(update_stmt)
         else:
             async for db in get_async_db_session():
                 async with db.begin():
