@@ -106,9 +106,6 @@ class PositionTimeseriesConsumer(BaseConsumer):
                     )
                     await db.execute(job_stmt)
                     logger.info(f"Successfully staged aggregation job for portfolio {event.portfolio_id} on {event.date}")
-
-                    # --- Roll-forward for all open positions on this date ---
-                    await self.roll_forward_open_positions(event.portfolio_id, event.date, db)
                     
         except (json.JSONDecodeError, ValidationError) as e:
             logger.error(f"Message validation failed: {e}. Sending to DLQ.", exc_info=True)
@@ -119,34 +116,3 @@ class PositionTimeseriesConsumer(BaseConsumer):
         except Exception as e:
             logger.error(f"Unexpected error processing message: {e}", exc_info=True)
             await self._send_to_dlq_async(msg, e)
-
-    async def roll_forward_open_positions(self, portfolio_id: str, a_date: date, db):
-        """
-        For all positions open on previous day, create today's position_timeseries by copying previous values
-        if there is no new valuation or transaction (i.e., no timeseries for this security/date yet).
-        """
-        repo = TimeseriesRepository(db)
-        prev_date = a_date - timedelta(days=1)
-        open_security_ids = await repo.get_all_open_positions_as_of(portfolio_id, prev_date)
-        existing_ts = await repo.get_all_position_timeseries_for_date(portfolio_id, a_date)
-        already_done = {ts.security_id for ts in existing_ts}
-        for security_id in open_security_ids:
-            if security_id in already_done:
-                continue
-            prev_ts = await repo.get_last_position_timeseries_before(portfolio_id, security_id, a_date)
-            if not prev_ts:
-                continue
-            new_ts = PositionTimeseries(
-                portfolio_id=portfolio_id,
-                security_id=security_id,
-                date=a_date,
-                bod_market_value=prev_ts.eod_market_value,
-                bod_cashflow=0,
-                eod_cashflow=0,
-                eod_market_value=prev_ts.eod_market_value,
-                fees=0,
-                quantity=prev_ts.quantity,
-                cost=prev_ts.cost
-            )
-            await repo.upsert_position_timeseries(new_ts)
-
