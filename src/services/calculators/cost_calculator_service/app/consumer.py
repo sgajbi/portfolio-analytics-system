@@ -79,7 +79,7 @@ class CostCalculatorConsumer(BaseConsumer):
                 try:
                     repo = CostCalculatorRepository(db)
                     idempotency_repo = IdempotencyRepository(db)
-                    outbox_repo = OutboxRepository()
+                    outbox_repo = OutboxRepository(db)
 
                     if await idempotency_repo.is_event_processed(event_id, SERVICE_NAME):
                         logger.warning("Event already processed. Skipping.")
@@ -95,7 +95,7 @@ class CostCalculatorConsumer(BaseConsumer):
                         security_id=event.security_id,
                         exclude_id=event.transaction_id
                     )
-                    
+
                     # FIX: Enrich historical transactions with portfolio base currency
                     # before passing them to the calculation engine.
                     history_raw = []
@@ -123,18 +123,17 @@ class CostCalculatorConsumer(BaseConsumer):
                         existing_transactions_raw=history_raw,
                         new_transactions_raw=[event_raw]
                     )
-                    
+
                     if errored:
                         # For simplicity in this consumer, we raise the first error
                         raise ValueError(f"Transaction engine failed: {errored[0].error_reason}")
-                    
+
                     for p_txn in processed:
                         updated_txn = await repo.update_transaction_costs(p_txn)
                         # Re-read the full model for the outbox event to include all fields
                         full_event_to_publish = TransactionEvent.model_validate(updated_txn)
 
-                        outbox_repo.create_outbox_event(
-                            db=db,
+                        await outbox_repo.create_outbox_event(
                             aggregate_type='ProcessedTransaction',
                             aggregate_id=str(p_txn.portfolio_id),
                             event_type='ProcessedTransactionPersisted',

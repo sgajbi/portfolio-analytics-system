@@ -3,7 +3,7 @@ import logging
 import asyncio
 import json
 from datetime import datetime, timezone
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from sqlalchemy import update, func
 from sqlalchemy.orm import Session
@@ -83,12 +83,12 @@ class OutboxDispatcher:
                     delivery_errs: Dict[int, str] = {}
 
                     def _make_on_delivery(outbox_id: int):
-                        def _cb(err, _msg):
-                            if err is None:
+                        def _cb(replayed_outbox_id: str, success: bool, error_message: Optional[str]):
+                            if success:
                                 delivery_ack[outbox_id] = True
                             else:
                                 delivery_ack[outbox_id] = False
-                                delivery_errs[outbox_id] = str(err)
+                                delivery_errs[outbox_id] = str(error_message)
                         return _cb
 
                     # Publish all events in this batch

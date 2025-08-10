@@ -50,7 +50,7 @@ class CashflowCalculatorConsumer(BaseConsumer):
                 try:
                     idempotency_repo = IdempotencyRepository(db)
                     cashflow_repo = CashflowRepository(db)
-                    outbox_repo = OutboxRepository()
+                    outbox_repo = OutboxRepository(db)
 
                     # idempotency guard
                     if await idempotency_repo.is_event_processed(event_id, SERVICE_NAME):
@@ -87,8 +87,7 @@ class CashflowCalculatorConsumer(BaseConsumer):
                     )
 
                     # 🔑 Keying policy: use portfolio_id for strict partition affinity
-                    outbox_repo.create_outbox_event(
-                        db=db,  # align with repository signature from Step 2
+                    await outbox_repo.create_outbox_event(
                         aggregate_type='Cashflow',
                         aggregate_id=str(saved.portfolio_id),
                         event_type='CashflowCalculated',
