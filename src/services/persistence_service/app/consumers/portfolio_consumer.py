@@ -1,16 +1,16 @@
-# services/persistence_service/app/consumers/portfolio_consumer.py
+# src/services/persistence_service/app/consumers/portfolio_consumer.py
 import logging
 import json
 import asyncio
 from pydantic import ValidationError
 from confluent_kafka import Message
-from sqlalchemy.exc import DBAPIError, IntegrityError
+from sqlalchemy.exc import DBAPIError, IntegrityError, OperationalError
 from tenacity import retry, stop_after_attempt, wait_exponential, before_log, retry_if_exception_type
 
 from portfolio_common.kafka_consumer import BaseConsumer
 from portfolio_common.events import PortfolioEvent
 from portfolio_common.db import get_async_db_session
-from repositories.portfolio_repository import PortfolioRepository
+from ..repositories.portfolio_repository import PortfolioRepository
 from portfolio_common.idempotency_repository import IdempotencyRepository
 from portfolio_common.logging_utils import correlation_id_var
 
@@ -36,7 +36,7 @@ class PortfolioConsumer(BaseConsumer):
         wait=wait_exponential(multiplier=1, min=2, max=10),
         stop=stop_after_attempt(3),
         before=before_log(logger, logging.INFO),
-        retry=retry_if_exception_type((DBAPIError, IntegrityError)),
+        retry=retry_if_exception_type((DBAPIError, IntegrityError, OperationalError)),
         reraise=True
     )
     async def _process_message_with_retry(self, msg: Message):
@@ -80,7 +80,7 @@ class PortfolioConsumer(BaseConsumer):
             logger.error("Message validation failed. Sending to DLQ.", 
                 extra={"key": key, "event_id": event_id}, exc_info=True)
             await self._send_to_dlq_async(msg, e)
-        except (DBAPIError, IntegrityError):
+        except (DBAPIError, IntegrityError, OperationalError):
             logger.warning(
                 f"Caught a DB error for portfolio {getattr(event, 'portfolio_id', 'UNKNOWN')}. Will retry...",
                 extra={"event_id": event_id},
