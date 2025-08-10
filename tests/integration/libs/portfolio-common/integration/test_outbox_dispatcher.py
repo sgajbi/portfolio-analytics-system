@@ -18,10 +18,36 @@ pytestmark = pytest.mark.asyncio
 
 @pytest.fixture
 def mock_kafka_producer() -> MagicMock:
-    """Provides a mock of the KafkaProducer for testing."""
+    """Provides a simple, naive mock of the KafkaProducer for basic tests."""
     mock = MagicMock(spec=KafkaProducer)
     mock.publish_message = MagicMock()
     mock.flush = MagicMock()
+    return mock
+
+@pytest.fixture
+def smart_mock_kafka_producer() -> MagicMock:
+    """
+    Provides a more realistic mock of KafkaProducer that captures and
+    executes the `on_delivery` callback to simulate successful delivery.
+    """
+    mock = MagicMock(spec=KafkaProducer)
+    callbacks = []
+
+    def _publish_message(**kwargs):
+        # Capture the callback and its associated outbox_id
+        cb = kwargs.get("on_delivery")
+        outbox_id = kwargs.get("outbox_id")
+        if cb and outbox_id:
+            callbacks.append((outbox_id, cb))
+
+    def _flush(timeout=10):
+        # Simulate successful delivery for all captured callbacks
+        for outbox_id, cb in callbacks:
+            cb(outbox_id, True, None) # Simulate success
+        callbacks.clear() # Clear after flushing
+
+    mock.publish_message.side_effect = _publish_message
+    mock.flush.side_effect = _flush
     return mock
 
 async def test_create_outbox_event_fails_with_missing_aggregate_id(db_engine, clean_db):
@@ -33,8 +59,11 @@ async def test_create_outbox_event_fails_with_missing_aggregate_id(db_engine, cl
     async with AsyncSessionLocal() as session:
         repo = OutboxRepository(session)
         
+        # FIX: Update regex to match the more descriptive error message
+        match_str = "aggregate_id \\(portfolio_id\\) is required for outbox events"
+
         # Test with a None value
-        with pytest.raises(ValueError, match="aggregate_id is required for outbox events"):
+        with pytest.raises(ValueError, match=match_str):
             await repo.create_outbox_event(
                 aggregate_type="Test",
                 aggregate_id=None,
@@ -44,7 +73,7 @@ async def test_create_outbox_event_fails_with_missing_aggregate_id(db_engine, cl
             )
 
         # Test with an empty string
-        with pytest.raises(ValueError, match="aggregate_id is required for outbox events"):
+        with pytest.raises(ValueError, match=match_str):
             await repo.create_outbox_event(
                 aggregate_type="Test",
                 aggregate_id="",
@@ -53,7 +82,7 @@ async def test_create_outbox_event_fails_with_missing_aggregate_id(db_engine, cl
                 payload={}
             )
 
-async def test_dispatcher_processes_and_updates_pending_events(db_engine, clean_db, mock_kafka_producer):
+def test_dispatcher_processes_and_updates_pending_events(db_engine, clean_db, smart_mock_kafka_producer):
     """
     GIVEN a pending event in the outbox_events table
     WHEN the OutboxDispatcher runs
@@ -73,24 +102,20 @@ async def test_dispatcher_processes_and_updates_pending_events(db_engine, clean_
                 topic="test.topic"
             ))
 
-    # ACT
-    dispatcher = OutboxDispatcher(kafka_producer=mock_kafka_producer, poll_interval=1)
-    task = asyncio.create_task(dispatcher.run())
-    await asyncio.sleep(1.5) # Allow one poll cycle
-    dispatcher.stop()
-    await task
+    # ACT: Run one synchronous, deterministic cycle
+    dispatcher = OutboxDispatcher(kafka_producer=smart_mock_kafka_producer, poll_interval=1)
+    dispatcher._process_batch_sync()
 
     # ASSERT
-    mock_kafka_producer.publish_message.assert_called_once()
-    # --- VERIFY KEYING BEHAVIOR ---
-    call_args = mock_kafka_producer.publish_message.call_args.kwargs
+    smart_mock_kafka_producer.publish_message.assert_called_once()
+    call_args = smart_mock_kafka_producer.publish_message.call_args.kwargs
     assert call_args['key'] == aggregate_id
 
     with Session(db_engine) as session:
         result = session.execute(text("SELECT status FROM outbox_events WHERE aggregate_id = :id"), {"id": aggregate_id}).scalar_one()
         assert result == "PROCESSED"
 
-def test_dispatcher_recovers_after_failure(db_engine, clean_db, mock_kafka_producer):
+def test_dispatcher_recovers_after_failure(db_engine, clean_db, smart_mock_kafka_producer):
     """
     GIVEN a pending event
     WHEN the dispatcher fails on its first poll and then recovers
@@ -110,28 +135,33 @@ def test_dispatcher_recovers_after_failure(db_engine, clean_db, mock_kafka_produ
             ))
 
     # Make the first call to flush fail, then succeed on the second call
-    mock_kafka_producer.flush.side_effect = [Exception("Kafka is down!"), None]
+    smart_mock_kafka_producer.flush.side_effect = [Exception("Kafka is down!"), smart_mock_kafka_producer.flush.side_effect]
     
     # ACT
-    dispatcher = OutboxDispatcher(kafka_producer=mock_kafka_producer, poll_interval=1)
+    dispatcher = OutboxDispatcher(kafka_producer=smart_mock_kafka_producer, poll_interval=1)
     
-    # 1. Simulate the first poll cycle, which is expected to fail and raise an exception
-    with pytest.raises(Exception, match="Kafka is down!"):
-        dispatcher._process_batch_sync()
+    # 1. Simulate the first poll cycle, which is expected to fail
+    # The exception is now caught inside the dispatcher, so we just check the DB state
+    dispatcher._process_batch_sync()
+    with Session(db_engine) as session:
+        status, retry_count = session.execute(text("SELECT status, retry_count FROM outbox_events WHERE aggregate_id = :id"), {"id": aggregate_id}).one()
+        assert status == "PENDING"
+        assert retry_count == 1
 
     # 2. Simulate the second poll cycle, which is expected to succeed
     dispatcher._process_batch_sync()
 
     # ASSERT
-    # 1. Verify flush was called twice (1 failure, 1 success)
-    assert mock_kafka_producer.flush.call_count == 2
+    # 1. Verify flush was called twice
+    assert smart_mock_kafka_producer.flush.call_count == 2
 
     # 2. Verify the event is now processed
     with Session(db_engine) as session:
         status = session.execute(text("SELECT status FROM outbox_events WHERE aggregate_id = :id"), {"id": aggregate_id}).scalar_one()
         assert status == "PROCESSED"
 
-async def test_dispatcher_is_concurrent_safe(db_engine, clean_db, mock_kafka_producer):
+
+async def test_dispatcher_is_concurrent_safe(db_engine, clean_db, smart_mock_kafka_producer):
     # ARRANGE
     num_events = 10
     with Session(db_engine) as session:
@@ -147,22 +177,23 @@ async def test_dispatcher_is_concurrent_safe(db_engine, clean_db, mock_kafka_pro
                 ))
 
     # ACT
-    dispatcher1 = OutboxDispatcher(kafka_producer=mock_kafka_producer, poll_interval=0.5)
-    dispatcher2 = OutboxDispatcher(kafka_producer=mock_kafka_producer, poll_interval=0.5)
+    # The smart mock will ensure events are marked PROCESSED, so they won't be picked up again.
+    dispatcher1 = OutboxDispatcher(kafka_producer=smart_mock_kafka_producer, poll_interval=0.1, batch_size=5)
+    dispatcher2 = OutboxDispatcher(kafka_producer=smart_mock_kafka_producer, poll_interval=0.1, batch_size=5)
     task1 = asyncio.create_task(dispatcher1.run())
     task2 = asyncio.create_task(dispatcher2.run())
-    await asyncio.sleep(3)
+    await asyncio.sleep(1) # Allow both dispatchers to run a few times
     dispatcher1.stop()
     dispatcher2.stop()
     await asyncio.gather(task1, task2)
 
     # ASSERT
-    assert mock_kafka_producer.publish_message.call_count == num_events
+    assert smart_mock_kafka_producer.publish_message.call_count == num_events
     with Session(db_engine) as session:
         count = session.execute(text("SELECT count(*) FROM outbox_events WHERE status = 'PROCESSED'")).scalar_one()
         assert count == num_events
 
-def test_dispatcher_respects_batch_size(db_engine, clean_db, mock_kafka_producer):
+def test_dispatcher_respects_batch_size(db_engine, clean_db, smart_mock_kafka_producer):
     # ARRANGE
     num_events, batch_size = 15, 10
     with Session(db_engine) as session:
@@ -178,11 +209,11 @@ def test_dispatcher_respects_batch_size(db_engine, clean_db, mock_kafka_producer
                 ))
 
     # ACT
-    dispatcher = OutboxDispatcher(kafka_producer=mock_kafka_producer, batch_size=batch_size)
+    dispatcher = OutboxDispatcher(kafka_producer=smart_mock_kafka_producer, batch_size=batch_size)
     dispatcher._process_batch_sync() # Call once deterministically
 
     # ASSERT
-    assert mock_kafka_producer.publish_message.call_count == batch_size
+    assert smart_mock_kafka_producer.publish_message.call_count == batch_size
     with Session(db_engine) as session:
         processed_count = session.execute(text("SELECT count(*) FROM outbox_events WHERE status = 'PROCESSED'")).scalar_one()
         pending_count = session.execute(text("SELECT count(*) FROM outbox_events WHERE status = 'PENDING'")).scalar_one()
