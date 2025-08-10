@@ -66,7 +66,7 @@ async def test_process_message_success(
     mock_cashflow_repo = AsyncMock()
     mock_idempotency_repo = AsyncMock()
     mock_idempotency_repo.is_event_processed.return_value = False # Simulate new event
-    mock_outbox_repo = AsyncMock() # <-- FIX: Use AsyncMock
+    mock_outbox_repo = AsyncMock()
 
     mock_saved_cashflow = Cashflow(
         id=1,
@@ -84,8 +84,8 @@ async def test_process_message_success(
     mock_cashflow_repo.create_cashflow.return_value = mock_saved_cashflow
 
     mock_db_session = AsyncMock()
-    # FIX: Ensure the context manager within the 'async with' is also an AsyncMock
-    mock_db_session.begin.return_value = AsyncMock().__aenter__()
+    # FIX: The return_value of begin() should be an AsyncMock to represent the transaction object
+    mock_db_session.begin.return_value = AsyncMock()
     async def mock_get_db_session_generator():
         yield mock_db_session
 
@@ -100,7 +100,7 @@ async def test_process_message_success(
         return_value=mock_idempotency_repo
     ), patch(
         "src.services.calculators.cashflow_calculator_service.app.consumers.transaction_consumer.OutboxRepository",
-        return_value=mock_outbox_repo # <-- FIX: Use AsyncMock instance
+        return_value=mock_outbox_repo
     ):
         # Act
         await cashflow_consumer.process_message(mock_kafka_message)
@@ -125,11 +125,11 @@ async def test_process_message_skips_processed_event(
     mock_cashflow_repo = AsyncMock()
     mock_idempotency_repo = AsyncMock()
     mock_idempotency_repo.is_event_processed.return_value = True # Simulate processed event
-    mock_outbox_repo = AsyncMock() # <-- FIX: Use AsyncMock
+    mock_outbox_repo = AsyncMock()
 
     mock_db_session = AsyncMock()
-    # FIX: Ensure the context manager within the 'async with' is also an AsyncMock
-    mock_db_session.begin.return_value = AsyncMock().__aenter__()
+    # FIX: The return_value of begin() should be an AsyncMock to represent the transaction object
+    mock_db_session.begin.return_value = AsyncMock()
     async def mock_get_db_session_generator():
         yield mock_db_session
 
@@ -144,7 +144,7 @@ async def test_process_message_skips_processed_event(
         return_value=mock_idempotency_repo
     ), patch(
         "src.services.calculators.cashflow_calculator_service.app.consumers.transaction_consumer.OutboxRepository",
-        return_value=mock_outbox_repo 
+        return_value=mock_outbox_repo
     ):
         # Act
         await cashflow_consumer.process_message(mock_kafka_message)
