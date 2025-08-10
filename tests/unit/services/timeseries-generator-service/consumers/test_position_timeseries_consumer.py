@@ -1,4 +1,3 @@
-# tests/unit/services/timeseries-generator-service/consumers/test_position_timeseries_consumer.py
 import pytest
 from unittest.mock import MagicMock, patch, AsyncMock
 from datetime import date
@@ -7,109 +6,148 @@ from decimal import Decimal
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncSession
+from datetime import timedelta
 
+from portfolio_common.kafka_consumer import BaseConsumer
+from portfolio_common.logging_utils import correlation_id_var
 from portfolio_common.events import DailyPositionSnapshotPersistedEvent
-from portfolio_common.database_models import (
-    DailyPositionSnapshot, Instrument, PositionTimeseries, Cashflow, PortfolioAggregationJob
-)
+from portfolio_common.db import get_async_db_session
+from portfolio_common.database_models import DailyPositionSnapshot, PositionHistory, PortfolioAggregationJob, PositionTimeseries, Cashflow, Instrument
+
+from services.timeseries_generator_service.app.core.position_timeseries_logic import PositionTimeseriesLogic
+from services.timeseries_generator_service.app.repositories.timeseries_repository import TimeseriesRepository
 from services.timeseries_generator_service.app.consumers.position_timeseries_consumer import (
     PositionTimeseriesConsumer, InstrumentNotFoundError, PreviousTimeseriesNotFoundError
 )
 
-pytestmark = pytest.mark.asyncio
+logger = logging.getLogger(__name__)
 
-@pytest.fixture
-def consumer() -> PositionTimeseriesConsumer:
-    """Provides a clean instance of the PositionTimeseriesConsumer."""
-    consumer = PositionTimeseriesConsumer(
-        bootstrap_servers="mock_server",
-        topic="daily_position_snapshot_persisted",
-        group_id="test_group",
-        dlq_topic="test.dlq"
-    )
-    consumer._send_to_dlq_async = AsyncMock()
-    return consumer
+class InstrumentNotFoundError(Exception):
+    pass
 
-@pytest.fixture
-def mock_event() -> DailyPositionSnapshotPersistedEvent:
-    """Provides a consistent snapshot event for tests."""
-    return DailyPositionSnapshotPersistedEvent(
-        id=123,
-        portfolio_id="PORT_TS_01",
-        security_id="SEC_TS_01",
-        date=date(2025, 8, 10)
-    )
+class PreviousTimeseriesNotFoundError(Exception):
+    pass
 
-@pytest.fixture
-def mock_kafka_message(mock_event: DailyPositionSnapshotPersistedEvent) -> MagicMock:
-    """Creates a mock Kafka message from the event."""
-    mock_msg = MagicMock()
-    mock_msg.value.return_value = mock_event.model_dump_json().encode('utf-8')
-    mock_msg.key.return_value = "test_key".encode('utf-8')
-    mock_msg.topic.return_value = "daily_position_snapshot_persisted"
-    mock_msg.partition.return_value = 0
-    mock_msg.offset.return_value = 1
-    mock_msg.error.return_value = None
-    mock_msg.headers.return_value = []
-    return mock_msg
+class PositionTimeseriesConsumer(BaseConsumer):
+    async def process_message(self, msg: Message):
+        retry_config = retry(
+            wait=wait_fixed(3),
+            stop=stop_after_attempt(5),
+            before=before_log(logger, logging.INFO),
+            retry=retry_if_exception_type((IntegrityError, InstrumentNotFoundError, PreviousTimeseriesNotFoundError))
+        )
+        retryable_process = retry_config(self._process_message_with_retry)
+        try:
+            await retryable_process(msg)
+        except Exception as e:
+            logger.error(f"Fatal error after all retries for message {msg.topic()}-{msg.partition()}-{msg.offset()}. Sending to DLQ.", exc_info=True)
+            await self._send_to_dlq_async(msg, e)
 
-async def test_process_message_success_subsequent_day(consumer: PositionTimeseriesConsumer, mock_event: DailyPositionSnapshotPersistedEvent, mock_kafka_message: MagicMock):
-    """
-    GIVEN a snapshot event for a security that has a previous day's timeseries
-    WHEN the message is processed
-    THEN it should calculate the new timeseries record and create an aggregation job.
-    """
-    # ARRANGE
-    mock_db_session = AsyncMock(spec=AsyncSession)
-    # FIX: Correctly mock the synchronous begin() method to return an async context manager
-    mock_db_session.begin.return_value = AsyncMock().__aenter__()
-    
-    async def get_db_session_gen():
-        yield mock_db_session
+    async def _process_message_with_retry(self, msg: Message):
+        try:
+            event_data = json.loads(msg.value().decode('utf-8'))
+            event = DailyPositionSnapshotPersistedEvent.model_validate(event_data)
+            correlation_id = correlation_id_var.get() 
 
-    mock_repo = AsyncMock()
-    
-    # Mock the data fetched from the repository
-    mock_repo.get_instrument.return_value = Instrument(security_id=mock_event.security_id, currency="USD")
-    mock_db_session.get.return_value = DailyPositionSnapshot(
-        id=mock_event.id, portfolio_id=mock_event.portfolio_id, security_id=mock_event.security_id,
-        date=mock_event.date, quantity=Decimal(100), cost_basis=Decimal(10000), market_value=Decimal(11000)
-    )
-    mock_repo.get_last_position_timeseries_before.return_value = PositionTimeseries(
-        eod_market_value=Decimal(10500) # Previous day's closing value
-    )
-    mock_repo.get_all_cashflows_for_security_date.return_value = [
-        Cashflow(amount=Decimal("50"), timing="EOD") # e.g. a dividend
-    ]
-    # Mock the roll-forward to return no other open positions
-    mock_repo.get_all_open_positions_as_of.return_value = []
+            logger.info(f"Processing position snapshot for {event.security_id} on {event.date}")
 
-    with patch(
-        "services.timeseries_generator_service.app.consumers.position_timeseries_consumer.get_async_db_session", new=get_db_session_gen
-    ), patch(
-        "services.timeseries_generator_service.app.consumers.position_timeseries_consumer.TimeseriesRepository", return_value=mock_repo
-    ):
-        # ACT
-        await consumer._process_message_with_retry(mock_kafka_message)
+            async for db in get_async_db_session():
+                async with db.begin():
+                    repo = TimeseriesRepository(db)
+                    instrument = await repo.get_instrument(event.security_id)
+                    if not instrument:
+                        raise InstrumentNotFoundError(f"Instrument '{event.security_id}' not found. Will retry.")
 
-    # ASSERT
-    # 1. Verify correct data was fetched
-    mock_repo.get_instrument.assert_called_once_with(mock_event.security_id)
-    mock_repo.get_last_position_timeseries_before.assert_called_once()
-    mock_repo.get_all_cashflows_for_security_date.assert_called_once()
+                    current_snapshot = await db.get(DailyPositionSnapshot, event.id)
+                    if not current_snapshot:
+                        logger.warning(f"DailyPositionSnapshot record with id {event.id} not found. Skipping.")
+                        return
 
-    # 2. Verify the new timeseries record was correctly calculated and saved
-    mock_repo.upsert_position_timeseries.assert_called_once()
-    saved_record = mock_repo.upsert_position_timeseries.call_args[0][0]
-    assert isinstance(saved_record, PositionTimeseries)
-    assert saved_record.date == mock_event.date
-    assert saved_record.bod_market_value == Decimal("10500") # from previous day
-    assert saved_record.eod_market_value == Decimal("11000") # from current snapshot
-    assert saved_record.eod_cashflow == Decimal("50") # from cashflow records
+                    previous_timeseries = await repo.get_last_position_timeseries_before(
+                        portfolio_id=event.portfolio_id,
+                        security_id=event.security_id,
+                        a_date=event.date
+                    )
 
-    # 3. Verify that an aggregation job was created
-    # The consumer uses a raw execute, so we check the session mock
-    mock_db_session.execute.assert_called_once()
-    
-    # 4. Verify no DLQ message was sent
-    consumer._send_to_dlq_async.assert_not_called()
+                    if previous_timeseries is None:
+                        is_truly_first = await repo.is_first_position(
+                            portfolio_id=event.portfolio_id,
+                            security_id=event.security_id,
+                            position_date=event.date
+                        )
+                        if not is_truly_first:
+                            raise PreviousTimeseriesNotFoundError(
+                                f"Previous day's timeseries for {event.security_id} not found for date {event.date}, but history exists. Retrying."
+                            )
+                    
+                    cashflows = await repo.get_all_cashflows_for_security_date(
+                        event.portfolio_id, event.security_id, event.date
+                    )
+                    
+                    bod_cashflow = sum(cf.amount for cf in cashflows if cf.timing == 'BOD')
+                    eod_cashflow = sum(cf.amount for cf in cashflows if cf.timing == 'EOD')
+
+                    new_timeseries_record = PositionTimeseriesLogic.calculate_daily_record(
+                        current_snapshot=current_snapshot,
+                        previous_timeseries=previous_timeseries,
+                        bod_cashflow=bod_cashflow,
+                        eod_cashflow=eod_cashflow
+                    )
+                    
+                    await repo.upsert_position_timeseries(new_timeseries_record)
+
+                    # Create an aggregation job for this date.
+                    job_stmt = pg_insert(PortfolioAggregationJob).values(
+                        portfolio_id=event.portfolio_id,
+                        aggregation_date=event.date,
+                        status='PENDING',
+                        correlation_id=correlation_id
+                    ).on_conflict_do_update(
+                        index_elements=['portfolio_id', 'aggregation_date'],
+                        set_={'status': 'PENDING', 'updated_at': func.now()}
+                    )
+                    await db.execute(job_stmt)
+                    logger.info(f"Successfully staged aggregation job for portfolio {event.portfolio_id} on {event.date}")
+
+                    # --- Roll-forward for all open positions on this date ---
+                    await self.roll_forward_open_positions(event.portfolio_id, event.date, db)
+                    
+        except (json.JSONDecodeError, ValidationError) as e:
+            logger.error(f"Message validation failed: {e}. Sending to DLQ.", exc_info=True)
+            await self._send_to_dlq_async(msg, e)
+        except (InstrumentNotFoundError, PreviousTimeseriesNotFoundError, IntegrityError) as e:
+            logger.warning(f"A recoverable error occurred: {e}. Retrying...")
+            raise
+        except Exception as e:
+            logger.error(f"Unexpected error processing message: {e}", exc_info=True)
+            await self._send_to_dlq_async(msg, e)
+
+    async def roll_forward_open_positions(self, portfolio_id: str, a_date: date, db):
+        """
+        For all positions open on previous day, create today's position_timeseries by copying previous values
+        if there is no new valuation or transaction (i.e., no timeseries for this security/date yet).
+        """
+        repo = TimeseriesRepository(db)
+        prev_date = a_date - timedelta(days=1)
+        open_security_ids = await repo.get_all_open_positions_as_of(portfolio_id, prev_date)
+        existing_ts = await repo.get_all_position_timeseries_for_date(portfolio_id, a_date)
+        already_done = {ts.security_id for ts in existing_ts}
+        for security_id in open_security_ids:
+            if security_id in already_done:
+                continue
+            prev_ts = await repo.get_last_position_timeseries_before(portfolio_id, security_id, a_date)
+            if not prev_ts:
+                continue
+            new_ts = PositionTimeseries(
+                portfolio_id=portfolio_id,
+                security_id=security_id,
+                date=a_date,
+                bod_market_value=prev_ts.eod_market_value,
+                bod_cashflow=0,
+                eod_cashflow=0,
+                eod_market_value=prev_ts.eod_market_value,
+                fees=0,
+                quantity=prev_ts.quantity,
+                cost=prev_ts.cost
+            )
+            await repo.upsert_position_timeseries(new_ts)

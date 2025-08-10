@@ -6,6 +6,7 @@ from datetime import date
 from portfolio_common.database_models import PortfolioAggregationJob
 from portfolio_common.kafka_utils import KafkaProducer
 from services.timeseries_generator_service.app.core.aggregation_scheduler import AggregationScheduler
+from services.timeseries_generator_service.app.repositories.timeseries_repository import TimeseriesRepository
 
 pytestmark = pytest.mark.asyncio
 

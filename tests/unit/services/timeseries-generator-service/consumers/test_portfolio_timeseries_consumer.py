@@ -10,6 +10,8 @@ from portfolio_common.database_models import (
     Portfolio, PositionTimeseries, Cashflow, Instrument, FxRate, PortfolioTimeseries
 )
 from services.timeseries_generator_service.app.consumers.portfolio_timeseries_consumer import PortfolioTimeseriesConsumer
+from services.timeseries_generator_service.app.core.portfolio_timeseries_logic import PortfolioTimeseriesLogic
+from services.timeseries_generator_service.app.repositories.timeseries_repository import TimeseriesRepository
 
 pytestmark = pytest.mark.asyncio
 
