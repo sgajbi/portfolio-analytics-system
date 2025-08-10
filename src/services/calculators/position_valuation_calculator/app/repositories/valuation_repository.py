@@ -5,6 +5,7 @@ from typing import List, Optional
 from sqlalchemy import select, func, distinct
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.orm import aliased
 
 from portfolio_common.database_models import (
     PositionHistory, MarketPrice, DailyPositionSnapshot, FxRate, Instrument, Portfolio
@@ -72,6 +73,37 @@ class ValuationRepository:
         )
         result = await self.db.execute(stmt)
         return result.scalars().all()
+
+    @async_timed(repository="ValuationRepository", method="find_portfolios_holding_security_before_date")
+    async def find_portfolios_holding_security_before_date(self, security_id: str, a_date: date) -> List[DailyPositionSnapshot]:
+        """
+        Finds the single latest daily snapshot for each portfolio that held a given security
+        at any point before the specified date. This is used to roll forward positions.
+        """
+        # Subquery to rank snapshots by date for each portfolio/security pair
+        ranked_snapshots_subq = select(
+            DailyPositionSnapshot,
+            func.row_number().over(
+                partition_by=DailyPositionSnapshot.portfolio_id,
+                order_by=DailyPositionSnapshot.date.desc()
+            ).label('rn')
+        ).filter(
+            DailyPositionSnapshot.security_id == security_id,
+            DailyPositionSnapshot.date < a_date
+        ).subquery('ranked_snapshots')
+
+        ranked_alias = aliased(DailyPositionSnapshot, ranked_snapshots_subq)
+
+        # Select the latest snapshot (rn=1) for each portfolio, ensuring it has a non-zero quantity
+        stmt = select(ranked_alias).filter(
+            ranked_snapshots_subq.c.rn == 1,
+            ranked_alias.quantity > 0
+        )
+
+        results = await self.db.execute(stmt)
+        snapshots = results.scalars().all()
+        logger.info(f"Found {len(snapshots)} portfolios holding {security_id} before {a_date} to roll forward.")
+        return snapshots
 
     @async_timed(repository="ValuationRepository", method="upsert_daily_snapshot")
     async def upsert_daily_snapshot(self, snapshot: DailyPositionSnapshot) -> DailyPositionSnapshot:
