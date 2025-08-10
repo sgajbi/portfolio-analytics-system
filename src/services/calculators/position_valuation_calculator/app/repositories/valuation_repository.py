@@ -2,7 +2,7 @@
 import logging
 from datetime import date
 from typing import List, Optional
-from sqlalchemy import select, func, distinct
+from sqlalchemy import select, func, distinct, exists
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import aliased
@@ -21,11 +21,17 @@ class ValuationRepository:
     def __init__(self, db: AsyncSession):
         self.db = db
 
+    async def has_any_history_for_security(self, security_id: str) -> bool:
+        """Checks if any position history exists at all for a given security."""
+        stmt = select(
+            exists().where(DailyPositionSnapshot.security_id == security_id)
+        )
+        result = await self.db.execute(stmt)
+        return result.scalar()
+
     @async_timed(repository="ValuationRepository", method="get_portfolio")
     async def get_portfolio(self, portfolio_id: str) -> Optional[Portfolio]:
         """Fetches a portfolio by its ID."""
-        # Using .get() is efficient for primary key lookups, but portfolio_id is not the PK.
-        # A select is more appropriate here.
         stmt = select(Portfolio).filter_by(portfolio_id=portfolio_id)
         result = await self.db.execute(stmt)
         return result.scalars().first()
@@ -80,7 +86,6 @@ class ValuationRepository:
         Finds the single latest daily snapshot for each portfolio that held a given security
         at any point before the specified date. This is used to roll forward positions.
         """
-        # Subquery to rank snapshots by date for each portfolio/security pair
         ranked_snapshots_subq = select(
             DailyPositionSnapshot,
             func.row_number().over(
@@ -94,7 +99,6 @@ class ValuationRepository:
 
         ranked_alias = aliased(DailyPositionSnapshot, ranked_snapshots_subq)
 
-        # Select the latest snapshot (rn=1) for each portfolio, ensuring it has a non-zero quantity
         stmt = select(ranked_alias).filter(
             ranked_snapshots_subq.c.rn == 1,
             ranked_alias.quantity > 0
