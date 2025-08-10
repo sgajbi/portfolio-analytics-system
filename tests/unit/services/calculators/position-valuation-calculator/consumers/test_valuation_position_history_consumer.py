@@ -53,8 +53,9 @@ async def test_process_message_success_and_keys_by_portfolio_id(consumer: Positi
     """
     # Arrange
     mock_db_session = AsyncMock(spec=AsyncSession)
-    # FIX: Make .begin() a sync method returning an async context manager
-    mock_db_session.begin.return_value = AsyncMock().__aenter__()
+    # FIX: .begin() is a sync method that returns an async context manager.
+    # An AsyncMock can serve as the async context manager.
+    mock_db_session.begin.return_value = AsyncMock()
     async def mock_get_db_session_generator():
         yield mock_db_session
 
