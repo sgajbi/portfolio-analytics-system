@@ -50,7 +50,7 @@ async def test_consumer_integration_with_engine(cost_calculator_consumer: CostCa
     # ARRANGE
     mock_repo_instance = AsyncMock(spec=CostCalculatorRepository)
     mock_idempotency_repo = AsyncMock(spec=IdempotencyRepository)
-    mock_outbox_repo = MagicMock()
+    mock_outbox_repo = AsyncMock() # <-- FIX: Use AsyncMock
 
     # Simulate the repository returning the previous BUY transaction history
     buy_history = DBTransaction(
@@ -116,7 +116,7 @@ async def test_process_message_skips_processed_event(cost_calculator_consumer: C
     mock_repo_instance = AsyncMock(spec=CostCalculatorRepository)
     mock_idempotency_repo = AsyncMock(spec=IdempotencyRepository)
     mock_idempotency_repo.is_event_processed.return_value = True
-    mock_outbox_repo = MagicMock()
+    mock_outbox_repo = AsyncMock() # <-- FIX: Use AsyncMock
     mock_processor_instance = MagicMock()
 
     mock_db_session = AsyncMock()
