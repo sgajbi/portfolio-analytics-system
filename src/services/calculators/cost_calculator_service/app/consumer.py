@@ -28,6 +28,11 @@ from .repository import CostCalculatorRepository
 logger = logging.getLogger(__name__)
 SERVICE_NAME = "cost-calculator"
 
+# NEW: Custom exception for retryable race conditions
+class FxRateNotFoundError(Exception):
+    """Raised when a required FX rate is not yet available in the database."""
+    pass
+
 class CostCalculatorConsumer(BaseConsumer):
     """
     Consumes raw transaction events, calculates costs/realized P&L,
@@ -59,7 +64,8 @@ class CostCalculatorConsumer(BaseConsumer):
         wait=wait_fixed(2),
         stop=stop_after_attempt(3),
         before=before_log(logger, logging.INFO),
-        retry=retry_if_exception_type((DBAPIError, IntegrityError)),
+        # CORRECTED: Add the new custom exception to the retryable conditions
+        retry=retry_if_exception_type((DBAPIError, IntegrityError, FxRateNotFoundError)),
         reraise=True
     )
     async def process_message(self, msg: Message):
@@ -96,27 +102,26 @@ class CostCalculatorConsumer(BaseConsumer):
                         exclude_id=event.transaction_id
                     )
 
-                    # FIX: Enrich historical transactions with portfolio base currency
-                    # before passing them to the calculation engine.
                     history_raw = []
                     for t in history_db:
                         t_dict = TransactionEvent.model_validate(t).model_dump()
                         t_dict['portfolio_base_currency'] = portfolio.base_currency
-                        # Note: A full implementation would also need to fetch historical FX rates here.
-                        # For now, this is sufficient to fix the validation error in our test case.
                         history_raw.append(t_dict)
 
-                    # Inject required fields into the raw event data for the engine
                     event_raw = event.model_dump()
                     event_raw['portfolio_base_currency'] = portfolio.base_currency
 
-                    # Inject fx rate if it's a cross-currency trade
+                    # CORRECTED: Handle the race condition where the FX rate may not exist yet.
                     if event.trade_currency != portfolio.base_currency:
                         fx_rate = await repo.get_fx_rate(
                             event.trade_currency, portfolio.base_currency, event.transaction_date.date()
                         )
-                        if fx_rate:
-                            event_raw['transaction_fx_rate'] = fx_rate.rate
+                        if not fx_rate:
+                            # Raise the specific, retryable exception
+                            raise FxRateNotFoundError(
+                                f"FX rate for {event.trade_currency}->{portfolio.base_currency} on {event.transaction_date.date()} not found. Retrying..."
+                            )
+                        event_raw['transaction_fx_rate'] = fx_rate.rate
 
                     processor = self._get_transaction_processor()
                     processed, errored = processor.process_transactions(
@@ -125,12 +130,10 @@ class CostCalculatorConsumer(BaseConsumer):
                     )
 
                     if errored:
-                        # For simplicity in this consumer, we raise the first error
                         raise ValueError(f"Transaction engine failed: {errored[0].error_reason}")
 
                     for p_txn in processed:
                         updated_txn = await repo.update_transaction_costs(p_txn)
-                        # Re-read the full model for the outbox event to include all fields
                         full_event_to_publish = TransactionEvent.model_validate(updated_txn)
 
                         await outbox_repo.create_outbox_event(
@@ -154,8 +157,8 @@ class CostCalculatorConsumer(BaseConsumer):
         except (json.JSONDecodeError, ValidationError) as e:
             logger.error(f"Invalid TransactionEvent; sending to DLQ. Error: {e}", exc_info=True)
             await self._send_to_dlq_async(msg, ValueError("invalid payload"))
-        except (DBAPIError, IntegrityError):
-            logger.warning("DB error; will retry...", exc_info=False)
+        except (DBAPIError, IntegrityError, FxRateNotFoundError):
+            logger.warning("DB or FX rate error; will retry...", exc_info=True)
             raise
         except Exception as e:
             logger.error(
