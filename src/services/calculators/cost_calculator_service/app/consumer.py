@@ -1,6 +1,7 @@
-# services/calculators/cost_calculator_service/app/consumer.py
+# src/services/calculators/cost_calculator_service/app/consumer.py
 import logging
 import json
+from typing import List, Any
 from pydantic import ValidationError
 from confluent_kafka import Message
 from sqlalchemy.exc import DBAPIError, IntegrityError
@@ -13,8 +14,8 @@ from portfolio_common.db import get_async_db_session
 from portfolio_common.idempotency_repository import IdempotencyRepository
 from portfolio_common.outbox_repository import OutboxRepository
 from portfolio_common.config import KAFKA_PROCESSED_TRANSACTIONS_COMPLETED_TOPIC
+from portfolio_common.database_models import Portfolio
 
-# IMPORTANT: Import all necessary components from the engine
 from engine.transaction_processor import TransactionProcessor
 from logic.parser import TransactionParser
 from logic.sorter import TransactionSorter
@@ -28,7 +29,6 @@ from .repository import CostCalculatorRepository
 logger = logging.getLogger(__name__)
 SERVICE_NAME = "cost-calculator"
 
-# NEW: Custom exception for retryable race conditions
 class FxRateNotFoundError(Exception):
     """Raised when a required FX rate is not yet available in the database."""
     pass
@@ -46,7 +46,6 @@ class CostCalculatorConsumer(BaseConsumer):
         error_reporter = ErrorReporter()
         parser = TransactionParser(error_reporter=error_reporter)
         sorter = TransactionSorter()
-        # The service is configured to use the FIFO cost basis method
         strategy = FIFOBasisStrategy()
         disposition_engine = DispositionEngine(cost_basis_strategy=strategy)
         cost_calculator = CostCalculator(
@@ -59,12 +58,42 @@ class CostCalculatorConsumer(BaseConsumer):
             cost_calculator=cost_calculator,
             error_reporter=error_reporter
         )
+    
+    async def _enrich_transactions_with_fx(
+        self,
+        transactions: List[dict[str, Any]],
+        portfolio_base_currency: str,
+        repo: CostCalculatorRepository
+    ) -> List[dict[str, Any]]:
+        """
+        Iterates through transactions, fetching and attaching FX rates for cross-currency trades.
+        """
+        for txn_raw in transactions:
+            txn_raw['portfolio_base_currency'] = portfolio_base_currency
+            
+            if txn_raw.get('trade_currency') == portfolio_base_currency:
+                continue
+
+            fx_rate = await repo.get_fx_rate(
+                from_currency=txn_raw['trade_currency'],
+                to_currency=portfolio_base_currency,
+                a_date=datetime.fromisoformat(txn_raw['transaction_date'].replace('Z', '+00:00')).date()
+            )
+
+            if not fx_rate:
+                raise FxRateNotFoundError(
+                    f"FX rate for {txn_raw['trade_currency']}->{portfolio_base_currency} on "
+                    f"{txn_raw['transaction_date']} not found. Retrying..."
+                )
+            
+            txn_raw['transaction_fx_rate'] = fx_rate.rate
+        
+        return transactions
 
     @retry(
         wait=wait_fixed(2),
         stop=stop_after_attempt(3),
         before=before_log(logger, logging.INFO),
-        # CORRECTED: Add the new custom exception to the retryable conditions
         retry=retry_if_exception_type((DBAPIError, IntegrityError, FxRateNotFoundError)),
         reraise=True
     )
@@ -77,7 +106,6 @@ class CostCalculatorConsumer(BaseConsumer):
 
         try:
             data = json.loads(value)
-            # The entire payload is the event, not nested
             event = TransactionEvent.model_validate(data)
 
             async for db in get_async_db_session():
@@ -102,37 +130,31 @@ class CostCalculatorConsumer(BaseConsumer):
                         exclude_id=event.transaction_id
                     )
 
-                    history_raw = []
-                    for t in history_db:
-                        t_dict = TransactionEvent.model_validate(t).model_dump()
-                        t_dict['portfolio_base_currency'] = portfolio.base_currency
-                        history_raw.append(t_dict)
+                    history_raw = [TransactionEvent.model_validate(t).model_dump(mode='json') for t in history_db]
+                    event_raw = event.model_dump(mode='json')
+                    
+                    all_transactions_raw = await self._enrich_transactions_with_fx(
+                        transactions=history_raw + [event_raw],
+                        portfolio_base_currency=portfolio.base_currency,
+                        repo=repo
+                    )
 
-                    event_raw = event.model_dump()
-                    event_raw['portfolio_base_currency'] = portfolio.base_currency
-
-                    # CORRECTED: Handle the race condition where the FX rate may not exist yet.
-                    if event.trade_currency != portfolio.base_currency:
-                        fx_rate = await repo.get_fx_rate(
-                            event.trade_currency, portfolio.base_currency, event.transaction_date.date()
-                        )
-                        if not fx_rate:
-                            # Raise the specific, retryable exception
-                            raise FxRateNotFoundError(
-                                f"FX rate for {event.trade_currency}->{portfolio.base_currency} on {event.transaction_date.date()} not found. Retrying..."
-                            )
-                        event_raw['transaction_fx_rate'] = fx_rate.rate
-
+                    new_transaction_ids = {event.transaction_id}
+                    
                     processor = self._get_transaction_processor()
                     processed, errored = processor.process_transactions(
-                        existing_transactions_raw=history_raw,
-                        new_transactions_raw=[event_raw]
+                        existing_transactions_raw=[],
+                        new_transactions_raw=all_transactions_raw
                     )
 
                     if errored:
-                        raise ValueError(f"Transaction engine failed: {errored[0].error_reason}")
+                        new_errors = [e for e in errored if e.transaction_id in new_transaction_ids]
+                        if new_errors:
+                            raise ValueError(f"Transaction engine failed: {new_errors[0].error_reason}")
 
-                    for p_txn in processed:
+                    processed_new = [p for p in processed if p.transaction_id in new_transaction_ids]
+
+                    for p_txn in processed_new:
                         updated_txn = await repo.update_transaction_costs(p_txn)
                         full_event_to_publish = TransactionEvent.model_validate(updated_txn)
 
