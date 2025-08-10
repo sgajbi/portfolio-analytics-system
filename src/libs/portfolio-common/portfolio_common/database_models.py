@@ -25,8 +25,8 @@ class Portfolio(Base):
     is_leverage_allowed = Column(Boolean, default=False, nullable=False)
     advisor_id = Column(String, nullable=True)
     status = Column(String, nullable=False)
-    created_at = Column(DateTime, default=func.now())
-    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+    created_at = Column(DateTime(timezone=True), default=func.now())
+    updated_at = Column(DateTime(timezone=True), default=func.now(), onupdate=func.now())
 
 class PositionHistory(Base):
     __tablename__ = 'position_history'
@@ -39,8 +39,8 @@ class PositionHistory(Base):
     quantity = Column(Numeric(18, 10), nullable=False)
     cost_basis = Column(Numeric(18, 10), nullable=False)
     cost_basis_local = Column(Numeric(18, 10), nullable=True) # --- NEW ---
-    created_at = Column(DateTime, default=func.now())
-    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+    created_at = Column(DateTime(timezone=True), default=func.now())
+    updated_at = Column(DateTime(timezone=True), default=func.now(), onupdate=func.now())
 
 class DailyPositionSnapshot(Base):
     __tablename__ = 'daily_position_snapshots'
@@ -58,8 +58,8 @@ class DailyPositionSnapshot(Base):
     unrealized_gain_loss = Column(Numeric(18, 10), nullable=True)
     unrealized_gain_loss_local = Column(Numeric(18, 10), nullable=True) # --- NEW ---
     valuation_status = Column(String, nullable=False, server_default='UNVALUED', index=True)
-    created_at = Column(DateTime, default=func.now())
-    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+    created_at = Column(DateTime(timezone=True), default=func.now())
+    updated_at = Column(DateTime(timezone=True), default=func.now(), onupdate=func.now())
 
     __table_args__ = (UniqueConstraint('portfolio_id', 'security_id', 'date', name='_portfolio_security_date_uc'),)
 
@@ -72,8 +72,8 @@ class FxRate(Base):
     to_currency = Column(String(3), nullable=False)
     rate_date = Column(Date, nullable=False)
     rate = Column(Numeric(18, 10), nullable=False)
-    created_at = Column(DateTime, default=func.now())
-    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+    created_at = Column(DateTime(timezone=True), default=func.now())
+    updated_at = Column(DateTime(timezone=True), default=func.now(), onupdate=func.now())
 
     __table_args__ = (UniqueConstraint('from_currency', 'to_currency', 'rate_date', name='_currency_pair_date_uc'),)
 
@@ -86,8 +86,8 @@ class MarketPrice(Base):
     price_date = Column(Date, nullable=False)
     price = Column(Numeric(18, 10), nullable=False)
     currency = Column(String, nullable=False)
-    created_at = Column(DateTime, default=func.now())
-    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+    created_at = Column(DateTime(timezone=True), default=func.now())
+    updated_at = Column(DateTime(timezone=True), default=func.now(), onupdate=func.now())
 
     __table_args__ = (UniqueConstraint('security_id', 'price_date', name='_security_price_date_uc'),)
 
@@ -101,8 +101,8 @@ class Instrument(Base):
     isin = Column(String, unique=True, nullable=False)
     currency = Column(String, nullable=False)
     product_type = Column(String, nullable=False)
-    created_at = Column(DateTime, default=func.now())
-    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+    created_at = Column(DateTime(timezone=True), default=func.now())
+    updated_at = Column(DateTime(timezone=True), default=func.now(), onupdate=func.now())
 
 class Transaction(Base):
     __tablename__ = 'transactions'
@@ -121,8 +121,8 @@ class Transaction(Base):
     transaction_date = Column(DateTime(timezone=True), nullable=False)
     settlement_date = Column(DateTime(timezone=True), nullable=True)
     trade_fee = Column(Numeric(18, 10), nullable=True)
-    created_at = Column(DateTime, default=func.now())
-    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+    created_at = Column(DateTime(timezone=True), default=func.now())
+    updated_at = Column(DateTime(timezone=True), default=func.now(), onupdate=func.now())
     gross_cost = Column(Numeric(18, 10), nullable=True)
     net_cost = Column(Numeric(18, 10), nullable=True)
     realized_gain_loss = Column(Numeric(18, 10), nullable=True)
@@ -148,8 +148,8 @@ class TransactionCost(Base):
     fee_type = Column(String, nullable=False)
     amount = Column(Numeric(18, 10), nullable=False)
     currency = Column(String, nullable=False)
-    created_at = Column(DateTime, default=func.now())
-    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+    created_at = Column(DateTime(timezone=True), default=func.now())
+    updated_at = Column(DateTime(timezone=True), default=func.now(), onupdate=func.now())
 
     transaction = relationship("Transaction", back_populates="costs")
 
@@ -167,8 +167,8 @@ class Cashflow(Base):
     timing = Column(String, nullable=False)
     level = Column(String, nullable=False)
     calculation_type = Column(String, nullable=False)
-    created_at = Column(DateTime, default=func.now())
-    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+    created_at = Column(DateTime(timezone=True), default=func.now())
+    updated_at = Column(DateTime(timezone=True), default=func.now(), onupdate=func.now())
 
     transaction = relationship("Transaction", back_populates="cashflow")
 
@@ -187,8 +187,8 @@ class PositionTimeseries(Base):
     fees = Column(Numeric(18, 10), default=0, nullable=False)
     quantity = Column(Numeric(18, 10), nullable=False)
     cost = Column(Numeric(18, 10), nullable=False)
-    created_at = Column(DateTime, default=func.now())
-    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+    created_at = Column(DateTime(timezone=True), default=func.now())
+    updated_at = Column(DateTime(timezone=True), default=func.now(), onupdate=func.now())
 
 class PortfolioTimeseries(Base):
     __tablename__ = 'portfolio_timeseries'
@@ -200,8 +200,8 @@ class PortfolioTimeseries(Base):
     eod_cashflow = Column(Numeric(18, 10), nullable=False)
     eod_market_value = Column(Numeric(18, 10), nullable=False)
     fees = Column(Numeric(18, 10), nullable=False)
-    created_at = Column(DateTime, default=func.now())
-    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+    created_at = Column(DateTime(timezone=True), default=func.now())
+    updated_at = Column(DateTime(timezone=True), default=func.now(), onupdate=func.now())
 
 class ProcessedEvent(Base):
     __tablename__ = "processed_events"
@@ -211,7 +211,7 @@ class ProcessedEvent(Base):
     portfolio_id = Column(String, nullable=False)
     service_name = Column(String, nullable=False)
     correlation_id = Column(String, nullable=True)
-    processed_at = Column(DateTime, server_default=func.now())
+    processed_at = Column(DateTime(timezone=True), server_default=func.now())
 
     __table_args__ = (
         UniqueConstraint('event_id', 'service_name', name='_event_service_uc'),
@@ -229,9 +229,9 @@ class OutboxEvent(Base):
     status = Column(String, default='PENDING', nullable=False, index=True)
     correlation_id = Column(String, nullable=True)
     retry_count = Column(Integer, default=0, nullable=False)
-    last_attempted_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=func.now(), nullable=False)
-    processed_at = Column(DateTime, nullable=True)
+    last_attempted_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=func.now(), nullable=False)
+    processed_at = Column(DateTime(timezone=True), nullable=True)
 
 
 # --- NEW MODEL ---
@@ -247,8 +247,8 @@ class PortfolioAggregationJob(Base):
     aggregation_date = Column(Date, nullable=False, index=True)
     status = Column(String, nullable=False, default='PENDING', index=True)
     correlation_id = Column(String, nullable=True)
-    created_at = Column(DateTime, default=func.now())
-    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+    created_at = Column(DateTime(timezone=True), default=func.now())
+    updated_at = Column(DateTime(timezone=True), default=func.now(), onupdate=func.now())
 
     __table_args__ = (
         UniqueConstraint('portfolio_id', 'aggregation_date', name='_portfolio_date_uc'),
