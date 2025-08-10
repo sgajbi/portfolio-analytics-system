@@ -1,4 +1,4 @@
-# services/timeseries-generator-service/app/consumers/portfolio_timeseries_consumer.py
+# src/services/timeseries_generator_service/app/consumers/portfolio_timeseries_consumer.py
 import logging
 import json
 from pydantic import ValidationError
@@ -16,7 +16,7 @@ from portfolio_common.database_models import PortfolioAggregationJob
 from portfolio_common.config import KAFKA_PORTFOLIO_TIMESERIES_GENERATED_TOPIC
 from portfolio_common.outbox_repository import OutboxRepository
 
-from ..core.portfolio_timeseries_logic import PortfolioTimeseriesLogic, FxRateNotFoundError
+from ..core.portfolio_timeseries_logic import PortfolioTimeseriesLogic
 from ..repositories.timeseries_repository import TimeseriesRepository
 
 logger = logging.getLogger(__name__)
@@ -65,7 +65,7 @@ class PortfolioTimeseriesConsumer(BaseConsumer):
             async for db in get_async_db_session():
                 async with db.begin():  # Main atomic transaction
                     repo = TimeseriesRepository(db)
-                    outbox_repo = OutboxRepository()
+                    outbox_repo = OutboxRepository(db)
                     
                     portfolio = await repo.get_portfolio(portfolio_id)
                     if not portfolio:
@@ -86,8 +86,7 @@ class PortfolioTimeseriesConsumer(BaseConsumer):
 
                     completion_event = PortfolioTimeseriesGeneratedEvent.model_validate(new_portfolio_record)
                     # 🔑 Keying policy: use portfolio_id for strict partition affinity
-                    outbox_repo.create_outbox_event(
-                        db=db,
+                    await outbox_repo.create_outbox_event(
                         aggregate_type='PortfolioTimeseries',
                         aggregate_id=str(portfolio_id),
                         event_type='PortfolioTimeseriesGenerated',
