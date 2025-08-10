@@ -5,6 +5,7 @@ import asyncio
 from pydantic import ValidationError
 from decimal import Decimal
 from sqlalchemy.exc import DBAPIError
+from datetime import timedelta
 
 from confluent_kafka import Message
 from tenacity import retry, stop_after_attempt, wait_fixed, before_log, retry_if_exception_type
@@ -27,6 +28,7 @@ class MarketPriceConsumer(BaseConsumer):
     """
     Consumes market price events and re-values all daily position snapshots
     for all affected portfolios with the new valuation, respecting all currencies.
+    It is also responsible for creating "roll-forward" snapshots on days without transactions.
     """
     @retry(
         wait=wait_fixed(2), stop=stop_after_attempt(3), before=before_log(logger, logging.INFO),
@@ -46,7 +48,6 @@ class MarketPriceConsumer(BaseConsumer):
             async for db in get_async_db_session():
                 async with db.begin():
                     idempotency_repo = IdempotencyRepository(db)
-                    # CORRECTED: Instantiate OutboxRepository with the db session
                     outbox_repo = OutboxRepository(db)
  
                     if await idempotency_repo.is_event_processed(event_id, SERVICE_NAME):
@@ -60,8 +61,34 @@ class MarketPriceConsumer(BaseConsumer):
                         await idempotency_repo.mark_event_processed(event_id, "N/A", SERVICE_NAME, correlation_id)
                         return
                     
-                    snapshots_to_update = await repo.find_snapshots_to_update(price_event.security_id, price_event.price_date)
-                    if not snapshots_to_update:
+                    # --- NEW ROLL-FORWARD LOGIC ---
+                    # 1. Find all portfolios that held the security on the previous day.
+                    previous_day = price_event.price_date - timedelta(days=1)
+                    prev_day_snapshots = await repo.find_portfolios_holding_security_before_date(price_event.security_id, price_event.price_date)
+
+                    # 2. Create new, unvalued snapshots for today based on yesterday's state.
+                    snapshots_to_process = {}
+                    for prev_snapshot in prev_day_snapshots:
+                        new_snapshot = DailyPositionSnapshot(
+                            portfolio_id=prev_snapshot.portfolio_id,
+                            security_id=prev_snapshot.security_id,
+                            date=price_event.price_date,
+                            quantity=prev_snapshot.quantity,
+                            cost_basis=prev_snapshot.cost_basis,
+                            cost_basis_local=prev_snapshot.cost_basis_local,
+                            valuation_status='UNVALUED'
+                        )
+                        # Use a tuple key to handle potential duplicates
+                        key = (new_snapshot.portfolio_id, new_snapshot.security_id, new_snapshot.date)
+                        snapshots_to_process[key] = new_snapshot
+                    
+                    # 3. Find snapshots already created by same-day transactions.
+                    same_day_snapshots = await repo.find_snapshots_to_update(price_event.security_id, price_event.price_date)
+                    for snapshot in same_day_snapshots:
+                        key = (snapshot.portfolio_id, snapshot.security_id, snapshot.date)
+                        snapshots_to_process[key] = snapshot # This will overwrite the rolled-forward one if it exists
+
+                    if not snapshots_to_process:
                         logger.info(f"No existing positions found needing valuation for {price_event.security_id} on {price_event.price_date}.")
                         await idempotency_repo.mark_event_processed(event_id, "N/A", SERVICE_NAME, correlation_id)
                         return
@@ -69,7 +96,7 @@ class MarketPriceConsumer(BaseConsumer):
                     price_to_instrument_fx = await repo.get_fx_rate(price_event.currency, instrument.currency, price_event.price_date)
                     
                     updated_snapshots_count = 0
-                    for snapshot in snapshots_to_update:
+                    for snapshot in snapshots_to_process.values():
                         if not snapshot.cost_basis_local: continue
 
                         portfolio = await repo.get_portfolio(snapshot.portfolio_id)
@@ -99,7 +126,6 @@ class MarketPriceConsumer(BaseConsumer):
                             persisted_snapshot = await repo.upsert_daily_snapshot(snapshot)
 
                             completion_event = DailyPositionSnapshotPersistedEvent.model_validate(persisted_snapshot)
-                            # CORRECTED: Call the method on the instantiated object
                             await outbox_repo.create_outbox_event(
                                 aggregate_type='DailyPositionSnapshot',
                                 # Key by portfolio_id for partition affinity
