@@ -19,7 +19,7 @@ class OutboxRepository:
     def __init__(self, session_factory=SessionLocal):
         self._session_factory = session_factory
 
-    def create_outbox_event(
+    async def create_outbox_event(
         self,
         *,
         aggregate_type: str,
@@ -57,7 +57,7 @@ class OutboxRepository:
                 created_at=datetime.now(timezone.utc),
             )
             db.add(event)
-            db.flush()  # ensure event.id is populated for callers in the same tx
+            await db.flush()  # ensure event.id is populated for callers in the same tx
             logger.info(
                 "Outbox event created",
                 extra={
