@@ -1,88 +1,103 @@
-# tests/unit/services/persistence_service/consumers/test_persistence_market_price_consumer.py
+# tests/unit/services/timeseries-generator-service/consumers/test_portfolio_timeseries_consumer.py
 import pytest
 from unittest.mock import MagicMock, patch, AsyncMock
 from datetime import date
 from decimal import Decimal
 
-from portfolio_common.logging_utils import correlation_id_var
-from portfolio_common.events import MarketPriceEvent
-from portfolio_common.config import KAFKA_MARKET_PRICE_PERSISTED_TOPIC
-from src.services.persistence_service.app.consumers.market_price_consumer import MarketPriceConsumer
+from portfolio_common.events import PortfolioAggregationRequiredEvent
+from portfolio_common.database_models import (
+    Portfolio, PositionTimeseries, Cashflow, Instrument, FxRate, PortfolioTimeseries
+)
+from services.timeseries_generator_service.app.consumers.portfolio_timeseries_consumer import PortfolioTimeseriesConsumer
 
-# Mark all tests in this file as asyncio
 pytestmark = pytest.mark.asyncio
 
 @pytest.fixture
-def market_price_consumer():
-    """Provides an instance of the consumer for testing."""
-    consumer = MarketPriceConsumer(
+def consumer() -> PortfolioTimeseriesConsumer:
+    """Provides a clean instance of the PortfolioTimeseriesConsumer."""
+    consumer = PortfolioTimeseriesConsumer(
         bootstrap_servers="mock_server",
-        topic="market_prices",
+        topic="portfolio_aggregation_required",
         group_id="test_group",
-        dlq_topic="persistence.dlq"
+        dlq_topic="test.dlq"
     )
     consumer._send_to_dlq_async = AsyncMock()
     return consumer
 
 @pytest.fixture
-def valid_market_price_event():
-    """Provides a valid MarketPriceEvent object."""
-    return MarketPriceEvent(
-        security_id="SEC_TEST_PRICE",
-        price_date=date(2025, 7, 31),
-        price=Decimal("125.50"),
-        currency="USD"
+def mock_event() -> PortfolioAggregationRequiredEvent:
+    """Provides a consistent aggregation event for tests."""
+    return PortfolioAggregationRequiredEvent(
+        portfolio_id="PORT_AGG_01",
+        aggregation_date=date(2025, 8, 11)
     )
 
 @pytest.fixture
-def mock_kafka_message(valid_market_price_event: MarketPriceEvent):
-    """Creates a mock Kafka message containing a valid market price."""
-    mock_message = MagicMock()
-    mock_message.value.return_value = valid_market_price_event.model_dump_json().encode('utf-8')
-    mock_message.key.return_value = valid_market_price_event.security_id.encode('utf-8')
-    mock_message.error.return_value = None
-    mock_message.topic.return_value = "market_prices"
-    mock_message.partition.return_value = 0
-    mock_message.offset.return_value = 1
-    mock_message.headers.return_value = [('correlation_id', b'test-corr-id')]
-    return mock_message
+def mock_kafka_message(mock_event: PortfolioAggregationRequiredEvent) -> MagicMock:
+    """Creates a mock Kafka message from the event."""
+    mock_msg = MagicMock()
+    mock_msg.value.return_value = mock_event.model_dump_json().encode('utf-8')
+    mock_msg.key.return_value = "test_key".encode('utf-8')
+    mock_msg.headers.return_value = [('correlation_id', b'test-corr-id')]
+    return mock_msg
 
-
-async def test_process_message_success(
-    market_price_consumer: MarketPriceConsumer,
-    mock_kafka_message: MagicMock,
-    valid_market_price_event: MarketPriceEvent
-):
+async def test_process_message_success(consumer: PortfolioTimeseriesConsumer, mock_event: PortfolioAggregationRequiredEvent, mock_kafka_message: MagicMock):
     """
-    GIVEN a valid market price message
-    WHEN the process_message method is called
-    THEN it should call the repository to save the price
-    AND publish a market_price_persisted event.
+    GIVEN a portfolio aggregation event
+    WHEN the message is processed
+    THEN it should aggregate data, save the new timeseries record, and update the job status.
     """
-    # Arrange
-    mock_repo = AsyncMock()
-    mock_idempotency_repo = AsyncMock()
-    mock_idempotency_repo.is_event_processed.return_value = False
-    mock_outbox_repo = AsyncMock() # <-- FIX: Use AsyncMock
-
+    # ARRANGE
     mock_db_session = AsyncMock()
+    # FIX: Make .begin() a sync method returning an async context manager
     mock_db_session.begin.return_value = AsyncMock().__aenter__()
-    async def mock_get_db_session_generator():
+    
+    async def get_db_session_gen():
         yield mock_db_session
 
-    with patch(
-        "src.services.persistence_service.app.consumers.market_price_consumer.get_async_db_session", new=mock_get_db_session_generator
-    ), patch(
-        "src.services.persistence_service.app.consumers.market_price_consumer.MarketPriceRepository", return_value=mock_repo
-    ), patch(
-        "src.services.persistence_service.app.consumers.market_price_consumer.IdempotencyRepository", return_value=mock_idempotency_repo
-    ), patch(
-        "src.services.persistence_service.app.consumers.market_price_consumer.OutboxRepository", return_value=mock_outbox_repo
-    ):
-        # Act
-        await market_price_consumer._process_message_with_retry(mock_kafka_message)
+    mock_repo = AsyncMock()
+    mock_outbox_repo = AsyncMock()
 
-        # Assert
-        mock_repo.create_market_price.assert_called_once()
+    # Mock the data fetched by the logic and consumer
+    mock_repo.get_portfolio.return_value = Portfolio(portfolio_id=mock_event.portfolio_id, base_currency="USD")
+    mock_repo.get_all_position_timeseries_for_date.return_value = [
+        PositionTimeseries(security_id="SEC_USD", eod_market_value=Decimal("1000"))
+    ]
+    mock_repo.get_portfolio_level_cashflows_for_date.return_value = []
+    mock_repo.get_instruments_by_ids.return_value = [Instrument(security_id="SEC_USD", currency="USD")]
+    mock_repo.get_last_portfolio_timeseries_before.return_value = None # First day
+
+    # Mock the _update_job_status method since it creates its own session
+    with patch(
+        "services.timeseries_generator_service.app.consumers.portfolio_timeseries_consumer.get_async_db_session", new=get_db_session_gen
+    ), patch(
+        "services.timeseries_generator_service.app.consumers.portfolio_timeseries_consumer.TimeseriesRepository", return_value=mock_repo
+    ), patch(
+        "services.timeseries_generator_service.app.consumers.portfolio_timeseries_consumer.OutboxRepository", return_value=mock_outbox_repo
+    ), patch.object(
+        consumer, '_update_job_status', new_callable=AsyncMock
+    ) as mock_update_status:
+        
+        # ACT
+        await consumer.process_message(mock_kafka_message)
+
+        # ASSERT
+        # 1. Verify correct data was fetched
+        mock_repo.get_portfolio.assert_called_once_with(mock_event.portfolio_id)
+        mock_repo.get_all_position_timeseries_for_date.assert_called_once()
+        mock_repo.get_portfolio_level_cashflows_for_date.assert_called_once()
+
+        # 2. Verify the new portfolio timeseries record was saved
+        mock_repo.upsert_portfolio_timeseries.assert_called_once()
+        saved_record = mock_repo.upsert_portfolio_timeseries.call_args[0][0]
+        assert isinstance(saved_record, PortfolioTimeseries)
+        assert saved_record.eod_market_value == Decimal("1000")
+
+        # 3. Verify an outbox event was created
         mock_outbox_repo.create_outbox_event.assert_called_once()
-        market_price_consumer._send_to_dlq_async.assert_not_called()
+
+        # 4. Verify the job status was updated to COMPLETE
+        mock_update_status.assert_called_once_with(mock_event.portfolio_id, mock_event.aggregation_date, 'COMPLETE', db_session=mock_db_session)
+        
+        # 5. Verify no DLQ message was sent
+        consumer._send_to_dlq_async.assert_not_called()

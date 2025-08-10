@@ -54,6 +54,7 @@ async def test_process_message_success_and_keys_by_portfolio_id(consumer: Market
     """
     # Arrange
     mock_db_session = AsyncMock(spec=AsyncSession)
+    # FIX: Make .begin() a sync method returning an async context manager
     mock_db_session.begin.return_value = AsyncMock().__aenter__()
     async def mock_get_db_session_generator():
         yield mock_db_session
@@ -78,7 +79,6 @@ async def test_process_message_success_and_keys_by_portfolio_id(consumer: Market
          patch('services.calculators.position_valuation_calculator.app.consumers.market_price_consumer.ValuationRepository', return_value=mock_valuation_repo), \
          patch('services.calculators.position_valuation_calculator.app.consumers.market_price_consumer.OutboxRepository') as mock_outbox_repo:
         
-        # FIX: Ensure the instance returned by the patch is an AsyncMock
         mock_outbox_instance = AsyncMock()
         mock_outbox_repo.return_value = mock_outbox_instance
 
