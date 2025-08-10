@@ -61,12 +61,8 @@ class MarketPriceConsumer(BaseConsumer):
                         await idempotency_repo.mark_event_processed(event_id, "N/A", SERVICE_NAME, correlation_id)
                         return
                     
-                    # --- NEW ROLL-FORWARD LOGIC ---
-                    # 1. Find all portfolios that held the security on the previous day.
-                    previous_day = price_event.price_date - timedelta(days=1)
                     prev_day_snapshots = await repo.find_portfolios_holding_security_before_date(price_event.security_id, price_event.price_date)
 
-                    # 2. Create new, unvalued snapshots for today based on yesterday's state.
                     snapshots_to_process = {}
                     for prev_snapshot in prev_day_snapshots:
                         new_snapshot = DailyPositionSnapshot(
@@ -78,16 +74,13 @@ class MarketPriceConsumer(BaseConsumer):
                             cost_basis_local=prev_snapshot.cost_basis_local,
                             valuation_status='UNVALUED'
                         )
-                        # Use a tuple key to handle potential duplicates
-                        key = (new_snapshot.portfolio_id, new_snapshot.security_id, new_snapshot.date)
-                        snapshots_to_process[key] = new_snapshot
+                        key_tuple = (new_snapshot.portfolio_id, new_snapshot.security_id, new_snapshot.date)
+                        snapshots_to_process[key_tuple] = new_snapshot
                     
-                    # 3. Find snapshots already created by same-day transactions.
                     same_day_snapshots = await repo.find_snapshots_to_update(price_event.security_id, price_event.price_date)
                     for snapshot in same_day_snapshots:
-                        key = (snapshot.portfolio_id, snapshot.security_id, snapshot.date)
-                        snapshots_to_process[key] = snapshot # This will overwrite the rolled-forward one if it exists
-
+                        key_tuple = (snapshot.portfolio_id, snapshot.security_id, snapshot.date)
+                        snapshots_to_process[key_tuple] = snapshot 
                     if not snapshots_to_process:
                         logger.info(f"No existing positions found needing valuation for {price_event.security_id} on {price_event.price_date}.")
                         await idempotency_repo.mark_event_processed(event_id, "N/A", SERVICE_NAME, correlation_id)
@@ -128,7 +121,6 @@ class MarketPriceConsumer(BaseConsumer):
                             completion_event = DailyPositionSnapshotPersistedEvent.model_validate(persisted_snapshot)
                             await outbox_repo.create_outbox_event(
                                 aggregate_type='DailyPositionSnapshot',
-                                # Key by portfolio_id for partition affinity
                                 aggregate_id=persisted_snapshot.portfolio_id,
                                 event_type='DailyPositionSnapshotPersisted',
                                 topic=KAFKA_DAILY_POSITION_SNAPSHOT_PERSISTED_TOPIC,
