@@ -78,7 +78,8 @@ def test_db_outage_recovery(docker_services, db_engine, clean_db):
     # 6. ASSERT: Verify the transaction is eventually persisted
     with Session(db_engine) as session:
         start_time = time.time()
-        timeout = 45
+        # FIX: Increase timeout to allow for container restart
+        timeout = 90
         while time.time() - start_time < timeout:
             query = text("SELECT count(*) FROM transactions WHERE transaction_id = :txn_id")
             count = session.execute(query, {"txn_id": transaction_id}).scalar_one()
