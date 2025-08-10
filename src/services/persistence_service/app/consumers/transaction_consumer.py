@@ -20,6 +20,10 @@ logger = logging.getLogger(__name__)
 
 SERVICE_NAME = "persistence-transactions"
 
+class PortfolioNotFoundError(Exception):
+    """Custom exception to signal a retryable condition."""
+    pass
+
 class TransactionPersistenceConsumer(BaseConsumer):
     """
     A concrete consumer for validating and persisting raw transaction events.
@@ -33,9 +37,9 @@ class TransactionPersistenceConsumer(BaseConsumer):
 
     @retry(
         wait=wait_exponential(multiplier=1, min=2, max=10),
-        stop=stop_after_attempt(3),
+        stop=stop_after_attempt(5),
         before=before_log(logger, logging.INFO),
-        retry=retry_if_exception_type((DBAPIError, IntegrityError)),
+        retry=retry_if_exception_type((DBAPIError, IntegrityError, PortfolioNotFoundError)),
         reraise=True
     )
     async def _process_message_with_retry(self, msg: Message):
@@ -57,7 +61,7 @@ class TransactionPersistenceConsumer(BaseConsumer):
                 tx = await db.begin()
                 try:
                     repo = TransactionDBRepository(db)
-                    outbox_repo = OutboxRepository()
+                    outbox_repo = OutboxRepository(db)
                     idempotency_repo = IdempotencyRepository(db)
 
                     if await idempotency_repo.is_event_processed(event_id, SERVICE_NAME):
@@ -68,11 +72,16 @@ class TransactionPersistenceConsumer(BaseConsumer):
                         await tx.rollback()
                         return
 
+                    # Explicitly check for the portfolio's existence
+                    portfolio_exists = await repo.check_portfolio_exists(event.portfolio_id)
+                    if not portfolio_exists:
+                        raise PortfolioNotFoundError(
+                            f"Portfolio {event.portfolio_id} not found for transaction {event.transaction_id}. Retrying..."
+                        )
+
                     await repo.create_or_update_transaction(event)
 
-                    # 🔑 Keying policy: use portfolio_id for partition affinity
-                    outbox_repo.create_outbox_event(
-                        db=db,
+                    await outbox_repo.create_outbox_event(
                         aggregate_type='RawTransaction',
                         aggregate_id=str(event.portfolio_id),
                         event_type='RawTransactionPersisted',
@@ -104,9 +113,9 @@ class TransactionPersistenceConsumer(BaseConsumer):
                 extra={"key": key, "event_id": event_id}, exc_info=True
             )
             await self._send_to_dlq_async(msg, e)
-        except (DBAPIError, IntegrityError):
+        except (DBAPIError, IntegrityError, PortfolioNotFoundError) as e:
             logger.warning(
-                f"Caught a DB error for transaction {getattr(event, 'transaction_id', 'UNKNOWN')}. Will retry...",
+                f"Caught a DB error for transaction {getattr(event, 'transaction_id', 'UNKNOWN')}: {e}. Will retry...",
                 extra={"event_id": event_id},
             )
             raise
