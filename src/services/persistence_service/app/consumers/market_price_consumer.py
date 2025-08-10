@@ -61,7 +61,7 @@ class MarketPriceConsumer(BaseConsumer):
                 try:
                     repo = MarketPriceRepository(db)
                     idempotency_repo = IdempotencyRepository(db)
-                    outbox_repo = OutboxRepository(db) # CORRECTED: Pass the session here.
+                    outbox_repo = OutboxRepository(db)
 
                     if await idempotency_repo.is_event_processed(event_id, SERVICE_NAME):
                         logger.warning(
@@ -73,7 +73,6 @@ class MarketPriceConsumer(BaseConsumer):
 
                     await repo.create_market_price(event)
 
-                    # CORRECTED: The OutboxRepository is now stateful, no need to pass the session here.
                     await outbox_repo.create_outbox_event(
                         aggregate_type="MarketPrice",
                         aggregate_id=event.security_id,

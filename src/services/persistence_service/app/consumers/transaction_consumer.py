@@ -47,11 +47,14 @@ class TransactionPersistenceConsumer(BaseConsumer):
         value = msg.value().decode('utf-8')
         correlation_id = correlation_id_var.get()
         event = None
-        event_id = f"{msg.topic()}-{msg.partition()}-{msg.offset()}"
-
+        
         try:
             transaction_data = json.loads(value)
             event = TransactionEvent.model_validate(transaction_data)
+            
+            # CORRECTED: The idempotency key should be the business key from the event.
+            event_id = event.transaction_id
+            
             logger.info(
                 "Successfully validated event",
                 extra={"transaction_id": event.transaction_id, "event_id": event_id}
@@ -108,20 +111,22 @@ class TransactionPersistenceConsumer(BaseConsumer):
             )
 
         except (json.JSONDecodeError, ValidationError) as e:
+            kafka_event_id = f"{msg.topic()}-{msg.partition()}-{msg.offset()}"
             logger.error(
                 "Message validation failed. Sending to DLQ.",
-                extra={"key": key, "event_id": event_id}, exc_info=True
+                extra={"key": key, "event_id": kafka_event_id}, exc_info=True
             )
             await self._send_to_dlq_async(msg, e)
         except (DBAPIError, IntegrityError, PortfolioNotFoundError) as e:
             logger.warning(
                 f"Caught a DB error for transaction {getattr(event, 'transaction_id', 'UNKNOWN')}: {e}. Will retry...",
-                extra={"event_id": event_id},
+                extra={"event_id": getattr(event, 'transaction_id', 'UNKNOWN')},
             )
             raise
         except Exception as e:
+            kafka_event_id = f"{msg.topic()}-{msg.partition()}-{msg.offset()}"
             logger.error(
                 f"Unexpected error processing message for transaction {getattr(event, 'transaction_id', 'UNKNOWN')}. Sending to DLQ.",
-                extra={"key": key, "event_id": event_id}, exc_info=True
+                extra={"key": key, "event_id": kafka_event_id}, exc_info=True
             )
             await self._send_to_dlq_async(msg, e)
