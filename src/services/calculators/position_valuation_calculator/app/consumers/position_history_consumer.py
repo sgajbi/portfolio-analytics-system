@@ -1,4 +1,4 @@
-# services/calculators/position-valuation-calculator/app/consumers/position_history_consumer.py
+# src/services/calculators/position_valuation_calculator/app/consumers/position_history_consumer.py
 import logging
 import json
 import asyncio
@@ -23,6 +23,10 @@ logger = logging.getLogger(__name__)
 
 SERVICE_NAME = "position-valuation-calculator-from-position"
 
+class PositionHistoryNotFoundError(Exception):
+    """Custom exception to signal a retryable race condition."""
+    pass
+
 class PositionHistoryConsumer(BaseConsumer):
     """
     Consumes position history events, values them in local and base currencies,
@@ -32,7 +36,7 @@ class PositionHistoryConsumer(BaseConsumer):
         wait=wait_fixed(2),
         stop=stop_after_attempt(3),
         before=before_log(logger, logging.INFO),
-        retry=retry_if_exception_type(DBAPIError),
+        retry=retry_if_exception_type((DBAPIError, PositionHistoryNotFoundError)),
         reraise=True
     )
     async def process_message(self, msg: Message):
@@ -49,7 +53,6 @@ class PositionHistoryConsumer(BaseConsumer):
             async for db in get_async_db_session():
                 async with db.begin():
                     idempotency_repo = IdempotencyRepository(db)
-                    # CORRECTED: Instantiate OutboxRepository with the db session
                     outbox_repo = OutboxRepository(db)
 
                     if await idempotency_repo.is_event_processed(event_id, SERVICE_NAME):
@@ -59,8 +62,11 @@ class PositionHistoryConsumer(BaseConsumer):
                     repo = ValuationRepository(db)
                     position = await db.get(PositionHistory, position_event.id)
                     
-                    if not position or not position.cost_basis_local:
-                        logger.warning(f"PositionHistory id {position_event.id} not found or missing local cost basis. Skipping.")
+                    if not position:
+                        raise PositionHistoryNotFoundError(f"PositionHistory record with id {position_event.id} not found, likely due to replication lag. Retrying...")
+                    
+                    if not position.cost_basis_local:
+                        logger.warning(f"PositionHistory id {position_event.id} is missing local cost basis. Skipping.")
                         await idempotency_repo.mark_event_processed(event_id, position_event.portfolio_id, SERVICE_NAME, correlation_id)
                         return
 
@@ -115,7 +121,6 @@ class PositionHistoryConsumer(BaseConsumer):
                     persisted_snapshot = await repo.upsert_daily_snapshot(snapshot_to_save)
                     completion_event = DailyPositionSnapshotPersistedEvent.model_validate(persisted_snapshot)
                     
-                    # CORRECTED: Call the method on the instantiated object
                     await outbox_repo.create_outbox_event(
                         aggregate_type='DailyPositionSnapshot',
                         # Key by portfolio_id for partition affinity
@@ -130,8 +135,8 @@ class PositionHistoryConsumer(BaseConsumer):
         except (json.JSONDecodeError, ValidationError) as e:
             logger.error(f"Message validation failed for key '{key}': {e}. Value: '{value}'", exc_info=True)
             await self._send_to_dlq_async(msg, e)
-        except DBAPIError:
-            logger.warning(f"Database API error for event {event_id}. Retrying...", exc_info=True)
+        except (DBAPIError, PositionHistoryNotFoundError):
+            logger.warning(f"Database API or race condition error for event {event_id}. Retrying...", exc_info=True)
             raise
         except Exception as e:
             logger.error(f"Unexpected error processing message with key '{key}': {e}", exc_info=True)
