@@ -59,14 +59,11 @@ class OutboxDispatcher:
         - Publish to Kafka
         - Update statuses (PROCESSED or increment retry_count) in the same transaction
         """
-        # Read gauge outside of the transactional batch to prevent auto-begin conflicts
         self._read_pending_gauge()
 
         with self._session_factory() as db:  # type: Session
             with outbox_batch_timer():
-                # Use a single explicit transaction for the whole batch work in this session.
                 with db.begin():
-                    # Lock a window of PENDING events so multiple dispatchers can work concurrently.
                     events_to_process: List[OutboxEvent] = (
                         db.query(OutboxEvent)
                         .filter(OutboxEvent.status == "PENDING")
@@ -91,47 +88,48 @@ class OutboxDispatcher:
                                 delivery_errs[outbox_id] = str(error_message)
                         return _cb
 
-                    # Publish all events in this batch
                     for event in events_to_process:
-                        # Headers
                         headers = []
                         if event.correlation_id:
                             headers.append(("correlation_id", event.correlation_id.encode("utf-8")))
 
-                        # Payload is stored as JSON (SQLAlchemy JSON type) or dict; ensure dict
                         payload_obj = event.payload if isinstance(event.payload, dict) else json.loads(event.payload)
 
                         self._producer.publish_message(
                             topic=event.topic,
-                            key=event.aggregate_id,  # partition affinity by aggregate (e.g., portfolio_id)
+                            key=event.aggregate_id,
                             value=payload_obj,
                             headers=headers,
                             outbox_id=str(event.id),
                             on_delivery=_make_on_delivery(event.id),
                         )
-
-                    # Flush to get delivery results
-                    self._producer.flush(timeout=10)
-                    logger.info(f"OutboxDispatcher: Flush complete for {len(events_to_process)} events.")
+                    
+                    # FIX: Wrap flush in a try/except block to handle broker unavailability
+                    try:
+                        self._producer.flush(timeout=10)
+                        logger.info(f"OutboxDispatcher: Flush complete for {len(events_to_process)} events.")
+                    except Exception as e:
+                        logger.error("OutboxDispatcher: Kafka flush failed.", exc_info=True)
+                        # If flush fails, assume all in-flight messages for this batch failed.
+                        for event in events_to_process:
+                            if event.id not in delivery_ack: # Avoid overwriting specific delivery failures
+                                delivery_ack[event.id] = False
+                                delivery_errs[event.id] = str(e)
 
                     success_ids = [oid for oid, ok in delivery_ack.items() if ok]
                     failure_ids = [oid for oid, ok in delivery_ack.items() if not ok]
 
-                    # Mark successes as PROCESSED
                     if success_ids:
                         db.execute(
                             update(OutboxEvent)
                             .where(OutboxEvent.id.in_(success_ids))
                             .values(status="PROCESSED", processed_at=datetime.now(timezone.utc))
                         )
-                        # Metrics per successful event
                         for e in events_to_process:
                             if e.id in success_ids:
                                 observe_outbox_published(e.aggregate_type, e.topic)
-
                         logger.info(f"OutboxDispatcher: Marked {len(success_ids)} events as PROCESSED in DB.")
 
-                    # Failures remain PENDING; bump retry_count and last_attempted_at
                     if failure_ids:
                         db.execute(
                             update(OutboxEvent)
@@ -141,7 +139,6 @@ class OutboxDispatcher:
                                 last_attempted_at=datetime.now(timezone.utc),
                             )
                         )
-                        # Metrics per failed/retried event
                         for e in events_to_process:
                             if e.id in failure_ids:
                                 observe_outbox_failed(e.aggregate_type, e.topic)
