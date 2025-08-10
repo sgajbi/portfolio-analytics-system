@@ -15,7 +15,9 @@ from portfolio_common.database_models import (
     FxRate,
     Instrument,
     PositionHistory,
-    PortfolioAggregationJob
+    PortfolioAggregationJob,
+    MarketPrice,
+    Transaction
 )
 
 logger = logging.getLogger(__name__)
@@ -31,8 +33,6 @@ class TimeseriesRepository:
         """
         Finds PENDING aggregation jobs where the previous day's job is COMPLETE (or doesn't exist)
         and atomically claims them by updating their status to PROCESSING.
-        This is done using a CTE for concurrency-safety, but no longer uses FOR UPDATE SKIP LOCKED
-        on the nullable side of a LEFT JOIN (which PostgreSQL does not support).
         """
         query = text("""
             WITH eligible_jobs AS (
@@ -88,6 +88,17 @@ class TimeseriesRepository:
         result = await self.db.execute(stmt)
         return result.scalars().first()
 
+    async def get_latest_price_for_position(self, security_id: str, position_date: date) -> Optional[MarketPrice]:
+        """
+        Finds the most recent market price for a given security on or before the position's date.
+        """
+        stmt = select(MarketPrice).filter(
+            MarketPrice.security_id == security_id,
+            MarketPrice.price_date <= position_date
+        ).order_by(MarketPrice.price_date.desc())
+        result = await self.db.execute(stmt)
+        return result.scalars().first()
+
     async def get_last_position_timeseries_before(
         self,
         portfolio_id: str,
@@ -104,14 +115,15 @@ class TimeseriesRepository:
 
     async def is_first_position(self, portfolio_id: str, security_id: str, position_date: date) -> bool:
         """
-        Checks if there is any position history for this security prior to the given date.
+        Checks if there is any transactional history for this security prior to the given date.
         Returns True if this is the first known position, False otherwise.
         """
         stmt = select(
             exists().where(
-                PositionHistory.portfolio_id == portfolio_id,
-                PositionHistory.security_id == security_id,
-                PositionHistory.position_date < position_date
+                Transaction.portfolio_id == portfolio_id,
+                Transaction.security_id == security_id,
+                func.date(Transaction.transaction_date) < position_date,
+                Transaction.transaction_type.in_(['BUY', 'SELL'])
             )
         )
         result = await self.db.execute(stmt)
