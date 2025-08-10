@@ -46,7 +46,8 @@ class MarketPriceConsumer(BaseConsumer):
             async for db in get_async_db_session():
                 async with db.begin():
                     idempotency_repo = IdempotencyRepository(db)
-                    outbox_repo = OutboxRepository()
+                    # CORRECTED: Instantiate OutboxRepository with the db session
+                    outbox_repo = OutboxRepository(db)
  
                     if await idempotency_repo.is_event_processed(event_id, SERVICE_NAME):
                         logger.warning(f"Event {event_id} already processed. Skipping.")
@@ -98,9 +99,10 @@ class MarketPriceConsumer(BaseConsumer):
                             persisted_snapshot = await repo.upsert_daily_snapshot(snapshot)
 
                             completion_event = DailyPositionSnapshotPersistedEvent.model_validate(persisted_snapshot)
-                            outbox_repo.create_outbox_event(
-                                db_session=db, aggregate_type='DailyPositionSnapshot',
-                                # --- CHANGE: Key by portfolio_id for partition affinity ---
+                            # CORRECTED: Call the method on the instantiated object
+                            await outbox_repo.create_outbox_event(
+                                aggregate_type='DailyPositionSnapshot',
+                                # Key by portfolio_id for partition affinity
                                 aggregate_id=persisted_snapshot.portfolio_id,
                                 event_type='DailyPositionSnapshotPersisted',
                                 topic=KAFKA_DAILY_POSITION_SNAPSHOT_PERSISTED_TOPIC,
