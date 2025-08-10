@@ -7,13 +7,13 @@ from tenacity import retry, stop_after_attempt, wait_fixed, before_log, retry_if
 from confluent_kafka import Message
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy import func
-from datetime import timedelta, date
+from datetime import date
 
 from portfolio_common.kafka_consumer import BaseConsumer
 from portfolio_common.logging_utils import correlation_id_var
 from portfolio_common.events import DailyPositionSnapshotPersistedEvent
 from portfolio_common.db import get_async_db_session
-from portfolio_common.database_models import DailyPositionSnapshot, PositionHistory, PortfolioAggregationJob, PositionTimeseries
+from portfolio_common.database_models import DailyPositionSnapshot, PortfolioAggregationJob
 
 from ..core.position_timeseries_logic import PositionTimeseriesLogic
 from ..repositories.timeseries_repository import TimeseriesRepository

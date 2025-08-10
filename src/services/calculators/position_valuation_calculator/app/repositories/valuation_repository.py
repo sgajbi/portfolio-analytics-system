@@ -23,8 +23,9 @@ class ValuationRepository:
 
     async def has_any_history_for_security(self, security_id: str) -> bool:
         """Checks if any position history exists at all for a given security."""
+        # FIX: Check the PositionHistory table, which is the source of truth for positions.
         stmt = select(
-            exists().where(DailyPositionSnapshot.security_id == security_id)
+            exists().where(PositionHistory.security_id == security_id)
         )
         result = await self.db.execute(stmt)
         return result.scalar()
