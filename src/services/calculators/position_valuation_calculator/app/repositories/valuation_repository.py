@@ -8,7 +8,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import aliased
 
 from portfolio_common.database_models import (
-    PositionHistory, MarketPrice, DailyPositionSnapshot, FxRate, Instrument, Portfolio, Transaction
+    PositionHistory, MarketPrice, DailyPositionSnapshot, FxRate, Instrument, Portfolio
 )
 from portfolio_common.utils import async_timed
 
@@ -22,15 +22,10 @@ class ValuationRepository:
         self.db = db
 
     async def has_any_history_for_security(self, security_id: str) -> bool:
-        """
-        Checks if any transactional history (BUY/SELL) exists for a security.
-        This is the definitive check for whether a position should eventually exist.
-        """
+        """Checks if any position history exists at all for a given security."""
+        # FIX: Check the PositionHistory table, which is the source of truth for positions.
         stmt = select(
-            exists().where(
-                Transaction.security_id == security_id,
-                Transaction.transaction_type.in_(['BUY', 'SELL'])
-            )
+            exists().where(PositionHistory.security_id == security_id)
         )
         result = await self.db.execute(stmt)
         return result.scalar()
