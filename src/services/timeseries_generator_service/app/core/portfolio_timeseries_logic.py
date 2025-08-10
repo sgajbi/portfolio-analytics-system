@@ -40,20 +40,16 @@ class PortfolioTimeseriesLogic:
 
         portfolio_currency = portfolio.base_currency
 
-        # --- KEY CHANGE: Use previous day's EOD as today's BOD ---
         previous_portfolio_ts = await repo.get_last_portfolio_timeseries_before(portfolio.portfolio_id, a_date)
         if previous_portfolio_ts:
             total_bod_mv = previous_portfolio_ts.eod_market_value
         else:
             total_bod_mv = Decimal(0)
-        # ---------------------------------------------------------
 
-        # 1. Fetch all required instruments and their currencies in one go
         security_ids = [pt.security_id for pt in position_timeseries_list]
         instruments_list = await repo.get_instruments_by_ids(security_ids)
         instruments = {inst.security_id: inst for inst in instruments_list}
 
-        # 2. Aggregate all position-level data with FX conversion
         for pos_ts in position_timeseries_list:
             instrument = instruments.get(pos_ts.security_id)
             if not instrument:
@@ -61,7 +57,7 @@ class PortfolioTimeseriesLogic:
                 continue
 
             instrument_currency = instrument.currency
-            rate = Decimal(1.0) # Default to 1.0 if no conversion is needed
+            rate = Decimal(1.0)
 
             if instrument_currency != portfolio_currency:
                 fx_rate = await repo.get_fx_rate(instrument_currency, portfolio_currency, pos_ts.date)
@@ -71,20 +67,17 @@ class PortfolioTimeseriesLogic:
                     raise FxRateNotFoundError(error_msg)
                 rate = fx_rate.rate
 
-            # --- Remove BOD MV aggregation here ---
-            # total_bod_mv += pos_ts.bod_market_value * rate
-            total_bod_cf += pos_ts.bod_cashflow * rate
-            total_eod_cf += pos_ts.eod_cashflow * rate
-            total_eod_mv += pos_ts.eod_market_value * rate
+            # FIX: Defensively treat None as 0
+            total_bod_cf += (pos_ts.bod_cashflow or Decimal(0)) * rate
+            total_eod_cf += (pos_ts.eod_cashflow or Decimal(0)) * rate
+            total_eod_mv += (pos_ts.eod_market_value or Decimal(0)) * rate
 
-        # 3. Aggregate portfolio-level cashflows (already in portfolio currency)
         for port_cf in portfolio_cashflows:
             if port_cf.timing == 'BOD':
                 total_bod_cf += port_cf.amount
             elif port_cf.timing == 'EOD':
                 total_eod_cf += port_cf.amount
 
-        # Extract fees from portfolio-level cashflows
         total_fees = sum(cf.amount for cf in portfolio_cashflows if cf.classification == 'EXPENSE')
 
         return PortfolioTimeseries(
@@ -94,5 +87,5 @@ class PortfolioTimeseriesLogic:
             bod_cashflow=total_bod_cf,
             eod_cashflow=total_eod_cf,
             eod_market_value=total_eod_mv,
-            fees=abs(total_fees) # Fees are stored as a positive value
+            fees=abs(total_fees)
         )

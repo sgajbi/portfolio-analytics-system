@@ -50,8 +50,7 @@ async def test_process_message_success(consumer: PortfolioTimeseriesConsumer, mo
     """
     # ARRANGE
     mock_db_session = AsyncMock(spec=AsyncSession)
-    # FIX: Correctly mock the synchronous begin() method to return an async context manager
-    mock_db_session.begin.return_value = AsyncMock().__aenter__()
+    mock_db_session.begin.return_value = AsyncMock()
     
     async def get_db_session_gen():
         yield mock_db_session
@@ -61,8 +60,19 @@ async def test_process_message_success(consumer: PortfolioTimeseriesConsumer, mo
 
     # Mock the data fetched by the logic and consumer
     mock_repo.get_portfolio.return_value = Portfolio(portfolio_id=mock_event.portfolio_id, base_currency="USD")
+    # FIX: Provide a complete, non-null PositionTimeseries object
     mock_repo.get_all_position_timeseries_for_date.return_value = [
-        PositionTimeseries(security_id="SEC_USD", eod_market_value=Decimal("1000"))
+        PositionTimeseries(
+            security_id="SEC_USD",
+            date=mock_event.aggregation_date,
+            bod_market_value=Decimal("900"),
+            bod_cashflow=Decimal("0"),
+            eod_cashflow=Decimal("50"),
+            eod_market_value=Decimal("1000"),
+            fees=Decimal("0"),
+            quantity=Decimal("10"),
+            cost=Decimal("90")
+        )
     ]
     mock_repo.get_portfolio_level_cashflows_for_date.return_value = []
     mock_repo.get_instruments_by_ids.return_value = [Instrument(security_id="SEC_USD", currency="USD")]
