@@ -15,7 +15,7 @@ from portfolio_common.outbox_repository import OutboxRepository
 from portfolio_common.config import KAFKA_POSITION_HISTORY_PERSISTED_TOPIC
 
 from ..repositories.position_repository import PositionRepository
-from ..core.position_logic import PositionCalculator  # <-- correct class
+from ..core.position_logic import PositionCalculator
 
 logger = logging.getLogger(__name__)
 
@@ -57,14 +57,15 @@ class TransactionEventConsumer(BaseConsumer):
                     # Recalculate & stage all affected position history rows
                     new_positions = await PositionCalculator.calculate(event, db, repo=repo)
 
-                    outbox_repo = OutboxRepository()
-                    # Emit an event for each position record persisted (or a single portfolio-level event)
+                    # CORRECTED: Instantiate OutboxRepository with the db session
+                    outbox_repo = OutboxRepository(db)
+                    
+                    # Emit an event for each position record persisted
                     for record in new_positions:
-                        # This assumes PositionHistoryPersistedEvent can validate from the ORM/dict shape
                         completion_event = PositionHistoryPersistedEvent.model_validate(record)
 
-                        outbox_repo.create_outbox_event(
-                            db_session=db,
+                        # CORRECTED: Call the method on the instantiated object
+                        await outbox_repo.create_outbox_event(
                             aggregate_type='PositionHistory',
                             aggregate_id=completion_event.portfolio_id,
                             event_type='PositionHistoryPersisted',
