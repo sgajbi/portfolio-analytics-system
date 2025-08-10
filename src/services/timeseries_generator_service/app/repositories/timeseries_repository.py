@@ -2,16 +2,15 @@
 import logging
 from datetime import date
 from typing import Optional, List
-from decimal import Decimal
 from sqlalchemy import select, text, update, exists, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from portfolio_common.database_models import (
-    PositionTimeseries, 
-    PortfolioTimeseries, 
-    Portfolio, 
-    Cashflow, 
+    PositionTimeseries,
+    PortfolioTimeseries,
+    Portfolio,
+    Cashflow,
     FxRate,
     Instrument,
     PortfolioAggregationJob,
