@@ -4,46 +4,10 @@ import time
 import uuid
 from datetime import date
 
-# This fixture provides the base URLs for the services under test.
-@pytest.fixture(scope="module")
-def api_endpoints(docker_services):
-    """Provides the URLs for the ingestion and query services."""
-    ingestion_host = docker_services.get_service_host("ingestion_service", 8000)
-    ingestion_port = docker_services.get_service_port("ingestion_service", 8000)
-    ingestion_url = f"http://{ingestion_host}:{ingestion_port}"
+# NOTE: The helper fixtures `api_endpoints` and `poll_for_data` are now
+# automatically discovered by pytest from the `tests/e2e/conftest.py` file.
 
-    query_host = docker_services.get_service_host("query-service", 8001)
-    query_port = docker_services.get_service_port("query-service", 8001)
-    query_url = f"http://{query_host}:{query_port}"
-    
-    return {"ingestion": ingestion_url, "query": query_url}
-
-def poll_for_data(url: str, validation_func, timeout: int = 45):
-    """
-    Generic polling function to query an endpoint until a condition is met.
-    
-    Args:
-        url: The API endpoint to poll.
-        validation_func: A function that takes the response JSON and returns True if valid.
-        timeout: The maximum time to wait in seconds.
-    """
-    start_time = time.time()
-    last_response_data = None
-    while time.time() - start_time < timeout:
-        try:
-            response = requests.get(url)
-            if response.status_code == 200:
-                last_response_data = response.json()
-                if validation_func(last_response_data):
-                    return last_response_data
-        except requests.ConnectionError:
-            pass # Service may not be ready, just continue polling
-        time.sleep(1)
-    
-    pytest.fail(f"Polling timed out after {timeout} seconds for URL {url}. Last response: {last_response_data}")
-
-
-def test_portfolio_persistence_and_query(api_endpoints, clean_db):
+def test_portfolio_persistence_and_query(api_endpoints, poll_for_data, clean_db):
     """
     Tests that a portfolio can be ingested and then queried successfully.
     """
@@ -78,7 +42,7 @@ def test_portfolio_persistence_and_query(api_endpoints, clean_db):
     assert persisted_portfolio["booking_center"] == "Singapore"
 
 
-def test_instrument_persistence_and_query(api_endpoints, clean_db):
+def test_instrument_persistence_and_query(api_endpoints, poll_for_data, clean_db):
     """
     Tests that an instrument can be ingested and then queried successfully.
     """
@@ -109,7 +73,7 @@ def test_instrument_persistence_and_query(api_endpoints, clean_db):
     assert persisted_instrument["product_type"] == "Equity"
 
 
-def test_market_price_persistence_and_query(api_endpoints, clean_db):
+def test_market_price_persistence_and_query(api_endpoints, poll_for_data, clean_db):
     """
     Tests that a market price can be ingested and then queried successfully.
     """
@@ -141,7 +105,7 @@ def test_market_price_persistence_and_query(api_endpoints, clean_db):
     assert persisted_price["currency"] == "HKD"
 
 
-def test_fx_rate_persistence_and_query(api_endpoints, clean_db):
+def test_fx_rate_persistence_and_query(api_endpoints, poll_for_data, clean_db):
     """
     Tests that an FX rate can be ingested and then queried successfully.
     """
@@ -172,7 +136,7 @@ def test_fx_rate_persistence_and_query(api_endpoints, clean_db):
     assert float(persisted_rate["rate"]) == 0.95
 
 
-def test_transaction_persistence_and_query(api_endpoints, clean_db):
+def test_transaction_persistence_and_query(api_endpoints, poll_for_data, clean_db):
     """
     Tests that a transaction can be ingested and then queried successfully.
     Note: This only tests persistence, not calculated fields like cashflow.
@@ -217,7 +181,7 @@ def test_transaction_persistence_and_query(api_endpoints, clean_db):
     assert float(persisted_txn["quantity"]) == 100
 
 
-def test_instrument_ingestion_is_idempotent(api_endpoints, clean_db):
+def test_instrument_ingestion_is_idempotent(api_endpoints, poll_for_data, clean_db):
     """
     Tests that ingesting the same instrument twice results in only one record.
     """
@@ -247,7 +211,7 @@ def test_instrument_ingestion_is_idempotent(api_endpoints, clean_db):
     assert persisted_instrument["name"] == "Idempotent Test Instrument"
 
 
-def test_portfolio_update_persistence(api_endpoints, clean_db):
+def test_portfolio_update_persistence(api_endpoints, poll_for_data, clean_db):
     """
     Tests that ingesting a portfolio with an existing ID updates the record.
     """
@@ -275,7 +239,7 @@ def test_portfolio_update_persistence(api_endpoints, clean_db):
     persisted_portfolio = query_data["portfolios"][0]
     assert persisted_portfolio["status"] == "ACTIVE"
 
-def test_transaction_persists_after_portfolio_arrives(api_endpoints, clean_db):
+def test_transaction_persists_after_portfolio_arrives(api_endpoints, poll_for_data, clean_db):
     """
     Tests that a transaction consumer retries and succeeds if the portfolio arrives late.
     """
@@ -306,4 +270,3 @@ def test_transaction_persists_after_portfolio_arrives(api_endpoints, clean_db):
     query_data = poll_for_data(query_url, validation_func)
     
     assert query_data["transactions"][0]["transaction_id"] == transaction_id
-
