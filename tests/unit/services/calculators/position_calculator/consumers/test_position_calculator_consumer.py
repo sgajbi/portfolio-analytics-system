@@ -67,7 +67,7 @@ async def test_consumer_uses_real_position_logic(position_consumer: TransactionE
     mock_idempotency_repo = AsyncMock(spec=IdempotencyRepository)
     mock_idempotency_repo.is_event_processed.return_value = False
     
-    mock_outbox_repo = AsyncMock() # <-- FIX: Use AsyncMock
+    mock_outbox_repo = AsyncMock()
     mock_position_repo = AsyncMock(spec=PositionRepository)
 
     # Setup mock repository to return data needed by PositionCalculator.calculate
@@ -77,10 +77,6 @@ async def test_consumer_uses_real_position_logic(position_consumer: TransactionE
         position_date=date(2025, 8, 5), quantity=Decimal(100), cost_basis=Decimal(10000), cost_basis_local=Decimal(10000)
     )
     mock_position_repo.get_last_position_before.return_value = anchor_position
-
-    # 2. A list of transactions on or after the transaction date (just the one from the event)
-    transaction_from_db = DBTransaction(**mock_transaction_event.model_dump())
-    mock_position_repo.get_transactions_on_or_after.return_value = [transaction_from_db]
 
     # FIX: Simulate the database assigning an ID to new PositionHistory objects
     def simulate_save_positions(positions: list[PositionHistory]):
@@ -111,7 +107,6 @@ async def test_consumer_uses_real_position_logic(position_consumer: TransactionE
         # ASSERT
         mock_idempotency_repo.is_event_processed.assert_called_once()
         mock_position_repo.get_last_position_before.assert_called_once()
-        mock_position_repo.get_transactions_on_or_after.assert_called_once()
         mock_position_repo.delete_positions_from.assert_called_once()
 
         # Assert that the logic produced the correct new position state
@@ -158,4 +153,3 @@ async def test_process_message_skips_processed_event(position_consumer: Transact
         mock_idempotency_repo.is_event_processed.assert_called_once()
         # The core logic methods should not have been called
         mock_position_repo.get_last_position_before.assert_not_called()
-        mock_position_repo.get_transactions_on_or_after.assert_not_called()
