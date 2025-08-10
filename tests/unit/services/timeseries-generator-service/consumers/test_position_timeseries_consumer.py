@@ -6,6 +6,7 @@ from decimal import Decimal
 
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy import func
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from portfolio_common.events import DailyPositionSnapshotPersistedEvent
 from portfolio_common.database_models import (
@@ -59,8 +60,8 @@ async def test_process_message_success_subsequent_day(consumer: PositionTimeseri
     THEN it should calculate the new timeseries record and create an aggregation job.
     """
     # ARRANGE
-    mock_db_session = AsyncMock()
-    # FIX: Make .begin() a sync method returning an async context manager
+    mock_db_session = AsyncMock(spec=AsyncSession)
+    # FIX: Correctly mock the synchronous begin() method to return an async context manager
     mock_db_session.begin.return_value = AsyncMock().__aenter__()
     
     async def get_db_session_gen():

@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch, AsyncMock
 from datetime import date
 from decimal import Decimal
 
+from sqlalchemy.ext.asyncio import AsyncSession
 from portfolio_common.events import PortfolioAggregationRequiredEvent
 from portfolio_common.database_models import (
     Portfolio, PositionTimeseries, Cashflow, Instrument, FxRate, PortfolioTimeseries
@@ -48,8 +49,8 @@ async def test_process_message_success(consumer: PortfolioTimeseriesConsumer, mo
     THEN it should aggregate data, save the new timeseries record, and update the job status.
     """
     # ARRANGE
-    mock_db_session = AsyncMock()
-    # FIX: Make .begin() a sync method returning an async context manager
+    mock_db_session = AsyncMock(spec=AsyncSession)
+    # FIX: Correctly mock the synchronous begin() method to return an async context manager
     mock_db_session.begin.return_value = AsyncMock().__aenter__()
     
     async def get_db_session_gen():
