@@ -103,9 +103,18 @@ def test_dispatcher_recovers_after_failure(db_engine, clean_db, smart_mock_kafka
                 event_type="TestEvent", payload='{}', topic="resilience.topic"
             ))
 
-    # Make the first call to flush fail, but allow subsequent calls to use the original smart flush
-    original_flush = smart_mock_kafka_producer.flush
-    smart_mock_kafka_producer.flush.side_effect = [Exception("Kafka is down!"), original_flush]
+    # FIX: Create a stateful side effect function for the mock
+    original_flush_implementation = smart_mock_kafka_producer.flush.side_effect
+    call_count = 0
+    def stateful_flush_side_effect(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            raise Exception("Kafka is down!")
+        else:
+            return original_flush_implementation(*args, **kwargs)
+
+    smart_mock_kafka_producer.flush.side_effect = stateful_flush_side_effect
     
     # ACT
     dispatcher = OutboxDispatcher(kafka_producer=smart_mock_kafka_producer)
@@ -149,7 +158,7 @@ async def test_dispatcher_is_concurrent_safe(db_engine, clean_db, smart_mock_kaf
     dispatcher2.stop()
     await asyncio.gather(task1, task2)
 
-    # ASSERT: Check that all events were processed exactly once.
+    # ASSERT: The most important check is that all events were processed exactly once.
     with Session(db_engine) as session:
         count = session.execute(text("SELECT count(*) FROM outbox_events WHERE status = 'PROCESSED'")).scalar_one()
         assert count == num_events
