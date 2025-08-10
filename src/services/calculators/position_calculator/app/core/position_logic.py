@@ -82,6 +82,13 @@ class PositionCalculator:
         """
         Handles single transaction logic (BUY, SELL, etc.) for position changes in both currencies.
         """
+        # --- START: Added for debugging ---
+        logger.info(
+            f"Calculating next position for txn_id={transaction.transaction_id} ({transaction.transaction_type}). "
+            f"Current state: Qty={current_state.quantity}, CostLocal={current_state.cost_basis_local}"
+        )
+        # --- END: Added for debugging ---
+        
         quantity = current_state.quantity
         cost_basis = current_state.cost_basis
         cost_basis_local = current_state.cost_basis_local
@@ -97,7 +104,6 @@ class PositionCalculator:
             cost_basis_local += net_cost_local
         elif txn_type == "SELL":
             if quantity != Decimal(0):
-                # Calculate cost of goods sold (COGS) proportionally in both currencies
                 proportion_sold = transaction.quantity / quantity
                 cogs_base = cost_basis * proportion_sold
                 cogs_local = cost_basis_local * proportion_sold
@@ -109,9 +115,15 @@ class PositionCalculator:
         else:
             logger.debug(f"[CalculateNext] Txn type {txn_type} does not affect position quantity/cost.")
 
-        # Ensure cost basis doesn't become negative due to precision issues when quantity is zero
         if quantity.is_zero():
             cost_basis = Decimal(0)
             cost_basis_local = Decimal(0)
+            
+        # --- START: Added for debugging ---
+        logger.info(
+            f"Finished calculating for txn_id={transaction.transaction_id}. "
+            f"New state: Qty={quantity}, CostLocal={cost_basis_local}"
+        )
+        # --- END: Added for debugging ---
 
         return PositionState(quantity=quantity, cost_basis=cost_basis, cost_basis_local=cost_basis_local)
