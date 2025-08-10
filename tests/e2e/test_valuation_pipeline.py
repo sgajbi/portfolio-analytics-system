@@ -1,3 +1,4 @@
+# tests/e2e/test_valuation_pipeline.py
 import pytest
 import requests
 import time
@@ -59,8 +60,10 @@ def test_full_valuation_pipeline(docker_services, db_engine, clean_db):
             api_response = requests.get(query_url)
             if api_response.status_code == 200:
                 response_data = api_response.json()
-                # Wait until the valuation object is populated
-                if response_data.get("positions") and response_data["positions"][0].get("valuation"):
+                # Wait until the valuation object is populated and has a non-null gain/loss
+                if (response_data.get("positions") and 
+                    response_data["positions"][0].get("valuation") and
+                    response_data["positions"][0]["valuation"].get("unrealized_gain_loss") is not None):
                     break
         except requests.ConnectionError:
             pass # Service might not be ready yet
@@ -81,6 +84,6 @@ def test_full_valuation_pipeline(docker_services, db_engine, clean_db):
     # Expected market_value = 10 * 110 = 1100
     assert valuation["market_value"] == "1100.0000000000"
     
-    # --- UPDATED ASSERTION ---
-    # Assert that unrealized_gain_loss is null due to the ambiguous cost_basis currency
-    assert valuation["unrealized_gain_loss"] is None
+    # --- CORRECTED ASSERTION ---
+    # Expected unrealized_gain_loss = 1100 (MV) - 1000 (Cost) = 100
+    assert Decimal(valuation["unrealized_gain_loss"]).quantize(Decimal("0.01")) == Decimal("100.00")
