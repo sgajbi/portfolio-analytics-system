@@ -8,6 +8,8 @@ from unittest.mock import MagicMock, patch
 
 from portfolio_common.kafka_utils import KafkaProducer
 from tools.dlq_replayer import DLQReplayConsumer
+# Import the actual DLQ topic from the application's config
+from portfolio_common.config import KAFKA_PERSISTENCE_DLQ_TOPIC
 
 pytestmark = pytest.mark.asyncio
 
@@ -36,7 +38,8 @@ async def test_dlq_replayer_consumes_and_republishes(docker_services, mock_kafka
     correlation_id = f"corr-{uuid.uuid4()}"
 
     # 2. Define the DLQ message structure that wraps the original message
-    dlq_topic = "test_persistence.dlq"
+    # FIX: Use the real DLQ topic configured for the application
+    dlq_topic = KAFKA_PERSISTENCE_DLQ_TOPIC
     dlq_payload = {
         "original_topic": original_topic,
         "original_key": original_key,
