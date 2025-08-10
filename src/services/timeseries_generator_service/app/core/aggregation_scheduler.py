@@ -61,8 +61,12 @@ class AggregationScheduler:
                         repo = TimeseriesRepository(db)
                         claimed_jobs = await repo.find_and_claim_eligible_jobs(self._batch_size)
                 
+                # Add diagnostic logging
                 if claimed_jobs:
+                    logger.info(f"Scheduler claimed {len(claimed_jobs)} jobs for processing.")
                     await self._dispatch_jobs(claimed_jobs)
+                else:
+                    logger.info("Scheduler poll found no eligible jobs.")
 
             except Exception as e:
                 logger.error("Error in scheduler polling loop.", exc_info=True)

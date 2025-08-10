@@ -1,7 +1,7 @@
 # src/services/persistence_service/app/consumers/portfolio_consumer.py
 import logging
 import json
-import asyncio
+import sys # Import sys
 from pydantic import ValidationError
 from confluent_kafka import Message
 from sqlalchemy.exc import DBAPIError, IntegrityError, OperationalError
@@ -28,6 +28,13 @@ class PortfolioConsumer(BaseConsumer):
         """
         try:
             await self._process_message_with_retry(msg)
+        except (OperationalError, DBAPIError):
+            logger.critical(
+                "Unrecoverable database error after all retries. Shutting down service.",
+                extra={"key": msg.key().decode('utf-8') if msg.key() else "NoKey"},
+                exc_info=True
+            )
+            sys.exit(1)
         except Exception as e:
             logger.error(f"Fatal error processing portfolio message after retries. Sending to DLQ. Key={msg.key()}", exc_info=True)
             await self._send_to_dlq_async(msg, e)
