@@ -16,26 +16,20 @@ class PositionTimeseriesLogic:
     ) -> PositionTimeseries:
         """
         Calculates a single, complete position time series record for a given day.
-
         Args:
             current_snapshot: The DailyPositionSnapshot record for the date being calculated.
             previous_timeseries: The PositionTimeseries record for the previous day.
             bod_cashflow: The sum of all beginning-of-day cashflows for the position.
             eod_cashflow: The sum of all end-of-day cashflows for the position.
-
         Returns:
             A populated PositionTimeseries database model instance.
         """
-        # The BOD Market Value for today is the EOD Market Value from yesterday.
-        # If there's no previous day, it's the first day, so BOD value is 0.
         bod_market_value = previous_timeseries.eod_market_value if previous_timeseries else Decimal(0)
 
-        # EOD values are taken directly from the current day's valued position snapshot.
-        eod_market_value = current_snapshot.market_value or Decimal(0)
+        eod_market_value = current_snapshot.market_value_local or Decimal(0)
         eod_quantity = current_snapshot.quantity
         eod_cost_basis = current_snapshot.cost_basis
 
-        # Note: 'cost' in the time series represents the average cost at that point in time.
         eod_avg_cost = (eod_cost_basis / eod_quantity) if eod_quantity else Decimal(0)
 
         return PositionTimeseries(
@@ -46,7 +40,7 @@ class PositionTimeseriesLogic:
             bod_cashflow=bod_cashflow,
             eod_cashflow=eod_cashflow,
             eod_market_value=eod_market_value,
-            fees=Decimal(0),  # Fees are always 0 at the position level
+            fees=Decimal(0),
             quantity=eod_quantity,
-            cost=eod_avg_cost # Storing average cost per share
+            cost=eod_avg_cost
         )
