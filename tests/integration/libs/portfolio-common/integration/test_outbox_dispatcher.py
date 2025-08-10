@@ -7,6 +7,8 @@ from unittest.mock import MagicMock
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 
+# Import async session tools
+from portfolio_common.db import AsyncSessionLocal
 from portfolio_common.database_models import OutboxEvent
 from portfolio_common.kafka_utils import KafkaProducer
 from portfolio_common.outbox_dispatcher import OutboxDispatcher
@@ -22,20 +24,18 @@ def mock_kafka_producer() -> MagicMock:
     mock.flush = MagicMock()
     return mock
 
-# This test is synchronous, but runs correctly within an async-marked file.
-def test_create_outbox_event_fails_with_missing_aggregate_id(db_engine, clean_db):
+async def test_create_outbox_event_fails_with_missing_aggregate_id(db_engine, clean_db):
     """
     GIVEN an attempt to create an outbox event with a missing or empty aggregate_id
     WHEN create_outbox_event is called
     THEN it should raise a ValueError.
     """
-    with Session(db_engine) as session:
-        repo = OutboxRepository()
+    async with AsyncSessionLocal() as session:
+        repo = OutboxRepository(session)
         
         # Test with a None value
-        with pytest.raises(ValueError, match="aggregate_id is required for outbox events to ensure proper Kafka keying."):
-            repo.create_outbox_event(
-                db_session=session,
+        with pytest.raises(ValueError, match="aggregate_id is required for outbox events"):
+            await repo.create_outbox_event(
                 aggregate_type="Test",
                 aggregate_id=None,
                 event_type="TestEvent",
@@ -44,9 +44,8 @@ def test_create_outbox_event_fails_with_missing_aggregate_id(db_engine, clean_db
             )
 
         # Test with an empty string
-        with pytest.raises(ValueError, match="aggregate_id is required for outbox events to ensure proper Kafka keying."):
-            repo.create_outbox_event(
-                db_session=session,
+        with pytest.raises(ValueError, match="aggregate_id is required for outbox events"):
+            await repo.create_outbox_event(
                 aggregate_type="Test",
                 aggregate_id="",
                 event_type="TestEvent",
