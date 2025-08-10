@@ -64,9 +64,9 @@ class PositionHistoryConsumer(BaseConsumer):
                     
                     if not position:
                         raise PositionHistoryNotFoundError(f"PositionHistory record with id {position_event.id} not found, likely due to replication lag. Retrying...")
-                    
-                    if not position.cost_basis_local:
-                        logger.warning(f"PositionHistory id {position_event.id} is missing local cost basis. Skipping.")
+
+                    if position.cost_basis is None or position.cost_basis_local is None:
+                        logger.warning(f"PositionHistory id {position_event.id} is missing cost basis. Skipping.")
                         await idempotency_repo.mark_event_processed(event_id, position_event.portfolio_id, SERVICE_NAME, correlation_id)
                         return
 
@@ -123,7 +123,6 @@ class PositionHistoryConsumer(BaseConsumer):
                     
                     await outbox_repo.create_outbox_event(
                         aggregate_type='DailyPositionSnapshot',
-                        # Key by portfolio_id for partition affinity
                         aggregate_id=persisted_snapshot.portfolio_id,
                         event_type='DailyPositionSnapshotPersisted',
                         topic=KAFKA_DAILY_POSITION_SNAPSHOT_PERSISTED_TOPIC,
