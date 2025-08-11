@@ -4,9 +4,8 @@ from unittest.mock import MagicMock, patch, AsyncMock
 from datetime import date
 from decimal import Decimal
 
-from portfolio_common.logging_utils import correlation_id_var
 from portfolio_common.events import MarketPriceEvent
-from portfolio_common.config import KAFKA_MARKET_PRICE_PERSISTED_TOPIC
+from portfolio_common.logging_utils import correlation_id_var
 from src.services.persistence_service.app.consumers.market_price_consumer import MarketPriceConsumer
 
 # Mark all tests in this file as asyncio
@@ -56,14 +55,14 @@ async def test_process_message_success(
     """
     GIVEN a valid market price message
     WHEN the process_message method is called
-    THEN it should call the repository to save the price
-    AND publish a market_price_persisted event.
+    THEN it should save the price, find affected portfolios, and create valuation jobs.
     """
     # Arrange
     mock_repo = AsyncMock()
+    mock_repo.find_portfolios_holding_security_on_date.return_value = ["PORT_A", "PORT_B"]
     mock_idempotency_repo = AsyncMock()
     mock_idempotency_repo.is_event_processed.return_value = False
-    mock_outbox_repo = AsyncMock() # <-- FIX: Use AsyncMock
+    mock_valuation_job_repo = AsyncMock()
 
     mock_db_session = AsyncMock()
     mock_db_session.begin.return_value = AsyncMock().__aenter__()
@@ -77,12 +76,39 @@ async def test_process_message_success(
     ), patch(
         "src.services.persistence_service.app.consumers.market_price_consumer.IdempotencyRepository", return_value=mock_idempotency_repo
     ), patch(
-        "src.services.persistence_service.app.consumers.market_price_consumer.OutboxRepository", return_value=mock_outbox_repo
+        "src.services.persistence_service.app.consumers.market_price_consumer.ValuationJobRepository", return_value=mock_valuation_job_repo
     ):
-        # Act
-        await market_price_consumer._process_message_with_retry(mock_kafka_message)
+        # --- THIS IS THE FIX ---
+        # Manually set the context variable to simulate the BaseConsumer's run loop
+        token = correlation_id_var.set('test-corr-id')
+        try:
+            # Act
+            await market_price_consumer._process_message_with_retry(mock_kafka_message)
+        finally:
+            # Clean up the context variable
+            correlation_id_var.reset(token)
+        # --- END FIX ---
 
         # Assert
         mock_repo.create_market_price.assert_called_once()
-        mock_outbox_repo.create_outbox_event.assert_called_once()
+        mock_repo.find_portfolios_holding_security_on_date.assert_called_once_with(
+            security_id=valid_market_price_event.security_id,
+            price_date=valid_market_price_event.price_date
+        )
+        
+        # Check that a job was created for each affected portfolio
+        assert mock_valuation_job_repo.upsert_job.call_count == 2
+        mock_valuation_job_repo.upsert_job.assert_any_call(
+            portfolio_id="PORT_A",
+            security_id=valid_market_price_event.security_id,
+            valuation_date=valid_market_price_event.price_date,
+            correlation_id='test-corr-id'
+        )
+        mock_valuation_job_repo.upsert_job.assert_any_call(
+            portfolio_id="PORT_B",
+            security_id=valid_market_price_event.security_id,
+            valuation_date=valid_market_price_event.price_date,
+            correlation_id='test-corr-id'
+        )
+
         market_price_consumer._send_to_dlq_async.assert_not_called()
