@@ -92,7 +92,7 @@ services:
     container_name: migration-runner
     environment:
       PYTHONPATH: "/app:/app/src/libs/portfolio-common"
-      DATABASE_URL: postgresql://user:password@postgres:5432/portfolio_db
+      DATABASE_URL: ${DATABASE_URL}
     depends_on:
       postgres:
         condition: service_healthy
@@ -132,7 +132,7 @@ services:
       - "8001:8001"
     environment:
       PYTHONPATH: "/app:/app/src/libs/portfolio-common"
-      DATABASE_URL: postgresql://user:password@postgres:5432/portfolio_db
+      DATABASE_URL: ${DATABASE_URL}
     depends_on:
       migration-runner:
         condition: service_completed_successfully
@@ -160,7 +160,7 @@ services:
     environment:
       PYTHONPATH: "/app:/app/src/libs/portfolio-common"
       KAFKA_BOOTSTRAP_SERVERS: kafka:9093
-      DATABASE_URL: postgresql://user:password@postgres:5432/portfolio_db
+      DATABASE_URL: ${DATABASE_URL}
     depends_on:
       kafka-topic-creator:
         condition: service_completed_successfully
@@ -190,7 +190,7 @@ services:
     environment:
       PYTHONPATH: "/app:/app/src/libs/portfolio-common:/app/src/libs/financial-calculator-engine/src"
       KAFKA_BOOTSTRAP_SERVERS: kafka:9093
-      DATABASE_URL: postgresql://user:password@postgres:5432/portfolio_db # Added for health check
+      DATABASE_URL: ${DATABASE_URL}
     depends_on:
       kafka-topic-creator:
         condition: service_completed_successfully
@@ -221,7 +221,7 @@ services:
     environment:
       PYTHONPATH: "/app:/app/src/libs/portfolio-common"
       KAFKA_BOOTSTRAP_SERVERS: kafka:9093
-      DATABASE_URL: postgresql://user:password@postgres:5432/portfolio_db
+      DATABASE_URL: ${DATABASE_URL}
     depends_on:
       kafka-topic-creator:
         condition: service_completed_successfully
@@ -251,7 +251,7 @@ services:
     environment:
       PYTHONPATH: "/app:/app/src/libs/portfolio-common"
       KAFKA_BOOTSTRAP_SERVERS: kafka:9093
-      DATABASE_URL: postgresql://user:password@postgres:5432/portfolio_db
+      DATABASE_URL: ${DATABASE_URL}
     depends_on:
       kafka-topic-creator:
         condition: service_completed_successfully
@@ -281,7 +281,7 @@ services:
     environment:
       PYTHONPATH: "/app:/app/src/libs/portfolio-common"
       KAFKA_BOOTSTRAP_SERVERS: kafka:9093
-      DATABASE_URL: postgresql://user:password@postgres:5432/portfolio_db
+      DATABASE_URL: ${DATABASE_URL}
     depends_on:
       kafka-topic-creator:
         condition: service_completed_successfully
@@ -311,7 +311,7 @@ services:
     environment:
       PYTHONPATH: "/app:/app/src/libs/portfolio-common"
       KAFKA_BOOTSTRAP_SERVERS: kafka:9093
-      DATABASE_URL: postgresql://user:password@postgres:5432/portfolio_db
+      DATABASE_URL: ${DATABASE_URL}
     depends_on:
       kafka-topic-creator:
         condition: service_completed_successfully
