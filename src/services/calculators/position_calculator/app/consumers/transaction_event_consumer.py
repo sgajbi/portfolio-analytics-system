@@ -8,11 +8,10 @@ from tenacity import retry, stop_after_attempt, wait_fixed, before_log, retry_if
 
 from portfolio_common.kafka_consumer import BaseConsumer
 from portfolio_common.logging_utils import correlation_id_var
-from portfolio_common.events import TransactionEvent, PositionHistoryPersistedEvent
+from portfolio_common.events import TransactionEvent
 from portfolio_common.db import get_async_db_session
 from portfolio_common.idempotency_repository import IdempotencyRepository
-from portfolio_common.outbox_repository import OutboxRepository
-from portfolio_common.config import KAFKA_POSITION_HISTORY_PERSISTED_TOPIC
+from portfolio_common.valuation_job_repository import ValuationJobRepository
 
 from ..repositories.position_repository import PositionRepository
 from ..core.position_logic import PositionCalculator
@@ -23,8 +22,8 @@ SERVICE_NAME = "position-calculator"
 
 class TransactionEventConsumer(BaseConsumer):
     """
-    Consumes processed transaction completion events (payload is a TransactionEvent),
-    recalculates positions using PositionCalculator, persists, and emits completion.
+    Consumes processed transaction events, recalculates positions, persists them,
+    and creates valuation jobs for the affected dates.
     """
 
     @retry(
@@ -54,23 +53,17 @@ class TransactionEventConsumer(BaseConsumer):
                         return
 
                     repo = PositionRepository(db)
+                    valuation_job_repo = ValuationJobRepository(db)
+                    
                     # Recalculate & stage all affected position history rows
                     new_positions = await PositionCalculator.calculate(event, db, repo=repo)
 
-                    # CORRECTED: Instantiate OutboxRepository with the db session
-                    outbox_repo = OutboxRepository(db)
-                    
-                    # Emit an event for each position record persisted
+                    # Create a valuation job for each new or updated position record
                     for record in new_positions:
-                        completion_event = PositionHistoryPersistedEvent.model_validate(record)
-
-                        # CORRECTED: Call the method on the instantiated object
-                        await outbox_repo.create_outbox_event(
-                            aggregate_type='PositionHistory',
-                            aggregate_id=completion_event.portfolio_id,
-                            event_type='PositionHistoryPersisted',
-                            topic=KAFKA_POSITION_HISTORY_PERSISTED_TOPIC,
-                            payload=completion_event.model_dump(mode="json"),
+                        await valuation_job_repo.upsert_job(
+                            portfolio_id=record.portfolio_id,
+                            security_id=record.security_id,
+                            valuation_date=record.position_date,
                             correlation_id=correlation_id
                         )
 

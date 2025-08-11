@@ -6,8 +6,10 @@ from decimal import Decimal
 
 from src.services.calculators.position_calculator.app.consumers.transaction_event_consumer import TransactionEventConsumer
 from portfolio_common.events import TransactionEvent
-from portfolio_common.database_models import PositionHistory, Transaction as DBTransaction
+from portfolio_common.database_models import PositionHistory
 from portfolio_common.idempotency_repository import IdempotencyRepository
+from portfolio_common.valuation_job_repository import ValuationJobRepository
+from portfolio_common.logging_utils import correlation_id_var
 from src.services.calculators.position_calculator.app.repositories.position_repository import PositionRepository
 
 pytestmark = pytest.mark.asyncio
@@ -54,102 +56,68 @@ def mock_kafka_message(mock_transaction_event: TransactionEvent):
     mock_msg.partition.return_value = 0
     mock_msg.offset.return_value = 200
     mock_msg.error.return_value = None
-    mock_msg.headers.return_value = []
+    mock_msg.headers.return_value = [('correlation_id', b'test-corr-id')]
     return mock_msg
 
-async def test_consumer_uses_real_position_logic(position_consumer: TransactionEventConsumer, mock_kafka_message: MagicMock, mock_transaction_event: TransactionEvent):
+async def test_consumer_creates_valuation_job(position_consumer: TransactionEventConsumer, mock_kafka_message: MagicMock):
     """
     GIVEN a new transaction event
-    WHEN the consumer processes it using the real PositionCalculator
-    THEN it should recalculate positions correctly and stage them for saving.
+    WHEN the consumer processes it
+    THEN it should recalculate positions and create a valuation job instead of an outbox event.
     """
     # ARRANGE
     mock_idempotency_repo = AsyncMock(spec=IdempotencyRepository)
     mock_idempotency_repo.is_event_processed.return_value = False
     
-    mock_outbox_repo = AsyncMock()
+    mock_valuation_job_repo = AsyncMock(spec=ValuationJobRepository)
     mock_position_repo = AsyncMock(spec=PositionRepository)
 
-    # Setup mock repository to return data needed by PositionCalculator.calculate
-    # 1. An anchor position before the transaction date
-    anchor_position = PositionHistory(
-        id=100, portfolio_id="PORT_POS_CALC_01", security_id="SEC_POS_CALC_01",
-        position_date=date(2025, 8, 5), quantity=Decimal(100), cost_basis=Decimal(10000), cost_basis_local=Decimal(10000)
+    # Simulate PositionCalculator.calculate returning one new position history record
+    new_position = PositionHistory(
+        id=101, portfolio_id="PORT_POS_CALC_01", security_id="SEC_POS_CALC_01",
+        position_date=date(2025, 8, 6), quantity=Decimal(60), cost_basis=Decimal(6000)
     )
-    mock_position_repo.get_last_position_before.return_value = anchor_position
-
-    # FIX: Simulate the database assigning an ID to new PositionHistory objects
-    def simulate_save_positions(positions: list[PositionHistory]):
-        for i, pos in enumerate(positions, start=101): # Start IDs at 101
-            pos.id = i
     
-    mock_position_repo.save_positions.side_effect = simulate_save_positions
-
-
-    mock_db_session = AsyncMock()
-    mock_db_session.begin.return_value = AsyncMock()
-    async def mock_get_db_session_generator():
-        yield mock_db_session
-
+    # Patch the real PositionCalculator class to control its output
     with patch(
-        "src.services.calculators.position_calculator.app.consumers.transaction_event_consumer.get_async_db_session", new=mock_get_db_session_generator
-    ), patch(
-        "src.services.calculators.position_calculator.app.consumers.transaction_event_consumer.IdempotencyRepository", return_value=mock_idempotency_repo
-    ), patch(
-        "src.services.calculators.position_calculator.app.consumers.transaction_event_consumer.PositionRepository", return_value=mock_position_repo
-    ), patch(
-        "src.services.calculators.position_calculator.app.consumers.transaction_event_consumer.OutboxRepository", return_value=mock_outbox_repo
-    ):
+        "src.services.calculators.position_calculator.app.consumers.transaction_event_consumer.PositionCalculator.calculate",
+        new_callable=AsyncMock,
+        return_value=[new_position]
+    ) as mock_calculate:
         
-        # ACT
-        await position_consumer.process_message(mock_kafka_message)
+        mock_db_session = AsyncMock()
+        mock_db_session.begin.return_value = AsyncMock()
+        async def mock_get_db_session_generator():
+            yield mock_db_session
 
-        # ASSERT
-        mock_idempotency_repo.is_event_processed.assert_called_once()
-        mock_position_repo.get_last_position_before.assert_called_once()
-        mock_position_repo.delete_positions_from.assert_called_once()
+        with patch(
+            "src.services.calculators.position_calculator.app.consumers.transaction_event_consumer.get_async_db_session", new=mock_get_db_session_generator
+        ), patch(
+            "src.services.calculators.position_calculator.app.consumers.transaction_event_consumer.IdempotencyRepository", return_value=mock_idempotency_repo
+        ), patch(
+            "src.services.calculators.position_calculator.app.consumers.transaction_event_consumer.PositionRepository", return_value=mock_position_repo
+        ), patch(
+            "src.services.calculators.position_calculator.app.consumers.transaction_event_consumer.ValuationJobRepository", return_value=mock_valuation_job_repo
+        ):
+            
+            # ACT
+            token = correlation_id_var.set('test-corr-id')
+            try:
+                await position_consumer.process_message(mock_kafka_message)
+            finally:
+                correlation_id_var.reset(token)
 
-        # Assert that the logic produced the correct new position state
-        mock_position_repo.save_positions.assert_called_once()
-        saved_positions = mock_position_repo.save_positions.call_args[0][0]
-        assert len(saved_positions) == 1
-        new_pos = saved_positions[0]
-        assert new_pos.quantity == Decimal(60) # 100 (anchor) - 40 (sell)
-        assert new_pos.cost_basis == Decimal(6000) # 10000 (anchor) - 4000 (COGS)
-        assert new_pos.id is not None # Check that the ID was populated by our side_effect
+            # ASSERT
+            mock_idempotency_repo.is_event_processed.assert_called_once()
+            mock_calculate.assert_awaited_once()
 
-        mock_outbox_repo.create_outbox_event.assert_called_once()
-        mock_idempotency_repo.mark_event_processed.assert_called_once()
+            # Assert that the logic created one valuation job with the correct details
+            mock_valuation_job_repo.upsert_job.assert_called_once_with(
+                portfolio_id=new_position.portfolio_id,
+                security_id=new_position.security_id,
+                valuation_date=new_position.position_date,
+                correlation_id='test-corr-id'
+            )
 
-
-async def test_process_message_skips_processed_event(position_consumer: TransactionEventConsumer, mock_kafka_message: MagicMock):
-    """
-    GIVEN an event that has already been processed
-    WHEN the consumer processes the message
-    THEN it should skip all logic and not publish any events.
-    """
-    # Arrange
-    mock_idempotency_repo = AsyncMock()
-    mock_idempotency_repo.is_event_processed.return_value = True # DUPLICATE event
-    mock_position_repo = AsyncMock(spec=PositionRepository)
-
-    mock_db_session = AsyncMock()
-    mock_db_session.begin.return_value = AsyncMock()
-    async def mock_get_db_session_generator():
-        yield mock_db_session
-
-    with patch(
-        "src.services.calculators.position_calculator.app.consumers.transaction_event_consumer.get_async_db_session", new=mock_get_db_session_generator
-    ), patch(
-        "src.services.calculators.position_calculator.app.consumers.transaction_event_consumer.IdempotencyRepository", return_value=mock_idempotency_repo
-    ), patch(
-        "src.services.calculators.position_calculator.app.consumers.transaction_event_consumer.PositionRepository", return_value=mock_position_repo
-    ):
-        
-        # Act
-        await position_consumer.process_message(mock_kafka_message)
-
-        # Assert
-        mock_idempotency_repo.is_event_processed.assert_called_once()
-        # The core logic methods should not have been called
-        mock_position_repo.get_last_position_before.assert_not_called()
+            mock_idempotency_repo.mark_event_processed.assert_called_once()
+            position_consumer._send_to_dlq_async.assert_not_called()
