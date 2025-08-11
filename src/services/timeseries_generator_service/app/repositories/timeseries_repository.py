@@ -1,6 +1,6 @@
 # services/timeseries-generator-service/app/repositories/timeseries_repository.py
 import logging
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from typing import Optional, List
 from sqlalchemy import select, text, update, exists, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -232,3 +232,27 @@ class TimeseriesRepository:
         """)
         result = await self.db.execute(stmt, {"portfolio_id": portfolio_id, "a_date": a_date})
         return [row.security_id for row in result.fetchall()]
+
+    @async_timed(repository="TimeseriesRepository", method="find_and_reset_stale_jobs")
+    async def find_and_reset_stale_jobs(self, timeout_minutes: int = 15) -> int:
+        """
+        Finds aggregation jobs stuck in 'PROCESSING' and resets them to 'PENDING'.
+        """
+        stale_threshold = datetime.now(timezone.utc) - timedelta(minutes=timeout_minutes)
+        
+        stmt = (
+            update(PortfolioAggregationJob)
+            .where(
+                PortfolioAggregationJob.status == 'PROCESSING',
+                PortfolioAggregationJob.updated_at < stale_threshold
+            )
+            .values(status='PENDING')
+        )
+        
+        result = await self.db.execute(stmt)
+        reset_count = result.rowcount
+        
+        if reset_count > 0:
+            logger.warning(f"Reset {reset_count} stale aggregation jobs from 'PROCESSING' to 'PENDING'.")
+            
+        return reset_count
