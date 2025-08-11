@@ -17,6 +17,7 @@ from portfolio_common.database_models import (
     MarketPrice,
     Transaction
 )
+from portfolio_common.utils import async_timed
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +28,7 @@ class TimeseriesRepository:
     def __init__(self, db: AsyncSession):
         self.db = db
 
+    @async_timed(repository="TimeseriesRepository", method="find_and_claim_eligible_jobs")
     async def find_and_claim_eligible_jobs(self, batch_size: int) -> List[PortfolioAggregationJob]:
         """
         Finds PENDING aggregation jobs where the previous day's job is COMPLETE (or doesn't exist)
@@ -58,16 +60,19 @@ class TimeseriesRepository:
             logger.info(f"Found and claimed {len(claimed_jobs)} eligible aggregation jobs.")
         return [PortfolioAggregationJob(**job) for job in claimed_jobs]
 
+    @async_timed(repository="TimeseriesRepository", method="get_portfolio")
     async def get_portfolio(self, portfolio_id: str) -> Optional[Portfolio]:
         """Fetches portfolio details by its ID."""
         result = await self.db.execute(select(Portfolio).filter_by(portfolio_id=portfolio_id))
         return result.scalars().first()
 
+    @async_timed(repository="TimeseriesRepository", method="get_instrument")
     async def get_instrument(self, security_id: str) -> Optional[Instrument]:
         """Fetches an instrument by its security ID."""
         result = await self.db.execute(select(Instrument).filter_by(security_id=security_id))
         return result.scalars().first()
 
+    @async_timed(repository="TimeseriesRepository", method="get_instruments_by_ids")
     async def get_instruments_by_ids(self, security_ids: List[str]) -> List[Instrument]:
         """Fetches multiple instruments by their security IDs in a single query."""
         if not security_ids:
@@ -76,6 +81,7 @@ class TimeseriesRepository:
         result = await self.db.execute(stmt)
         return result.scalars().all()
 
+    @async_timed(repository="TimeseriesRepository", method="get_fx_rate")
     async def get_fx_rate(self, from_currency: str, to_currency: str, a_date: date) -> Optional[FxRate]:
         """Fetches the latest FX rate on or before a given date."""
         stmt = select(FxRate).filter(
@@ -86,6 +92,7 @@ class TimeseriesRepository:
         result = await self.db.execute(stmt)
         return result.scalars().first()
 
+    @async_timed(repository="TimeseriesRepository", method="get_latest_price_for_position")
     async def get_latest_price_for_position(self, security_id: str, position_date: date) -> Optional[MarketPrice]:
         """
         Finds the most recent market price for a given security on or before the position's date.
@@ -97,6 +104,7 @@ class TimeseriesRepository:
         result = await self.db.execute(stmt)
         return result.scalars().first()
 
+    @async_timed(repository="TimeseriesRepository", method="get_last_position_timeseries_before")
     async def get_last_position_timeseries_before(
         self,
         portfolio_id: str,
@@ -111,6 +119,7 @@ class TimeseriesRepository:
         result = await self.db.execute(stmt)
         return result.scalars().first()
 
+    @async_timed(repository="TimeseriesRepository", method="is_first_position")
     async def is_first_position(self, portfolio_id: str, security_id: str, position_date: date) -> bool:
         """
         Checks if there is any transactional history for this security prior to the given date.
@@ -127,6 +136,7 @@ class TimeseriesRepository:
         result = await self.db.execute(stmt)
         return not result.scalar()
 
+    @async_timed(repository="TimeseriesRepository", method="get_all_position_timeseries_for_date")
     async def get_all_position_timeseries_for_date(
         self, portfolio_id: str, a_date: date
     ) -> List[PositionTimeseries]:
@@ -137,6 +147,7 @@ class TimeseriesRepository:
         result = await self.db.execute(stmt)
         return result.scalars().all()
 
+    @async_timed(repository="TimeseriesRepository", method="get_all_cashflows_for_security_date")
     async def get_all_cashflows_for_security_date(
         self, portfolio_id: str, security_id: str, a_date: date
     ) -> List[Cashflow]:
@@ -148,6 +159,7 @@ class TimeseriesRepository:
         result = await self.db.execute(stmt)
         return result.scalars().all()
 
+    @async_timed(repository="TimeseriesRepository", method="get_portfolio_level_cashflows_for_date")
     async def get_portfolio_level_cashflows_for_date(self, portfolio_id: str, a_date: date) -> List[Cashflow]:
         stmt = select(Cashflow).filter_by(
             portfolio_id=portfolio_id,
@@ -157,6 +169,7 @@ class TimeseriesRepository:
         result = await self.db.execute(stmt)
         return result.scalars().all()
 
+    @async_timed(repository="TimeseriesRepository", method="upsert_position_timeseries")
     async def upsert_position_timeseries(self, timeseries_record: PositionTimeseries):
         """Idempotent insert/update for a position time series record."""
         try:
@@ -175,6 +188,7 @@ class TimeseriesRepository:
             logger.error(f"Failed to stage upsert for position time series: {e}", exc_info=True)
             raise
     
+    @async_timed(repository="TimeseriesRepository", method="upsert_portfolio_timeseries")
     async def upsert_portfolio_timeseries(self, timeseries_record: PortfolioTimeseries):
         """Idempotent insert/update for a portfolio time series record."""
         try:
@@ -193,6 +207,7 @@ class TimeseriesRepository:
             logger.error(f"Failed to stage upsert for portfolio time series: {e}", exc_info=True)
             raise
 
+    @async_timed(repository="TimeseriesRepository", method="get_last_portfolio_timeseries_before")
     async def get_last_portfolio_timeseries_before(self, portfolio_id: str, a_date: date) -> Optional[PortfolioTimeseries]:
         stmt = select(PortfolioTimeseries).filter(
             PortfolioTimeseries.portfolio_id == portfolio_id,
@@ -201,6 +216,7 @@ class TimeseriesRepository:
         result = await self.db.execute(stmt)
         return result.scalars().first()
 
+    @async_timed(repository="TimeseriesRepository", method="get_all_open_positions_as_of")
     async def get_all_open_positions_as_of(self, portfolio_id: str, a_date: date) -> List[str]:
         """
         Returns the security_ids of all positions with a nonzero quantity as of a given date.
