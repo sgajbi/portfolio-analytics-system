@@ -22,6 +22,7 @@ class ValuationRepository:
     def __init__(self, db: AsyncSession):
         self.db = db
 
+    @async_timed(repository="ValuationRepository", method="update_job_status")
     async def update_job_status(self, portfolio_id: str, security_id: str, valuation_date: date, status: str):
         """Updates the status of a specific valuation job."""
         stmt = (
@@ -61,6 +62,7 @@ class ValuationRepository:
             logger.info(f"Found and claimed {len(claimed_jobs)} eligible valuation jobs.")
         return [PortfolioValuationJob(**job) for job in claimed_jobs]
 
+    @async_timed(repository="ValuationRepository", method="get_daily_snapshot")
     async def get_daily_snapshot(self, portfolio_id: str, security_id: str, a_date: date) -> Optional[DailyPositionSnapshot]:
         """Fetches a single daily position snapshot for a specific key."""
         stmt = select(DailyPositionSnapshot).filter_by(
@@ -71,12 +73,14 @@ class ValuationRepository:
         result = await self.db.execute(stmt)
         return result.scalars().first()
 
+    @async_timed(repository="ValuationRepository", method="get_portfolio")
     async def get_portfolio(self, portfolio_id: str) -> Optional[Portfolio]:
         """Fetches a portfolio by its ID."""
         stmt = select(Portfolio).filter_by(portfolio_id=portfolio_id)
         result = await self.db.execute(stmt)
         return result.scalars().first()
 
+    @async_timed(repository="ValuationRepository", method="get_instrument")
     async def get_instrument(self, security_id: str) -> Optional[Instrument]:
         """Fetches an instrument by its security ID."""
         stmt = select(Instrument).filter_by(security_id=security_id)
