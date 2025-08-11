@@ -59,9 +59,13 @@ class AggregationScheduler:
                 async for db in get_async_db_session():
                     async with db.begin():
                         repo = TimeseriesRepository(db)
+                        
+                        # First, recover any jobs that may have been orphaned by a crashed worker.
+                        await repo.find_and_reset_stale_jobs()
+
+                        # Now, find and claim new eligible jobs for processing.
                         claimed_jobs = await repo.find_and_claim_eligible_jobs(self._batch_size)
                 
-                # Add diagnostic logging
                 if claimed_jobs:
                     logger.info(f"Scheduler claimed {len(claimed_jobs)} jobs for processing.")
                     await self._dispatch_jobs(claimed_jobs)
