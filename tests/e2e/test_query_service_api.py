@@ -18,7 +18,6 @@ def api_endpoints(docker_services):
     
     return {"ingestion": ingestion_url, "query": query_url}
 
-# FIX: Changed scope from "module" to "function" to match clean_db fixture
 @pytest.fixture(scope="function")
 def setup_e2e_data(api_endpoints, clean_db):
     """
@@ -116,3 +115,40 @@ def test_transaction_query_filter_and_sort(setup_e2e_data):
     # Expected order for S1 by quantity asc: T3 (2), T1 (10)
     assert data["transactions"][0]["transaction_id"] == f"{portfolio_id}_T3"
     assert data["transactions"][1]["transaction_id"] == f"{portfolio_id}_T1"
+
+def test_transaction_query_pagination(setup_e2e_data):
+    """
+    Tests using limit and skip for paginating transaction results.
+    """
+    portfolio_id = setup_e2e_data["portfolio_id"]
+    base_url = f'{setup_e2e_data["query_url"]}/portfolios/{portfolio_id}/transactions'
+
+    # ACT 1: Get the first page (limit=2, skip=0)
+    url_page1 = f"{base_url}?limit=2&skip=0"
+    response1 = requests.get(url_page1)
+    assert response1.status_code == 200
+    data1 = response1.json()
+
+    # ASSERT 1
+    assert data1["total"] == 4
+    assert data1["skip"] == 0
+    assert data1["limit"] == 2
+    assert len(data1["transactions"]) == 2
+    # Default sort is by date desc, so we expect the two latest transactions
+    assert data1["transactions"][0]["transaction_id"] == f"{portfolio_id}_T2"
+    assert data1["transactions"][1]["transaction_id"] == f"{portfolio_id}_T4"
+
+    # ACT 2: Get the second page (limit=2, skip=2)
+    url_page2 = f"{base_url}?limit=2&skip=2"
+    response2 = requests.get(url_page2)
+    assert response2.status_code == 200
+    data2 = response2.json()
+
+    # ASSERT 2
+    assert data2["total"] == 4
+    assert data2["skip"] == 2
+    assert data2["limit"] == 2
+    assert len(data2["transactions"]) == 2
+    # We expect the next two transactions in the default sort order
+    assert data2["transactions"][0]["transaction_id"] == f"{portfolio_id}_T3"
+    assert data2["transactions"][1]["transaction_id"] == f"{portfolio_id}_T1"
