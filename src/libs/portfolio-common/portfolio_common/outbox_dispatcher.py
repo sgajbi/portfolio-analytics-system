@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
 from sqlalchemy import update, func
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 
 from portfolio_common.kafka_utils import KafkaProducer
 from portfolio_common.database_models import OutboxEvent
@@ -33,12 +33,13 @@ class OutboxDispatcher:
     Emits Prometheus metrics for visibility.
     """
 
-    def __init__(self, kafka_producer: KafkaProducer, poll_interval: int = 5, batch_size: int = 50):
+    def __init__(self, kafka_producer: KafkaProducer, poll_interval: int = 5, batch_size: int = 50, db_session_factory: Optional[sessionmaker] = None):
         self._producer = kafka_producer
         self._poll_interval = poll_interval
         self._batch_size = batch_size
         self._running = True
-        self._session_factory = SessionLocal
+        # FIX: Allow injecting a session factory for testing, otherwise use the default
+        self._session_factory = db_session_factory or SessionLocal
 
     def stop(self):
         logger.info("Outbox dispatcher shutdown signal received.")

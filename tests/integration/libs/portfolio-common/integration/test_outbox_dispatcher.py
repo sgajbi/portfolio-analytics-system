@@ -4,7 +4,7 @@ import asyncio
 import json
 import uuid
 from unittest.mock import MagicMock
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy import text
 
 # Import async session tools
@@ -70,21 +70,27 @@ def test_dispatcher_processes_and_updates_pending_events(db_engine, clean_db, sm
     THEN it should publish the event and update its status to PROCESSED.
     """
     # ARRANGE
+    # FIX: Create a session factory bound to the test-specific engine
+    TestSessionFactory = sessionmaker(autocommit=False, autoflush=False, bind=db_engine)
+
     aggregate_id = f"agg-id-{uuid.uuid4()}"
-    with Session(db_engine) as session:
+    with TestSessionFactory() as session:
         with session.begin():
             session.add(OutboxEvent(
                 aggregate_type="TestAggregate", aggregate_id=aggregate_id, status="PENDING",
                 event_type="TestEvent", payload=json.dumps({"msg": "hi"}), topic="test.topic"
             ))
 
-    # ACT: Run one synchronous, deterministic cycle
-    dispatcher = OutboxDispatcher(kafka_producer=smart_mock_kafka_producer)
+    # ACT: Run one synchronous, deterministic cycle, injecting the test session factory
+    dispatcher = OutboxDispatcher(
+        kafka_producer=smart_mock_kafka_producer,
+        db_session_factory=TestSessionFactory
+    )
     dispatcher._process_batch_sync()
 
     # ASSERT
     smart_mock_kafka_producer.publish_message.assert_called_once()
-    with Session(db_engine) as session:
+    with TestSessionFactory() as session:
         result = session.execute(text("SELECT status FROM outbox_events WHERE aggregate_id = :id"), {"id": aggregate_id}).scalar_one()
         assert result == "PROCESSED"
 
@@ -95,11 +101,12 @@ def test_dispatcher_propagates_correlation_id(db_engine, clean_db, smart_mock_ka
     THEN it should publish both with the correct correlation_id in the Kafka headers.
     """
     # ARRANGE
+    TestSessionFactory = sessionmaker(autocommit=False, autoflush=False, bind=db_engine)
     agg_id_1 = f"agg-id-{uuid.uuid4()}"
     agg_id_2 = f"agg-id-{uuid.uuid4()}"
     existing_corr_id = f"corr-id-{uuid.uuid4()}"
 
-    with Session(db_engine) as session:
+    with TestSessionFactory() as session:
         with session.begin():
             # Event with an existing correlation ID
             session.add(OutboxEvent(
@@ -115,7 +122,10 @@ def test_dispatcher_propagates_correlation_id(db_engine, clean_db, smart_mock_ka
             ))
 
     # ACT
-    dispatcher = OutboxDispatcher(kafka_producer=smart_mock_kafka_producer)
+    dispatcher = OutboxDispatcher(
+        kafka_producer=smart_mock_kafka_producer,
+        db_session_factory=TestSessionFactory
+    )
     dispatcher._process_batch_sync()
 
     # ASSERT
@@ -139,15 +149,15 @@ def test_dispatcher_recovers_after_failure(db_engine, clean_db, smart_mock_kafka
     THEN the event should be processed on the subsequent poll.
     """
     # ARRANGE
+    TestSessionFactory = sessionmaker(autocommit=False, autoflush=False, bind=db_engine)
     aggregate_id = f"agg-id-{uuid.uuid4()}"
-    with Session(db_engine) as session:
+    with TestSessionFactory() as session:
         with session.begin():
             session.add(OutboxEvent(
                 aggregate_type="TestResilience", aggregate_id=aggregate_id, status="PENDING",
                 event_type="TestEvent", payload='{}', topic="resilience.topic"
             ))
 
-    # FIX: Create a stateful side effect function for the mock
     original_flush_implementation = smart_mock_kafka_producer.flush.side_effect
     call_count = 0
     def stateful_flush_side_effect(*args, **kwargs):
@@ -161,12 +171,15 @@ def test_dispatcher_recovers_after_failure(db_engine, clean_db, smart_mock_kafka
     smart_mock_kafka_producer.flush.side_effect = stateful_flush_side_effect
     
     # ACT
-    dispatcher = OutboxDispatcher(kafka_producer=smart_mock_kafka_producer)
+    dispatcher = OutboxDispatcher(
+        kafka_producer=smart_mock_kafka_producer,
+        db_session_factory=TestSessionFactory
+    )
     
     # 1. First poll cycle fails internally, but dispatcher should handle it
     dispatcher._process_batch_sync()
 
-    with Session(db_engine) as session:
+    with TestSessionFactory() as session:
         status, retry_count = session.execute(text("SELECT status, retry_count FROM outbox_events WHERE aggregate_id = :id"), {"id": aggregate_id}).one()
         assert status == "PENDING"
         assert retry_count == 1
@@ -176,15 +189,16 @@ def test_dispatcher_recovers_after_failure(db_engine, clean_db, smart_mock_kafka
 
     # ASSERT
     assert smart_mock_kafka_producer.flush.call_count == 2
-    with Session(db_engine) as session:
+    with TestSessionFactory() as session:
         status = session.execute(text("SELECT status FROM outbox_events WHERE aggregate_id = :id"), {"id": aggregate_id}).scalar_one()
         assert status == "PROCESSED"
 
 @pytest.mark.asyncio
 async def test_dispatcher_is_concurrent_safe(db_engine, clean_db, smart_mock_kafka_producer):
     # ARRANGE
+    TestSessionFactory = sessionmaker(autocommit=False, autoflush=False, bind=db_engine)
     num_events = 10
-    with Session(db_engine) as session:
+    with TestSessionFactory() as session:
         with session.begin():
             for i in range(num_events):
                 session.add(OutboxEvent(
@@ -193,8 +207,8 @@ async def test_dispatcher_is_concurrent_safe(db_engine, clean_db, smart_mock_kaf
                 ))
 
     # ACT
-    dispatcher1 = OutboxDispatcher(kafka_producer=smart_mock_kafka_producer, poll_interval=0.1, batch_size=5)
-    dispatcher2 = OutboxDispatcher(kafka_producer=smart_mock_kafka_producer, poll_interval=0.1, batch_size=5)
+    dispatcher1 = OutboxDispatcher(kafka_producer=smart_mock_kafka_producer, poll_interval=0.1, batch_size=5, db_session_factory=TestSessionFactory)
+    dispatcher2 = OutboxDispatcher(kafka_producer=smart_mock_kafka_producer, poll_interval=0.1, batch_size=5, db_session_factory=TestSessionFactory)
     task1 = asyncio.create_task(dispatcher1.run())
     task2 = asyncio.create_task(dispatcher2.run())
     await asyncio.sleep(1) 
@@ -203,14 +217,15 @@ async def test_dispatcher_is_concurrent_safe(db_engine, clean_db, smart_mock_kaf
     await asyncio.gather(task1, task2)
 
     # ASSERT: The most important check is that all events were processed exactly once.
-    with Session(db_engine) as session:
+    with TestSessionFactory() as session:
         count = session.execute(text("SELECT count(*) FROM outbox_events WHERE status = 'PROCESSED'")).scalar_one()
         assert count == num_events
 
 def test_dispatcher_respects_batch_size(db_engine, clean_db, smart_mock_kafka_producer):
     # ARRANGE
+    TestSessionFactory = sessionmaker(autocommit=False, autoflush=False, bind=db_engine)
     num_events, batch_size = 15, 10
-    with Session(db_engine) as session:
+    with TestSessionFactory() as session:
         with session.begin():
             for i in range(num_events):
                 session.add(OutboxEvent(
@@ -219,12 +234,16 @@ def test_dispatcher_respects_batch_size(db_engine, clean_db, smart_mock_kafka_pr
                 ))
 
     # ACT
-    dispatcher = OutboxDispatcher(kafka_producer=smart_mock_kafka_producer, batch_size=batch_size)
+    dispatcher = OutboxDispatcher(
+        kafka_producer=smart_mock_kafka_producer,
+        batch_size=batch_size,
+        db_session_factory=TestSessionFactory
+    )
     dispatcher._process_batch_sync()
 
     # ASSERT
     assert smart_mock_kafka_producer.publish_message.call_count == batch_size
-    with Session(db_engine) as session:
+    with TestSessionFactory() as session:
         processed_count = session.execute(text("SELECT count(*) FROM outbox_events WHERE status = 'PROCESSED'")).scalar_one()
         pending_count = session.execute(text("SELECT count(*) FROM outbox_events WHERE status = 'PENDING'")).scalar_one()
         assert processed_count == batch_size
