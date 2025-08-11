@@ -5,7 +5,7 @@ from datetime import date
 from decimal import Decimal
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from portfolio_common.events import PortfolioAggregationRequiredEvent
+from portfolio_common.events import PortfolioAggregationRequiredEvent, PortfolioTimeseriesGeneratedEvent
 from portfolio_common.database_models import (
     Portfolio, PositionTimeseries, Cashflow, Instrument, FxRate, PortfolioTimeseries
 )
@@ -52,8 +52,12 @@ async def test_process_message_success(consumer: PortfolioTimeseriesConsumer, mo
     """
     # ARRANGE
     mock_db_session = AsyncMock(spec=AsyncSession)
-    mock_db_session.begin.return_value = AsyncMock()
-    
+    mock_db_session.begin = MagicMock()
+    mock_transaction_context = AsyncMock()
+    mock_db_session.begin.return_value = mock_transaction_context
+    mock_transaction_context.__aenter__.return_value = None
+    mock_transaction_context.__aexit__.return_value = None
+
     async def get_db_session_gen():
         yield mock_db_session
 
@@ -62,7 +66,6 @@ async def test_process_message_success(consumer: PortfolioTimeseriesConsumer, mo
 
     # Mock the data fetched by the logic and consumer
     mock_repo.get_portfolio.return_value = Portfolio(portfolio_id=mock_event.portfolio_id, base_currency="USD")
-    # FIX: Provide a complete, non-null PositionTimeseries object
     mock_repo.get_all_position_timeseries_for_date.return_value = [
         PositionTimeseries(
             security_id="SEC_USD",

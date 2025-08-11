@@ -85,6 +85,45 @@ def test_sell_strategy_gain(cost_calculator, mock_disposition_engine, sell_trans
     assert sell_transaction.realized_gain_loss == Decimal("297.0") # 800 - 3.0 - 500
     mock_disposition_engine.consume_sell_quantity.assert_called_once_with(sell_transaction)
 
+def test_sell_strategy_dual_currency(cost_calculator, mock_disposition_engine):
+    """
+    Tests that a SELL transaction's P&L is correctly calculated in both local (trade)
+    and base (portfolio) currencies when they differ.
+    """
+    # Arrange: A USD portfolio selling a EUR-denominated asset
+    dual_currency_sell = Transaction(
+        transaction_id="DC_SELL_01", portfolio_id="P_USD", instrument_id="AIR.PA", security_id="S_AIR",
+        transaction_type=TransactionType.SELL, transaction_date=datetime(2023, 1, 10),
+        quantity=Decimal("50"), gross_transaction_amount=Decimal("8000"), trade_currency="EUR",
+        fees=Fees(brokerage=Decimal("8")),
+        portfolio_base_currency="USD",
+        transaction_fx_rate=Decimal("1.20")  # 1 EUR = 1.20 USD
+    )
+    # Mock the disposition engine returning the cost of goods sold in both currencies
+    # e.g., the 50 shares cost €7,500, which was $8,250 at the time of purchase
+    mock_disposition_engine.consume_sell_quantity.return_value = (
+        Decimal("8250"), # cogs_base (USD)
+        Decimal("7500"), # cogs_local (EUR)
+        Decimal("50"),   # consumed_quantity
+        None             # error_reason
+    )
+
+    # Act
+    cost_calculator.calculate_transaction_costs(dual_currency_sell)
+
+    # Assert
+    # Net Proceeds (Local) = 8000 EUR - 8 EUR fee = 7992 EUR
+    # Realized P&L (Local) = 7992 EUR (Proceeds) - 7500 EUR (COGS) = 492 EUR
+    assert dual_currency_sell.realized_gain_loss_local == Decimal("492")
+
+    # Net Proceeds (Base) = 7992 EUR * 1.20 USD/EUR = 9590.40 USD
+    # Realized P&L (Base) = 9590.40 USD (Proceeds) - 8250 USD (COGS) = 1340.40 USD
+    assert dual_currency_sell.realized_gain_loss.quantize(Decimal("0.01")) == Decimal("1340.40")
+    
+    # Verify net_cost is also populated correctly
+    assert dual_currency_sell.net_cost == Decimal("-8250")
+    assert dual_currency_sell.net_cost_local == Decimal("-7500")
+
 def test_sell_strategy_multi_lot_fifo():
     """
     Tests the FIFO strategy across multiple purchase lots.
@@ -109,6 +148,7 @@ def test_sell_strategy_multi_lot_fifo():
         portfolio_base_currency="USD", transaction_fx_rate=Decimal("1.0")
     )
     cost_calculator.calculate_transaction_costs(buy_txn_1) # This calculates net_cost=1000 and adds the lot.
+
     buy_txn_2 = Transaction(
         transaction_id="BUY002", portfolio_id="P1", instrument_id="AAPL", security_id="S1",
         transaction_type="BUY", transaction_date=datetime(2023, 1, 5),
@@ -116,6 +156,7 @@ def test_sell_strategy_multi_lot_fifo():
         portfolio_base_currency="USD", transaction_fx_rate=Decimal("1.0")
     )
     cost_calculator.calculate_transaction_costs(buy_txn_2) # This calculates net_cost=600 and adds the second lot.
+
     sell_txn = Transaction(
         transaction_id="SELL001", portfolio_id="P1", instrument_id="AAPL", security_id="S1",
         transaction_type="SELL", transaction_date=datetime(2023, 1, 10),
