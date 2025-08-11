@@ -16,7 +16,8 @@ def current_snapshot() -> DailyPositionSnapshot:
         date=date(2025, 7, 29),
         quantity=Decimal("100"),
         cost_basis=Decimal("10000"),
-        market_value=Decimal("12000")
+        market_value=Decimal("12500"), # Base currency value
+        market_value_local=Decimal("12000") # FIX: Add local currency value
     )
 
 @pytest.fixture
@@ -47,7 +48,7 @@ def test_calculate_daily_record_first_day(current_snapshot):
     assert new_record.bod_market_value == Decimal("0") # First day
     assert new_record.bod_cashflow == Decimal("-10000")
     assert new_record.eod_cashflow == Decimal("0")
-    assert new_record.eod_market_value == Decimal("12000") # From snapshot
+    assert new_record.eod_market_value == Decimal("12000") # From snapshot's market_value_local
     assert new_record.quantity == Decimal("100") # From snapshot
     assert new_record.cost == Decimal("100") # 10000 cost_basis / 100 quantity
 

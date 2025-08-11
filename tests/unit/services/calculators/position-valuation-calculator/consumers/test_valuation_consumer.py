@@ -53,8 +53,10 @@ async def test_valuation_consumer_success(consumer: ValuationConsumer, mock_kafk
     # ARRANGE
     mock_db_session = AsyncMock()
     
-    # THIS IS THE PROVEN, WORKING PATTERN FOR MOCKING THE ASYNC CONTEXT MANAGER
-    mock_db_session.begin.return_value = AsyncMock().__aenter__()
+    # FIX: Correctly mock the async context manager for `db.begin()`
+    # The `begin()` method returns an async context manager. We mock that manager.
+    mock_transaction_context = AsyncMock()
+    mock_db_session.begin.return_value = mock_transaction_context
     
     async def get_db_session_gen():
         yield mock_db_session
