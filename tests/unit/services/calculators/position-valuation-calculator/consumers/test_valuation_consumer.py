@@ -6,7 +6,7 @@ from decimal import Decimal
 
 from services.calculators.position_valuation_calculator.app.consumers.valuation_consumer import ValuationConsumer
 from portfolio_common.events import PortfolioValuationRequiredEvent
-from portfolio_common.database_models import DailyPositionSnapshot, MarketPrice, Instrument, Portfolio
+from portfolio_common.database_models import DailyPositionSnapshot, MarketPrice, Instrument, Portfolio, FxRate
 from portfolio_common.logging_utils import correlation_id_var
 
 pytestmark = pytest.mark.asyncio
@@ -69,7 +69,7 @@ async def test_valuation_consumer_success(consumer: ValuationConsumer, mock_kafk
     mock_outbox_repo = AsyncMock()
     mock_valuation_repo = AsyncMock()
 
-    # FIX: Use Decimal for numeric fields in the mock data
+    # Use Decimal for numeric fields in the mock data
     mock_snapshot = DailyPositionSnapshot(
         id=1,
         quantity=Decimal("100"),
@@ -83,7 +83,10 @@ async def test_valuation_consumer_success(consumer: ValuationConsumer, mock_kafk
     mock_valuation_repo.get_instrument.return_value = Instrument(currency="EUR")
     mock_valuation_repo.get_portfolio.return_value = Portfolio(base_currency="USD")
     mock_valuation_repo.get_latest_price_for_position.return_value = MarketPrice(price=Decimal("90"), currency="EUR")
-    mock_valuation_repo.get_fx_rate.return_value = None
+    
+    # FIX: Provide the missing FX rate to allow valuation logic to succeed
+    mock_valuation_repo.get_fx_rate.return_value = FxRate(rate=Decimal("1.1"))
+    
     mock_valuation_repo.upsert_daily_snapshot.return_value = mock_snapshot
 
     with patch(
