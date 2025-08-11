@@ -88,6 +88,50 @@ def test_dispatcher_processes_and_updates_pending_events(db_engine, clean_db, sm
         result = session.execute(text("SELECT status FROM outbox_events WHERE aggregate_id = :id"), {"id": aggregate_id}).scalar_one()
         assert result == "PROCESSED"
 
+def test_dispatcher_propagates_correlation_id(db_engine, clean_db, smart_mock_kafka_producer):
+    """
+    GIVEN multiple pending events, one with a correlation_id and one without
+    WHEN the OutboxDispatcher runs
+    THEN it should publish both with the correct correlation_id in the Kafka headers.
+    """
+    # ARRANGE
+    agg_id_1 = f"agg-id-{uuid.uuid4()}"
+    agg_id_2 = f"agg-id-{uuid.uuid4()}"
+    existing_corr_id = f"corr-id-{uuid.uuid4()}"
+
+    with Session(db_engine) as session:
+        with session.begin():
+            # Event with an existing correlation ID
+            session.add(OutboxEvent(
+                aggregate_type="TestCorrId", aggregate_id=agg_id_1, status="PENDING",
+                event_type="EventWithCorrId", payload='{}', topic="test.topic",
+                correlation_id=existing_corr_id
+            ))
+            # Event without a correlation ID
+            session.add(OutboxEvent(
+                aggregate_type="TestCorrId", aggregate_id=agg_id_2, status="PENDING",
+                event_type="EventWithoutCorrId", payload='{}', topic="test.topic",
+                correlation_id=None
+            ))
+
+    # ACT
+    dispatcher = OutboxDispatcher(kafka_producer=smart_mock_kafka_producer)
+    dispatcher._process_batch_sync()
+
+    # ASSERT
+    assert smart_mock_kafka_producer.publish_message.call_count == 2
+    
+    # Check call for the event that HAD a correlation ID
+    call_with_id = next(c for c in smart_mock_kafka_producer.publish_message.call_args_list if c.kwargs['key'] == agg_id_1)
+    headers_with_id = {key: value for key, value in call_with_id.kwargs['headers']}
+    assert headers_with_id['correlation_id'] == existing_corr_id.encode('utf-8')
+
+    # Check call for the event that DID NOT have a correlation ID
+    call_without_id = next(c for c in smart_mock_kafka_producer.publish_message.call_args_list if c.kwargs['key'] == agg_id_2)
+    headers_without_id = {key: value for key, value in call_without_id.kwargs['headers']}
+    # It should not have a correlation_id header
+    assert 'correlation_id' not in headers_without_id
+
 def test_dispatcher_recovers_after_failure(db_engine, clean_db, smart_mock_kafka_producer):
     """
     GIVEN a pending event
