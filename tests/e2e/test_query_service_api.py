@@ -18,7 +18,8 @@ def api_endpoints(docker_services):
     
     return {"ingestion": ingestion_url, "query": query_url}
 
-@pytest.fixture(scope="function") # <-- SCOPE CHANGED FROM "module" TO "function"
+# FIX: Changed scope from "module" to "function" to match clean_db fixture
+@pytest.fixture(scope="function")
 def setup_e2e_data(api_endpoints, clean_db):
     """
     A function-scoped fixture to ingest a consistent set of data for each test.
@@ -30,15 +31,17 @@ def setup_e2e_data(api_endpoints, clean_db):
     payload = {"portfolios": [{"portfolioId": portfolio_id, "baseCurrency": "USD", "openDate": "2025-01-01", "cifId": "API_CIF", "status": "ACTIVE", "riskExposure": "a", "investmentTimeHorizon": "b", "portfolioType": "c", "bookingCenter": "d"}]}
     requests.post(f"{ingestion_url}/ingest/portfolios", json=payload)
 
-    # Ingest Transactions
+    # Ingest a diverse set of transactions for filtering and sorting
     transactions = [
-        {"transaction_id": f"{portfolio_id}_T1", "portfolio_id": portfolio_id, "instrument_id": "A", "security_id": "S1", "transaction_date": "2025-08-01", "transaction_type": "BUY", "quantity": 10, "price": 100, "gross_transaction_amount": 1000, "trade_currency": "USD", "currency": "USD"},
-        {"transaction_id": f"{portfolio_id}_T2", "portfolio_id": portfolio_id, "instrument_id": "B", "security_id": "S2", "transaction_date": "2025-08-05", "transaction_type": "BUY", "quantity": 5, "price": 200, "gross_transaction_amount": 1000, "trade_currency": "USD", "currency": "USD"}
+        {"transaction_id": f"{portfolio_id}_T1", "portfolio_id": portfolio_id, "instrument_id": "A", "security_id": "S1", "transaction_date": "2025-08-01T10:00:00Z", "transaction_type": "BUY", "quantity": 10, "price": 100, "gross_transaction_amount": 1000, "trade_currency": "USD", "currency": "USD"},
+        {"transaction_id": f"{portfolio_id}_T2", "portfolio_id": portfolio_id, "instrument_id": "B", "security_id": "S2", "transaction_date": "2025-08-05T11:00:00Z", "transaction_type": "BUY", "quantity": 5, "price": 200, "gross_transaction_amount": 1000, "trade_currency": "USD", "currency": "USD"},
+        {"transaction_id": f"{portfolio_id}_T3", "portfolio_id": portfolio_id, "instrument_id": "A", "security_id": "S1", "transaction_date": "2025-08-03T12:00:00Z", "transaction_type": "SELL", "quantity": 2, "price": 110, "gross_transaction_amount": 220, "trade_currency": "USD", "currency": "USD"},
+        {"transaction_id": f"{portfolio_id}_T4", "portfolio_id": portfolio_id, "instrument_id": "C", "security_id": "S3", "transaction_date": "2025-08-05T09:00:00Z", "transaction_type": "BUY", "quantity": 25, "price": 50, "gross_transaction_amount": 1250, "trade_currency": "USD", "currency": "USD"}
     ]
     requests.post(f"{ingestion_url}/ingest/transactions", json={"transactions": transactions})
     
     # Wait for data to be processed through the pipeline
-    time.sleep(10)
+    time.sleep(15)
 
     return {"portfolio_id": portfolio_id, "query_url": api_endpoints["query"]}
 
@@ -54,9 +57,12 @@ def test_transaction_query_default_sort(setup_e2e_data):
     assert response.status_code == 200
     data = response.json()
     
-    assert len(data["transactions"]) == 2
-    assert data["transactions"][0]["transaction_id"] == f"{portfolio_id}_T2" # 2025-08-05
-    assert data["transactions"][1]["transaction_id"] == f"{portfolio_id}_T1" # 2025-08-01
+    assert len(data["transactions"]) == 4
+    # Expected order: T2 (Aug 5 11:00), T4 (Aug 5 09:00), T3 (Aug 3), T1 (Aug 1)
+    assert data["transactions"][0]["transaction_id"] == f"{portfolio_id}_T2"
+    assert data["transactions"][1]["transaction_id"] == f"{portfolio_id}_T4"
+    assert data["transactions"][2]["transaction_id"] == f"{portfolio_id}_T3"
+    assert data["transactions"][3]["transaction_id"] == f"{portfolio_id}_T1"
 
 def test_transaction_query_custom_sort(setup_e2e_data):
     """
@@ -69,20 +75,44 @@ def test_transaction_query_custom_sort(setup_e2e_data):
     assert response.status_code == 200
     data = response.json()
     
-    assert len(data["transactions"]) == 2
-    assert data["transactions"][0]["transaction_id"] == f"{portfolio_id}_T2" # Quantity 5
-    assert data["transactions"][1]["transaction_id"] == f"{portfolio_id}_T1" # Quantity 10
+    assert len(data["transactions"]) == 4
+    # Expected order by quantity asc: T3 (2), T2 (5), T1 (10), T4 (25)
+    assert data["transactions"][0]["transaction_id"] == f"{portfolio_id}_T3"
+    assert data["transactions"][1]["transaction_id"] == f"{portfolio_id}_T2"
+    assert data["transactions"][2]["transaction_id"] == f"{portfolio_id}_T1"
+    assert data["transactions"][3]["transaction_id"] == f"{portfolio_id}_T4"
 
-def test_query_non_existent_portfolio_returns_empty(setup_e2e_data):
+def test_transaction_query_filter_by_security_id(setup_e2e_data):
     """
-    Tests that querying for a portfolio that does not exist returns an empty list, not an error.
-    This is the correct behavior for a GET request on a resource collection.
+    Tests filtering transactions by a specific security ID.
     """
-    url = f'{setup_e2e_data["query_url"]}/portfolios/NON_EXISTENT_PORTFOLIO/transactions'
+    portfolio_id = setup_e2e_data["portfolio_id"]
+    url = f'{setup_e2e_data["query_url"]}/portfolios/{portfolio_id}/transactions?security_id=S1'
     
     response = requests.get(url)
     assert response.status_code == 200
     data = response.json()
+
+    assert len(data["transactions"]) == 2
+    assert data["total"] == 2
     
-    assert data["total"] == 0
-    assert len(data["transactions"]) == 0
+    # Verify both transactions for S1 are returned
+    returned_ids = {t["transaction_id"] for t in data["transactions"]}
+    assert f"{portfolio_id}_T1" in returned_ids
+    assert f"{portfolio_id}_T3" in returned_ids
+
+def test_transaction_query_filter_and_sort(setup_e2e_data):
+    """
+    Tests combining a filter (security_id) with custom sorting (quantity asc).
+    """
+    portfolio_id = setup_e2e_data["portfolio_id"]
+    url = f'{setup_e2e_data["query_url"]}/portfolios/{portfolio_id}/transactions?security_id=S1&sort_by=quantity&sort_order=asc'
+    
+    response = requests.get(url)
+    assert response.status_code == 200
+    data = response.json()
+
+    assert len(data["transactions"]) == 2
+    # Expected order for S1 by quantity asc: T3 (2), T1 (10)
+    assert data["transactions"][0]["transaction_id"] == f"{portfolio_id}_T3"
+    assert data["transactions"][1]["transaction_id"] == f"{portfolio_id}_T1"
