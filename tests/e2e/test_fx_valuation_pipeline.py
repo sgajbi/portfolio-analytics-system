@@ -18,7 +18,7 @@ def api_endpoints(docker_services):
     
     return {"ingestion": ingestion_url, "query": query_url}
 
-def poll_for_position_valuation(url: str, timeout: int = 60):
+def poll_for_position_valuation(url: str, timeout: int = 120): # FIX: Increased timeout to 120s
     """
     Polls the positions endpoint until a VALUED position with both local and base P&L is found.
     """

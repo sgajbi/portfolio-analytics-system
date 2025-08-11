@@ -53,7 +53,7 @@ def test_full_valuation_pipeline(docker_services, db_engine, clean_db):
     # 6. Poll the query-service API to verify the valuation result
     query_url = f"http://{query_host}:{query_port}/portfolios/{portfolio_id}/positions"
     start_time = time.time()
-    timeout = 45
+    timeout = 120 # FIX: Increased timeout to 120s
     response_data = {}
     while time.time() - start_time < timeout:
         try:

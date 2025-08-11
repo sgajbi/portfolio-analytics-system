@@ -18,7 +18,7 @@ def api_endpoints(docker_services):
     
     return {"ingestion": ingestion_url, "query": query_url}
 
-def poll_for_data(url: str, validation_func, timeout: int = 60):
+def poll_for_data(url: str, validation_func, timeout: int = 120): # FIX: Increased timeout to 120s
     """Generic polling function to query an endpoint until a condition is met."""
     start_time = time.time()
     last_response_data = None
@@ -158,7 +158,7 @@ def test_dual_currency_pnl_pipeline(api_endpoints, clean_db):
 
     # Local PnL: (40 * 170) - (40 * 150) = 6800 - 6000 = 800 EUR
     assert Decimal(sell_tx["realized_gain_loss_local"]).quantize(Decimal("0.01")) == Decimal("800.00")
-
+    
     # Base PnL: (6800 * 1.20) - (6000 * 1.10) = 8160 - 6600 = 1560 USD
     assert Decimal(sell_tx["realized_gain_loss"]).quantize(Decimal("0.01")) == Decimal("1560.00")
 

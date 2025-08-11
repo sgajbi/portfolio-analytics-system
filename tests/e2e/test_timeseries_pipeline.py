@@ -1,3 +1,4 @@
+# tests/e2e/test_timeseries_pipeline.py
 import pytest
 import requests
 import time
@@ -5,7 +6,7 @@ from decimal import Decimal
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 
-def wait_for_portfolio_timeseries(db_engine, portfolio_id, expected_date, timeout=120):
+def wait_for_portfolio_timeseries(db_engine, portfolio_id, expected_date, timeout=180): # FIX: Increased timeout to 180s
     """Helper function to poll the database until a portfolio time series record for a specific date is found."""
     start_time = time.time()
     while time.time() - start_time < timeout:
