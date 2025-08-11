@@ -1,6 +1,6 @@
 # services/calculators/position-valuation-calculator/app/repositories/valuation_repository.py
 import logging
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import List, Optional
 from sqlalchemy import select, func, distinct, exists, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -140,7 +140,7 @@ class ValuationRepository:
         Finds jobs stuck in 'PROCESSING' state for longer than the timeout
         and resets them to 'PENDING'. This is a recovery mechanism for crashed workers.
         """
-        stale_threshold = datetime.utcnow() - timedelta(minutes=timeout_minutes)
+        stale_threshold = datetime.now(timezone.utc) - timedelta(minutes=timeout_minutes)
         
         stmt = (
             update(PortfolioValuationJob)

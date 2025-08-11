@@ -1,6 +1,6 @@
 # tests/integration/services/calculators/position-valuation-calculator/test_valuation_repository.py
 import pytest
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 
@@ -20,7 +20,7 @@ def setup_stale_job_data(db_engine):
     - One stale 'COMPLETE' job (should not be reset).
     """
     with Session(db_engine) as session:
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         stale_time = now - timedelta(minutes=30)
         
         jobs = [
