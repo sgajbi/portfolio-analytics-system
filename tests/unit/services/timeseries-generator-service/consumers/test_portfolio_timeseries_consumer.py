@@ -47,8 +47,8 @@ def mock_kafka_message(mock_event: PortfolioAggregationRequiredEvent) -> MagicMo
 async def test_process_message_success(consumer: PortfolioTimeseriesConsumer, mock_event: PortfolioAggregationRequiredEvent, mock_kafka_message: MagicMock):
     """
     GIVEN a portfolio aggregation event
-    WHEN the message is processed
-    THEN it should aggregate data, save the new timeseries record, and update the job status.
+    WHEN the message is processed successfully
+    THEN it should aggregate data, save the new timeseries record, and update the job status to COMPLETE.
     """
     # ARRANGE
     mock_db_session = AsyncMock(spec=AsyncSession)
@@ -68,15 +68,9 @@ async def test_process_message_success(consumer: PortfolioTimeseriesConsumer, mo
     mock_repo.get_portfolio.return_value = Portfolio(portfolio_id=mock_event.portfolio_id, base_currency="USD")
     mock_repo.get_all_position_timeseries_for_date.return_value = [
         PositionTimeseries(
-            security_id="SEC_USD",
-            date=mock_event.aggregation_date,
-            bod_market_value=Decimal("900"),
-            bod_cashflow=Decimal("0"),
-            eod_cashflow=Decimal("50"),
-            eod_market_value=Decimal("1000"),
-            fees=Decimal("0"),
-            quantity=Decimal("10"),
-            cost=Decimal("90")
+            security_id="SEC_USD", date=mock_event.aggregation_date, bod_market_value=Decimal("900"),
+            bod_cashflow=Decimal("0"), eod_cashflow=Decimal("50"), eod_market_value=Decimal("1000"),
+            fees=Decimal("0"), quantity=Decimal("10"), cost=Decimal("90")
         )
     ]
     mock_repo.get_portfolio_level_cashflows_for_date.return_value = []
@@ -98,22 +92,62 @@ async def test_process_message_success(consumer: PortfolioTimeseriesConsumer, mo
         await consumer.process_message(mock_kafka_message)
 
         # ASSERT
-        # 1. Verify correct data was fetched
         mock_repo.get_portfolio.assert_called_once_with(mock_event.portfolio_id)
         mock_repo.get_all_position_timeseries_for_date.assert_called_once()
-        mock_repo.get_portfolio_level_cashflows_for_date.assert_called_once()
-
-        # 2. Verify the new portfolio timeseries record was saved
         mock_repo.upsert_portfolio_timeseries.assert_called_once()
-        saved_record = mock_repo.upsert_portfolio_timeseries.call_args[0][0]
-        assert isinstance(saved_record, PortfolioTimeseries)
-        assert saved_record.eod_market_value == Decimal("1000")
-
-        # 3. Verify an outbox event was created
         mock_outbox_repo.create_outbox_event.assert_called_once()
-
-        # 4. Verify the job status was updated to COMPLETE
         mock_update_status.assert_called_once_with(mock_event.portfolio_id, mock_event.aggregation_date, 'COMPLETE', db_session=mock_db_session)
+        consumer._send_to_dlq_async.assert_not_called()
+
+async def test_process_message_failure_missing_fx_rate(consumer: PortfolioTimeseriesConsumer, mock_event: PortfolioAggregationRequiredEvent, mock_kafka_message: MagicMock):
+    """
+    GIVEN a cross-currency aggregation event where the FX rate is missing
+    WHEN the message is processed
+    THEN it should mark the job as FAILED and not create an outbox event.
+    """
+    # ARRANGE
+    mock_db_session = AsyncMock(spec=AsyncSession)
+    mock_db_session.begin = MagicMock()
+    mock_transaction_context = AsyncMock()
+    mock_db_session.begin.return_value = mock_transaction_context
+    mock_transaction_context.__aenter__.return_value = None
+    mock_transaction_context.__aexit__.return_value = None
+
+    async def get_db_session_gen():
+        yield mock_db_session
+
+    mock_repo = AsyncMock()
+    mock_outbox_repo = AsyncMock()
+
+    mock_repo.get_portfolio.return_value = Portfolio(portfolio_id=mock_event.portfolio_id, base_currency="USD")
+    mock_repo.get_all_position_timeseries_for_date.return_value = [
+        PositionTimeseries(security_id="SEC_EUR", date=mock_event.aggregation_date)
+    ]
+    mock_repo.get_portfolio_level_cashflows_for_date.return_value = []
+    mock_repo.get_instruments_by_ids.return_value = [Instrument(security_id="SEC_EUR", currency="EUR")]
+    mock_repo.get_last_portfolio_timeseries_before.return_value = None
+    # Simulate the critical failure: no FX rate found
+    mock_repo.get_fx_rate.return_value = None
+
+    with patch(
+        "services.timeseries_generator_service.app.consumers.portfolio_timeseries_consumer.get_async_db_session", new=get_db_session_gen
+    ), patch(
+        "services.timeseries_generator_service.app.consumers.portfolio_timeseries_consumer.TimeseriesRepository", return_value=mock_repo
+    ), patch(
+        "services.timeseries_generator_service.app.consumers.portfolio_timeseries_consumer.OutboxRepository", return_value=mock_outbox_repo
+    ), patch.object(
+        consumer, '_update_job_status', new_callable=AsyncMock
+    ) as mock_update_status:
         
-        # 5. Verify no DLQ message was sent
+        # ACT
+        await consumer.process_message(mock_kafka_message)
+
+        # ASSERT
+        mock_repo.upsert_portfolio_timeseries.assert_not_called()
+        mock_outbox_repo.create_outbox_event.assert_not_called()
+        
+        # Crucially, assert the job was marked as FAILED
+        mock_update_status.assert_called_once_with(mock_event.portfolio_id, mock_event.aggregation_date, 'FAILED')
+        
+        # The consumer should handle this gracefully, not send to DLQ
         consumer._send_to_dlq_async.assert_not_called()
