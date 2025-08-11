@@ -8,8 +8,7 @@ from unittest.mock import MagicMock, patch
 
 from portfolio_common.kafka_utils import KafkaProducer
 from tools.dlq_replayer import DLQReplayConsumer
-# Import the actual DLQ topic from the application's config
-from portfolio_common.config import KAFKA_PERSISTENCE_DLQ_TOPIC
+# We don't need the config topic anymore, as we'll generate unique ones.
 
 pytestmark = pytest.mark.asyncio
 
@@ -21,34 +20,35 @@ def mock_kafka_producer() -> MagicMock:
     mock.flush = MagicMock()
     return mock
 
-async def test_dlq_replayer_consumes_and_republishes(docker_services, mock_kafka_producer):
+@pytest.fixture
+def unique_dlq_topic() -> str:
+    """Generates a unique topic name for each test function to ensure isolation."""
+    return f"test-dlq-{uuid.uuid4()}"
+
+
+async def test_dlq_replayer_consumes_and_republishes(docker_services, mock_kafka_producer, unique_dlq_topic):
     """
-    GIVEN a message in a DLQ topic
+    GIVEN a message in a unique DLQ topic
     WHEN the DLQReplayConsumer runs
     THEN it should parse the message and republish it to the original topic.
     """
     # ARRANGE
-    # Define the correct Kafka address for the host machine
     kafka_bootstrap_host = "localhost:9092"
+    dlq_topic = unique_dlq_topic # Use the isolated topic for this test
 
-    # 1. Define the original message that supposedly failed
     original_topic = "raw_transactions"
     original_key = f"txn-{uuid.uuid4()}"
     original_value = {"transaction_id": original_key, "amount": 1000}
     correlation_id = f"corr-{uuid.uuid4()}"
 
-    # 2. Define the DLQ message structure that wraps the original message
-    # FIX: Use the real DLQ topic configured for the application
-    dlq_topic = KAFKA_PERSISTENCE_DLQ_TOPIC
     dlq_payload = {
         "original_topic": original_topic,
         "original_key": original_key,
-        "original_value": json.dumps(original_value), # Original value is a stringified JSON
+        "original_value": json.dumps(original_value),
         "error_reason": "Test-induced failure",
         "correlation_id": correlation_id
     }
 
-    # 3. Use a real producer to publish this message to the test DLQ topic
     setup_producer = KafkaProducer(bootstrap_servers=kafka_bootstrap_host)
     setup_producer.publish_message(
         topic=dlq_topic,
@@ -57,25 +57,72 @@ async def test_dlq_replayer_consumes_and_republishes(docker_services, mock_kafka
         headers=[('correlation_id', correlation_id.encode('utf-8'))]
     )
     setup_producer.flush()
-    await asyncio.sleep(2) # Give Kafka a moment to process the message
+    await asyncio.sleep(2)
 
     # ACT
-    # 4. Patch `get_kafka_producer` so the consumer uses our MOCK producer for replaying
     with patch('tools.dlq_replayer.get_kafka_producer', return_value=mock_kafka_producer):
         consumer = DLQReplayConsumer(
             bootstrap_servers=kafka_bootstrap_host,
             topic=dlq_topic,
-            group_id=f"test-replayer-group-{uuid.uuid4()}", # Unique group to read from start
+            group_id=f"test-replayer-group-{uuid.uuid4()}",
             limit=1
         )
         await consumer.run()
 
     # ASSERT
-    # 5. Verify the mock producer was called with the original message details
     mock_kafka_producer.publish_message.assert_called_once()
     call_args = mock_kafka_producer.publish_message.call_args.kwargs
     
     assert call_args["topic"] == original_topic
     assert call_args["key"] == original_key
-    assert call_args["value"] == original_value # Should be the parsed dictionary
+    assert call_args["value"] == original_value
     assert ("correlation_id", correlation_id.encode("utf-8")) in call_args["headers"]
+
+async def test_dlq_replayer_skips_malformed_message(docker_services, mock_kafka_producer, unique_dlq_topic):
+    """
+    GIVEN a malformed (non-JSON) message and a valid message in a unique DLQ
+    WHEN the DLQReplayConsumer runs
+    THEN it should skip the malformed message and successfully republish the valid one.
+    """
+    # ARRANGE
+    kafka_bootstrap_host = "localhost:9092"
+    dlq_topic = unique_dlq_topic # Use the isolated topic for this test
+
+    # 1. Publish a malformed message (not valid JSON)
+    setup_producer = KafkaProducer(bootstrap_servers=kafka_bootstrap_host)
+    setup_producer.producer.produce(topic=dlq_topic, key=b'malformed-key', value=b'this is not json')
+    
+    # 2. Publish a valid DLQ message
+    valid_dlq_payload = {
+        "original_topic": "raw_portfolios",
+        "original_key": "valid-key-01",
+        "original_value": json.dumps({"portfolioId": "P01"}),
+        "error_reason": "Test failure",
+        "correlation_id": "corr-abc"
+    }
+    setup_producer.publish_message(
+        topic=dlq_topic,
+        key="valid-dlq-key",
+        value=valid_dlq_payload,
+    )
+    setup_producer.flush()
+    await asyncio.sleep(2)
+
+    # ACT
+    with patch('tools.dlq_replayer.get_kafka_producer', return_value=mock_kafka_producer):
+        consumer = DLQReplayConsumer(
+            bootstrap_servers=kafka_bootstrap_host,
+            topic=dlq_topic,
+            group_id=f"test-replayer-group-{uuid.uuid4()}",
+            limit=2 # Attempt to process both messages
+        )
+        await consumer.run()
+
+    # ASSERT
+    # The replayer should have skipped the malformed message and only published the valid one.
+    mock_kafka_producer.publish_message.assert_called_once()
+    call_args = mock_kafka_producer.publish_message.call_args.kwargs
+    
+    assert call_args["topic"] == "raw_portfolios"
+    assert call_args["key"] == "valid-key-01"
+    assert call_args["value"] == {"portfolioId": "P01"}
