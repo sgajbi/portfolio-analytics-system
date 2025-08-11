@@ -5,10 +5,11 @@ import json
 import uuid
 import os
 from unittest.mock import MagicMock, patch
+from confluent_kafka.admin import AdminClient, NewTopic
+import pytest_asyncio # <-- IMPORT PYTEST-ASYNCIO
 
 from portfolio_common.kafka_utils import KafkaProducer
 from tools.dlq_replayer import DLQReplayConsumer
-# We don't need the config topic anymore, as we'll generate unique ones.
 
 pytestmark = pytest.mark.asyncio
 
@@ -20,10 +21,38 @@ def mock_kafka_producer() -> MagicMock:
     mock.flush = MagicMock()
     return mock
 
-@pytest.fixture
-def unique_dlq_topic() -> str:
-    """Generates a unique topic name for each test function to ensure isolation."""
-    return f"test-dlq-{uuid.uuid4()}"
+# FIX: Use the correct decorator for an async fixture
+@pytest_asyncio.fixture
+async def unique_dlq_topic(docker_services) -> str:
+    """
+    Creates a unique, temporary Kafka topic for the test and yields its name.
+    Deletes the topic after the test is complete.
+    """
+    topic_name = f"test-dlq-{uuid.uuid4()}"
+    kafka_bootstrap_host = "localhost:9092"
+    admin_client = AdminClient({"bootstrap.servers": kafka_bootstrap_host})
+
+    # Create the topic
+    admin_client.create_topics([NewTopic(topic_name, num_partitions=1, replication_factor=1)])
+    
+    # Wait for the topic to be fully created
+    start_time = asyncio.get_event_loop().time()
+    while True:
+        if topic_name in admin_client.list_topics(timeout=5).topics:
+            break
+        if asyncio.get_event_loop().time() - start_time > 10:
+            raise TimeoutError(f"Topic '{topic_name}' not created within 10 seconds.")
+        await asyncio.sleep(0.5)
+
+    yield topic_name
+
+    # Cleanup: delete the topic
+    fs = admin_client.delete_topics([topic_name])
+    for topic, f in fs.items():
+        try:
+            f.result() # The result itself is None on success
+        except Exception as e:
+            print(f"Failed to delete topic {topic}: {e}")
 
 
 async def test_dlq_replayer_consumes_and_republishes(docker_services, mock_kafka_producer, unique_dlq_topic):
