@@ -53,12 +53,11 @@ async def test_valuation_consumer_success(consumer: ValuationConsumer, mock_kafk
     # ARRANGE
     mock_db_session = AsyncMock()
 
-    # FIX: Correctly mock the async context manager for `db.begin()`.
-    # `begin()` itself is a regular method that returns an async context manager.
+    # Correctly mock the async context manager for `db.begin()`.
     mock_db_session.begin = MagicMock()
     mock_transaction_context = AsyncMock()
     mock_db_session.begin.return_value = mock_transaction_context
-    mock_transaction_context.__aenter__.return_value = None # This is what `async with` will use.
+    mock_transaction_context.__aenter__.return_value = None
     mock_transaction_context.__aexit__.return_value = None
 
     async def get_db_session_gen():
@@ -84,7 +83,7 @@ async def test_valuation_consumer_success(consumer: ValuationConsumer, mock_kafk
     mock_valuation_repo.get_portfolio.return_value = Portfolio(base_currency="USD")
     mock_valuation_repo.get_latest_price_for_position.return_value = MarketPrice(price=Decimal("90"), currency="EUR")
     
-    # FIX: Provide the missing FX rate to allow valuation logic to succeed
+    # Provide the required FX rate for the success path
     mock_valuation_repo.get_fx_rate.return_value = FxRate(rate=Decimal("1.1"))
     
     mock_valuation_repo.upsert_daily_snapshot.return_value = mock_snapshot
@@ -113,4 +112,65 @@ async def test_valuation_consumer_success(consumer: ValuationConsumer, mock_kafk
         mock_valuation_repo.update_job_status.assert_called_once_with(mock_event.portfolio_id, mock_event.security_id, mock_event.valuation_date, 'COMPLETE')
         
         mock_outbox_repo.create_outbox_event.assert_called_once()
+        consumer._send_to_dlq_async.assert_not_called()
+
+async def test_valuation_consumer_failure_missing_fx_rate(consumer: ValuationConsumer, mock_kafka_message: MagicMock, mock_event: PortfolioValuationRequiredEvent):
+    """
+    GIVEN a cross-currency valuation event where the required FX rate is missing
+    WHEN the consumer processes the message
+    THEN it should mark the job as FAILED and not create an outbox event or send to DLQ.
+    """
+    # ARRANGE
+    mock_db_session = AsyncMock()
+    mock_db_session.begin = MagicMock()
+    mock_transaction_context = AsyncMock()
+    mock_db_session.begin.return_value = mock_transaction_context
+    mock_transaction_context.__aenter__.return_value = None
+    mock_transaction_context.__aexit__.return_value = None
+
+    async def get_db_session_gen():
+        yield mock_db_session
+
+    mock_idempotency_repo = AsyncMock()
+    mock_idempotency_repo.is_event_processed.return_value = False
+    mock_outbox_repo = AsyncMock()
+    mock_valuation_repo = AsyncMock()
+
+    mock_snapshot = DailyPositionSnapshot(id=1, quantity=Decimal("100"), cost_basis=Decimal("10000"), cost_basis_local=Decimal("8000"), security_id='SEC_VAL_01', portfolio_id='PORT_VAL_01', date=date(2025, 8, 1))
+    mock_valuation_repo.get_daily_snapshot.return_value = mock_snapshot
+    mock_valuation_repo.get_instrument.return_value = Instrument(currency="EUR")
+    mock_valuation_repo.get_portfolio.return_value = Portfolio(base_currency="USD")
+    mock_valuation_repo.get_latest_price_for_position.return_value = MarketPrice(price=Decimal("90"), currency="EUR")
+    
+    # Simulate the critical failure condition: no FX rate found
+    mock_valuation_repo.get_fx_rate.return_value = None
+    
+    with patch(
+        "services.calculators.position_valuation_calculator.app.consumers.valuation_consumer.get_async_db_session", new=get_db_session_gen
+    ), patch(
+        "services.calculators.position_valuation_calculator.app.consumers.valuation_consumer.IdempotencyRepository", return_value=mock_idempotency_repo
+    ), patch(
+        "services.calculators.position_valuation_calculator.app.consumers.valuation_consumer.ValuationRepository", return_value=mock_valuation_repo
+    ), patch(
+        "services.calculators.position_valuation_calculator.app.consumers.valuation_consumer.OutboxRepository", return_value=mock_outbox_repo
+    ):
+        token = correlation_id_var.set('test-corr-id-failure')
+        try:
+            # ACT
+            await consumer.process_message(mock_kafka_message)
+        finally:
+            correlation_id_var.reset(token)
+
+        # ASSERT
+        mock_idempotency_repo.is_event_processed.assert_called_once()
+        
+        # Verify that the core logic was attempted but no results were saved
+        mock_valuation_repo.get_daily_snapshot.assert_called_once()
+        mock_valuation_repo.upsert_daily_snapshot.assert_not_called()
+        mock_outbox_repo.create_outbox_event.assert_not_called()
+        
+        # Crucially, assert the job was marked as FAILED
+        mock_valuation_repo.update_job_status.assert_called_once_with(mock_event.portfolio_id, mock_event.security_id, mock_event.valuation_date, 'FAILED')
+        
+        # The consumer should handle this gracefully, not send to DLQ
         consumer._send_to_dlq_async.assert_not_called()
