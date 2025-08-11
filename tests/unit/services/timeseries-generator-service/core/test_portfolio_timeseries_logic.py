@@ -14,7 +14,12 @@ pytestmark = pytest.mark.asyncio
 @pytest.fixture
 def mock_repo() -> AsyncMock:
     """Provides a mock TimeseriesRepository."""
-    return AsyncMock()
+    # FIX: Explicitly make repository methods AsyncMocks to prevent warnings
+    repo = AsyncMock(spec=TimeseriesRepository)
+    repo.get_instruments_by_ids = AsyncMock()
+    repo.get_fx_rate = AsyncMock()
+    repo.get_last_portfolio_timeseries_before = AsyncMock()
+    return repo
 
 @pytest.fixture
 def sample_portfolio() -> Portfolio:

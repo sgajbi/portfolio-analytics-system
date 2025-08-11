@@ -2,6 +2,7 @@
 import json
 import pytest
 from unittest.mock import MagicMock, patch, AsyncMock
+from contextlib import asynccontextmanager
 
 from portfolio_common.logging_utils import correlation_id_var
 from portfolio_common.events import TransactionEvent
@@ -64,15 +65,19 @@ async def test_process_message_success(
     THEN it should call the repository to save the transaction
     AND publish a completion event.
     """
-    mock_repo = AsyncMock()
-    mock_outbox_repo = AsyncMock() # <-- FIX: Use AsyncMock
-    mock_idempotency_repo = AsyncMock()
-    mock_idempotency_repo.is_event_processed.return_value = False
-
+    # ARRANGE: Use the robust async context manager mocking pattern
     mock_db_session = AsyncMock()
-    mock_db_session.begin.return_value = AsyncMock().__aenter__()
+    mock_db_session.begin.return_value = AsyncMock().__aenter__() # Correct for 'async with'
+
+    # FIX: Use a simple async generator for the 'async for' loop, not a context manager
     async def mock_get_db_session_generator():
         yield mock_db_session
+
+    mock_repo = AsyncMock()
+    mock_repo.check_portfolio_exists.return_value = True # Assume portfolio exists
+    mock_outbox_repo = AsyncMock()
+    mock_idempotency_repo = AsyncMock()
+    mock_idempotency_repo.is_event_processed.return_value = False
 
     with patch(
         "src.services.persistence_service.app.consumers.transaction_consumer.get_async_db_session", new=mock_get_db_session_generator
@@ -83,8 +88,10 @@ async def test_process_message_success(
     ), patch(
         "src.services.persistence_service.app.consumers.transaction_consumer.IdempotencyRepository", return_value=mock_idempotency_repo
     ):
+        # ACT
         await transaction_consumer._process_message_with_retry(mock_kafka_message)
 
+        # ASSERT
         mock_repo.create_or_update_transaction.assert_called_once()
         mock_outbox_repo.create_outbox_event.assert_called_once()
         transaction_consumer._send_to_dlq_async.assert_not_called()
