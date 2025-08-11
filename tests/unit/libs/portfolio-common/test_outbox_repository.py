@@ -1,6 +1,6 @@
 # tests/unit/libs/portfolio-common/test_outbox_repository.py
 import pytest
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 from portfolio_common.database_models import OutboxEvent
 from portfolio_common.outbox_repository import OutboxRepository
 
@@ -9,7 +9,10 @@ pytestmark = pytest.mark.asyncio
 @pytest.fixture
 def mock_db_session() -> AsyncMock:
     """Provides a mock SQLAlchemy AsyncSession."""
-    return AsyncMock()
+    session = AsyncMock()
+    # FIX: Configure .add() as a synchronous MagicMock
+    session.add = MagicMock()
+    return session
 
 @pytest.fixture
 def repository(mock_db_session: AsyncMock) -> OutboxRepository:

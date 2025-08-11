@@ -9,6 +9,7 @@ from portfolio_common.events import PortfolioEvent
 from portfolio_common.database_models import Portfolio as DBPortfolio
 from src.services.persistence_service.app.repositories.portfolio_repository import PortfolioRepository
 
+# FIX: Mark tests as async
 pytestmark = pytest.mark.asyncio
 
 @pytest.fixture
@@ -38,6 +39,7 @@ def sample_portfolio_event() -> PortfolioEvent:
         bookingCenter="SG"
     )
 
+# FIX: Convert to a proper async test
 async def test_create_or_update_portfolio(repository: PortfolioRepository, mock_db_session: AsyncMock, sample_portfolio_event: PortfolioEvent):
     """
     GIVEN a portfolio event
@@ -58,5 +60,4 @@ async def test_create_or_update_portfolio(repository: PortfolioRepository, mock_
 
     # 3. Check the SQL statement that was generated and passed to execute
     executed_statement = mock_db_session.execute.call_args[0][0]
-    # FIX: Check for the correct type, PGInsert (aliased from Insert)
     assert isinstance(executed_statement, PGInsert)

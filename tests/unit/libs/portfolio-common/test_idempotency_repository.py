@@ -11,7 +11,10 @@ pytestmark = pytest.mark.asyncio
 @pytest.fixture
 def mock_db_session() -> AsyncMock:
     """Provides a mock SQLAlchemy AsyncSession."""
-    return AsyncMock()
+    session = AsyncMock()
+    # FIX: Configure .add() as a synchronous MagicMock, not an AsyncMock
+    session.add = MagicMock()
+    return session
 
 @pytest.fixture
 def repository(mock_db_session: AsyncMock) -> IdempotencyRepository:
