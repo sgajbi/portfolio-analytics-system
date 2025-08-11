@@ -1,6 +1,7 @@
 # libs/portfolio-common/portfolio_common/database_models.py
 from sqlalchemy import (
-    Column, Integer, String, Numeric, DateTime,
+    Column, Integer, 
+    String, Numeric, DateTime,
     Date, func,
     ForeignKey, UniqueConstraint, Boolean, JSON, Index
 )
@@ -234,7 +235,6 @@ class OutboxEvent(Base):
     processed_at = Column(DateTime(timezone=True), nullable=True)
 
 
-# --- NEW MODEL ---
 class PortfolioAggregationJob(Base):
     """
     Tracks portfolio-date pairs that require aggregation.
@@ -252,4 +252,25 @@ class PortfolioAggregationJob(Base):
 
     __table_args__ = (
         UniqueConstraint('portfolio_id', 'aggregation_date', name='_portfolio_date_uc'),
+    )
+
+class PortfolioValuationJob(Base):
+    """
+    Tracks portfolio-security-date combinations that require valuation.
+    This table acts as a stateful, idempotent work set to trigger valuation calculations,
+    preventing race conditions from multiple upstream events.
+    """
+    __tablename__ = 'portfolio_valuation_jobs'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    portfolio_id = Column(String, nullable=False, index=True)
+    security_id = Column(String, nullable=False, index=True)
+    valuation_date = Column(Date, nullable=False, index=True)
+    status = Column(String, nullable=False, default='PENDING', index=True)
+    correlation_id = Column(String, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=func.now())
+    updated_at = Column(DateTime(timezone=True), default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        UniqueConstraint('portfolio_id', 'security_id', 'valuation_date', name='_portfolio_security_valuation_date_uc'),
     )
