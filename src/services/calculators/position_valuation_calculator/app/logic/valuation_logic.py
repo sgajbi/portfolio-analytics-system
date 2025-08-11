@@ -28,6 +28,9 @@ class ValuationLogic:
             A tuple of (market_value_base, market_value_local, pnl_base, pnl_local),
             or None if a required FX rate is missing.
         """
+        # Defensive type conversion to prevent errors from non-Decimal inputs
+        quantity = Decimal(str(quantity))
+
         if quantity.is_zero():
             return Decimal(0), Decimal(0), Decimal(0), Decimal(0)
 

@@ -52,12 +52,15 @@ async def test_valuation_consumer_success(consumer: ValuationConsumer, mock_kafk
     """
     # ARRANGE
     mock_db_session = AsyncMock()
-    
-    # FIX: Correctly mock the async context manager for `db.begin()`
-    # The `begin()` method returns an async context manager. We mock that manager.
+
+    # FIX: Correctly mock the async context manager for `db.begin()`.
+    # `begin()` itself is a regular method that returns an async context manager.
+    mock_db_session.begin = MagicMock()
     mock_transaction_context = AsyncMock()
     mock_db_session.begin.return_value = mock_transaction_context
-    
+    mock_transaction_context.__aenter__.return_value = None # This is what `async with` will use.
+    mock_transaction_context.__aexit__.return_value = None
+
     async def get_db_session_gen():
         yield mock_db_session
 
@@ -66,8 +69,16 @@ async def test_valuation_consumer_success(consumer: ValuationConsumer, mock_kafk
     mock_outbox_repo = AsyncMock()
     mock_valuation_repo = AsyncMock()
 
-    # Mock all the data the consumer will fetch
-    mock_snapshot = DailyPositionSnapshot(id=1, quantity=100, cost_basis=10000, cost_basis_local=8000, security_id='SEC_VAL_01', portfolio_id='PORT_VAL_01', date=date(2025, 8, 1))
+    # FIX: Use Decimal for numeric fields in the mock data
+    mock_snapshot = DailyPositionSnapshot(
+        id=1,
+        quantity=Decimal("100"),
+        cost_basis=Decimal("10000"),
+        cost_basis_local=Decimal("8000"),
+        security_id='SEC_VAL_01',
+        portfolio_id='PORT_VAL_01',
+        date=date(2025, 8, 1)
+    )
     mock_valuation_repo.get_daily_snapshot.return_value = mock_snapshot
     mock_valuation_repo.get_instrument.return_value = Instrument(currency="EUR")
     mock_valuation_repo.get_portfolio.return_value = Portfolio(base_currency="USD")
