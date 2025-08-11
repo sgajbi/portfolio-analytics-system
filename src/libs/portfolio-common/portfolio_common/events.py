@@ -1,3 +1,4 @@
+# libs/portfolio-common/portfolio_common/events.py
 from datetime import date, datetime
 from typing import Optional
 from pydantic import BaseModel, Field, ConfigDict
@@ -125,4 +126,16 @@ class PortfolioAggregationRequiredEvent(BaseModel):
 
     portfolio_id: str
     aggregation_date: date
+    correlation_id: Optional[str] = None
+
+class PortfolioValuationRequiredEvent(BaseModel):
+    """
+    Event published by the ValuationScheduler to trigger a position valuation
+    for a specific portfolio, security, and date.
+    """
+    model_config = ConfigDict(from_attributes=True)
+
+    portfolio_id: str
+    security_id: str
+    valuation_date: date
     correlation_id: Optional[str] = None

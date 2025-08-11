@@ -57,6 +57,8 @@ TOPICS_TO_CREATE = [
     "portfolio_aggregation_required",
     # DLQ topics
     "persistence_service.dlq",
+    # --- NEW TOPIC ---
+    "valuation_required",
 ]
 
 def create_topics(admin_client: AdminClient):
@@ -104,7 +106,6 @@ def main():
     retry_delay = 5
     for attempt in range(max_retries):
         try:
-            # A simple operation to check connectivity
             admin_client.list_topics(timeout=5)
             logger.info("Successfully connected to Kafka.")
             break
