@@ -62,7 +62,10 @@ class DailyPositionSnapshot(Base):
     created_at = Column(DateTime(timezone=True), default=func.now())
     updated_at = Column(DateTime(timezone=True), default=func.now(), onupdate=func.now())
 
-    __table_args__ = (UniqueConstraint('portfolio_id', 'security_id', 'date', name='_portfolio_security_date_uc'),)
+    __table_args__ = (
+        UniqueConstraint('portfolio_id', 'security_id', 'date', name='_portfolio_security_date_uc'),
+        Index('ix_daily_position_snapshots_covering', 'portfolio_id', 'security_id', date.desc(), id.desc()),
+    )
 
 
 class FxRate(Base):
