@@ -133,3 +133,28 @@ class ValuationRepository:
         except Exception as e:
             logger.error(f"Failed to stage upsert for daily snapshot: {e}", exc_info=True)
             raise
+
+    @async_timed(repository="ValuationRepository", method="find_and_reset_stale_jobs")
+    async def find_and_reset_stale_jobs(self, timeout_minutes: int = 15) -> int:
+        """
+        Finds jobs stuck in 'PROCESSING' state for longer than the timeout
+        and resets them to 'PENDING'. This is a recovery mechanism for crashed workers.
+        """
+        stale_threshold = func.now() - func.text(f"INTERVAL '{timeout_minutes} minutes'")
+        
+        stmt = (
+            update(PortfolioValuationJob)
+            .where(
+                PortfolioValuationJob.status == 'PROCESSING',
+                PortfolioValuationJob.updated_at < stale_threshold
+            )
+            .values(status='PENDING')
+        )
+        
+        result = await self.db.execute(stmt)
+        reset_count = result.rowcount
+        
+        if reset_count > 0:
+            logger.warning(f"Reset {reset_count} stale valuation jobs from 'PROCESSING' to 'PENDING'.")
+            
+        return reset_count
