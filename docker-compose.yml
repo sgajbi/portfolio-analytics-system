@@ -132,7 +132,7 @@ services:
       - "8001:8001"
     environment:
       PYTHONPATH: "/app:/app/src/libs/portfolio-common"
-      DATABASE_URL: ${DATABASE_URL}
+      DATABASE_URL: ${QUERY_DATABASE_URL}
     depends_on:
       migration-runner:
         condition: service_completed_successfully
