@@ -44,10 +44,8 @@ TOPICS_TO_CREATE = [
     "fx_rates",
     # Persistence completion topics
     "raw_transactions_completed",
-    "market_price_persisted",
     # Calculation completion topics
     "processed_transactions_completed",
-    "position_history_persisted",
     "cashflow_calculated",
     "daily_position_snapshot_persisted",
     "position_valued",
@@ -57,7 +55,7 @@ TOPICS_TO_CREATE = [
     "portfolio_aggregation_required",
     # DLQ topics
     "persistence_service.dlq",
-    # --- NEW TOPIC ---
+    # Valuation Job Topic
     "valuation_required",
 ]
 
@@ -106,6 +104,7 @@ def main():
     retry_delay = 5
     for attempt in range(max_retries):
         try:
+            # A simple operation to check connectivity
             admin_client.list_topics(timeout=5)
             logger.info("Successfully connected to Kafka.")
             break

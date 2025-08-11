@@ -5,17 +5,16 @@ import asyncio
 import uvicorn
 
 from portfolio_common.config import (
-    KAFKA_BOOTSTRAP_SERVERS, 
-    KAFKA_POSITION_HISTORY_PERSISTED_TOPIC,
-    KAFKA_MARKET_PRICE_PERSISTED_TOPIC
+    KAFKA_BOOTSTRAP_SERVERS,
+    KAFKA_VALUATION_REQUIRED_TOPIC # <-- IMPORT NEW TOPIC
 )
-from .consumers.position_history_consumer import PositionHistoryConsumer
-from .consumers.market_price_consumer import MarketPriceConsumer
+# REMOVE OLD CONSUMER IMPORTS
 from portfolio_common.kafka_admin import ensure_topics_exist
 from portfolio_common.kafka_utils import get_kafka_producer
 from portfolio_common.outbox_dispatcher import OutboxDispatcher
 from .web import app as web_app
 from .core.valuation_scheduler import ValuationScheduler
+from .consumers.valuation_consumer import ValuationConsumer # <-- IMPORT NEW CONSUMER
 
 logger = logging.getLogger(__name__)
 
@@ -32,19 +31,12 @@ class ConsumerManager:
         group_id = "position_valuation_group"
         service_prefix = "VAL"
         
+        # --- REPLACED OLD CONSUMERS WITH THE NEW ONE ---
         self.consumers.append(
-            PositionHistoryConsumer(
+            ValuationConsumer(
                 bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
-                topic=KAFKA_POSITION_HISTORY_PERSISTED_TOPIC,
-                group_id=f"{group_id}_positions",
-                service_prefix=service_prefix 
-            )
-        )
-        self.consumers.append(
-            MarketPriceConsumer(
-                bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
-                topic=KAFKA_MARKET_PRICE_PERSISTED_TOPIC,
-                group_id=f"{group_id}_prices",
+                topic=KAFKA_VALUATION_REQUIRED_TOPIC,
+                group_id=f"{group_id}_jobs", # Updated group_id
                 service_prefix=service_prefix 
             )
         )

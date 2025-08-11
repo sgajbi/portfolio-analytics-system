@@ -74,14 +74,6 @@ class TransactionEvent(BaseModel):
     net_cost_local: Optional[Decimal] = None
     realized_gain_loss_local: Optional[Decimal] = None
 
-class PositionHistoryPersistedEvent(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: int
-    portfolio_id: str
-    security_id: str
-    position_date: date
-
 class DailyPositionSnapshotPersistedEvent(BaseModel):
     """
     Event published after a daily position snapshot has been created or updated.

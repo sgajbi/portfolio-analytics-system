@@ -2,7 +2,7 @@
 import logging
 from datetime import date
 from typing import List, Optional
-from sqlalchemy import select, func, distinct, exists, text
+from sqlalchemy import select, func, distinct, exists, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import aliased
@@ -21,6 +21,19 @@ class ValuationRepository:
     """
     def __init__(self, db: AsyncSession):
         self.db = db
+
+    async def update_job_status(self, portfolio_id: str, security_id: str, valuation_date: date, status: str):
+        """Updates the status of a specific valuation job."""
+        stmt = (
+            update(PortfolioValuationJob)
+            .where(
+                PortfolioValuationJob.portfolio_id == portfolio_id,
+                PortfolioValuationJob.security_id == security_id,
+                PortfolioValuationJob.valuation_date == valuation_date
+            )
+            .values(status=status, updated_at=func.now())
+        )
+        await self.db.execute(stmt)
 
     @async_timed(repository="ValuationRepository", method="find_and_claim_eligible_jobs")
     async def find_and_claim_eligible_jobs(self, batch_size: int) -> List[PortfolioValuationJob]:
@@ -48,23 +61,22 @@ class ValuationRepository:
             logger.info(f"Found and claimed {len(claimed_jobs)} eligible valuation jobs.")
         return [PortfolioValuationJob(**job) for job in claimed_jobs]
 
-    async def has_any_history_for_security(self, security_id: str) -> bool:
-        """Checks if any position history exists at all for a given security."""
-        # FIX: Check the PositionHistory table, which is the source of truth for positions.
-        stmt = select(
-            exists().where(PositionHistory.security_id == security_id)
+    async def get_daily_snapshot(self, portfolio_id: str, security_id: str, a_date: date) -> Optional[DailyPositionSnapshot]:
+        """Fetches a single daily position snapshot for a specific key."""
+        stmt = select(DailyPositionSnapshot).filter_by(
+            portfolio_id=portfolio_id,
+            security_id=security_id,
+            date=a_date
         )
         result = await self.db.execute(stmt)
-        return result.scalar()
+        return result.scalars().first()
 
-    @async_timed(repository="ValuationRepository", method="get_portfolio")
     async def get_portfolio(self, portfolio_id: str) -> Optional[Portfolio]:
         """Fetches a portfolio by its ID."""
         stmt = select(Portfolio).filter_by(portfolio_id=portfolio_id)
         result = await self.db.execute(stmt)
         return result.scalars().first()
 
-    @async_timed(repository="ValuationRepository", method="get_instrument")
     async def get_instrument(self, security_id: str) -> Optional[Instrument]:
         """Fetches an instrument by its security ID."""
         stmt = select(Instrument).filter_by(security_id=security_id)
@@ -94,49 +106,6 @@ class ValuationRepository:
         result = await self.db.execute(stmt)
         return result.scalars().first()
     
-    @async_timed(repository="ValuationRepository", method="find_snapshots_to_update")
-    async def find_snapshots_to_update(self, security_id: str, a_date: date) -> List[DailyPositionSnapshot]:
-        """
-        Finds all snapshots for a security on a given date. This is typically used
-        by the MarketPriceConsumer to find positions that need re-valuation.
-        """
-        stmt = select(DailyPositionSnapshot).filter(
-            DailyPositionSnapshot.security_id == security_id,
-            DailyPositionSnapshot.date == a_date,
-            DailyPositionSnapshot.quantity > 0
-        )
-        result = await self.db.execute(stmt)
-        return result.scalars().all()
-
-    @async_timed(repository="ValuationRepository", method="find_portfolios_holding_security_before_date")
-    async def find_portfolios_holding_security_before_date(self, security_id: str, a_date: date) -> List[DailyPositionSnapshot]:
-        """
-        Finds the single latest daily snapshot for each portfolio that held a given security
-        at any point before the specified date. This is used to roll forward positions.
-        """
-        ranked_snapshots_subq = select(
-            DailyPositionSnapshot,
-            func.row_number().over(
-                partition_by=DailyPositionSnapshot.portfolio_id,
-                order_by=DailyPositionSnapshot.date.desc()
-            ).label('rn')
-        ).filter(
-            DailyPositionSnapshot.security_id == security_id,
-            DailyPositionSnapshot.date < a_date
-        ).subquery('ranked_snapshots')
-
-        ranked_alias = aliased(DailyPositionSnapshot, ranked_snapshots_subq)
-
-        stmt = select(ranked_alias).filter(
-            ranked_snapshots_subq.c.rn == 1,
-            ranked_alias.quantity > 0
-        )
-
-        results = await self.db.execute(stmt)
-        snapshots = results.scalars().all()
-        logger.info(f"Found {len(snapshots)} portfolios holding {security_id} before {a_date} to roll forward.")
-        return snapshots
-
     @async_timed(repository="ValuationRepository", method="upsert_daily_snapshot")
     async def upsert_daily_snapshot(self, snapshot: DailyPositionSnapshot) -> DailyPositionSnapshot:
         """
