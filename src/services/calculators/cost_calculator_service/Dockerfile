@@ -17,18 +17,21 @@ WORKDIR /app
 
 FROM python-base AS builder
 
-# Install shared libs (NON-editable to avoid egg-links)
-COPY src/libs/portfolio-common/ /app/src/libs/portfolio-common/
-RUN pip install /app/src/libs/portfolio-common
-
-# Install the financial calculator engine (NON-editable)
-COPY src/libs/financial-calculator-engine/ /app/src/libs/financial-calculator-engine/
-RUN pip install /app/src/libs/financial-calculator-engine
-
-# Install the service
+# 1. Copy only dependency files first
+COPY src/libs/portfolio-common/pyproject.toml /app/src/libs/portfolio-common/pyproject.toml
+COPY src/libs/financial-calculator-engine/pyproject.toml /app/src/libs/financial-calculator-engine/pyproject.toml
 COPY src/services/calculators/cost_calculator_service/pyproject.toml /app/src/services/calculators/cost_calculator_service/pyproject.toml
-COPY src/services/calculators/cost_calculator_service/app /app/src/services/calculators/cost_calculator_service/app
+
+# 2. Install dependencies (this layer will be cached)
+RUN pip install /app/src/libs/portfolio-common
+RUN pip install /app/src/libs/financial-calculator-engine
 RUN pip install /app/src/services/calculators/cost_calculator_service
+
+# 3. Now copy the rest of the source code
+COPY src/libs/portfolio-common/ /app/src/libs/portfolio-common/
+COPY src/libs/financial-calculator-engine/ /app/src/libs/financial-calculator-engine/
+COPY src/services/calculators/cost_calculator_service/app /app/src/services/calculators/cost_calculator_service/app
+
 
 FROM python-base AS final
 
