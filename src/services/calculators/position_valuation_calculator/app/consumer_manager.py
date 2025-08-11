@@ -15,13 +15,14 @@ from portfolio_common.kafka_admin import ensure_topics_exist
 from portfolio_common.kafka_utils import get_kafka_producer
 from portfolio_common.outbox_dispatcher import OutboxDispatcher
 from .web import app as web_app
+from .core.valuation_scheduler import ValuationScheduler
 
 logger = logging.getLogger(__name__)
 
 class ConsumerManager:
     """
     Manages the lifecycle of Kafka consumers, the outbox dispatcher,
-    and the new health probe web server.
+    the new valuation scheduler, and the health probe web server.
     """
     def __init__(self):
         self.consumers = []
@@ -50,8 +51,9 @@ class ConsumerManager:
 
         kafka_producer = get_kafka_producer()
         self.dispatcher = OutboxDispatcher(kafka_producer=kafka_producer)
+        self.scheduler = ValuationScheduler()
 
-        logger.info(f"ConsumerManager initialized with {len(self.consumers)} consumer(s).")
+        logger.info(f"ConsumerManager initialized with {len(self.consumers)} consumer(s) and 1 scheduler.")
 
     def _signal_handler(self, signum, frame):
         """Sets the shutdown event when a signal is received."""
@@ -71,9 +73,10 @@ class ConsumerManager:
         uvicorn_config = uvicorn.Config(web_app, host="0.0.0.0", port=8084, log_config=None)
         server = uvicorn.Server(uvicorn_config)
 
-        logger.info("Starting all consumer tasks, the outbox dispatcher, and the web server...")
+        logger.info("Starting all consumer tasks, the outbox dispatcher, the scheduler, and the web server...")
         self.tasks = [asyncio.create_task(c.run()) for c in self.consumers]
         self.tasks.append(asyncio.create_task(self.dispatcher.run()))
+        self.tasks.append(asyncio.create_task(self.scheduler.run()))
         self.tasks.append(asyncio.create_task(server.serve()))
         
         logger.info("ConsumerManager is running. Press Ctrl+C to exit.")
@@ -84,7 +87,8 @@ class ConsumerManager:
             consumer.shutdown()
         
         self.dispatcher.stop()
+        self.scheduler.stop()
         server.should_exit = True
         
         await asyncio.gather(*self.tasks, return_exceptions=True)
-        logger.info("All consumer and dispatcher tasks have been successfully shut down.")
+        logger.info("All consumer, dispatcher, and web server tasks have been successfully shut down.")

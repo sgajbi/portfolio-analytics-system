@@ -2,13 +2,14 @@
 import logging
 from datetime import date
 from typing import List, Optional
-from sqlalchemy import select, func, distinct, exists
+from sqlalchemy import select, func, distinct, exists, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import aliased
 
 from portfolio_common.database_models import (
-    PositionHistory, MarketPrice, DailyPositionSnapshot, FxRate, Instrument, Portfolio
+    PositionHistory, MarketPrice, DailyPositionSnapshot, FxRate, Instrument, Portfolio,
+    PortfolioValuationJob
 )
 from portfolio_common.utils import async_timed
 
@@ -20,6 +21,32 @@ class ValuationRepository:
     """
     def __init__(self, db: AsyncSession):
         self.db = db
+
+    @async_timed(repository="ValuationRepository", method="find_and_claim_eligible_jobs")
+    async def find_and_claim_eligible_jobs(self, batch_size: int) -> List[PortfolioValuationJob]:
+        """
+        Finds PENDING valuation jobs, atomically claims them by updating their
+        status to PROCESSING, and returns the claimed jobs.
+        """
+        query = text("""
+            UPDATE portfolio_valuation_jobs
+            SET status = 'PROCESSING'
+            WHERE id IN (
+                SELECT id
+                FROM portfolio_valuation_jobs
+                WHERE status = 'PENDING'
+                ORDER BY portfolio_id, security_id, valuation_date
+                LIMIT :batch_size
+                FOR UPDATE SKIP LOCKED
+            )
+            RETURNING *;
+        """)
+        
+        result = await self.db.execute(query, {"batch_size": batch_size})
+        claimed_jobs = result.mappings().all()
+        if claimed_jobs:
+            logger.info(f"Found and claimed {len(claimed_jobs)} eligible valuation jobs.")
+        return [PortfolioValuationJob(**job) for job in claimed_jobs]
 
     async def has_any_history_for_security(self, security_id: str) -> bool:
         """Checks if any position history exists at all for a given security."""
