@@ -60,7 +60,22 @@ class CostCalculatorConsumer(BaseConsumer):
             cost_calculator=cost_calculator,
             error_reporter=error_reporter
         )
-    
+
+    def _transform_event_for_engine(self, event: TransactionEvent) -> dict:
+        """
+        Transforms a TransactionEvent into a raw dictionary suitable for the
+        financial-calculator-engine, converting trade_fee to a Fees object structure.
+        """
+        event_dict = event.model_dump(mode='json')
+        trade_fee = event_dict.pop('trade_fee', 0) or 0
+
+        # The engine's calculator sums all fees in the Fees object.
+        # We'll map the single fee to 'brokerage' for simplicity, as it's the most common.
+        if trade_fee > 0:
+            event_dict['fees'] = {'brokerage': trade_fee}
+        
+        return event_dict
+
     async def _enrich_transactions_with_fx(
         self,
         transactions: List[dict[str, Any]],
@@ -132,8 +147,9 @@ class CostCalculatorConsumer(BaseConsumer):
                         exclude_id=event.transaction_id
                     )
 
-                    history_raw = [TransactionEvent.model_validate(t).model_dump(mode='json') for t in history_db]
-                    event_raw = event.model_dump(mode='json')
+                    # --- FIX: Transform events to match engine's expected structure ---
+                    history_raw = [self._transform_event_for_engine(TransactionEvent.model_validate(t)) for t in history_db]
+                    event_raw = self._transform_event_for_engine(event)
                     
                     all_transactions_raw = await self._enrich_transactions_with_fx(
                         transactions=history_raw + [event_raw],
@@ -172,6 +188,7 @@ class CostCalculatorConsumer(BaseConsumer):
                     await idempotency_repo.mark_event_processed(
                         event_id, event.portfolio_id, SERVICE_NAME, correlation_id
                     )
+                    
                     await db.commit()
 
                 except Exception:
