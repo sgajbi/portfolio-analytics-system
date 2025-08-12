@@ -9,104 +9,80 @@ from portfolio_common.events import TransactionEvent
 @pytest.fixture
 def zero_position_state() -> PositionState:
     """Returns a position state with zero quantity and cost basis."""
-    return PositionState(quantity=Decimal(0), cost_basis=Decimal(0))
+    return PositionState(quantity=Decimal(0), cost_basis=Decimal(0), cost_basis_local=Decimal(0))
 
 @pytest.fixture
 def existing_position_state() -> PositionState:
-    """Returns a position state representing an existing holding."""
-    # Represents 100 shares bought for a total of $10,000
-    return PositionState(quantity=Decimal("100"), cost_basis=Decimal("10000"))
+    """
+    Returns a position state representing an existing holding, including dual-currency costs.
+    Represents 100 shares with a base cost of $10,000 and a local cost of €9,000.
+    """
+    return PositionState(
+        quantity=Decimal("100"), 
+        cost_basis=Decimal("10000"), 
+        cost_basis_local=Decimal("9000")
+    )
 
 def test_calculate_next_position_buy_from_zero(zero_position_state):
-    """
-    Tests a BUY transaction starting from no position.
-    """
+    """Tests a BUY transaction starting from no position."""
     buy_transaction = TransactionEvent(
-        transaction_id="T1",
-        portfolio_id="P1",
-        instrument_id="I1",
-        security_id="S1",
-        transaction_date=datetime.now(),
-        transaction_type="BUY",
-        quantity=Decimal("50"),
-        price=Decimal("110"),
-        gross_transaction_amount=Decimal("5500"),
-        trade_currency="USD",
-        currency="USD",
-        net_cost=Decimal("5505")  # Includes $5 fee
+        transaction_id="T1", portfolio_id="P1", instrument_id="I1", security_id="S1",
+        transaction_date=datetime.now(), transaction_type="BUY", quantity=Decimal("50"),
+        price=Decimal("110"), gross_transaction_amount=Decimal("5500"),
+        trade_currency="EUR", currency="EUR",
+        net_cost=Decimal("5505"),  # Cost in portfolio base currency (USD)
+        net_cost_local=Decimal("5005") # Cost in instrument local currency (EUR)
     )
 
     new_state = PositionCalculator.calculate_next_position(zero_position_state, buy_transaction)
 
     assert new_state.quantity == Decimal("50")
     assert new_state.cost_basis == Decimal("5505")
+    assert new_state.cost_basis_local == Decimal("5005")
 
 def test_calculate_next_position_sell_partial(existing_position_state):
     """
-    Tests a partial SELL from an existing position.
-    The average cost per share is $10000 / 100 = $100.
+    Tests a partial SELL from an existing position, verifying proportional reduction
+    of both base and local cost basis.
     """
     sell_transaction = TransactionEvent(
-        transaction_id="T2",
-        portfolio_id="P1",
-        instrument_id="I1",
-        security_id="S1",
-        transaction_date=datetime.now(),
-        transaction_type="SELL",
-        quantity=Decimal("40"),
-        price=Decimal("120"),
-        gross_transaction_amount=Decimal("4800"),
-        trade_currency="USD",
-        currency="USD"
+        transaction_id="T2", portfolio_id="P1", instrument_id="I1", security_id="S1",
+        transaction_date=datetime.now(), transaction_type="SELL", quantity=Decimal("40"),
+        price=Decimal("120"), gross_transaction_amount=Decimal("4800"),
+        trade_currency="EUR", currency="EUR"
     )
 
     new_state = PositionCalculator.calculate_next_position(existing_position_state, sell_transaction)
 
     # Quantity should decrease by 40 (100 -> 60)
     assert new_state.quantity == Decimal("60")
-    # Cost basis should decrease by the cost of goods sold (40 shares * $100/share = $4000)
-    # 10000 - 4000 = 6000
+    # Base cost basis should decrease by 40% (10000 * 0.4 = 4000). Remaining = 6000
     assert new_state.cost_basis == Decimal("6000")
+    # Local cost basis should also decrease by 40% (9000 * 0.4 = 3600). Remaining = 5400
+    assert new_state.cost_basis_local == Decimal("5400")
 
 def test_calculate_next_position_sell_full(existing_position_state):
-    """
-    Tests a SELL that fully closes the position.
-    """
+    """Tests a SELL that fully closes the position, zeroing out both cost basis values."""
     sell_transaction = TransactionEvent(
-        transaction_id="T3",
-        portfolio_id="P1",
-        instrument_id="I1",
-        security_id="S1",
-        transaction_date=datetime.now(),
-        transaction_type="SELL",
-        quantity=Decimal("100"),
-        price=Decimal("120"),
-        gross_transaction_amount=Decimal("12000"),
-        trade_currency="USD",
-        currency="USD"
+        transaction_id="T3", portfolio_id="P1", instrument_id="I1", security_id="S1",
+        transaction_date=datetime.now(), transaction_type="SELL", quantity=Decimal("100"),
+        price=Decimal("120"), gross_transaction_amount=Decimal("12000"),
+        trade_currency="EUR", currency="EUR"
     )
 
     new_state = PositionCalculator.calculate_next_position(existing_position_state, sell_transaction)
 
     assert new_state.quantity == Decimal("0")
     assert new_state.cost_basis == Decimal("0")
+    assert new_state.cost_basis_local == Decimal("0")
 
 def test_other_transaction_types_do_not_change_state(existing_position_state):
-    """
-    Tests that non-BUY/SELL transactions do not alter the quantity or cost basis.
-    """
+    """Tests that non-BUY/SELL transactions do not alter the position state."""
     fee_transaction = TransactionEvent(
-        transaction_id="T4",
-        portfolio_id="P1",
-        instrument_id="I1",
-        security_id="S1",
-        transaction_date=datetime.now(),
-        transaction_type="FEE",
-        quantity=Decimal("1"),
-        price=Decimal("10"),
-        gross_transaction_amount=Decimal("10"),
-        trade_currency="USD",
-        currency="USD"
+        transaction_id="T4", portfolio_id="P1", instrument_id="I1", security_id="S1",
+        transaction_date=datetime.now(), transaction_type="FEE", quantity=Decimal("1"),
+        price=Decimal("10"), gross_transaction_amount=Decimal("10"),
+        trade_currency="USD", currency="USD"
     )
 
     new_state = PositionCalculator.calculate_next_position(existing_position_state, fee_transaction)
@@ -114,3 +90,4 @@ def test_other_transaction_types_do_not_change_state(existing_position_state):
     # State should be unchanged
     assert new_state.quantity == existing_position_state.quantity
     assert new_state.cost_basis == existing_position_state.cost_basis
+    assert new_state.cost_basis_local == existing_position_state.cost_basis_local
