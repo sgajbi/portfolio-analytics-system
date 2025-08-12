@@ -1,11 +1,11 @@
-# services/calculators/cashflow_calculator_service/tests/unit/core/test_cashflow_logic.py
+# tests/unit/services/calculators/cashflow_calculator_service/unit/core/test_cashflow_logic.py
 import pytest
 from decimal import Decimal
 from datetime import datetime
 
 from portfolio_common.events import TransactionEvent
-from services.calculators.cashflow_calculator_service.app.core.cashflow_logic import CashflowLogic
-from services.calculators.cashflow_calculator_service.app.core.cashflow_config import get_rule_for_transaction
+from src.services.calculators.cashflow_calculator_service.app.core.cashflow_logic import CashflowLogic
+from src.services.calculators.cashflow_calculator_service.app.core.cashflow_config import get_rule_for_transaction
 
 @pytest.fixture
 def base_transaction_event() -> TransactionEvent:
@@ -85,3 +85,110 @@ def test_calculate_dividend_transaction(base_transaction_event: TransactionEvent
     assert cashflow.amount == event.gross_transaction_amount
     assert cashflow.classification == "INCOME"
     assert cashflow.timing == "BOD" # Dividends are typically BOD cashflows
+    assert cashflow.level == "POSITION"
+
+def test_calculate_fee_transaction(base_transaction_event: TransactionEvent):
+    """
+    Tests that a FEE transaction correctly generates a negative cashflow (outflow)
+    at the PORTFOLIO level.
+    """
+    # Arrange
+    event = base_transaction_event
+    event.transaction_type = "FEE"
+    event.gross_transaction_amount = Decimal("50")
+    event.trade_fee = Decimal("0")
+    rule = get_rule_for_transaction("FEE")
+    assert rule is not None
+
+    # Act
+    cashflow = CashflowLogic.calculate(event, rule)
+
+    # Assert
+    assert cashflow.amount == -event.gross_transaction_amount
+    assert cashflow.classification == "EXPENSE"
+    assert cashflow.level == "PORTFOLIO"
+    assert cashflow.security_id is None
+
+def test_calculate_interest_transaction(base_transaction_event: TransactionEvent):
+    """
+    Tests that an INTEREST transaction correctly generates a positive cashflow
+    classified as INCOME at the PORTFOLIO level.
+    """
+    # Arrange
+    event = base_transaction_event
+    event.transaction_type = "INTEREST"
+    event.gross_transaction_amount = Decimal("75.25")
+    event.trade_fee = Decimal("0")
+    rule = get_rule_for_transaction("INTEREST")
+    assert rule is not None
+
+    # Act
+    cashflow = CashflowLogic.calculate(event, rule)
+
+    # Assert
+    assert cashflow.amount == event.gross_transaction_amount
+    assert cashflow.classification == "INCOME"
+    assert cashflow.level == "PORTFOLIO"
+    assert cashflow.security_id is None
+
+def test_calculate_transfer_in_transaction(base_transaction_event: TransactionEvent):
+    """
+    Tests that a TRANSFER_IN transaction generates a positive BOD cashflow.
+    """
+    # Arrange
+    event = base_transaction_event
+    event.transaction_type = "TRANSFER_IN"
+    event.gross_transaction_amount = Decimal("10000")
+    event.trade_fee = Decimal("0")
+    rule = get_rule_for_transaction("TRANSFER_IN")
+    assert rule is not None
+
+    # Act
+    cashflow = CashflowLogic.calculate(event, rule)
+
+    # Assert
+    assert cashflow.amount == event.gross_transaction_amount
+    assert cashflow.classification == "CASHFLOW_IN"
+    assert cashflow.timing == "BOD"
+    assert cashflow.level == "PORTFOLIO"
+
+def test_calculate_transfer_out_transaction(base_transaction_event: TransactionEvent):
+    """
+    Tests that a TRANSFER_OUT transaction generates a negative EOD cashflow.
+    """
+    # Arrange
+    event = base_transaction_event
+    event.transaction_type = "TRANSFER_OUT"
+    event.gross_transaction_amount = Decimal("2500")
+    event.trade_fee = Decimal("0")
+    rule = get_rule_for_transaction("TRANSFER_OUT")
+    assert rule is not None
+
+    # Act
+    cashflow = CashflowLogic.calculate(event, rule)
+
+    # Assert
+    assert cashflow.amount == -event.gross_transaction_amount
+    assert cashflow.classification == "CASHFLOW_OUT"
+    assert cashflow.timing == "EOD"
+    assert cashflow.level == "PORTFOLIO"
+
+def test_calculate_tax_transaction(base_transaction_event: TransactionEvent):
+    """
+    Tests that a TAX transaction generates a negative expense cashflow.
+    """
+    # Arrange
+    event = base_transaction_event
+    event.transaction_type = "TAX"
+    event.gross_transaction_amount = Decimal("123.45")
+    event.trade_fee = Decimal("0")
+    rule = get_rule_for_transaction("TAX")
+    assert rule is not None
+
+    # Act
+    cashflow = CashflowLogic.calculate(event, rule)
+
+    # Assert
+    assert cashflow.amount == -event.gross_transaction_amount
+    assert cashflow.classification == "EXPENSE"
+    assert cashflow.level == "PORTFOLIO"
