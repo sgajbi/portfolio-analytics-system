@@ -29,7 +29,7 @@ class IngestionService:
             return [('correlation_id', corr_id.encode('utf-8'))]
         return None
 
-    def publish_portfolios(self, portfolios: List[Portfolio]) -> None:
+    async def publish_portfolios(self, portfolios: List[Portfolio]) -> None:
         """Publishes a list of portfolios to the raw portfolios topic."""
         headers = self._get_headers()
         for portfolio in portfolios:
@@ -42,7 +42,7 @@ class IngestionService:
             )
             KAFKA_MESSAGES_PUBLISHED_TOTAL.labels(topic=KAFKA_RAW_PORTFOLIOS_TOPIC).inc()
 
-    def publish_transaction(self, transaction: Transaction) -> None:
+    async def publish_transaction(self, transaction: Transaction) -> None:
         """Publishes a single transaction to the raw transactions topic."""
         headers = self._get_headers()
         transaction_payload = transaction.model_dump()
@@ -54,7 +54,7 @@ class IngestionService:
         )
         KAFKA_MESSAGES_PUBLISHED_TOTAL.labels(topic=KAFKA_RAW_TRANSACTIONS_TOPIC).inc()
 
-    def publish_transactions(self, transactions: List[Transaction]) -> None:
+    async def publish_transactions(self, transactions: List[Transaction]) -> None:
         """Publishes a list of transactions to the raw transactions topic."""
         headers = self._get_headers()
         for transaction in transactions:
@@ -67,7 +67,7 @@ class IngestionService:
             )
             KAFKA_MESSAGES_PUBLISHED_TOTAL.labels(topic=KAFKA_RAW_TRANSACTIONS_TOPIC).inc()
 
-    def publish_instruments(self, instruments: List[Instrument]) -> None:
+    async def publish_instruments(self, instruments: List[Instrument]) -> None:
         """Publishes a list of instruments to the instruments topic."""
         headers = self._get_headers()
         for instrument in instruments:
@@ -80,7 +80,7 @@ class IngestionService:
             )
             KAFKA_MESSAGES_PUBLISHED_TOTAL.labels(topic=KAFKA_INSTRUMENTS_TOPIC).inc()
 
-    def publish_market_prices(self, market_prices: List[MarketPrice]) -> None:
+    async def publish_market_prices(self, market_prices: List[MarketPrice]) -> None:
         """Publishes a list of market prices to the market prices topic."""
         headers = self._get_headers()
         for price in market_prices:
@@ -93,7 +93,7 @@ class IngestionService:
             )
             KAFKA_MESSAGES_PUBLISHED_TOTAL.labels(topic=KAFKA_MARKET_PRICES_TOPIC).inc()
 
-    def publish_fx_rates(self, fx_rates: List[FxRate]) -> None:
+    async def publish_fx_rates(self, fx_rates: List[FxRate]) -> None:
         """Publishes a list of FX rates to the fx_rates topic."""
         headers = self._get_headers()
         for rate in fx_rates:
