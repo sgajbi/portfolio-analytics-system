@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 from sqlalchemy.ext.asyncio import AsyncSession
 from portfolio_common.events import PortfolioAggregationRequiredEvent
 from portfolio_common.database_models import (
-    Portfolio, PositionTimeseries, Instrument, PortfolioTimeseries
+    Portfolio, PositionTimeseries, Instrument
 )
 from services.timeseries_generator_service.app.consumers.portfolio_timeseries_consumer import PortfolioTimeseriesConsumer
 from services.timeseries_generator_service.app.repositories.timeseries_repository import TimeseriesRepository
@@ -79,7 +79,7 @@ async def test_process_message_success(
     """
     GIVEN a portfolio aggregation event
     WHEN the message is processed successfully
-    THEN it should aggregate data, save the new timeseries record, and update the job status to COMPLETE.
+    THEN it should aggregate data, save the record, and update the job status to COMPLETE.
     """
     # ARRANGE
     mock_repo = mock_dependencies["repo"]
@@ -101,12 +101,34 @@ async def test_process_message_success(
         mock_repo.get_portfolio.assert_called_once_with(mock_event.portfolio_id)
         mock_repo.upsert_portfolio_timeseries.assert_called_once()
         mock_outbox_repo.create_outbox_event.assert_called_once()
-        
-        # FIX: Correctly assert the mock call including the db_session kwarg
-        mock_update_status.assert_called_once_with(
-            mock_event.portfolio_id,
-            mock_event.aggregation_date,
-            'COMPLETE',
-            db_session=ANY
-        )
+        mock_update_status.assert_called_once_with(mock_event.portfolio_id, mock_event.aggregation_date, 'COMPLETE', db_session=ANY)
+        consumer._send_to_dlq_async.assert_not_called()
+
+async def test_process_message_fails_if_portfolio_missing(
+    consumer: PortfolioTimeseriesConsumer,
+    mock_event: PortfolioAggregationRequiredEvent,
+    mock_kafka_message: MagicMock,
+    mock_dependencies: dict
+):
+    """
+    GIVEN a portfolio aggregation event for a non-existent portfolio
+    WHEN the message is processed
+    THEN it should mark the job as FAILED and not create an outbox event.
+    """
+    # ARRANGE
+    mock_repo = mock_dependencies["repo"]
+    mock_outbox_repo = mock_dependencies["outbox_repo"]
+    
+    mock_repo.get_portfolio.return_value = None  # Simulate portfolio not found
+
+    with patch.object(consumer, '_update_job_status', new_callable=AsyncMock) as mock_update_status:
+        # ACT
+        await consumer.process_message(mock_kafka_message)
+
+        # ASSERT
+        mock_repo.get_portfolio.assert_called_once_with(mock_event.portfolio_id)
+        mock_repo.upsert_portfolio_timeseries.assert_not_called()
+        mock_outbox_repo.create_outbox_event.assert_not_called()
+        # Crucially, assert the job was marked as FAILED
+        mock_update_status.assert_called_once_with(mock_event.portfolio_id, mock_event.aggregation_date, 'FAILED')
         consumer._send_to_dlq_async.assert_not_called()

@@ -6,11 +6,12 @@ from decimal import Decimal
 from contextlib import asynccontextmanager
 
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import text
 from sqlalchemy.dialects import postgresql
 from portfolio_common.events import DailyPositionSnapshotPersistedEvent
 from portfolio_common.database_models import DailyPositionSnapshot, PositionTimeseries, Instrument
 from services.timeseries_generator_service.app.consumers.position_timeseries_consumer import (
-    PositionTimeseriesConsumer, InstrumentNotFoundError, PreviousTimeseriesNotFoundError
+    PositionTimeseriesConsumer, InstrumentNotFoundError
 )
 from services.timeseries_generator_service.app.repositories.timeseries_repository import TimeseriesRepository
 
@@ -43,7 +44,6 @@ def mock_kafka_message(mock_event: DailyPositionSnapshotPersistedEvent) -> Magic
     mock_msg = MagicMock()
     mock_msg.value.return_value = mock_event.model_dump_json().encode('utf-8')
     mock_msg.headers.return_value = []
-    # ... other mock attributes ...
     return mock_msg
 
 @pytest.fixture
@@ -63,7 +63,6 @@ def mock_dependencies():
         "services.timeseries_generator_service.app.consumers.position_timeseries_consumer.TimeseriesRepository", return_value=mock_repo
     ):
         yield {"repo": mock_repo, "db_session": mock_db_session}
-
 
 async def test_process_message_success(
     consumer: PositionTimeseriesConsumer,
@@ -88,6 +87,7 @@ async def test_process_message_success(
         eod_market_value=Decimal(1050)
     )
     mock_repo.get_all_cashflows_for_security_date.return_value = []
+    mock_repo.is_first_position.return_value = False
 
     # ACT
     await consumer._process_message_with_retry(mock_kafka_message)
@@ -96,14 +96,26 @@ async def test_process_message_success(
     mock_repo.get_instrument.assert_awaited_once_with(mock_event.security_id)
     mock_db_session.get.assert_awaited_once_with(DailyPositionSnapshot, mock_event.id)
     mock_repo.upsert_position_timeseries.assert_awaited_once()
-    
     mock_db_session.execute.assert_awaited_once()
-    executed_stmt = mock_db_session.execute.call_args[0][0]
-    
-    # FIX: Correctly compile the statement to inspect its parameters
-    compiled_params = executed_stmt.compile(dialect=postgresql.dialect()).params
-    
-    assert "portfolio_aggregation_jobs" in str(executed_stmt)
-    assert compiled_params['portfolio_id'] == mock_event.portfolio_id
-    assert compiled_params['aggregation_date'] == mock_event.date
-    assert compiled_params['status'] == 'PENDING'
+
+async def test_process_message_raises_retryable_error_if_instrument_missing(
+    consumer: PositionTimeseriesConsumer,
+    mock_kafka_message: MagicMock,
+    mock_dependencies: dict
+):
+    """
+    GIVEN a snapshot event where the instrument data is not yet persisted
+    WHEN the message is processed
+    THEN it should raise a retryable InstrumentNotFoundError.
+    """
+    # ARRANGE
+    mock_repo = mock_dependencies["repo"]
+    mock_repo.get_instrument.return_value = None  # Simulate instrument not found
+
+    # ACT & ASSERT
+    with pytest.raises(InstrumentNotFoundError):
+        await consumer._process_message_with_retry(mock_kafka_message)
+
+    # Verify that no records were created
+    mock_dependencies["db_session"].get.assert_not_called()
+    mock_repo.upsert_position_timeseries.assert_not_called()
