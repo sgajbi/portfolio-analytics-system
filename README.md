@@ -10,7 +10,8 @@
 [![Postgres](https://img.shields.io/badge/postgresql-4169E1?style=for-the-badge&logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-005571?style=for-the-badge&logo=fastapi)](https://fastapi.tiangolo.com/)
 
-An event-driven, microservices-based platform for comprehensive portfolio analytics. Designed for wealth management, this system ingests financial data, performs complex calculations (cost basis, positions, valuation), and exposes the results through a clean, scalable API.
+An event-driven, microservices-based platform for comprehensive portfolio analytics. Designed for scalability and reliability, this system ingests financial data, performs complex calculations (cost basis, positions, valuation, and time series), and exposes the results through a clean, scalable API. It leverages an outbox pattern for guaranteed event delivery and idempotent consumers to ensure data consistency.
+
 ---
 ## Table of Contents
 
@@ -238,7 +239,7 @@ The project contains a comprehensive suite of tests to ensure correctness and re
 3.  **Run Tests for a Specific Module or File**:
     To run tests for a single part of the application, specify the directory or file path.
     ```bash
-    # Run all unit tests for the financial calculator
+     # Run all unit tests for the financial calculator
     pytest tests/unit/libs/financial-calculator-engine/
 
     # Run a single test file
@@ -471,3 +472,5 @@ This example demonstrates the full flow from ingesting a cross-currency trade to
     ```
 
 <!-- end list -->
+
+ 
