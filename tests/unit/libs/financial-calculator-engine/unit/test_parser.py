@@ -1,4 +1,4 @@
-# tests/unit/test_parser.py
+# tests/unit/libs/financial-calculator-engine/unit/test_parser.py
 
 import pytest
 from datetime import datetime
@@ -22,7 +22,6 @@ def test_parse_valid_transaction(parser, error_reporter):
         "transaction_id": "txn1", "portfolio_id": "P1", "instrument_id": "AAPL", "security_id": "S1",
         "transaction_type": "BUY", "transaction_date": "2023-01-01T00:00:00Z", "settlement_date": "2023-01-03T00:00:00Z",
         "quantity": 10.0, "gross_transaction_amount": 1500.0, "trade_currency": "USD",
-        # --- FIX: Add required field ---
         "portfolio_base_currency": "USD"
     }]
     parsed = parser.parse_transactions(raw_data)
