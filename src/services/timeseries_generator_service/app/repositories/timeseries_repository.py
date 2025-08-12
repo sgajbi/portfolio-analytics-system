@@ -34,8 +34,11 @@ class TimeseriesRepository:
         Finds PENDING aggregation jobs where the previous day's job is COMPLETE (or doesn't exist)
         and atomically claims them by updating their status to PROCESSING.
         """
+        # FIX: Add FOR UPDATE SKIP LOCKED to the subquery to prevent race conditions.
         query = text("""
-            WITH eligible_jobs AS (
+            UPDATE portfolio_aggregation_jobs
+            SET status = 'PROCESSING', updated_at = now()
+            WHERE id IN (
                 SELECT p1.id
                 FROM portfolio_aggregation_jobs p1
                 LEFT JOIN portfolio_aggregation_jobs p2
@@ -45,12 +48,8 @@ class TimeseriesRepository:
                   AND (p2.status IS NULL OR p2.status = 'COMPLETE')
                 ORDER BY p1.portfolio_id, p1.aggregation_date
                 LIMIT :batch_size
+                FOR UPDATE SKIP LOCKED
             )
-            UPDATE portfolio_aggregation_jobs
-            SET status = 'PROCESSING'
-            WHERE id IN (
-                SELECT id FROM eligible_jobs
-            ) AND status = 'PENDING'
             RETURNING *;
         """)
         
