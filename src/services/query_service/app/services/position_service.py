@@ -44,20 +44,15 @@ class PositionService:
         
         positions = []
         for row in db_results:
-            valuation_dto = ValuationData(
-                market_price=row.market_price,
-                market_value=row.market_value,
-                unrealized_gain_loss=row.unrealized_gain_loss,
-                market_value_local=row.market_value_local,
-                unrealized_gain_loss_local=row.unrealized_gain_loss_local
-            )
+            # FIX: PositionHistory objects do not contain valuation data.
+            # The `valuation` field on the DTO is optional and should be None here.
             record = PositionHistoryRecord(
                 position_date=row.position_date,
                 transaction_id=row.transaction_id,
                 quantity=row.quantity,
                 cost_basis=row.cost_basis,
                 cost_basis_local=row.cost_basis_local,
-                valuation=valuation_dto
+                valuation=None
             )
             positions.append(record)
         
