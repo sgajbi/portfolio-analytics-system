@@ -4,12 +4,15 @@ from unittest.mock import MagicMock, patch, AsyncMock
 from datetime import datetime
 from decimal import Decimal
 
+from sqlalchemy.ext.asyncio import AsyncSession
 from portfolio_common.events import TransactionEvent
 from portfolio_common.database_models import Transaction as DBTransaction, Portfolio
 from src.services.calculators.cost_calculator_service.app.consumer import CostCalculatorConsumer
 from src.services.calculators.cost_calculator_service.app.repository import CostCalculatorRepository
 from portfolio_common.idempotency_repository import IdempotencyRepository
+from portfolio_common.outbox_repository import OutboxRepository
 from core.models.transaction import Transaction as EngineTransaction
+from core.models.transaction import Fees
 
 pytestmark = pytest.mark.asyncio
 
@@ -25,13 +28,39 @@ def cost_calculator_consumer():
     return consumer
 
 @pytest.fixture
-def mock_kafka_message():
+def mock_dependencies():
+    """A fixture to patch all external dependencies for a consumer test."""
+    mock_repo = AsyncMock(spec=CostCalculatorRepository)
+    mock_idempotency_repo = AsyncMock(spec=IdempotencyRepository)
+    mock_outbox_repo = AsyncMock(spec=OutboxRepository)
+    
+    mock_db_session = AsyncMock(spec=AsyncSession)
+    mock_transaction = AsyncMock()
+    mock_db_session.begin.return_value = mock_transaction
+    
+    # This is now a correct async generator, not a context manager
+    async def get_session_gen():
+        yield mock_db_session
+
+    with patch("src.services.calculators.cost_calculator_service.app.consumer.get_async_db_session", new=get_session_gen), \
+         patch("src.services.calculators.cost_calculator_service.app.consumer.CostCalculatorRepository", return_value=mock_repo), \
+         patch("src.services.calculators.cost_calculator_service.app.consumer.IdempotencyRepository", return_value=mock_idempotency_repo), \
+         patch("src.services.calculators.cost_calculator_service.app.consumer.OutboxRepository", return_value=mock_outbox_repo):
+        yield {
+            "repo": mock_repo,
+            "idempotency_repo": mock_idempotency_repo,
+            "outbox_repo": mock_outbox_repo
+        }
+
+@pytest.fixture
+def mock_sell_kafka_message():
     """Provides a reusable mock Kafka message for a SELL transaction."""
     sell_event = TransactionEvent(
         transaction_id="SELL01", portfolio_id="PORT_COST_01", instrument_id="AAPL",
         security_id="SEC_COST_01", transaction_date=datetime(2025, 1, 20),
         transaction_type="SELL", quantity=Decimal("10"), price=Decimal("175.0"),
-        gross_transaction_amount=Decimal("1750.0"), trade_currency="USD", currency="USD"
+        gross_transaction_amount=Decimal("1750.0"), trade_currency="USD", currency="USD",
+        trade_fee=Decimal("0.0")
     )
     mock_msg = MagicMock()
     mock_msg.value.return_value = sell_event.model_dump_json().encode('utf-8')
@@ -41,100 +70,110 @@ def mock_kafka_message():
     mock_msg.headers.return_value = []
     return mock_msg
 
-async def test_consumer_integration_with_engine(cost_calculator_consumer: CostCalculatorConsumer, mock_kafka_message: MagicMock):
+@pytest.fixture
+def mock_buy_kafka_message() -> MagicMock:
+    """Creates a mock Kafka message for a BUY transaction with a fee."""
+    buy_event = TransactionEvent(
+        transaction_id="BUY_WITH_FEE_01", portfolio_id="PORT_COST_01", instrument_id="AAPL",
+        security_id="SEC_COST_01", transaction_date=datetime(2025, 1, 15),
+        transaction_type="BUY", quantity=Decimal("10"), price=Decimal("150.0"),
+        gross_transaction_amount=Decimal("1500.0"), trade_fee=Decimal("7.50"),
+        trade_currency="USD", currency="USD",
+    )
+    mock_msg = MagicMock()
+    mock_msg.value.return_value = buy_event.model_dump_json().encode('utf-8')
+    mock_msg.topic.return_value = "raw_transactions_completed"
+    mock_msg.partition.return_value = 0
+    mock_msg.offset.return_value = 2
+    mock_msg.headers.return_value = []
+    return mock_msg
+
+async def test_consumer_integration_with_engine(cost_calculator_consumer: CostCalculatorConsumer, mock_sell_kafka_message: MagicMock, mock_dependencies):
     """
     GIVEN a new SELL transaction message
     WHEN the consumer processes it, using the real TransactionProcessor
     THEN it should fetch history, calculate the realized P&L, and update the database.
     """
     # ARRANGE
-    mock_repo_instance = AsyncMock(spec=CostCalculatorRepository)
-    mock_idempotency_repo = AsyncMock(spec=IdempotencyRepository)
-    mock_outbox_repo = AsyncMock() # <-- FIX: Use AsyncMock
+    mock_repo = mock_dependencies["repo"]
+    mock_idempotency_repo = mock_dependencies["idempotency_repo"]
+    mock_outbox_repo = mock_dependencies["outbox_repo"]
 
-    # Simulate the repository returning the previous BUY transaction history
     buy_history = DBTransaction(
         transaction_id="BUY01", portfolio_id="PORT_COST_01", security_id="SEC_COST_01",
-        instrument_id="AAPL",
-        transaction_type="BUY", transaction_date=datetime(2025, 1, 10),
+        instrument_id="AAPL", transaction_type="BUY", transaction_date=datetime(2025, 1, 10),
         quantity=Decimal("10"), price=Decimal("150.0"), gross_transaction_amount=Decimal("1500.0"),
         trade_currency="USD", currency="USD", net_cost=Decimal("1500"), net_cost_local=Decimal("1500"),
-        transaction_fx_rate=Decimal("1.0"),
-        trade_fee=Decimal("0.0")
+        transaction_fx_rate=Decimal("1.0"), trade_fee=Decimal("0.0")
     )
-    mock_repo_instance.get_transaction_history.return_value = [buy_history]
-    mock_repo_instance.get_portfolio.return_value = Portfolio(base_currency="USD", portfolio_id="PORT_COST_01")
-    mock_repo_instance.get_fx_rate.return_value = None
-
+    mock_repo.get_transaction_history.return_value = [buy_history]
+    mock_repo.get_portfolio.return_value = Portfolio(base_currency="USD", portfolio_id="PORT_COST_01")
+    mock_repo.get_fx_rate.return_value = None
     mock_idempotency_repo.is_event_processed.return_value = False
 
-    # FIX: Configure the mock to return a realistic DB object from the input it receives.
-    def create_db_transaction_from_engine(engine_txn: EngineTransaction) -> DBTransaction:
+    def create_db_tx(engine_txn: EngineTransaction) -> DBTransaction:
         data = engine_txn.model_dump(exclude_none=True)
         data.pop('portfolio_base_currency', None)
         data.pop('fees', None)
-        data.pop('accrued_interest', None) # <-- FIX: Remove the incompatible 'accrued_interest' field
+        data.pop('accrued_interest', None)
         return DBTransaction(**data)
-
-    mock_repo_instance.update_transaction_costs.side_effect = create_db_transaction_from_engine
-
-
-    mock_db_session = AsyncMock()
-    mock_db_session.begin.return_value = AsyncMock()
-    async def mock_get_db_session_generator():
-        yield mock_db_session
+    mock_repo.update_transaction_costs.side_effect = create_db_tx
 
     # ACT
-    with patch("src.services.calculators.cost_calculator_service.app.consumer.get_async_db_session", new=mock_get_db_session_generator), \
-         patch("src.services.calculators.cost_calculator_service.app.consumer.CostCalculatorRepository", return_value=mock_repo_instance), \
-         patch("src.services.calculators.cost_calculator_service.app.consumer.IdempotencyRepository", return_value=mock_idempotency_repo), \
-         patch("src.services.calculators.cost_calculator_service.app.consumer.OutboxRepository", return_value=mock_outbox_repo):
-
-        await cost_calculator_consumer.process_message(mock_kafka_message)
+    await cost_calculator_consumer.process_message(mock_sell_kafka_message)
 
     # ASSERT
     mock_idempotency_repo.is_event_processed.assert_called_once()
-    mock_repo_instance.get_transaction_history.assert_called_once()
-
-    # Verify that the real engine was called and produced the correct result
-    # PnL = (10 * 175) - (10 * 150) = 1750 - 1500 = 250
-    mock_repo_instance.update_transaction_costs.assert_called_once()
-    updated_transaction_arg = mock_repo_instance.update_transaction_costs.call_args[0][0]
+    mock_repo.get_transaction_history.assert_called_once()
+    updated_transaction_arg = mock_repo.update_transaction_costs.call_args[0][0]
     assert isinstance(updated_transaction_arg, EngineTransaction)
     assert updated_transaction_arg.realized_gain_loss == Decimal("250.0")
-
     mock_idempotency_repo.mark_event_processed.assert_called_once()
     mock_outbox_repo.create_outbox_event.assert_called_once()
 
-async def test_process_message_skips_processed_event(cost_calculator_consumer: CostCalculatorConsumer, mock_kafka_message: MagicMock):
+async def test_consumer_uses_trade_fee_in_calculation(
+    cost_calculator_consumer: CostCalculatorConsumer, mock_buy_kafka_message: MagicMock, mock_dependencies
+):
+    """
+    GIVEN a new BUY transaction message with a trade_fee
+    WHEN the consumer processes it using the real engine
+    THEN the final updated transaction should have a net_cost that includes the fee.
+    """
+    # ARRANGE
+    mock_repo = mock_dependencies["repo"]
+    mock_idempotency_repo = mock_dependencies["idempotency_repo"]
+    
+    mock_idempotency_repo.is_event_processed.return_value = False
+    mock_repo.get_transaction_history.return_value = []
+    mock_repo.get_portfolio.return_value = Portfolio(base_currency="USD", portfolio_id="PORT_COST_01")
+    mock_repo.get_fx_rate.return_value = None
+    mock_repo.update_transaction_costs.side_effect = lambda arg: arg
+
+    # ACT
+    await cost_calculator_consumer.process_message(mock_buy_kafka_message)
+
+    # ASSERT
+    mock_repo.update_transaction_costs.assert_called_once()
+    updated_transaction_arg = mock_repo.update_transaction_costs.call_args[0][0]
+    
+    assert updated_transaction_arg.net_cost == Decimal("1507.50")
+
+async def test_process_message_skips_processed_event(
+    cost_calculator_consumer: CostCalculatorConsumer, mock_sell_kafka_message: MagicMock, mock_dependencies
+):
     """
     GIVEN a transaction message that has already been processed
     WHEN the process_message method is called
     THEN it should skip all business logic.
     """
     # ARRANGE
-    mock_repo_instance = AsyncMock(spec=CostCalculatorRepository)
-    mock_idempotency_repo = AsyncMock(spec=IdempotencyRepository)
+    mock_idempotency_repo = mock_dependencies["idempotency_repo"]
     mock_idempotency_repo.is_event_processed.return_value = True
-    mock_outbox_repo = AsyncMock() # <-- FIX: Use AsyncMock
-    mock_processor_instance = MagicMock()
-
-    mock_db_session = AsyncMock()
-    mock_db_session.begin.return_value = AsyncMock()
-    async def mock_get_db_session_generator():
-        yield mock_db_session
 
     # ACT
-    with patch.object(cost_calculator_consumer, '_get_transaction_processor', return_value=mock_processor_instance), \
-         patch("src.services.calculators.cost_calculator_service.app.consumer.get_async_db_session", new=mock_get_db_session_generator), \
-         patch("src.services.calculators.cost_calculator_service.app.consumer.CostCalculatorRepository", return_value=mock_repo_instance), \
-         patch("src.services.calculators.cost_calculator_service.app.consumer.IdempotencyRepository", return_value=mock_idempotency_repo), \
-         patch("src.services.calculators.cost_calculator_service.app.consumer.OutboxRepository", return_value=mock_outbox_repo):
-
-        await cost_calculator_consumer.process_message(mock_kafka_message)
+    await cost_calculator_consumer.process_message(mock_sell_kafka_message)
 
     # ASSERT
     mock_idempotency_repo.is_event_processed.assert_called_once()
-    # The real processor should not be called because of the idempotency check
-    mock_processor_instance.process_transactions.assert_not_called()
-    mock_outbox_repo.create_outbox_event.assert_not_called()
+    mock_dependencies["repo"].get_transaction_history.assert_not_called()
+    mock_dependencies["outbox_repo"].create_outbox_event.assert_not_called()

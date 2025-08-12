@@ -4,6 +4,7 @@ import json
 from datetime import datetime
 from typing import List, Any
 from pydantic import ValidationError
+from decimal import Decimal
 from confluent_kafka import Message
 from sqlalchemy.exc import DBAPIError, IntegrityError
 from tenacity import retry, stop_after_attempt, wait_fixed, before_log, retry_if_exception_type
@@ -67,12 +68,10 @@ class CostCalculatorConsumer(BaseConsumer):
         financial-calculator-engine, converting trade_fee to a Fees object structure.
         """
         event_dict = event.model_dump(mode='json')
-        trade_fee = event_dict.pop('trade_fee', 0) or 0
-
-        # The engine's calculator sums all fees in the Fees object.
-        # We'll map the single fee to 'brokerage' for simplicity, as it's the most common.
-        if trade_fee > 0:
-            event_dict['fees'] = {'brokerage': trade_fee}
+        trade_fee_str = event_dict.pop('trade_fee', '0') or '0'
+        
+        if Decimal(trade_fee_str) > 0:
+            event_dict['fees'] = {'brokerage': trade_fee_str}
         
         return event_dict
 
@@ -126,15 +125,13 @@ class CostCalculatorConsumer(BaseConsumer):
             event = TransactionEvent.model_validate(data)
 
             async for db in get_async_db_session():
-                tx = await db.begin()
-                try:
+                async with db.begin():
                     repo = CostCalculatorRepository(db)
                     idempotency_repo = IdempotencyRepository(db)
                     outbox_repo = OutboxRepository(db)
 
                     if await idempotency_repo.is_event_processed(event_id, SERVICE_NAME):
                         logger.warning("Event already processed. Skipping.")
-                        await tx.rollback()
                         return
 
                     portfolio = await repo.get_portfolio(event.portfolio_id)
@@ -146,8 +143,7 @@ class CostCalculatorConsumer(BaseConsumer):
                         security_id=event.security_id,
                         exclude_id=event.transaction_id
                     )
-
-                    # --- FIX: Transform events to match engine's expected structure ---
+                    
                     history_raw = [self._transform_event_for_engine(TransactionEvent.model_validate(t)) for t in history_db]
                     event_raw = self._transform_event_for_engine(event)
                     
@@ -174,6 +170,13 @@ class CostCalculatorConsumer(BaseConsumer):
 
                     for p_txn in processed_new:
                         updated_txn = await repo.update_transaction_costs(p_txn)
+                        
+                        # --- FIX: Re-hydrate trade_fee before creating the outbound event ---
+                        if p_txn.fees and p_txn.fees.total_fees > 0:
+                            updated_txn.trade_fee = p_txn.fees.total_fees
+                        else:
+                            updated_txn.trade_fee = Decimal(0)
+                        
                         full_event_to_publish = TransactionEvent.model_validate(updated_txn)
 
                         await outbox_repo.create_outbox_event(
@@ -188,12 +191,6 @@ class CostCalculatorConsumer(BaseConsumer):
                     await idempotency_repo.mark_event_processed(
                         event_id, event.portfolio_id, SERVICE_NAME, correlation_id
                     )
-                    
-                    await db.commit()
-
-                except Exception:
-                    await tx.rollback()
-                    raise
 
         except (json.JSONDecodeError, ValidationError) as e:
             logger.error(f"Invalid TransactionEvent; sending to DLQ. Error: {e}", exc_info=True)
