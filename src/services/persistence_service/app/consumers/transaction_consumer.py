@@ -1,7 +1,7 @@
 # src/services/persistence_service/app/consumers/transaction_consumer.py
 import logging
 import json
-import sys # Import sys to allow exiting
+import sys
 from pydantic import ValidationError
 from confluent_kafka import Message
 from sqlalchemy.exc import DBAPIError, IntegrityError, OperationalError
@@ -32,20 +32,14 @@ class TransactionPersistenceConsumer(BaseConsumer):
         try:
             await self._process_message_with_retry(msg)
         except (OperationalError, DBAPIError):
-            # This block is now reachable if tenacity gives up on a DB error
             logger.critical(
                 "Unrecoverable database error after all retries. Shutting down service.",
                 extra={"key": msg.key().decode('utf-8') if msg.key() else "NoKey"},
                 exc_info=True
             )
-            # Exit the process, relying on the orchestrator to restart us
             sys.exit(1)
         except Exception as e:
-            logger.error(
-                f"Fatal error for transaction after retries. Sending to DLQ.",
-                extra={"key": msg.key().decode('utf-8') if msg.key() else "NoKey"},
-                exc_info=True
-            )
+            logger.error(f"Fatal error for transaction after retries. Sending to DLQ. Key={msg.key()}", exc_info=True)
             await self._send_to_dlq_async(msg, e)
 
     @retry(

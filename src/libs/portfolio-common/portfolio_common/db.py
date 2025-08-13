@@ -17,7 +17,7 @@ def get_sync_database_url():
     
     return f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
 
-engine = create_engine(get_sync_database_url())
+engine = create_engine(get_sync_database_url(), pool_pre_ping=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 def get_db_session():
@@ -29,7 +29,6 @@ def get_db_session():
         yield db
     finally:
         db.close()
-
 
 
 def get_async_database_url():

@@ -2,7 +2,7 @@
 import logging
 import json
 from pydantic import ValidationError
-from sqlalchemy.exc import DBAPIError
+from sqlalchemy.exc import DBAPIError, OperationalError
 
 from confluent_kafka import Message
 from tenacity import retry, stop_after_attempt, wait_fixed, before_log, retry_if_exception_type
@@ -21,16 +21,20 @@ logger = logging.getLogger(__name__)
 
 SERVICE_NAME = "position-valuation-calculator"
 
+class SnapshotNotFoundError(Exception):
+    """Raised when the expected DailyPositionSnapshot is not yet in the database."""
+    pass
+
 class ValuationConsumer(BaseConsumer):
     """
     Consumes scheduled valuation jobs, calculates the market value for a position
     on a specific date, and saves the result as a daily position snapshot.
     """
     @retry(
-        wait=wait_fixed(2),
-        stop=stop_after_attempt(3),
+        wait=wait_fixed(3),
+        stop=stop_after_attempt(5),
         before=before_log(logger, logging.INFO),
-        retry=retry_if_exception_type(DBAPIError),
+        retry=retry_if_exception_type((DBAPIError, OperationalError, SnapshotNotFoundError)),
         reraise=True
     )
     async def process_message(self, msg: Message):
@@ -58,9 +62,8 @@ class ValuationConsumer(BaseConsumer):
 
                     snapshot = await repo.get_daily_snapshot(event.portfolio_id, event.security_id, event.valuation_date)
                     if not snapshot:
-                        logger.error(f"DailyPositionSnapshot not found for valuation job. Cannot proceed. Keys: P={event.portfolio_id}, S={event.security_id}, D={event.valuation_date}")
-                        await repo.update_job_status(event.portfolio_id, event.security_id, event.valuation_date, 'FAILED')
-                        return
+                        # FIX: Raise a retryable error instead of failing immediately
+                        raise SnapshotNotFoundError(f"DailyPositionSnapshot not found for valuation job. Retrying... Keys: P={event.portfolio_id}, S={event.security_id}, D={event.valuation_date}")
 
                     instrument = await repo.get_instrument(snapshot.security_id)
                     portfolio = await repo.get_portfolio(snapshot.portfolio_id)
@@ -114,8 +117,8 @@ class ValuationConsumer(BaseConsumer):
         except (json.JSONDecodeError, ValidationError) as e:
             logger.error(f"Message validation failed for key '{key}'. Sending to DLQ.", exc_info=True)
             await self._send_to_dlq_async(msg, e)
-        except DBAPIError:
-            logger.warning(f"Database API error for event {event_id}. Retrying...", exc_info=True)
+        except (DBAPIError, OperationalError, SnapshotNotFoundError) as e:
+            logger.warning(f"Database or data availability error for event {event_id}: {e}. Retrying...", exc_info=False)
             raise
         except Exception as e:
             logger.error(f"Unexpected error processing message with key '{key}'. Sending to DLQ.", exc_info=True)
