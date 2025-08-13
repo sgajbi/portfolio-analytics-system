@@ -1,8 +1,9 @@
 # src/services/calculators/position_valuation_calculator/app/consumers/price_event_consumer.py
 import logging
 import json
-from pydantic import ValidationError
+from datetime import timedelta
 
+from pydantic import ValidationError
 from confluent_kafka import Message
 from sqlalchemy.exc import DBAPIError, OperationalError
 from tenacity import retry, stop_after_attempt, wait_fixed, before_log, retry_if_exception_type
@@ -12,6 +13,7 @@ from portfolio_common.events import MarketPricePersistedEvent
 from portfolio_common.db import get_async_db_session
 from portfolio_common.idempotency_repository import IdempotencyRepository
 from portfolio_common.logging_utils import correlation_id_var
+from portfolio_common.valuation_job_repository import ValuationJobRepository
 from ..repositories.valuation_repository import ValuationRepository
 
 logger = logging.getLogger(__name__)
@@ -47,6 +49,7 @@ class PriceEventConsumer(BaseConsumer):
                 async with db.begin():
                     idempotency_repo = IdempotencyRepository(db)
                     repo = ValuationRepository(db)
+                    job_repo = ValuationJobRepository(db)
                     
                     if await idempotency_repo.is_event_processed(event_id, SERVICE_NAME):
                         logger.warning(f"Event {event_id} already processed by {SERVICE_NAME}. Skipping.")
@@ -61,8 +64,38 @@ class PriceEventConsumer(BaseConsumer):
                         logger.info(f"No active portfolios found holding {event.security_id} on or before {event.price_date}. No jobs to create.")
                     else:
                         logger.info(f"Found {len(affected_portfolios)} portfolios to re-value for {event.security_id}: {affected_portfolios}")
-                        # In the next step, we will add the logic here to create valuation jobs.
-                    
+                        
+                        next_price_date = await repo.get_next_price_date(
+                            security_id=event.security_id,
+                            after_date=event.price_date
+                        )
+                        
+                        latest_business_date = await repo.get_latest_business_date() or event.price_date
+
+                        end_date = next_price_date or (latest_business_date + timedelta(days=1))
+
+                        for portfolio_id in affected_portfolios:
+                            job_count = 0
+                            # Ensure we don't create jobs for dates before the position existed.
+                            first_txn_date = await repo.get_first_transaction_date(portfolio_id, event.security_id)
+                            if not first_txn_date:
+                                continue
+
+                            start_date = max(event.price_date, first_txn_date)
+                            
+                            current_date = start_date
+                            while current_date < end_date:
+                                await job_repo.upsert_job(
+                                    portfolio_id=portfolio_id,
+                                    security_id=event.security_id,
+                                    valuation_date=current_date,
+                                    correlation_id=correlation_id
+                                )
+                                job_count += 1
+                                current_date += timedelta(days=1)
+                            
+                            logger.info(f"Created {job_count} valuation jobs for portfolio {portfolio_id} from {start_date} to {end_date - timedelta(days=1)}.")
+
                     await idempotency_repo.mark_event_processed(event_id, "N/A", SERVICE_NAME, correlation_id)
 
         except (json.JSONDecodeError, ValidationError) as e:
