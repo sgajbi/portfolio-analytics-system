@@ -16,6 +16,7 @@ from portfolio_common.outbox_repository import OutboxRepository
 from portfolio_common.logging_utils import correlation_id_var
 from ..repositories.valuation_repository import ValuationRepository
 from ..logic.valuation_logic import ValuationLogic
+from portfolio_common.database_models import DailyPositionSnapshot
 
 logger = logging.getLogger(__name__)
 
@@ -61,9 +62,25 @@ class ValuationConsumer(BaseConsumer):
                         return
 
                     snapshot = await repo.get_daily_snapshot(event.portfolio_id, event.security_id, event.valuation_date)
+                    
                     if not snapshot:
-                        # FIX: Raise a retryable error instead of failing immediately
-                        raise SnapshotNotFoundError(f"DailyPositionSnapshot not found for valuation job. Retrying... Keys: P={event.portfolio_id}, S={event.security_id}, D={event.valuation_date}")
+                        # --- NEW LOGIC: ROLL FORWARD ---
+                        logger.warning(f"Snapshot for {event.valuation_date} not found. Attempting to roll forward.")
+                        previous_snapshot = await repo.get_last_snapshot_before_date(event.portfolio_id, event.security_id, event.valuation_date)
+                        
+                        if not previous_snapshot:
+                            raise SnapshotNotFoundError(f"No previous snapshot found for {event.security_id} before {event.valuation_date}. Cannot roll forward.")
+
+                        snapshot = DailyPositionSnapshot(
+                            portfolio_id=previous_snapshot.portfolio_id,
+                            security_id=previous_snapshot.security_id,
+                            date=event.valuation_date,
+                            quantity=previous_snapshot.quantity,
+                            cost_basis=previous_snapshot.cost_basis,
+                            cost_basis_local=previous_snapshot.cost_basis_local
+                        )
+                        logger.info(f"Created new rolled-forward snapshot for {event.valuation_date} from {previous_snapshot.date}.")
+                        # --- END NEW LOGIC ---
 
                     instrument = await repo.get_instrument(snapshot.security_id)
                     portfolio = await repo.get_portfolio(snapshot.portfolio_id)
@@ -100,6 +117,7 @@ class ValuationConsumer(BaseConsumer):
 
                         persisted_snapshot = await repo.upsert_daily_snapshot(snapshot)
                         completion_event = DailyPositionSnapshotPersistedEvent.model_validate(persisted_snapshot)
+                        
                         await outbox_repo.create_outbox_event(
                             aggregate_type='DailyPositionSnapshot',
                             aggregate_id=persisted_snapshot.portfolio_id,

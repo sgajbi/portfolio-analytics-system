@@ -22,6 +22,22 @@ class ValuationRepository:
     def __init__(self, db: AsyncSession):
         self.db = db
 
+    @async_timed(repository="ValuationRepository", method="get_last_snapshot_before_date")
+    async def get_last_snapshot_before_date(self, portfolio_id: str, security_id: str, a_date: date) -> Optional[DailyPositionSnapshot]:
+        """Fetches the most recent daily position snapshot on or before a given date."""
+        stmt = (
+            select(DailyPositionSnapshot)
+            .filter(
+                DailyPositionSnapshot.portfolio_id == portfolio_id,
+                DailyPositionSnapshot.security_id == security_id,
+                DailyPositionSnapshot.date < a_date,
+            )
+            .order_by(DailyPositionSnapshot.date.desc())
+            .limit(1)
+        )
+        result = await self.db.execute(stmt)
+        return result.scalars().first()
+
     @async_timed(repository="ValuationRepository", method="update_job_status")
     async def update_job_status(self, portfolio_id: str, security_id: str, valuation_date: date, status: str):
         """Updates the status of a specific valuation job."""
