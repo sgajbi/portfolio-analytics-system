@@ -1,7 +1,7 @@
 # services/calculators/position-valuation-calculator/app/repositories/valuation_repository.py
 import logging
 from datetime import date, datetime, timedelta, timezone
-from typing import List, Optional
+from typing import List, Optional, Dict
 from sqlalchemy import select, func, distinct, exists, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -21,6 +21,53 @@ class ValuationRepository:
     """
     def __init__(self, db: AsyncSession):
         self.db = db
+
+    @async_timed(repository="ValuationRepository", method="find_open_positions_without_jobs_for_date")
+    async def find_open_positions_without_jobs_for_date(self, a_date: date, batch_size: int) -> List[Dict[str, any]]:
+        """
+        Finds all (portfolio, security) pairs with an open position that do not
+        already have a PENDING or COMPLETE valuation job for a specific date.
+        """
+        latest_snapshot_subq = (
+            select(
+                DailyPositionSnapshot.portfolio_id,
+                DailyPositionSnapshot.security_id,
+                func.row_number().over(
+                    partition_by=(DailyPositionSnapshot.portfolio_id, DailyPositionSnapshot.security_id),
+                    order_by=DailyPositionSnapshot.date.desc()
+                ).label("rn")
+            )
+            .where(
+                DailyPositionSnapshot.date <= a_date,
+                DailyPositionSnapshot.quantity > 0
+            )
+            .subquery('latest_snapshot')
+        )
+
+        open_positions = (
+            select(
+                latest_snapshot_subq.c.portfolio_id,
+                latest_snapshot_subq.c.security_id
+            )
+            .where(latest_snapshot_subq.c.rn == 1)
+            .subquery('open_positions')
+        )
+
+        stmt = (
+            select(open_positions)
+            .where(
+                ~exists().where(
+                    PortfolioValuationJob.portfolio_id == open_positions.c.portfolio_id,
+                    PortfolioValuationJob.security_id == open_positions.c.security_id,
+                    PortfolioValuationJob.valuation_date == a_date,
+                    PortfolioValuationJob.status.in_(['PENDING', 'PROCESSING', 'COMPLETE'])
+                )
+            )
+            .limit(batch_size)
+        )
+
+        result = await self.db.execute(stmt)
+        return result.mappings().all()
 
     @async_timed(repository="ValuationRepository", method="get_last_snapshot_before_date")
     async def get_last_snapshot_before_date(self, portfolio_id: str, security_id: str, a_date: date) -> Optional[DailyPositionSnapshot]:

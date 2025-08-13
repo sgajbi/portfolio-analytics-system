@@ -2,6 +2,7 @@
 import logging
 import asyncio
 from typing import List
+from datetime import date
 
 from portfolio_common.db import get_async_db_session
 from portfolio_common.kafka_utils import KafkaProducer, get_kafka_producer
@@ -9,15 +10,16 @@ from portfolio_common.config import KAFKA_VALUATION_REQUIRED_TOPIC
 from portfolio_common.events import PortfolioValuationRequiredEvent
 from portfolio_common.database_models import PortfolioValuationJob
 from ..repositories.valuation_repository import ValuationRepository
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 logger = logging.getLogger(__name__)
 
 class ValuationScheduler:
     """
-    A background task that polls the portfolio_valuation_jobs table, finds jobs
-    that are ready to be processed, and dispatches them as Kafka events.
+    A background task that polls for open positions and creates valuation jobs,
+    then polls for PENDING jobs and dispatches them as Kafka events.
     """
-    def __init__(self, poll_interval: int = 5, batch_size: int = 100):
+    def __init__(self, poll_interval: int = 30, batch_size: int = 100):
         self._poll_interval = poll_interval
         self._batch_size = batch_size
         self._running = True
@@ -27,6 +29,33 @@ class ValuationScheduler:
         """Signals the scheduler to gracefully shut down."""
         logger.info("Valuation scheduler shutdown signal received.")
         self._running = False
+
+    async def _create_jobs_for_open_positions(self, repo: ValuationRepository):
+        """Finds open positions and creates valuation jobs for the current date."""
+        today = date.today()
+        open_positions = await repo.find_open_positions_without_jobs_for_date(today, self._batch_size)
+
+        if not open_positions:
+            return
+
+        logger.info(f"Found {len(open_positions)} open positions requiring valuation jobs for {today}.")
+        
+        job_values = [
+            {
+                "portfolio_id": pos["portfolio_id"],
+                "security_id": pos["security_id"],
+                "valuation_date": today,
+                "status": "PENDING",
+            }
+            for pos in open_positions
+        ]
+        
+        if job_values:
+            # Use a bulk insert that does nothing on conflict to avoid creating duplicate jobs
+            stmt = pg_insert(PortfolioValuationJob).values(job_values)
+            stmt = stmt.on_conflict_do_nothing(index_elements=['portfolio_id', 'security_id', 'valuation_date'])
+            await repo.db.execute(stmt)
+            logger.info(f"Successfully created {len(job_values)} new valuation jobs.")
 
     async def _dispatch_jobs(self, jobs: List[PortfolioValuationJob]):
         """Publishes a batch of claimed jobs to Kafka."""
@@ -60,10 +89,14 @@ class ValuationScheduler:
                     async with db.begin():
                         repo = ValuationRepository(db)
                         
-                        # First, recover any jobs that may have been orphaned.
+                        # Step 1: Recover any jobs that may have been orphaned.
                         await repo.find_and_reset_stale_jobs()
                         
-                        # Now, find and claim new eligible jobs.
+                        # Step 2 (NEW): Proactively create jobs for today
+                        # In a real system, this might be a specific time, but for testing, every poll is fine.
+                        await self._create_jobs_for_open_positions(repo)
+                        
+                        # Step 3: Find and claim eligible PENDING jobs for processing.
                         claimed_jobs = await repo.find_and_claim_eligible_jobs(self._batch_size)
                 
                 if claimed_jobs:

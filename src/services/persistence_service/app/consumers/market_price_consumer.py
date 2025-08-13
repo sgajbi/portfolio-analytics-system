@@ -12,7 +12,6 @@ from portfolio_common.events import MarketPriceEvent
 from portfolio_common.db import get_async_db_session
 from ..repositories.market_price_repository import MarketPriceRepository
 from portfolio_common.idempotency_repository import IdempotencyRepository
-from portfolio_common.valuation_job_repository import ValuationJobRepository
 
 logger = logging.getLogger(__name__)
 
@@ -20,8 +19,8 @@ SERVICE_NAME = "persistence-market-prices"
 
 class MarketPriceConsumer(BaseConsumer):
     """
-    A concrete consumer for validating, persisting market price events,
-    and creating valuation jobs for all affected portfolios.
+    A concrete consumer for validating and persisting market price events.
+    This consumer's ONLY responsibility is to save the price.
     """
     async def process_message(self, msg: Message):
         """Wrapper to call the retryable logic."""
@@ -60,7 +59,6 @@ class MarketPriceConsumer(BaseConsumer):
                 try:
                     repo = MarketPriceRepository(db)
                     idempotency_repo = IdempotencyRepository(db)
-                    valuation_job_repo = ValuationJobRepository(db)
 
                     if await idempotency_repo.is_event_processed(event_id, SERVICE_NAME):
                         logger.warning(
@@ -71,23 +69,7 @@ class MarketPriceConsumer(BaseConsumer):
                         return
 
                     await repo.create_market_price(event)
-
-                    affected_portfolios = await repo.find_portfolios_with_open_position_before_date(
-                        security_id=event.security_id,
-                        price_date=event.price_date
-                    )
-
-                    for portfolio_id in affected_portfolios:
-                        await valuation_job_repo.upsert_job(
-                            portfolio_id=portfolio_id,
-                            security_id=event.security_id,
-                            valuation_date=event.price_date,
-                            correlation_id=correlation_id
-                        )
                     
-                    if affected_portfolios:
-                        logger.info(f"Created {len(affected_portfolios)} valuation jobs for security {event.security_id} on {event.price_date}")
-
                     await idempotency_repo.mark_event_processed(
                         event_id=event_id,
                         portfolio_id="N/A",
