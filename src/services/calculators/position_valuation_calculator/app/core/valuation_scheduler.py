@@ -18,7 +18,6 @@ class ValuationScheduler:
     """
     A background task that ensures all open positions are valued daily by
     finding gaps in the valuation history and creating jobs to fill them.
-    It then polls for PENDING jobs and dispatches them to Kafka.
     """
     def __init__(self, poll_interval: int = 30, batch_size: int = 100):
         self._poll_interval = poll_interval
@@ -34,14 +33,11 @@ class ValuationScheduler:
     async def _create_jobs_to_fill_gaps(self, repo: ValuationRepository):
         """
         Finds all open positions, checks for gaps in their valuation history up to the
-        latest business date, and creates jobs to fill those gaps.
+        current system date, and creates jobs to fill those gaps.
         """
-        latest_business_date = await repo.get_latest_business_date()
-        if not latest_business_date:
-            logger.info("No business activity found (no transactions or prices). Skipping job creation.")
-            return
-
+        target_date = date.today()
         open_positions = await repo.get_all_open_positions()
+        
         if not open_positions:
             return
 
@@ -55,12 +51,12 @@ class ValuationScheduler:
 
             start_date = last_snapshot_date + timedelta(days=1) if last_snapshot_date else first_tx_date
 
-            if not start_date or start_date > latest_business_date:
+            if not start_date or start_date > target_date:
                 continue
 
             # Generate jobs for each missing day
             current_date = start_date
-            while current_date <= latest_business_date:
+            while current_date <= target_date:
                 all_job_values.append({
                     "portfolio_id": portfolio_id,
                     "security_id": security_id,
@@ -72,7 +68,7 @@ class ValuationScheduler:
         if not all_job_values:
             return
 
-        logger.info(f"Found {len(all_job_values)} historical/daily valuation gaps to fill.")
+        logger.info(f"Found {len(all_job_values)} historical/daily valuation gaps to fill up to {target_date}.")
         stmt = pg_insert(PortfolioValuationJob).values(all_job_values)
         stmt = stmt.on_conflict_do_nothing(index_elements=['portfolio_id', 'security_id', 'valuation_date'])
         await repo.db.execute(stmt)
@@ -111,6 +107,7 @@ class ValuationScheduler:
                         
                         await repo.find_and_reset_stale_jobs()
                         
+                        # This now creates jobs up to the current date
                         await self._create_jobs_to_fill_gaps(repo)
                         
                         claimed_jobs = await repo.find_and_claim_eligible_jobs(self._batch_size)
