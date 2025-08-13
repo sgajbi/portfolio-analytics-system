@@ -97,7 +97,7 @@ async def test_process_message_success(
     mock_idempotency_repo = mock_dependencies["idempotency_repo"]
     mock_valuation_job_repo = mock_dependencies["valuation_job_repo"]
 
-    mock_repo.find_portfolios_holding_security_on_date.return_value = ["PORT_A", "PORT_B"]
+    mock_repo.find_portfolios_with_open_position_before_date.return_value = ["PORT_A", "PORT_B"]
     mock_idempotency_repo.is_event_processed.return_value = False
     
     token = correlation_id_var.set('test-corr-id')
@@ -109,7 +109,7 @@ async def test_process_message_success(
 
     # Assert
     mock_repo.create_market_price.assert_called_once()
-    mock_repo.find_portfolios_holding_security_on_date.assert_called_once_with(
+    mock_repo.find_portfolios_with_open_position_before_date.assert_called_once_with(
         security_id=valid_market_price_event.security_id,
         price_date=valid_market_price_event.price_date
     )
