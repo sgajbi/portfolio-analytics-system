@@ -76,18 +76,21 @@ def test_calculate_next_position_sell_full(existing_position_state):
     assert new_state.cost_basis == Decimal("0")
     assert new_state.cost_basis_local == Decimal("0")
 
-def test_other_transaction_types_do_not_change_state(existing_position_state):
-    """Tests that non-BUY/SELL transactions do not alter the position state."""
+def test_fee_transaction_decreases_cash_position(zero_position_state):
+    """
+    Tests that a FEE transaction correctly decreases a cash position. For cash,
+    quantity and cost_basis are the same.
+    """
     fee_transaction = TransactionEvent(
-        transaction_id="T4", portfolio_id="P1", instrument_id="I1", security_id="S1",
+        transaction_id="T4", portfolio_id="P1", instrument_id="CASH", security_id="CASH",
         transaction_date=datetime.now(), transaction_type="FEE", quantity=Decimal("1"),
-        price=Decimal("10"), gross_transaction_amount=Decimal("10"),
+        price=Decimal("25"), gross_transaction_amount=Decimal("25"),
         trade_currency="USD", currency="USD"
     )
 
-    new_state = PositionCalculator.calculate_next_position(existing_position_state, fee_transaction)
+    new_state = PositionCalculator.calculate_next_position(zero_position_state, fee_transaction)
 
-    # State should be unchanged
-    assert new_state.quantity == existing_position_state.quantity
-    assert new_state.cost_basis == existing_position_state.cost_basis
-    assert new_state.cost_basis_local == existing_position_state.cost_basis_local
+    # State should reflect a negative cash position
+    assert new_state.quantity == Decimal("-25")
+    assert new_state.cost_basis == Decimal("-25")
+    assert new_state.cost_basis_local == Decimal("-25")
