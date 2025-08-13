@@ -72,7 +72,7 @@ class MarketPriceConsumer(BaseConsumer):
 
                     await repo.create_market_price(event)
 
-                    affected_portfolios = await repo.find_portfolios_holding_security_on_date(
+                    affected_portfolios = await repo.find_portfolios_with_open_position_before_date(
                         security_id=event.security_id,
                         price_date=event.price_date
                     )

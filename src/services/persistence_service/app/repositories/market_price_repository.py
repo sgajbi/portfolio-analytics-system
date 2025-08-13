@@ -4,7 +4,7 @@ from datetime import date
 from typing import List
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy import select
+from sqlalchemy import select, func
 
 from portfolio_common.database_models import MarketPrice as DBMarketPrice, DailyPositionSnapshot
 from portfolio_common.events import MarketPriceEvent
@@ -15,23 +15,35 @@ class MarketPriceRepository:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def find_portfolios_holding_security_on_date(self, security_id: str, price_date: date) -> List[str]:
+    async def find_portfolios_with_open_position_before_date(self, security_id: str, price_date: date) -> List[str]:
         """
         Finds all unique portfolio_ids that have a non-zero position in a given
-        security on a specific date by querying the daily snapshots.
+        security based on the latest snapshot on or before the given price date.
         """
-        stmt = (
-            select(DailyPositionSnapshot.portfolio_id)
+        latest_snapshot_subquery = (
+            select(
+                DailyPositionSnapshot.portfolio_id,
+                DailyPositionSnapshot.quantity,
+                func.row_number().over(
+                    partition_by=DailyPositionSnapshot.portfolio_id,
+                    order_by=DailyPositionSnapshot.date.desc(),
+                ).label("rn")
+            )
             .where(
                 DailyPositionSnapshot.security_id == security_id,
-                DailyPositionSnapshot.date == price_date,
-                DailyPositionSnapshot.quantity > 0
+                DailyPositionSnapshot.date <= price_date
             )
-            .distinct()
+            .subquery()
         )
+
+        stmt = select(latest_snapshot_subquery.c.portfolio_id).where(
+            latest_snapshot_subquery.c.rn == 1,
+            latest_snapshot_subquery.c.quantity > 0
+        )
+
         result = await self.db.execute(stmt)
         portfolio_ids = result.scalars().all()
-        logger.info(f"Found {len(portfolio_ids)} portfolios holding '{security_id}' on {price_date}.")
+        logger.info(f"Found {len(portfolio_ids)} portfolios with an open position in '{security_id}' on or before {price_date}.")
         return portfolio_ids
 
     async def create_market_price(self, event: MarketPriceEvent) -> DBMarketPrice:

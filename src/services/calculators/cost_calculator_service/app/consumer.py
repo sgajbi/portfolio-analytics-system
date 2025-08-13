@@ -107,8 +107,8 @@ class CostCalculatorConsumer(BaseConsumer):
         return transactions
 
     @retry(
-        wait=wait_fixed(2),
-        stop=stop_after_attempt(3),
+        wait=wait_fixed(3),
+        stop=stop_after_attempt(5),
         before=before_log(logger, logging.INFO),
         retry=retry_if_exception_type((DBAPIError, IntegrityError, FxRateNotFoundError)),
         reraise=True
