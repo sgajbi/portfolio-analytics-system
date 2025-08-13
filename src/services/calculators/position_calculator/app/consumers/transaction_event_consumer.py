@@ -12,6 +12,7 @@ from portfolio_common.events import TransactionEvent
 from portfolio_common.db import get_async_db_session
 from portfolio_common.idempotency_repository import IdempotencyRepository
 from portfolio_common.valuation_job_repository import ValuationJobRepository
+from portfolio_common.database_models import DailyPositionSnapshot
 
 from ..repositories.position_repository import PositionRepository
 from ..core.position_logic import PositionCalculator
@@ -60,6 +61,18 @@ class TransactionEventConsumer(BaseConsumer):
 
                     # Create a valuation job for each new or updated position record
                     for record in new_positions:
+                        # NEW: Create and save the DailyPositionSnapshot
+                        snapshot = DailyPositionSnapshot(
+                            portfolio_id=record.portfolio_id,
+                            security_id=record.security_id,
+                            date=record.position_date,
+                            quantity=record.quantity,
+                            cost_basis=record.cost_basis,
+                            cost_basis_local=record.cost_basis_local,
+                            valuation_status='UNVALUED'
+                        )
+                        await repo.upsert_daily_snapshot(snapshot)
+
                         await valuation_job_repo.upsert_job(
                             portfolio_id=record.portfolio_id,
                             security_id=record.security_id,
