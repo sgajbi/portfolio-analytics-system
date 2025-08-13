@@ -44,6 +44,7 @@ TOPICS_TO_CREATE = [
     "fx_rates",
     # Persistence completion topics
     "raw_transactions_completed",
+    "market_price_persisted",
     # Calculation completion topics
     "processed_transactions_completed",
     "cashflow_calculated",

@@ -40,6 +40,17 @@ class MarketPriceEvent(BaseModel):
     price: Decimal
     currency: str
 
+class MarketPricePersistedEvent(BaseModel):
+    """
+    Event published after a market price has been successfully persisted.
+    """
+    model_config = ConfigDict(from_attributes=True)
+    
+    security_id: str
+    price_date: date
+    price: Decimal
+    currency: str
+
 class InstrumentEvent(BaseModel):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
@@ -68,8 +79,6 @@ class TransactionEvent(BaseModel):
     net_cost: Optional[Decimal] = None
     gross_cost: Optional[Decimal] = None
     realized_gain_loss: Optional[Decimal] = None
-    
-    # --- NEW FIELDS ---
     transaction_fx_rate: Optional[Decimal] = None
     net_cost_local: Optional[Decimal] = None
     realized_gain_loss_local: Optional[Decimal] = None
