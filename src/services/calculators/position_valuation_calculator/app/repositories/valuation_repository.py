@@ -9,7 +9,7 @@ from sqlalchemy.orm import aliased
 
 from portfolio_common.database_models import (
     PositionHistory, MarketPrice, DailyPositionSnapshot, FxRate, Instrument, Portfolio,
-    PortfolioValuationJob
+    PortfolioValuationJob, Transaction
 )
 from portfolio_common.utils import async_timed
 
@@ -22,52 +22,76 @@ class ValuationRepository:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    @async_timed(repository="ValuationRepository", method="find_open_positions_without_jobs_for_date")
-    async def find_open_positions_without_jobs_for_date(self, a_date: date, batch_size: int) -> List[Dict[str, any]]:
+    @async_timed(repository="ValuationRepository", method="get_all_open_positions")
+    async def get_all_open_positions(self) -> List[Dict[str, any]]:
         """
-        Finds all (portfolio, security) pairs with an open position that do not
-        already have a PENDING or COMPLETE valuation job for a specific date.
+        Finds all distinct (portfolio_id, security_id) pairs that currently have an open position.
+        Excludes cash positions from valuation.
         """
         latest_snapshot_subq = (
             select(
                 DailyPositionSnapshot.portfolio_id,
                 DailyPositionSnapshot.security_id,
+                DailyPositionSnapshot.quantity,
                 func.row_number().over(
                     partition_by=(DailyPositionSnapshot.portfolio_id, DailyPositionSnapshot.security_id),
                     order_by=DailyPositionSnapshot.date.desc()
                 ).label("rn")
             )
-            .where(
-                DailyPositionSnapshot.date <= a_date,
-                DailyPositionSnapshot.quantity > 0
-            )
             .subquery('latest_snapshot')
         )
 
-        open_positions = (
+        stmt = (
             select(
                 latest_snapshot_subq.c.portfolio_id,
                 latest_snapshot_subq.c.security_id
             )
-            .where(latest_snapshot_subq.c.rn == 1)
-            .subquery('open_positions')
-        )
-
-        stmt = (
-            select(open_positions)
             .where(
-                ~exists().where(
-                    PortfolioValuationJob.portfolio_id == open_positions.c.portfolio_id,
-                    PortfolioValuationJob.security_id == open_positions.c.security_id,
-                    PortfolioValuationJob.valuation_date == a_date,
-                    PortfolioValuationJob.status.in_(['PENDING', 'PROCESSING', 'COMPLETE'])
-                )
+                latest_snapshot_subq.c.rn == 1,
+                latest_snapshot_subq.c.quantity > 0,
+                latest_snapshot_subq.c.security_id != 'CASH'
             )
-            .limit(batch_size)
         )
-
         result = await self.db.execute(stmt)
         return result.mappings().all()
+
+    @async_timed(repository="ValuationRepository", method="get_first_transaction_date")
+    async def get_first_transaction_date(self, portfolio_id: str, security_id: str) -> Optional[date]:
+        """Gets the date of the very first transaction for a security in a portfolio."""
+        stmt = select(func.min(func.date(Transaction.transaction_date))).where(
+            Transaction.portfolio_id == portfolio_id,
+            Transaction.security_id == security_id
+        )
+        result = await self.db.execute(stmt)
+        return result.scalar_one_or_none()
+
+    @async_timed(repository="ValuationRepository", method="get_last_snapshot_date")
+    async def get_last_snapshot_date(self, portfolio_id: str, security_id: str) -> Optional[date]:
+        """Gets the date of the most recent snapshot for a security in a portfolio."""
+        stmt = select(func.max(DailyPositionSnapshot.date)).where(
+            DailyPositionSnapshot.portfolio_id == portfolio_id,
+            DailyPositionSnapshot.security_id == security_id
+        )
+        result = await self.db.execute(stmt)
+        return result.scalar_one_or_none()
+
+    @async_timed(repository="ValuationRepository", method="get_latest_business_date")
+    async def get_latest_business_date(self) -> Optional[date]:
+        """
+        Finds the most recent date present in either the market_prices or transactions table.
+        """
+        latest_price_date_query = select(func.max(MarketPrice.price_date))
+        latest_txn_date_query = select(func.max(func.date(Transaction.transaction_date)))
+
+        price_result = await self.db.execute(latest_price_date_query)
+        txn_result = await self.db.execute(latest_txn_date_query)
+
+        latest_price_date = price_result.scalar_one_or_none()
+        latest_txn_date = txn_result.scalar_one_or_none()
+
+        if latest_price_date and latest_txn_date:
+            return max(latest_price_date, latest_txn_date)
+        return latest_price_date or latest_txn_date
 
     @async_timed(repository="ValuationRepository", method="get_last_snapshot_before_date")
     async def get_last_snapshot_before_date(self, portfolio_id: str, security_id: str, a_date: date) -> Optional[DailyPositionSnapshot]:
