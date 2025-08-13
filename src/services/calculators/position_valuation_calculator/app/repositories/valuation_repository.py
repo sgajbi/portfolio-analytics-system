@@ -22,6 +22,44 @@ class ValuationRepository:
     def __init__(self, db: AsyncSession):
         self.db = db
 
+    @async_timed(repository="ValuationRepository", method="find_portfolios_holding_security_on_date")
+    async def find_portfolios_holding_security_on_date(self, security_id: str, a_date: date) -> List[str]:
+        """
+        Finds all portfolio_ids that had a non-zero quantity of a security based on the
+        last known snapshot on or before a given date. This is used to find all
+        portfolios affected by a new market price.
+        """
+        # Subquery to find the latest snapshot date for each portfolio for the given security on or before the target date
+        latest_snapshot_subq = (
+            select(
+                DailyPositionSnapshot.portfolio_id,
+                func.max(DailyPositionSnapshot.date).label("max_date")
+            )
+            .where(
+                DailyPositionSnapshot.security_id == security_id,
+                DailyPositionSnapshot.date <= a_date
+            )
+            .group_by(DailyPositionSnapshot.portfolio_id)
+            .subquery('latest_snapshot_dates')
+        )
+
+        # Main query to get the actual snapshot record for that latest date
+        stmt = (
+            select(DailyPositionSnapshot.portfolio_id)
+            .join(
+                latest_snapshot_subq,
+                (DailyPositionSnapshot.portfolio_id == latest_snapshot_subq.c.portfolio_id) &
+                (DailyPositionSnapshot.security_id == security_id) &
+                (DailyPositionSnapshot.date == latest_snapshot_subq.c.max_date)
+            )
+            .where(DailyPositionSnapshot.quantity != 0)
+        )
+
+        result = await self.db.execute(stmt)
+        portfolio_ids = result.scalars().all()
+        logger.info(f"Found {len(portfolio_ids)} portfolios holding '{security_id}' on or before {a_date}.")
+        return portfolio_ids
+
     @async_timed(repository="ValuationRepository", method="get_all_open_positions")
     async def get_all_open_positions(self) -> List[Dict[str, any]]:
         """
