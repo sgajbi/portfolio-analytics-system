@@ -6,29 +6,32 @@ from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, Asyn
 from .config import POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_HOST, POSTGRES_PORT, POSTGRES_DB
 from .db_base import Base
 
-# --- Synchronous Database Setup ---
 
 def get_sync_database_url():
     """
     Determines the synchronous database URL.
-    Prioritizes DATABASE_URL for containerized environments and falls back
-    to HOST_DATABASE_URL for local development.
+    Prioritizes HOST_DATABASE_URL for local development/testing environments
+    running on the host machine, then falls back to DATABASE_URL for
+    container-to-container communication.
     """
-    db_url = os.getenv("DATABASE_URL") or os.getenv("HOST_DATABASE_URL")
-    if db_url:
-        # Ensure the URL uses a synchronous driver for legacy services
-        if "asyncpg" in db_url:
-            return db_url.replace("postgresql+asyncpg://", "postgresql://")
-        return db_url
-    
-    # Fallback for direct script execution if no env var is set
-    return f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
+    url = os.getenv("HOST_DATABASE_URL") or os.getenv("DATABASE_URL")
+    if not url:
+        # Fallback for cases where neither is set
+        url = f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
+
+    # Ensure the URL does not use an async driver
+    if "asyncpg" in url:
+        url = url.replace("postgresql+asyncpg://", "postgresql://")
+
+    return url
 
 engine = create_engine(get_sync_database_url(), pool_pre_ping=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 def get_db_session():
-    """A synchronous dependency to get a SQLAlchemy database session."""
+    """
+    A synchronous dependency to get a SQLAlchemy database session.
+    """
     db = SessionLocal()
     try:
         yield db
@@ -36,21 +39,23 @@ def get_db_session():
         db.close()
 
 
-# --- Asynchronous Database Setup ---
 
 def get_async_database_url():
     """
     Determines the correct async database URL, with an asyncpg driver scheme.
-    Prioritizes DATABASE_URL for containerized environments.
+    Prioritizes HOST_DATABASE_URL for local development/testing, falling back
+    to DATABASE_URL for containerized environments.
     """
-    db_url = os.getenv("DATABASE_URL") or os.getenv("HOST_DATABASE_URL")
-    if db_url:
-        if "asyncpg" not in db_url:
-            return db_url.replace("postgresql://", "postgresql+asyncpg://")
-        return db_url
+    url = os.getenv("HOST_DATABASE_URL") or os.getenv("DATABASE_URL")
+    if not url:
+        # Fallback for cases where neither is set
+        url = f"postgresql+asyncpg://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
 
-    # Fallback for direct script execution if no env var is set
-    return f"postgresql+asyncpg://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
+    # Ensure the URL uses the asyncpg driver scheme
+    if "postgresql+asyncpg://" not in url:
+        url = url.replace("postgresql://", "postgresql+asyncpg://")
+
+    return url
 
 async_engine = create_async_engine(
     get_async_database_url(),
@@ -66,7 +71,9 @@ AsyncSessionLocal = async_sessionmaker(
 )
 
 async def get_async_db_session() -> AsyncSession:
-    """An async dependency that provides an SQLAlchemy AsyncSession."""
+    """
+    An async dependency that provides an SQLAlchemy AsyncSession.
+    """
     async with AsyncSessionLocal() as session:
         try:
             yield session
