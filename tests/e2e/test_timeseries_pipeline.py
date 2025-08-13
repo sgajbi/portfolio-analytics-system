@@ -44,7 +44,11 @@ def setup_timeseries_data(docker_services, db_engine, clean_db):
     
     # --- Day 2 Data ---
     post_data("/ingest/transactions", {"transactions": [{"transaction_id": "TS_FEE_01", "portfolio_id": "E2E_TS_PORT", "instrument_id": "CASH", "security_id": "CASH", "transaction_date": "2025-07-29T00:00:00Z", "transaction_type": "FEE", "quantity": 1, "price": 25, "gross_transaction_amount": 25, "trade_currency": "USD", "currency": "USD"}]})
-    post_data("/ingest/market-prices", {"market_prices": [{"securityId": "SEC_EUR_STOCK", "priceDate": "2025-07-29", "price": 55, "currency": "EUR"}]})
+    post_data("/ingest/market-prices", {"market_prices": [
+        {"securityId": "SEC_EUR_STOCK", "priceDate": "2025-07-29", "price": 55, "currency": "EUR"},
+        # FIX: Add the missing market price for the CASH instrument
+        {"securityId": "CASH", "priceDate": "2025-07-29", "price": 1, "currency": "USD"}
+    ]})
 
     
     # Give services a moment to process before polling
