@@ -6,7 +6,8 @@ import uvicorn
 
 from portfolio_common.config import (
     KAFKA_BOOTSTRAP_SERVERS,
-    KAFKA_VALUATION_REQUIRED_TOPIC # <-- IMPORT NEW TOPIC
+    KAFKA_VALUATION_REQUIRED_TOPIC,
+    KAFKA_MARKET_PRICE_PERSISTED_TOPIC # <-- IMPORT NEW TOPIC
 )
 # REMOVE OLD CONSUMER IMPORTS
 from portfolio_common.kafka_admin import ensure_topics_exist
@@ -14,7 +15,8 @@ from portfolio_common.kafka_utils import get_kafka_producer
 from portfolio_common.outbox_dispatcher import OutboxDispatcher
 from .web import app as web_app
 from .core.valuation_scheduler import ValuationScheduler
-from .consumers.valuation_consumer import ValuationConsumer # <-- IMPORT NEW CONSUMER
+from .consumers.valuation_consumer import ValuationConsumer
+from .consumers.price_event_consumer import PriceEventConsumer # <-- IMPORT NEW CONSUMER
 
 logger = logging.getLogger(__name__)
 
@@ -31,13 +33,22 @@ class ConsumerManager:
         group_id = "position_valuation_group"
         service_prefix = "VAL"
         
-        # --- REPLACED OLD CONSUMERS WITH THE NEW ONE ---
         self.consumers.append(
             ValuationConsumer(
                 bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
                 topic=KAFKA_VALUATION_REQUIRED_TOPIC,
-                group_id=f"{group_id}_jobs", # Updated group_id
+                group_id=f"{group_id}_jobs",
                 service_prefix=service_prefix 
+            )
+        )
+
+        # --- NEW: Add the PriceEventConsumer ---
+        self.consumers.append(
+            PriceEventConsumer(
+                bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
+                topic=KAFKA_MARKET_PRICE_PERSISTED_TOPIC,
+                group_id=f"{group_id}_price_events",
+                service_prefix=service_prefix
             )
         )
 
@@ -70,7 +81,7 @@ class ConsumerManager:
         self.tasks.append(asyncio.create_task(self.dispatcher.run()))
         self.tasks.append(asyncio.create_task(self.scheduler.run()))
         self.tasks.append(asyncio.create_task(server.serve()))
-        
+         
         logger.info("ConsumerManager is running. Press Ctrl+C to exit.")
         await self._shutdown_event.wait()
         
