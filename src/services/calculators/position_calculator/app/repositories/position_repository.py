@@ -95,9 +95,9 @@ class PositionRepository:
         try:
             insert_dict = {c.name: getattr(snapshot, c.name) for c in snapshot.__table__.columns if c.name not in ['id', 'created_at', 'updated_at']}
             
-            stmt = pg_insert(DailyPositionSnapshot).values(
-                **insert_dict
-            ).on_conflict_do_update(
+            stmt = pg_insert(DailyPositionSnapshot).values(**insert_dict)
+            
+            final_stmt = stmt.on_conflict_do_update(
                 index_elements=['portfolio_id', 'security_id', 'date'],
                 set_={
                     'quantity': stmt.excluded.quantity,
@@ -108,7 +108,7 @@ class PositionRepository:
                 }
             )
 
-            await self.db.execute(stmt)
+            await self.db.execute(final_stmt)
             logger.info(f"Staged upsert for daily snapshot for {snapshot.security_id} on {snapshot.date}")
         except Exception as e:
             logger.error(f"Failed to stage upsert for daily snapshot: {e}", exc_info=True)
