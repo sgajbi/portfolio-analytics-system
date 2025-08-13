@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from portfolio_common.database_models import PortfolioValuationJob, DailyPositionSnapshot, Portfolio
+from portfolio_common.database_models import PortfolioValuationJob, DailyPositionSnapshot, Portfolio, MarketPrice
 from src.services.calculators.position_valuation_calculator.app.repositories.valuation_repository import ValuationRepository
 
 pytestmark = pytest.mark.asyncio
@@ -68,6 +68,39 @@ def setup_holdings_data(db_engine):
         ]
         session.add_all(snapshots)
         session.commit()
+
+@pytest.fixture(scope="function")
+def setup_price_data(db_engine):
+    """Sets up market prices for testing the next price lookup."""
+    with Session(db_engine) as session:
+        prices = [
+            MarketPrice(security_id="S1", price_date=date(2025, 8, 1), price=Decimal("100")),
+            MarketPrice(security_id="S1", price_date=date(2025, 8, 5), price=Decimal("105")),
+            MarketPrice(security_id="S1", price_date=date(2025, 8, 10), price=Decimal("110")),
+            MarketPrice(security_id="S2", price_date=date(2025, 8, 5), price=Decimal("200")),
+        ]
+        session.add_all(prices)
+        session.commit()
+
+async def test_get_next_price_date(db_engine, clean_db, setup_price_data, async_db_session: AsyncSession):
+    """
+    GIVEN a series of market prices for a security
+    WHEN get_next_price_date is called with a specific date
+    THEN it should return the date of the very next price record.
+    """
+    # ARRANGE
+    repo = ValuationRepository(async_db_session)
+    
+    # ACT
+    # Find the next price after Aug 5th
+    next_date = await repo.get_next_price_date(security_id="S1", after_date=date(2025, 8, 5))
+
+    # Find the next price after the last known price (should be None)
+    no_next_date = await repo.get_next_price_date(security_id="S1", after_date=date(2025, 8, 10))
+
+    # ASSERT
+    assert next_date == date(2025, 8, 10)
+    assert no_next_date is None
 
 async def test_find_portfolios_holding_security_on_date(db_engine, clean_db, setup_holdings_data, async_db_session: AsyncSession):
     """
