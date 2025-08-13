@@ -8,11 +8,12 @@ from tenacity import retry, stop_after_attempt, wait_exponential, before_log, re
 
 from portfolio_common.kafka_consumer import BaseConsumer
 from portfolio_common.logging_utils import correlation_id_var
-from portfolio_common.events import MarketPriceEvent
+from portfolio_common.events import MarketPriceEvent, MarketPricePersistedEvent
 from portfolio_common.db import get_async_db_session
 from ..repositories.market_price_repository import MarketPriceRepository
 from portfolio_common.idempotency_repository import IdempotencyRepository
-from portfolio_common.valuation_job_repository import ValuationJobRepository
+from portfolio_common.outbox_repository import OutboxRepository
+from portfolio_common.config import KAFKA_MARKET_PRICE_PERSISTED_TOPIC
 
 logger = logging.getLogger(__name__)
 
@@ -20,8 +21,8 @@ SERVICE_NAME = "persistence-market-prices"
 
 class MarketPriceConsumer(BaseConsumer):
     """
-    A concrete consumer for validating, persisting market price events,
-    and creating valuation jobs for all affected portfolios.
+    A concrete consumer for validating and persisting market price events.
+    Upon successful persistence, it publishes a `market_price_persisted` event.
     """
     async def process_message(self, msg: Message):
         """Wrapper to call the retryable logic."""
@@ -60,7 +61,7 @@ class MarketPriceConsumer(BaseConsumer):
                 try:
                     repo = MarketPriceRepository(db)
                     idempotency_repo = IdempotencyRepository(db)
-                    valuation_job_repo = ValuationJobRepository(db)
+                    outbox_repo = OutboxRepository(db)
 
                     if await idempotency_repo.is_event_processed(event_id, SERVICE_NAME):
                         logger.warning(
@@ -70,27 +71,24 @@ class MarketPriceConsumer(BaseConsumer):
                         await tx.rollback()
                         return
 
-                    await repo.create_market_price(event)
-
-                    affected_portfolios = await repo.find_portfolios_holding_security_on_date(
-                        security_id=event.security_id,
-                        price_date=event.price_date
-                    )
-
-                    for portfolio_id in affected_portfolios:
-                        await valuation_job_repo.upsert_job(
-                            portfolio_id=portfolio_id,
-                            security_id=event.security_id,
-                            valuation_date=event.price_date,
-                            correlation_id=correlation_id
-                        )
+                    persisted_price = await repo.create_market_price(event)
                     
-                    if affected_portfolios:
-                        logger.info(f"Created {len(affected_portfolios)} valuation jobs for security {event.security_id} on {event.price_date}")
+                    # Create the outbound event payload from the persisted data
+                    outbound_event = MarketPricePersistedEvent.model_validate(persisted_price, from_attributes=True)
+                    
+                    # Create an outbox event to announce the persistence
+                    await outbox_repo.create_outbox_event(
+                        aggregate_type='MarketPrice',
+                        aggregate_id=persisted_price.security_id,
+                        event_type='MarketPricePersisted',
+                        topic=KAFKA_MARKET_PRICE_PERSISTED_TOPIC,
+                        payload=outbound_event.model_dump(mode='json'),
+                        correlation_id=correlation_id
+                    )
 
                     await idempotency_repo.mark_event_processed(
                         event_id=event_id,
-                        portfolio_id="N/A",
+                        portfolio_id="N/A", # Market prices are not portfolio-specific at this stage
                         service_name=SERVICE_NAME,
                         correlation_id=correlation_id,
                     )

@@ -3,17 +3,16 @@ import pytest
 from unittest.mock import MagicMock, patch, AsyncMock
 from datetime import date
 from decimal import Decimal
-from contextlib import asynccontextmanager
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from portfolio_common.events import MarketPriceEvent
-from portfolio_common.logging_utils import correlation_id_var
+from portfolio_common.database_models import MarketPrice as DBMarketPrice
+from portfolio_common.config import KAFKA_MARKET_PRICE_PERSISTED_TOPIC
 from src.services.persistence_service.app.consumers.market_price_consumer import MarketPriceConsumer
 from src.services.persistence_service.app.repositories.market_price_repository import MarketPriceRepository
 from portfolio_common.idempotency_repository import IdempotencyRepository
-from portfolio_common.valuation_job_repository import ValuationJobRepository
+from portfolio_common.outbox_repository import OutboxRepository
 
-# Mark all tests in this file as asyncio
 pytestmark = pytest.mark.asyncio
 
 @pytest.fixture
@@ -56,13 +55,12 @@ def mock_dependencies():
     """A fixture to patch all external dependencies for a consumer test."""
     mock_repo = AsyncMock(spec=MarketPriceRepository)
     mock_idempotency_repo = AsyncMock(spec=IdempotencyRepository)
-    mock_valuation_job_repo = AsyncMock(spec=ValuationJobRepository)
+    mock_outbox_repo = AsyncMock(spec=OutboxRepository)
 
     mock_db_session = AsyncMock(spec=AsyncSession)
     mock_transaction = AsyncMock()
-    # FIX: `begin` must be an awaitable mock that returns the transaction object
-    mock_db_session.begin = AsyncMock(return_value=mock_transaction)
-
+    mock_db_session.begin.return_value = mock_transaction
+    
     async def get_session_gen():
         yield mock_db_session
     
@@ -73,12 +71,12 @@ def mock_dependencies():
     ), patch(
         "src.services.persistence_service.app.consumers.market_price_consumer.IdempotencyRepository", return_value=mock_idempotency_repo
     ), patch(
-        "src.services.persistence_service.app.consumers.market_price_consumer.ValuationJobRepository", return_value=mock_valuation_job_repo
+        "src.services.persistence_service.app.consumers.market_price_consumer.OutboxRepository", return_value=mock_outbox_repo
     ):
         yield {
             "repo": mock_repo,
             "idempotency_repo": mock_idempotency_repo,
-            "valuation_job_repo": mock_valuation_job_repo,
+            "outbox_repo": mock_outbox_repo,
         }
 
 async def test_process_message_success(
@@ -90,38 +88,31 @@ async def test_process_message_success(
     """
     GIVEN a valid market price message
     WHEN the process_message method is called
-    THEN it should save the price, find affected portfolios, and create valuation jobs.
+    THEN it should save the price and create an outbox event.
     """
     # Arrange
     mock_repo = mock_dependencies["repo"]
     mock_idempotency_repo = mock_dependencies["idempotency_repo"]
-    mock_valuation_job_repo = mock_dependencies["valuation_job_repo"]
-
-    mock_repo.find_portfolios_holding_security_on_date.return_value = ["PORT_A", "PORT_B"]
+    mock_outbox_repo = mock_dependencies["outbox_repo"]
+    
     mock_idempotency_repo.is_event_processed.return_value = False
     
-    token = correlation_id_var.set('test-corr-id')
-    try:
-        # Act
-        await market_price_consumer._process_message_with_retry(mock_kafka_message)
-    finally:
-        correlation_id_var.reset(token)
+    # Simulate the repository returning a persisted DB model instance
+    persisted_price = DBMarketPrice(**valid_market_price_event.model_dump())
+    mock_repo.create_market_price.return_value = persisted_price
+
+    # Act
+    await market_price_consumer._process_message_with_retry(mock_kafka_message)
 
     # Assert
-    mock_repo.create_market_price.assert_called_once()
-    mock_repo.find_portfolios_holding_security_on_date.assert_called_once_with(
-        security_id=valid_market_price_event.security_id,
-        price_date=valid_market_price_event.price_date
-    )
+    mock_repo.create_market_price.assert_called_once_with(valid_market_price_event)
     
-    assert mock_valuation_job_repo.upsert_job.call_count == 2
-    mock_valuation_job_repo.upsert_job.assert_any_call(
-        portfolio_id="PORT_A", security_id=valid_market_price_event.security_id,
-        valuation_date=valid_market_price_event.price_date, correlation_id='test-corr-id'
-    )
-    mock_valuation_job_repo.upsert_job.assert_any_call(
-        portfolio_id="PORT_B", security_id=valid_market_price_event.security_id,
-        valuation_date=valid_market_price_event.price_date, correlation_id='test-corr-id'
-    )
+    # Assert an outbox event was created for the correct topic
+    mock_outbox_repo.create_outbox_event.assert_called_once()
+    call_args = mock_outbox_repo.create_outbox_event.call_args.kwargs
+    assert call_args['topic'] == KAFKA_MARKET_PRICE_PERSISTED_TOPIC
+    assert call_args['aggregate_id'] == valid_market_price_event.security_id
+    assert call_args['payload']['security_id'] == valid_market_price_event.security_id
 
+    mock_idempotency_repo.mark_event_processed.assert_called_once()
     market_price_consumer._send_to_dlq_async.assert_not_called()
