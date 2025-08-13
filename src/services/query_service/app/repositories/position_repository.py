@@ -64,16 +64,16 @@ class PositionRepository:
             DailyPositionSnapshot.portfolio_id == portfolio_id
         ).subquery('ranked_snapshots')
 
-        ranked_snapshots = aliased(DailyPositionSnapshot, ranked_snapshots_subq)
+        ranked_alias = aliased(DailyPositionSnapshot, ranked_snapshots_subq)
 
         stmt = select(
-            ranked_snapshots,
+            ranked_alias,
             Instrument.name.label('instrument_name')
-        ).outerjoin(
-            Instrument, Instrument.security_id == ranked_snapshots.security_id
+        ).join(
+            Instrument, Instrument.security_id == ranked_alias.security_id, isouter=True
         ).filter(
             ranked_snapshots_subq.c.rn == 1,
-            ranked_snapshots.quantity > 0 
+            ranked_alias.quantity > 0
         )
 
         results = await self.db.execute(stmt)
