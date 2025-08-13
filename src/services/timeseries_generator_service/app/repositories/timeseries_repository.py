@@ -41,11 +41,14 @@ class TimeseriesRepository:
             WHERE id IN (
                 SELECT p1.id
                 FROM portfolio_aggregation_jobs p1
-                LEFT JOIN portfolio_aggregation_jobs p2
-                  ON p1.portfolio_id = p2.portfolio_id
-                 AND p2.aggregation_date = p1.aggregation_date - INTERVAL '1 day'
                 WHERE p1.status = 'PENDING'
-                  AND (p2.status IS NULL OR p2.status = 'COMPLETE')
+                AND NOT EXISTS (
+                    SELECT 1
+                    FROM portfolio_aggregation_jobs p2
+                    WHERE p2.portfolio_id = p1.portfolio_id
+                    AND p2.aggregation_date = p1.aggregation_date - INTERVAL '1 day'
+                    AND p2.status != 'COMPLETE'
+                )
                 ORDER BY p1.portfolio_id, p1.aggregation_date
                 LIMIT :batch_size
                 FOR UPDATE SKIP LOCKED
@@ -91,6 +94,7 @@ class TimeseriesRepository:
         result = await self.db.execute(stmt)
         return result.scalars().first()
 
+    
     @async_timed(repository="TimeseriesRepository", method="get_latest_price_for_position")
     async def get_latest_price_for_position(self, security_id: str, position_date: date) -> Optional[MarketPrice]:
         """
@@ -225,7 +229,7 @@ class TimeseriesRepository:
             SELECT DISTINCT security_id
             FROM position_timeseries
             WHERE portfolio_id = :portfolio_id
-              AND date <= :a_date
+            AND date <= :a_date
               AND quantity != 0
             ORDER BY security_id
         """)
