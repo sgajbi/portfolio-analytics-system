@@ -1,3 +1,4 @@
+# src/services/timeseries_generator_service/app/consumers/position_timeseries_consumer.py
 import logging
 import json
 import asyncio

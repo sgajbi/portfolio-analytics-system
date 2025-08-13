@@ -8,7 +8,7 @@ from typing import Dict, List, Optional
 from sqlalchemy import update, func
 from sqlalchemy.orm import Session, sessionmaker
 
-from portfolio_common.kafka_utils import KafkaProducer
+from portfolio_common.kafka_utils import KafkaProducer, get_kafka_producer
 from portfolio_common.database_models import OutboxEvent
 from portfolio_common.db import SessionLocal
 from portfolio_common.monitoring import (
@@ -38,7 +38,6 @@ class OutboxDispatcher:
         self._poll_interval = poll_interval
         self._batch_size = batch_size
         self._running = True
-        # FIX: Allow injecting a session factory for testing, otherwise use the default
         self._session_factory = db_session_factory or SessionLocal
 
     def stop(self):
@@ -105,15 +104,13 @@ class OutboxDispatcher:
                             on_delivery=_make_on_delivery(event.id),
                         )
                     
-                    # FIX: Wrap flush in a try/except block to handle broker unavailability
                     try:
                         self._producer.flush(timeout=10)
                         logger.info(f"OutboxDispatcher: Flush complete for {len(events_to_process)} events.")
                     except Exception as e:
                         logger.error("OutboxDispatcher: Kafka flush failed.", exc_info=True)
-                        # If flush fails, assume all in-flight messages for this batch failed.
                         for event in events_to_process:
-                            if event.id not in delivery_ack: # Avoid overwriting specific delivery failures
+                            if event.id not in delivery_ack:
                                 delivery_ack[event.id] = False
                                 delivery_errs[event.id] = str(e)
 
@@ -154,11 +151,10 @@ class OutboxDispatcher:
 
     async def run(self):
         logger.info(f"Outbox dispatcher started. Polling every {self._poll_interval} seconds.")
-        loop = asyncio.get_running_loop()
-
+        
         while self._running:
             try:
-                await loop.run_in_executor(None, self._process_batch_sync)
+                await asyncio.to_thread(self._process_batch_sync)
             except Exception:
                 logger.error("Failed to process outbox batch.", exc_info=True)
 
@@ -166,4 +162,5 @@ class OutboxDispatcher:
                 await asyncio.sleep(self._poll_interval)
             except asyncio.CancelledError:
                 break
+        
         logger.info("Outbox dispatcher has stopped.")

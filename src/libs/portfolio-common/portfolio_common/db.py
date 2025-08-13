@@ -6,7 +6,6 @@ from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, Asyn
 from .config import POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_HOST, POSTGRES_PORT, POSTGRES_DB
 from .db_base import Base
 
-# --- Synchronous Database Setup (for legacy services) ---
 
 def get_sync_database_url():
     """
@@ -16,7 +15,6 @@ def get_sync_database_url():
     if url and url.startswith("postgresql://"):
         return url
     
-    # Fallback for container-to-container communication
     return f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
 
 engine = create_engine(get_sync_database_url())
@@ -33,19 +31,15 @@ def get_db_session():
         db.close()
 
 
-# --- Asynchronous Database Setup (for modernized services) ---
 
 def get_async_database_url():
     """
     Determines the correct async database URL, with an asyncpg driver scheme.
     """
-    url = os.getenv("HOST_DATABASE_URL")
-    if url:
-        if url.startswith("postgresql://"):
-            return url.replace("postgresql://", "postgresql+asyncpg://")
-        return url
-    
-    return f"postgresql+asyncpg://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
+    url = os.getenv("DATABASE_URL") or f"postgresql+asyncpg://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
+    if "asyncpg" not in url:
+        url = url.replace("postgresql://", "postgresql+asyncpg://")
+    return url
 
 async_engine = create_async_engine(
     get_async_database_url(),
