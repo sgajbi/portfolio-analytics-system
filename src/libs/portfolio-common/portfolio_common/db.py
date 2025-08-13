@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, Asyn
 from .config import POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_HOST, POSTGRES_PORT, POSTGRES_DB
 from .db_base import Base
 
+# --- Synchronous Database Setup (for legacy services) ---
 
 def get_sync_database_url():
     """
@@ -15,8 +16,10 @@ def get_sync_database_url():
     if url and url.startswith("postgresql://"):
         return url
     
+    # Fallback for container-to-container communication
     return f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
 
+# FIX: Add pool_pre_ping=True to the synchronous engine for resilience
 engine = create_engine(get_sync_database_url(), pool_pre_ping=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
@@ -30,6 +33,8 @@ def get_db_session():
     finally:
         db.close()
 
+
+# --- Asynchronous Database Setup (for modernized services) ---
 
 def get_async_database_url():
     """
