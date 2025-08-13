@@ -3,8 +3,8 @@ import pytest
 from datetime import date, datetime, timedelta, timezone
 from sqlalchemy.orm import Session
 from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from portfolio_common.db import AsyncSessionLocal
 from portfolio_common.database_models import PortfolioValuationJob
 from src.services.calculators.position_valuation_calculator.app.repositories.valuation_repository import ValuationRepository
 
@@ -36,7 +36,7 @@ def setup_stale_job_data(db_engine):
         session.add_all(jobs)
         session.commit()
 
-async def test_find_and_reset_stale_jobs(db_engine, clean_db, setup_stale_job_data):
+async def test_find_and_reset_stale_jobs(db_engine, clean_db, setup_stale_job_data, async_db_session: AsyncSession):
     """
     GIVEN a mix of recent and stale jobs in various states
     WHEN find_and_reset_stale_jobs is called
@@ -44,12 +44,11 @@ async def test_find_and_reset_stale_jobs(db_engine, clean_db, setup_stale_job_da
     AND return a count of 1.
     """
     # ARRANGE
-    async with AsyncSessionLocal() as session:
-        repo = ValuationRepository(session)
-        
-        # ACT
-        reset_count = await repo.find_and_reset_stale_jobs(timeout_minutes=15)
-        await session.commit()
+    repo = ValuationRepository(async_db_session)
+    
+    # ACT
+    reset_count = await repo.find_and_reset_stale_jobs(timeout_minutes=15)
+    await async_db_session.commit()
 
     # ASSERT
     assert reset_count == 1

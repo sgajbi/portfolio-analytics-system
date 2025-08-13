@@ -5,7 +5,7 @@ from decimal import Decimal
 
 # Use the synchronous engine for test setup, as it's simpler.
 from sqlalchemy.orm import Session
-from portfolio_common.db import async_sessionmaker, AsyncSessionLocal
+from sqlalchemy.ext.asyncio import AsyncSession
 from portfolio_common.database_models import Portfolio, Instrument, DailyPositionSnapshot
 
 from src.services.query_service.app.repositories.position_repository import PositionRepository
@@ -39,19 +39,18 @@ def setup_test_data(db_engine):
     return {"today": today, "yesterday": yesterday}
 
 
-async def test_get_latest_positions_by_portfolio(db_engine, clean_db, setup_test_data):
+async def test_get_latest_positions_by_portfolio(clean_db, setup_test_data, async_db_session: AsyncSession):
     """
     GIVEN a security with multiple historical daily snapshots in the database
     WHEN get_latest_positions_by_portfolio is called
     THEN it should return only the single, most recent snapshot for that security.
     """
     # ARRANGE
-    async with AsyncSessionLocal() as session:
-        repo = PositionRepository(session)
-        portfolio_id = "POS_REPO_TEST_01"
-        
-        # ACT
-        latest_positions = await repo.get_latest_positions_by_portfolio(portfolio_id)
+    repo = PositionRepository(async_db_session)
+    portfolio_id = "POS_REPO_TEST_01"
+
+    # ACT
+    latest_positions = await repo.get_latest_positions_by_portfolio(portfolio_id)
 
     # ASSERT
     assert len(latest_positions) == 1

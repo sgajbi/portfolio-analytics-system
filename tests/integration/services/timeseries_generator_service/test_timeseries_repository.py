@@ -3,8 +3,8 @@ import pytest
 from datetime import date, datetime, timedelta, timezone
 from sqlalchemy.orm import Session
 from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from portfolio_common.db import AsyncSessionLocal
 from portfolio_common.database_models import PortfolioAggregationJob
 from src.services.timeseries_generator_service.app.repositories.timeseries_repository import TimeseriesRepository
 
@@ -33,19 +33,18 @@ def setup_stale_aggregation_job_data(db_engine):
         session.add_all(jobs)
         session.commit()
 
-async def test_find_and_reset_stale_aggregation_jobs(db_engine, clean_db, setup_stale_aggregation_job_data):
+async def test_find_and_reset_stale_aggregation_jobs(db_engine, clean_db, setup_stale_aggregation_job_data, async_db_session: AsyncSession):
     """
     GIVEN a mix of recent and stale aggregation jobs
     WHEN find_and_reset_stale_jobs is called
     THEN it should only reset the single stale 'PROCESSING' job to 'PENDING'.
     """
     # ARRANGE
-    async with AsyncSessionLocal() as session:
-        repo = TimeseriesRepository(session)
-        
-        # ACT
-        reset_count = await repo.find_and_reset_stale_jobs(timeout_minutes=15)
-        await session.commit()
+    repo = TimeseriesRepository(async_db_session)
+    
+    # ACT
+    reset_count = await repo.find_and_reset_stale_jobs(timeout_minutes=15)
+    await async_db_session.commit()
 
     # ASSERT
     assert reset_count == 1

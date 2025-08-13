@@ -8,6 +8,8 @@ from testcontainers.compose import DockerCompose
 import sys
 # UPDATED IMPORTS
 from sqlalchemy import create_engine, text
+import pytest_asyncio
+from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 
 
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
@@ -70,7 +72,7 @@ def clean_db(db_engine):
 
     # List of all tables to be cleaned, in an order that respects potential (though unlikely) FK issues.
     TABLES = [
-        "portfolio_aggregation_jobs", "transaction_costs", "cashflows", "position_history", "daily_position_snapshots",
+        "portfolio_valuation_jobs", "portfolio_aggregation_jobs", "transaction_costs", "cashflows", "position_history", "daily_position_snapshots",
         "position_timeseries", "portfolio_timeseries", "transactions", "market_prices",
         "instruments", "fx_rates", "portfolios", "processed_events", "outbox_events"
     ]
@@ -84,3 +86,28 @@ def clean_db(db_engine):
     
     print("--- Database tables cleaned ---")
     yield
+
+@pytest_asyncio.fixture(scope="function")
+async def async_db_session(db_engine):
+    """
+    A function-scoped async fixture that provides a SQLAlchemy AsyncSession
+    connected to the test database. Ensures the engine and session are
+    created and torn down within the active asyncio event loop of the test.
+    """
+    # FIX: Reconstruct the URL properly to avoid password redaction from str(db_engine.url)
+    sync_url = db_engine.url
+    async_url = sync_url.render_as_string(hide_password=False).replace(
+        "postgresql://", "postgresql+asyncpg://"
+    )
+
+    async_engine = create_async_engine(async_url)
+    AsyncSessionLocal = async_sessionmaker(
+        bind=async_engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
+    )
+
+    async with AsyncSessionLocal() as session:
+        yield session
+
+    await async_engine.dispose()
