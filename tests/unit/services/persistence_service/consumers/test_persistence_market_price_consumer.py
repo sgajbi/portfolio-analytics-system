@@ -59,7 +59,8 @@ def mock_dependencies():
 
     mock_db_session = AsyncMock(spec=AsyncSession)
     mock_transaction = AsyncMock()
-    mock_db_session.begin.return_value = mock_transaction
+    # FIX: Make the `begin` method itself an awaitable mock
+    mock_db_session.begin = AsyncMock(return_value=mock_transaction)
     
     async def get_session_gen():
         yield mock_db_session
