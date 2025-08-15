@@ -101,12 +101,6 @@ class PositionCalculator:
             quantity -= transaction.gross_transaction_amount
             cost_basis -= transaction.gross_transaction_amount
             cost_basis_local -= transaction.gross_transaction_amount
-            
-        elif txn_type in ["DIVIDEND", "INTEREST", "TRANSFER_IN"]:
-            # These are cash inflows, increase quantity and cost (value)
-            quantity += transaction.gross_transaction_amount
-            cost_basis += transaction.gross_transaction_amount
-            cost_basis_local += transaction.gross_transaction_amount
         
         else:
             logger.debug(f"[CalculateNext] Txn type {txn_type} does not affect position quantity/cost.")
