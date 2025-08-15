@@ -22,6 +22,22 @@ class ValuationRepository:
     def __init__(self, db: AsyncSession):
         self.db = db
 
+    @async_timed(repository="ValuationRepository", method="get_next_price_date")
+    async def get_next_price_date(self, security_id: str, after_date: date) -> Optional[date]:
+        """
+        Finds the earliest market price date for a security that occurs after a given date.
+        This is used to define the end of a re-valuation period.
+        """
+        stmt = (
+            select(func.min(MarketPrice.price_date))
+            .where(
+                MarketPrice.security_id == security_id,
+                MarketPrice.price_date > after_date
+            )
+        )
+        result = await self.db.execute(stmt)
+        return result.scalar_one_or_none()
+
     @async_timed(repository="ValuationRepository", method="find_portfolios_holding_security_on_date")
     async def find_portfolios_holding_security_on_date(self, security_id: str, a_date: date) -> List[str]:
         """

@@ -82,6 +82,30 @@ def setup_price_data(db_engine):
         session.add_all(prices)
         session.commit()
 
+async def test_get_all_open_positions(db_engine, clean_db, setup_holdings_data, async_db_session: AsyncSession):
+    """
+    GIVEN a database with various positions, some open and some closed
+    WHEN get_all_open_positions is called
+    THEN it should return only the (portfolio_id, security_id) pairs with a non-zero quantity.
+    """
+    # ARRANGE
+    repo = ValuationRepository(async_db_session)
+
+    # ACT
+    open_positions = await repo.get_all_open_positions()
+
+    # ASSERT
+    # We expect P1/S1, P3/S1, and P4/S2 to be open. P2/S1 is closed (quantity is 0).
+    assert len(open_positions) == 3
+    
+    # Convert list of Row mappings to a set of tuples for easier comparison
+    position_set = {(p['portfolio_id'], p['security_id']) for p in open_positions}
+    
+    assert ("P1", "S1") in position_set
+    assert ("P3", "S1") in position_set
+    assert ("P4", "S2") in position_set
+    assert ("P2", "S1") not in position_set
+
 async def test_get_next_price_date(db_engine, clean_db, setup_price_data, async_db_session: AsyncSession):
     """
     GIVEN a series of market prices for a security
