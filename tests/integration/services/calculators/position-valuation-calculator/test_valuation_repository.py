@@ -74,10 +74,10 @@ def setup_price_data(db_engine):
     """Sets up market prices for testing the next price lookup."""
     with Session(db_engine) as session:
         prices = [
-            MarketPrice(security_id="S1", price_date=date(2025, 8, 1), price=Decimal("100")),
-            MarketPrice(security_id="S1", price_date=date(2025, 8, 5), price=Decimal("105")),
-            MarketPrice(security_id="S1", price_date=date(2025, 8, 10), price=Decimal("110")),
-            MarketPrice(security_id="S2", price_date=date(2025, 8, 5), price=Decimal("200")),
+            MarketPrice(security_id="S1", price_date=date(2025, 8, 1), price=Decimal("100"), currency="USD"),
+            MarketPrice(security_id="S1", price_date=date(2025, 8, 5), price=Decimal("105"), currency="USD"),
+            MarketPrice(security_id="S1", price_date=date(2025, 8, 10), price=Decimal("110"), currency="USD"),
+            MarketPrice(security_id="S2", price_date=date(2025, 8, 5), price=Decimal("200"), currency="USD"),
         ]
         session.add_all(prices)
         session.commit()
