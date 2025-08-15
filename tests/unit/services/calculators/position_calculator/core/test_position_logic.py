@@ -94,3 +94,22 @@ def test_fee_transaction_decreases_cash_position(zero_position_state):
     assert new_state.quantity == Decimal("-25")
     assert new_state.cost_basis == Decimal("-25")
     assert new_state.cost_basis_local == Decimal("-25")
+
+def test_dividend_transaction_does_not_change_position(existing_position_state):
+    """
+    Tests that a DIVIDEND transaction does not change the quantity or cost basis of the position.
+    This verifies the bug fix.
+    """
+    dividend_transaction = TransactionEvent(
+        transaction_id="T5_DIV", portfolio_id="P1", instrument_id="I1", security_id="S1",
+        transaction_date=datetime.now(), transaction_type="DIVIDEND", quantity=Decimal("0"),
+        price=Decimal("0"), gross_transaction_amount=Decimal("50"),
+        trade_currency="EUR", currency="EUR"
+    )
+
+    new_state = PositionCalculator.calculate_next_position(existing_position_state, dividend_transaction)
+
+    # The new state should be identical to the original state
+    assert new_state.quantity == existing_position_state.quantity
+    assert new_state.cost_basis == existing_position_state.cost_basis
+    assert new_state.cost_basis_local == existing_position_state.cost_basis_local
