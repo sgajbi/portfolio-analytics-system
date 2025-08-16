@@ -75,10 +75,9 @@ def test_db_outage_recovery(docker_services, db_engine, clean_db):
     subprocess.run(["docker", "compose", "start", "postgres"], check=True, capture_output=True)
     wait_for_postgres_ready(db_engine)
     
-    # FIX: Restart the persistence_service (with an underscore) to force it to re-establish its connection pool
     print("\n--- Restarting persistence_service to ensure DB reconnection ---")
     subprocess.run(["docker", "compose", "restart", "persistence_service"], check=True, capture_output=True)
-    time.sleep(30) # Give the service ample time to start up, connect, and re-join the consumer group
+    time.sleep(30) 
 
     # 6. ASSERT: Verify the transaction is eventually persisted
     with Session(db_engine) as session:
@@ -96,7 +95,7 @@ def test_db_outage_recovery(docker_services, db_engine, clean_db):
 
     # 7. ASSERT: Verify the DLQ is empty
     print("\n--- Verifying DLQ is empty ---")
-    msg = dlq_consumer.poll(timeout=10) # Poll for 10 seconds
+    msg = dlq_consumer.poll(timeout=10)
     dlq_consumer.close()
     
     assert msg is None, f"A message was unexpectedly found in the DLQ: {msg.value()}"

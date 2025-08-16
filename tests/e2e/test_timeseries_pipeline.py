@@ -5,35 +5,32 @@ import time
 from decimal import Decimal
 from sqlalchemy.orm import Session
 from sqlalchemy import text
+from datetime import date
 
-def wait_for_portfolio_timeseries(db_engine, portfolio_id, expected_date, timeout=180):
+def wait_for_portfolio_timeseries_value(db_engine, portfolio_id, expected_date, column_to_check, expected_value, timeout=180):
     """
-    Helper function to poll the database until a portfolio time series record
-    for a specific date is found and appears to be correctly calculated (non-zero cashflow).
+    Polls the database until a specific column in the portfolio_timeseries table
+    matches an expected value for a given date.
     """
     start_time = time.time()
     while time.time() - start_time < timeout:
         with Session(db_engine) as session:
-            query = text("""
-                SELECT eod_cashflow 
-                FROM portfolio_timeseries 
-                WHERE portfolio_id = :portfolio_id AND date = :expected_date
-            """)
+            query = text(f"SELECT {column_to_check} FROM portfolio_timeseries WHERE portfolio_id = :portfolio_id AND date = :expected_date")
             result = session.execute(query, {"portfolio_id": portfolio_id, "expected_date": expected_date}).fetchone()
-            # Check for existence AND that the cashflow calculation has run
-            if result and result[0] != Decimal(0):
+            if result and result[0] == expected_value:
+                print(f"Validated {column_to_check} for {portfolio_id} on {expected_date}")
                 return
-        time.sleep(2)
-    pytest.fail(f"Portfolio time series for {portfolio_id} on {expected_date} not found or was incorrect within {timeout} seconds.")
+        time.sleep(3)
+    pytest.fail(f"Validation for {portfolio_id} on {expected_date} for column {column_to_check} did not succeed within {timeout} seconds.")
+
 
 @pytest.fixture(scope="module")
-def setup_timeseries_data(clean_db_module, db_engine, api_endpoints, poll_for_data):
+def setup_timeseries_data(clean_db_module, db_engine, api_endpoints):
     """
     A module-scoped fixture to clean the DB, ingest all necessary data once,
-    and wait for the pipeline to complete.
+    and wait for the pipeline to complete by polling for specific, correct values.
     """
     ingestion_url = api_endpoints["ingestion"]
-    query_url = api_endpoints["query"]
 
     def post_data(endpoint, payload):
         url = f"{ingestion_url}{endpoint}"
@@ -59,11 +56,16 @@ def setup_timeseries_data(clean_db_module, db_engine, api_endpoints, poll_for_da
         {"securityId": "CASH", "priceDate": "2025-07-29", "price": 1, "currency": "USD"}
     ]})
     
-    wait_for_portfolio_timeseries(db_engine, "E2E_TS_PORT", "2025-07-29")
+    # Poll specifically for Day 1's cashflow to be correct, ensuring it has been processed
+    wait_for_portfolio_timeseries_value(
+        db_engine, "E2E_TS_PORT", date(2025, 7, 28), "eod_cashflow", Decimal("-5500.0000000000")
+    )
+    # Poll for the final value of Day 2 to ensure the full pipeline is complete
+    wait_for_portfolio_timeseries_value(
+        db_engine, "E2E_TS_PORT", date(2025, 7, 29), "eod_market_value", Decimal("6575.0000000000")
+    )
     
-    return {
-        "db_engine": db_engine
-    }
+    return {"db_engine": db_engine}
 
 def test_timeseries_day_1(setup_timeseries_data):
     """Verify the portfolio time series record for the first day."""
