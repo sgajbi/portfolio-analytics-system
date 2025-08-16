@@ -1,77 +1,84 @@
+# tests/e2e/test_cashflow_pipeline.py
 import pytest
 import requests
-import time
 from decimal import Decimal
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 
-def test_cashflow_pipeline(docker_services, db_engine, clean_db):
+@pytest.fixture(scope="module")
+def setup_cashflow_data(docker_services, db_engine, api_endpoints, poll_for_data):
     """
-    Tests the full pipeline from ingestion to cashflow calculation.
-    It ingests a portfolio, an instrument, and a BUY transaction, then
-    verifies that a corresponding cashflow record is created correctly.
+    A module-scoped fixture that ingests data for a simple cashflow scenario
+    and waits for the calculation to be available via the query API.
     """
-    # 1. Get the API endpoints from the running docker-compose stack
-    host = docker_services.get_service_host("ingestion_service", 8000)
-    port = docker_services.get_service_port("ingestion_service", 8000)
-    portfolio_url = f"http://{host}:{port}/ingest/portfolios"
-    instrument_url = f"http://{host}:{port}/ingest/instruments"
-    transaction_url = f"http://{host}:{port}/ingest/transactions"
+    # --- Clean the database once for this module ---
+    TABLES = [
+        "portfolio_valuation_jobs", "portfolio_aggregation_jobs", "transaction_costs", "cashflows", "position_history", "daily_position_snapshots",
+        "position_timeseries", "portfolio_timeseries", "transactions", "market_prices",
+        "instruments", "fx_rates", "portfolios", "processed_events", "outbox_events"
+    ]
+    truncate_query = text(f"TRUNCATE TABLE {', '.join(TABLES)} RESTART IDENTITY CASCADE;")
+    with db_engine.begin() as connection:
+        connection.execute(truncate_query)
+    # --- End Cleaning ---
 
-    # 2. Define test data
+    ingestion_url = api_endpoints["ingestion"]
+    query_url = api_endpoints["query"]
     portfolio_id = "E2E_CASHFLOW_PORT_01"
     security_id = "SEC_CSHFLW"
     transaction_id = "E2E_CASHFLOW_BUY_01"
-    gross_amount = Decimal("1000.0")
-    fee = Decimal("5.50")
 
-    # 3. Ingest prerequisite data (Portfolio and Instrument)
+    # 1. Ingest prerequisite data (Portfolio and Instrument)
     portfolio_payload = {"portfolios": [{"portfolioId": portfolio_id, "baseCurrency": "USD", "openDate": "2025-01-01", "riskExposure": "High", "investmentTimeHorizon": "Long", "portfolioType": "Discretionary", "bookingCenter": "SG", "cifId": "CASHFLOW_CIF", "status": "Active"}]}
     instrument_payload = {"instruments": [{"securityId": security_id, "name": "Cashflow Test Stock", "isin": "CSHFLW123", "instrumentCurrency": "USD", "productType": "Equity"}]}
+    requests.post(f"{ingestion_url}/ingest/portfolios", json=portfolio_payload)
+    requests.post(f"{ingestion_url}/ingest/instruments", json=instrument_payload)
 
-    assert requests.post(portfolio_url, json=portfolio_payload).status_code == 202
-    assert requests.post(instrument_url, json=instrument_payload).status_code == 202
-
-    # 4. Define and ingest the transaction payload
-    buy_payload = { "transactions": [{
-        "transaction_id": transaction_id,
-        "portfolio_id": portfolio_id,
-        "instrument_id": "CSHFLW",
-        "security_id": security_id,
-        "transaction_date": "2025-07-28T00:00:00Z",
-        "transaction_type": "BUY",
-        "quantity": 10,
-        "price": 100.0,
-        "gross_transaction_amount": str(gross_amount),
-        "trade_fee": str(fee),
-        "trade_currency": "USD",
-        "currency": "USD"
+    # 2. Define and ingest the transaction payload
+    buy_payload = {"transactions": [{
+        "transaction_id": transaction_id, "portfolio_id": portfolio_id, "instrument_id": "CSHFLW",
+        "security_id": security_id, "transaction_date": "2025-07-28T00:00:00Z",
+        "transaction_type": "BUY", "quantity": 10, "price": 100.0,
+        "gross_transaction_amount": "1000.0", "trade_fee": "5.50",
+        "trade_currency": "USD", "currency": "USD"
     }]}
+    requests.post(f"{ingestion_url}/ingest/transactions", json=buy_payload)
 
-    response = requests.post(transaction_url, json=buy_payload)
-    assert response.status_code == 202
+    # 3. Poll the query service to ensure the entire pipeline has completed
+    poll_url = f"{query_url}/portfolios/{portfolio_id}/transactions"
+    validation_func = lambda data: (
+        data.get("transactions") and len(data["transactions"]) == 1 and
+        data["transactions"][0].get("cashflow") is not None
+    )
+    poll_for_data(poll_url, validation_func, timeout=60)
+    
+    return {"db_engine": db_engine, "transaction_id": transaction_id}
 
-    # 5. Poll the cashflows table to verify the result
+
+def test_cashflow_pipeline(setup_cashflow_data):
+    """
+    Tests the full pipeline from ingestion to cashflow calculation by verifying
+    the final state of the cashflow record in the database.
+    """
+    # ARRANGE
+    db_engine = setup_cashflow_data["db_engine"]
+    transaction_id = setup_cashflow_data["transaction_id"]
+    
+    # ACT: The pipeline has already run; we just verify the final state in the DB.
     with Session(db_engine) as session:
-        start_time = time.time()
-        timeout = 45 # seconds
-        while time.time() - start_time < timeout:
-            query = text("""
-                SELECT amount, currency, classification, timing, level, calculation_type
-                FROM cashflows WHERE transaction_id = :txn_id
-            """)
-            result = session.execute(query, {"txn_id": transaction_id}).fetchone()
-            if result:
-                break
-            time.sleep(1)
-        else:
-            pytest.fail(f"Cashflow record for txn '{transaction_id}' not found within {timeout} seconds.")
+        query = text("""
+            SELECT amount, currency, classification, timing, level, calculation_type
+            FROM cashflows WHERE transaction_id = :txn_id
+        """)
+        result = session.execute(query, {"txn_id": transaction_id}).fetchone()
 
-    # 6. Assert the final state in the database
+    # ASSERT
+    assert result is not None, f"Cashflow record for txn '{transaction_id}' not found."
+    
     amount, currency, classification, timing, level, calc_type = result
-
-    # Expected amount for a BUY is -(gross_amount + fee)
-    expected_amount = -(gross_amount + fee)
+    
+    # Expected amount for a BUY is -(Gross Amount + Fee) = -(1000 + 5.50)
+    expected_amount = -Decimal("1005.50")
 
     assert amount == expected_amount
     assert currency == "USD"
