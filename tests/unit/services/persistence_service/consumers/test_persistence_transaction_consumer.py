@@ -19,14 +19,12 @@ pytestmark = pytest.mark.asyncio
 @pytest.fixture
 def transaction_consumer():
     """Provides an instance of the consumer for testing."""
-    consumer = TransactionPersistenceConsumer(
+    return TransactionPersistenceConsumer(
         bootstrap_servers="mock_server",
         topic="raw_transactions",
         group_id="test_group",
         dlq_topic="persistence.dlq"
     )
-    consumer._send_to_dlq_async = AsyncMock()
-    return consumer
 
 @pytest.fixture
 def valid_transaction_event():
@@ -66,21 +64,21 @@ def mock_dependencies():
     mock_idempotency_repo = AsyncMock(spec=IdempotencyRepository)
 
     mock_db_session = AsyncMock(spec=AsyncSession)
-    mock_transaction = AsyncMock()
-    # FIX: `begin` must be an awaitable mock that returns the transaction object
-    mock_db_session.begin = AsyncMock(return_value=mock_transaction)
+    # FIX: The `begin()` method must return an async context manager.
+    # An AsyncMock can be used as one directly.
+    mock_db_session.begin.return_value = AsyncMock()
     
     async def get_session_gen():
         yield mock_db_session
 
     with patch(
-        "src.services.persistence_service.app.consumers.transaction_consumer.get_async_db_session", new=get_session_gen
+        "src.services.persistence_service.app.consumers.base_consumer.get_async_db_session", new=get_session_gen
     ), patch(
         "src.services.persistence_service.app.consumers.transaction_consumer.TransactionDBRepository", return_value=mock_repo
     ), patch(
-        "src.services.persistence_service.app.consumers.transaction_consumer.OutboxRepository", return_value=mock_outbox_repo
+        "src.services.persistence_service.app.consumers.base_consumer.OutboxRepository", return_value=mock_outbox_repo
     ), patch(
-        "src.services.persistence_service.app.consumers.transaction_consumer.IdempotencyRepository", return_value=mock_idempotency_repo
+        "src.services.persistence_service.app.consumers.base_consumer.IdempotencyRepository", return_value=mock_idempotency_repo
     ):
         yield {
             "repo": mock_repo,
@@ -107,10 +105,12 @@ async def test_process_message_success(
     mock_repo.check_portfolio_exists.return_value = True
     mock_idempotency_repo.is_event_processed.return_value = False
 
-    # ACT
-    await transaction_consumer._process_message_with_retry(mock_kafka_message)
+    # Use patch.object for robust mocking
+    with patch.object(transaction_consumer, '_send_to_dlq_async', new_callable=AsyncMock) as mock_send_to_dlq:
+        # ACT
+        await transaction_consumer.process_message(mock_kafka_message)
 
-    # ASSERT
-    mock_repo.create_or_update_transaction.assert_called_once()
-    mock_outbox_repo.create_outbox_event.assert_called_once()
-    transaction_consumer._send_to_dlq_async.assert_not_called()
+        # ASSERT
+        mock_repo.create_or_update_transaction.assert_called_once()
+        mock_outbox_repo.create_outbox_event.assert_called_once()
+        mock_send_to_dlq.assert_not_called()

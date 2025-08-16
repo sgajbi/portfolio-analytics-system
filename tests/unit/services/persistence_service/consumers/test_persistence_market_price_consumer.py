@@ -18,14 +18,12 @@ pytestmark = pytest.mark.asyncio
 @pytest.fixture
 def market_price_consumer():
     """Provides an instance of the consumer for testing."""
-    consumer = MarketPriceConsumer(
+    return MarketPriceConsumer(
         bootstrap_servers="mock_server",
         topic="market_prices",
         group_id="test_group",
         dlq_topic="persistence.dlq"
     )
-    consumer._send_to_dlq_async = AsyncMock()
-    return consumer
 
 @pytest.fixture
 def valid_market_price_event():
@@ -58,21 +56,21 @@ def mock_dependencies():
     mock_outbox_repo = AsyncMock(spec=OutboxRepository)
 
     mock_db_session = AsyncMock(spec=AsyncSession)
-    mock_transaction = AsyncMock()
-    # FIX: Make the `begin` method itself an awaitable mock
-    mock_db_session.begin = AsyncMock(return_value=mock_transaction)
+    # FIX: The `begin()` method must return an async context manager.
+    # An AsyncMock can be used as one directly.
+    mock_db_session.begin.return_value = AsyncMock() 
     
     async def get_session_gen():
         yield mock_db_session
     
     with patch(
-        "src.services.persistence_service.app.consumers.market_price_consumer.get_async_db_session", new=get_session_gen
+        "src.services.persistence_service.app.consumers.base_consumer.get_async_db_session", new=get_session_gen
     ), patch(
         "src.services.persistence_service.app.consumers.market_price_consumer.MarketPriceRepository", return_value=mock_repo
     ), patch(
-        "src.services.persistence_service.app.consumers.market_price_consumer.IdempotencyRepository", return_value=mock_idempotency_repo
+        "src.services.persistence_service.app.consumers.base_consumer.IdempotencyRepository", return_value=mock_idempotency_repo
     ), patch(
-        "src.services.persistence_service.app.consumers.market_price_consumer.OutboxRepository", return_value=mock_outbox_repo
+        "src.services.persistence_service.app.consumers.base_consumer.OutboxRepository", return_value=mock_outbox_repo
     ):
         yield {
             "repo": mock_repo,
@@ -102,18 +100,20 @@ async def test_process_message_success(
     persisted_price = DBMarketPrice(**valid_market_price_event.model_dump())
     mock_repo.create_market_price.return_value = persisted_price
 
-    # Act
-    await market_price_consumer._process_message_with_retry(mock_kafka_message)
+    # Use patch.object for robust mocking
+    with patch.object(market_price_consumer, '_send_to_dlq_async', new_callable=AsyncMock) as mock_send_to_dlq:
+        # Act
+        await market_price_consumer.process_message(mock_kafka_message)
 
-    # Assert
-    mock_repo.create_market_price.assert_called_once_with(valid_market_price_event)
-    
-    # Assert an outbox event was created for the correct topic
-    mock_outbox_repo.create_outbox_event.assert_called_once()
-    call_args = mock_outbox_repo.create_outbox_event.call_args.kwargs
-    assert call_args['topic'] == KAFKA_MARKET_PRICE_PERSISTED_TOPIC
-    assert call_args['aggregate_id'] == valid_market_price_event.security_id
-    assert call_args['payload']['security_id'] == valid_market_price_event.security_id
+        # Assert
+        mock_repo.create_market_price.assert_called_once_with(valid_market_price_event)
+        
+        # Assert an outbox event was created for the correct topic
+        mock_outbox_repo.create_outbox_event.assert_called_once()
+        call_args = mock_outbox_repo.create_outbox_event.call_args.kwargs
+        assert call_args['topic'] == KAFKA_MARKET_PRICE_PERSISTED_TOPIC
+        assert call_args['aggregate_id'] == valid_market_price_event.security_id
+        assert call_args['payload']['security_id'] == valid_market_price_event.security_id
 
-    mock_idempotency_repo.mark_event_processed.assert_called_once()
-    market_price_consumer._send_to_dlq_async.assert_not_called()
+        mock_idempotency_repo.mark_event_processed.assert_called_once()
+        mock_send_to_dlq.assert_not_called()
