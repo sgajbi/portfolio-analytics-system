@@ -21,7 +21,10 @@ def setup_persistence_data(clean_db_module, api_endpoints, poll_for_data):
     
     # Ingest one of each entity type
     requests.post(f"{ingestion_url}/ingest/portfolios", json={"portfolios": [{"portfolioId": portfolio_id, "baseCurrency": "SGD", "openDate": "2024-01-01", "cifId": "CIF_PQ_1", "status": "ACTIVE", "riskExposure":"a", "investmentTimeHorizon":"b", "portfolioType":"c", "bookingCenter":"d"}]})
-    requests.post(f"{ingestion_url}/ingest/instruments", json={"instruments": [{"securityId": security_id, "name": "Test Instrument PQ", "isin": f"ISIN_{security_id}", "instrumentCurrency": "USD", "productType": "Equity"}]})
+    requests.post(f"{ingestion_url}/ingest/instruments", json={"instruments": [
+        {"securityId": security_id, "name": "Test Instrument PQ", "isin": f"ISIN_{security_id}", "instrumentCurrency": "USD", "productType": "Equity"},
+        {"securityId": "SEC_NO_PRICE", "name": "Unpriced Instrument", "isin": "ISIN_NO_PRICE", "instrumentCurrency": "USD", "productType": "Equity"}
+    ]})
     requests.post(f"{ingestion_url}/ingest/market-prices", json={"market_prices": [{"securityId": security_id, "priceDate": price_date, "price": 123.45, "currency": "HKD"}]})
     requests.post(f"{ingestion_url}/ingest/fx-rates", json={"fx_rates": [{"fromCurrency": "USD", "toCurrency": "EUR", "rateDate": price_date, "rate": 0.95}]})
     requests.post(f"{ingestion_url}/ingest/transactions", json={"transactions": [{"transaction_id": transaction_id, "portfolio_id": portfolio_id, "instrument_id": "TEST", "security_id": security_id, "transaction_date": f"{price_date}T10:00:00Z", "transaction_type": "BUY", "quantity": 100, "price": 10, "gross_transaction_amount": 1000, "trade_currency": "USD", "currency": "USD"}]})
@@ -74,3 +77,22 @@ def test_transaction_query(setup_persistence_data):
     data = api_response.json()["transactions"][0]
     assert data["transaction_id"] == setup_persistence_data["transaction_id"]
     assert float(data["quantity"]) == 100
+
+def test_query_prices_for_unpriced_security_returns_empty_list(setup_persistence_data):
+    """
+    Tests that querying the /prices endpoint for a valid security that has
+    no price data results in a 200 OK with an empty list.
+    """
+    # ARRANGE
+    query_url = setup_persistence_data['query_url']
+    security_id_with_no_price = "SEC_NO_PRICE"
+    url = f"{query_url}/prices?security_id={security_id_with_no_price}"
+
+    # ACT
+    response = requests.get(url)
+
+    # ASSERT
+    assert response.status_code == 200
+    data = response.json()
+    assert data["security_id"] == security_id_with_no_price
+    assert data["prices"] == []
