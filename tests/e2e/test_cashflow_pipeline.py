@@ -6,22 +6,11 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 
 @pytest.fixture(scope="module")
-def setup_cashflow_data(docker_services, db_engine, api_endpoints, poll_for_data):
+def setup_cashflow_data(clean_db_module, api_endpoints, poll_for_data):
     """
     A module-scoped fixture that ingests data for a simple cashflow scenario
     and waits for the calculation to be available via the query API.
     """
-    # --- Clean the database once for this module ---
-    TABLES = [
-        "portfolio_valuation_jobs", "portfolio_aggregation_jobs", "transaction_costs", "cashflows", "position_history", "daily_position_snapshots",
-        "position_timeseries", "portfolio_timeseries", "transactions", "market_prices",
-        "instruments", "fx_rates", "portfolios", "processed_events", "outbox_events"
-    ]
-    truncate_query = text(f"TRUNCATE TABLE {', '.join(TABLES)} RESTART IDENTITY CASCADE;")
-    with db_engine.begin() as connection:
-        connection.execute(truncate_query)
-    # --- End Cleaning ---
-
     ingestion_url = api_endpoints["ingestion"]
     query_url = api_endpoints["query"]
     portfolio_id = "E2E_CASHFLOW_PORT_01"
@@ -52,16 +41,15 @@ def setup_cashflow_data(docker_services, db_engine, api_endpoints, poll_for_data
     )
     poll_for_data(poll_url, validation_func, timeout=60)
     
-    return {"db_engine": db_engine, "transaction_id": transaction_id}
+    return {"transaction_id": transaction_id}
 
 
-def test_cashflow_pipeline(setup_cashflow_data):
+def test_cashflow_pipeline(setup_cashflow_data, db_engine):
     """
     Tests the full pipeline from ingestion to cashflow calculation by verifying
     the final state of the cashflow record in the database.
     """
     # ARRANGE
-    db_engine = setup_cashflow_data["db_engine"]
     transaction_id = setup_cashflow_data["transaction_id"]
     
     # ACT: The pipeline has already run; we just verify the final state in the DB.

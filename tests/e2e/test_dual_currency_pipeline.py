@@ -9,22 +9,11 @@ from sqlalchemy import text
 # The api_endpoints and poll_for_data fixtures are now imported from conftest
 
 @pytest.fixture(scope="module")
-def setup_dual_currency_data(docker_services, db_engine, api_endpoints, poll_for_data):
+def setup_dual_currency_data(clean_db_module, api_endpoints, poll_for_data):
     """
-    A module-scoped fixture that cleans the DB and ingests a full dual-currency trade scenario.
+    A module-scoped fixture that ingests a full dual-currency trade scenario.
     It waits until the final position is fully calculated and valued before yielding.
     """
-    # --- Clean the database once for this module ---
-    TABLES = [
-        "portfolio_valuation_jobs", "portfolio_aggregation_jobs", "transaction_costs", "cashflows", "position_history", "daily_position_snapshots",
-        "position_timeseries", "portfolio_timeseries", "transactions", "market_prices",
-        "instruments", "fx_rates", "portfolios", "processed_events", "outbox_events"
-    ]
-    truncate_query = text(f"TRUNCATE TABLE {', '.join(TABLES)} RESTART IDENTITY CASCADE;")
-    with db_engine.begin() as connection:
-        connection.execute(truncate_query)
-    # --- End Cleaning ---
-
     ingestion_url = api_endpoints["ingestion"]
     query_url = api_endpoints["query"]
     portfolio_id = "E2E_DUAL_CURRENCY_01"

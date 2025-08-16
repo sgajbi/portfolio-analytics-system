@@ -27,27 +27,16 @@ def wait_for_portfolio_timeseries(db_engine, portfolio_id, expected_date, timeou
     pytest.fail(f"Portfolio time series for {portfolio_id} on {expected_date} not found or was incorrect within {timeout} seconds.")
 
 @pytest.fixture(scope="module")
-def setup_timeseries_data(docker_services, db_engine):
+def setup_timeseries_data(clean_db_module, db_engine, api_endpoints, poll_for_data):
     """
     A module-scoped fixture to clean the DB, ingest all necessary data once,
     and wait for the pipeline to complete.
     """
-    # --- Clean the database within the module-scoped fixture ---
-    TABLES = [
-        "portfolio_valuation_jobs", "portfolio_aggregation_jobs", "transaction_costs", "cashflows", "position_history", "daily_position_snapshots",
-        "position_timeseries", "portfolio_timeseries", "transactions", "market_prices",
-        "instruments", "fx_rates", "portfolios", "processed_events", "outbox_events"
-    ]
-    truncate_query = text(f"TRUNCATE TABLE {', '.join(TABLES)} RESTART IDENTITY CASCADE;")
-    with db_engine.begin() as connection:
-        connection.execute(truncate_query)
-    # --- End Cleaning ---
-
-    ingestion_host = docker_services.get_service_host("ingestion_service", 8000)
-    ingestion_port = docker_services.get_service_port("ingestion_service", 8000)
+    ingestion_url = api_endpoints["ingestion"]
+    query_url = api_endpoints["query"]
 
     def post_data(endpoint, payload):
-        url = f"http://{ingestion_host}:{ingestion_port}{endpoint}"
+        url = f"{ingestion_url}{endpoint}"
         response = requests.post(url, json=payload)
         assert response.status_code == 202, f"Failed to post to {endpoint}: {response.text}"
 
@@ -73,8 +62,6 @@ def setup_timeseries_data(docker_services, db_engine):
     wait_for_portfolio_timeseries(db_engine, "E2E_TS_PORT", "2025-07-29")
     
     return {
-        "query_host": docker_services.get_service_host("query-service", 8001),
-        "query_port": docker_services.get_service_port("query-service", 8001),
         "db_engine": db_engine
     }
 

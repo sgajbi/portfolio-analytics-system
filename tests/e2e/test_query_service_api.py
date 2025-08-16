@@ -3,26 +3,15 @@ import pytest
 import requests
 import time
 import uuid
-from sqlalchemy import text
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 
 @pytest.fixture(scope="module")
-def setup_e2e_data(docker_services, db_engine, api_endpoints, poll_for_data):
+def setup_e2e_data(clean_db_module, api_endpoints, poll_for_data):
     """
     A module-scoped fixture to ingest a consistent set of data for testing
     API features like sorting, filtering, and pagination.
     """
-    # --- Clean the database once for this module ---
-    TABLES = [
-        "portfolio_valuation_jobs", "portfolio_aggregation_jobs", "transaction_costs", "cashflows", "position_history", "daily_position_snapshots",
-        "position_timeseries", "portfolio_timeseries", "transactions", "market_prices",
-        "instruments", "fx_rates", "portfolios", "processed_events", "outbox_events"
-    ]
-    truncate_query = text(f"TRUNCATE TABLE {', '.join(TABLES)} RESTART IDENTITY CASCADE;")
-    with db_engine.begin() as connection:
-        connection.execute(truncate_query)
-    # --- End Cleaning ---
-
     ingestion_url = api_endpoints["ingestion"]
     query_url = api_endpoints["query"]
     portfolio_id = f"E2E_API_TEST_{uuid.uuid4()}"
