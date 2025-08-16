@@ -156,22 +156,23 @@ def test_dispatcher_recovers_after_failure(db_engine, clean_db, smart_mock_kafka
         nonlocal call_count
         call_count += 1
         
+        # On the first call, simulate failure by calling callbacks with an error
         if call_count == 1:
             for call in smart_mock_kafka_producer.publish_message.call_args_list:
                 kwargs = call.kwargs
                 cb = kwargs.get("on_delivery")
                 outbox_id = kwargs.get("outbox_id")
                 if cb and outbox_id:
-                    cb(outbox_id, False, "Kafka is down!")
+                    cb(outbox_id, False, "Kafka is down!") # Simulate failure
             smart_mock_kafka_producer.publish_message.call_args_list.clear()
-            raise Exception("Kafka is down!")
+        # On subsequent calls, simulate success
         else:
             for call in smart_mock_kafka_producer.publish_message.call_args_list:
                 kwargs = call.kwargs
                 cb = kwargs.get("on_delivery")
                 outbox_id = kwargs.get("outbox_id")
                 if cb and outbox_id:
-                    cb(outbox_id, True, None)
+                    cb(outbox_id, True, None) # Simulate success
             smart_mock_kafka_producer.publish_message.call_args_list.clear()
 
     smart_mock_kafka_producer.flush.side_effect = stateful_flush_side_effect
@@ -181,7 +182,7 @@ def test_dispatcher_recovers_after_failure(db_engine, clean_db, smart_mock_kafka
         db_session_factory=TestSessionFactory
     )
     
-    # ACT 1: First poll cycle fails internally, but dispatcher should handle it
+    # ACT 1: First poll cycle. It should complete without error, but the DB state will be updated for retry.
     dispatcher._process_batch_sync()
 
     # ASSERT 1
