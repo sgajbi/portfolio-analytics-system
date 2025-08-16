@@ -135,7 +135,7 @@ The system relies on a well-defined sequence of events published to Kafka topics
 
 ### Read API (`query-service` @ `http://localhost:8001`)
 
-  - `GET /portfolios/`: Retrieves details for portfolios, filterable by `portfolio_id`, `cif_id`, or `booking_center`.
+  - `GET /portfolios/`: Retrieves details for portfolios, filterable by `cif_id`, or `booking_center`.
   - `GET /portfolios/{portfolio_id}`: Retrieves details for a single portfolio. Returns `404` if not found.
   - `GET /portfolios/{portfolio_id}/positions`: Retrieves the latest position for each security in a portfolio, including dual-currency valuation.
   - `GET /portfolios/{portfolio_id}/position-history`: Retrieves the historical time series of positions for a specific security within a portfolio.
@@ -287,6 +287,8 @@ sgajbi-portfolio-analytics-system/
 ├── alembic/                      # Database migration scripts managed by Alembic.
 ├── docker-compose.yml            # Orchestrates all services for local development.
 ├── pyproject.toml                # Project definition and dependencies for the root installer.
+├── scripts/
+│   └── run_e2e_example.sh        # A script to run the full usage example.
 ├── src/
 │   ├── libs/                     # Shared Python libraries, installable as packages.
 │   │   ├── financial-calculator-engine/ # Core stateless financial calculation logic.
@@ -331,158 +333,15 @@ This example demonstrates the full flow from ingesting a cross-currency trade to
 
     Wait about a minute for all services to become healthy.
 
-2.  **Ingest a USD-based Portfolio**:
+2.  **Run the Example Script**:
+    This script will ingest all the necessary data and then query the final results.
 
     ```bash
-    curl -X 'POST' 'http://localhost:8000/ingest/portfolios' -H 'Content-Type: application/json' -d '{
-    "portfolios": [{"portfolioId": "DUAL_CURRENCY_PORT_01", "baseCurrency": "USD", "openDate": "2025-01-01", "cifId": "DC_CIF", "status": "ACTIVE", "riskExposure":"High", "investmentTimeHorizon":"Long", "portfolioType":"Discretionary", "bookingCenter":"SG"}]
-    }'
+    ./scripts/run_e2e_example.sh
     ```
 
-3.  **Ingest a EUR-based Instrument (e.g., Daimler)**:
-
-    ```bash
-    curl -X 'POST' 'http://localhost:8000/ingest/instruments' -H 'Content-Type: application/json' -d '{
-    "instruments": [{"securityId": "SEC_DAI_DE", "name": "Daimler AG", "isin": "DE0007100000", "instrumentCurrency": "EUR", "productType": "Equity"}]
-    }'
-    ```
-
-4.  **Ingest FX Rates** for the trade and valuation dates:
-
-    ```bash
-    curl -X 'POST' 'http://localhost:8000/ingest/fx-rates' -H 'Content-Type: application/json' -d '{
-    "fx_rates": [
-      {"fromCurrency": "EUR", "toCurrency": "USD", "rateDate": "2025-08-10", "rate": "1.10"},
-      {"fromCurrency": "EUR", "toCurrency": "USD", "rateDate": "2025-08-15", "rate": "1.20"}
-    ]
-    }'
-    ```
-
-5.  **Ingest a BUY Transaction (in EUR)**:
-
-    ```bash
-    curl -X 'POST' 'http://localhost:8000/ingest/transactions' -H 'Content-Type: application/json' -d '{
-    "transactions": [{"transaction_id": "DC_BUY_01", "portfolio_id": "DUAL_CURRENCY_PORT_01", "instrument_id": "DAI", "security_id": "SEC_DAI_DE", "transaction_date": "2025-08-10T10:00:00Z", "transaction_type": "BUY", "quantity": 100, "price": 150.0, "gross_transaction_amount": 15000.0, "trade_currency": "EUR", "currency": "EUR"}]
-    }'
-    ```
-
-6.  **Ingest a SELL Transaction (in EUR)**:
-
-    ```bash
-    curl -X 'POST' 'http://localhost:8000/ingest/transactions' -H 'Content-type: application/json' -d '{
-     "transactions": [{"transaction_id": "DC_SELL_01", "portfolio_id": "DUAL_CURRENCY_PORT_01", "instrument_id": "DAI", "security_id": "SEC_DAI_DE", "transaction_date": "2025-08-15T10:00:00Z", "transaction_type": "SELL", "quantity": 40, "price": 170, "gross_transaction_amount": 6800, "trade_currency": "EUR", "currency": "EUR"}]
-    }'
-    ```
-
-7.  **Ingest a Market Price (in EUR)** to value the final position:
-
-    ```bash
-    curl -X 'POST' 'http://localhost:8000/ingest/market-prices' -H 'Content-Type: application/json' -d '{
-    "market_prices": [{"securityId": "SEC_DAI_DE", "priceDate": "2025-08-15", "price": 180.0, "currency": "EUR"}]
-    }'
-    ```
-
-8.  **Wait a few seconds** for all services to process these events.
-
-9.  **Query the Final Position**:
-    Call the `query-service` to see the final state, including dual-currency valuation.
-
-    ```bash
-    curl http://localhost:8001/portfolios/DUAL_CURRENCY_PORT_01/positions
-    ```
-
-    **Expected Response**:
-
-    ```json
-    {
-      "portfolio_id": "DUAL_CURRENCY_PORT_01",
-      "positions": [
-        {
-          "security_id": "SEC_DAI_DE",
-          "quantity": "60.0000000000",
-          "instrument_name": "Daimler AG",
-          "position_date": "2025-08-15",
-          "cost_basis": "9900.0000000000",
-          "cost_basis_local": "9000.0000000000",
-          "valuation": {
-            "market_price": "180.0000000000",
-            "market_value": "12960.0000000000",
-            "unrealized_gain_loss": "3060.0000000000",
-            "market_value_local": "10800.0000000000",
-            "unrealized_gain_loss_local": "1800.0000000000"
-          }
-        }
-      ]
-    }
-    ```
-
-10. **Query Transactions with Realized P\&L**:
-    Call the `query-service` to see the transaction details, including the calculated dual-currency P\&L on the sale.
-
-    ```bash
-    curl http://localhost:8001/portfolios/DUAL_CURRENCY_PORT_01/transactions
-    ```
-
-    **Expected Response**:
-
-    ```json
-    {
-      "portfolio_id": "DUAL_CURRENCY_PORT_01",
-      "total": 2,
-      "skip": 0,
-      "limit": 100,
-      "transactions": [
-        {
-          "transaction_id": "DC_SELL_01",
-          "transaction_date": "2025-08-15T10:00:00",
-          "transaction_type": "SELL",
-          "instrument_id": "DAI",
-           "security_id": "SEC_DAI_DE",
-          "quantity": "40.0000000000",
-          "price": "170.0000000000",
-          "gross_transaction_amount": "6800.0000000000",
-          "currency": "EUR",
-          "net_cost": "-6600.0000000000",
-          "realized_gain_loss": "1560.0000000000",
-          "net_cost_local": "-6000.0000000000",
-          "realized_gain_loss_local": "800.0000000000",
-          "transaction_fx_rate": "1.2000000000",
-          "cashflow": {
-            "amount": "6800.0000000000",
-            "currency": "EUR",
-            "classification": "INVESTMENT_INFLOW",
-            "timing": "EOD",
-            "level": "POSITION",
-            "calculationType": "NET"
-          }
-        },
-        {
-          "transaction_id": "DC_BUY_01",
-           "transaction_date": "2025-08-10T10:00:00",
-          "transaction_type": "BUY",
-          "instrument_id": "DAI",
-          "security_id": "SEC_DAI_DE",
-          "quantity": "100.0000000000",
-          "price": "150.0000000000",
-          "gross_transaction_amount": "15000.0000000000",
-           "currency": "EUR",
-          "net_cost": "16500.0000000000",
-          "realized_gain_loss": null,
-          "net_cost_local": "15000.0000000000",
-          "realized_gain_loss_local": null,
-          "transaction_fx_rate": "1.1000000000",
-          "cashflow": {
-            "amount": "-15000.0000000000",
-            "currency": "EUR",
-            "classification": "INVESTMENT_OUTFLOW",
-            "timing": "EOD",
-            "level": "POSITION",
-            "calculationType": "NET"
-          }
-        }
-      ]
-    }
-    ```
+    The script will print the final `positions` and `transactions` JSON responses to the console, which should match the expected output shown in the previous version of this README.
 
 <!-- end list -->
 
+ 
