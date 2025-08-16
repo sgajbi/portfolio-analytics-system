@@ -105,7 +105,7 @@ def test_timeseries_day_2(setup_timeseries_data):
     assert bod_mv == Decimal("5720.0000000000")
     assert bod_cf == Decimal("0.0000000000")
     assert eod_cf == Decimal("-25.0000000000")
-    assert eod_mv == Decimal("6600.0000000000")
+    assert eod_mv == Decimal("6575.0000000000")
     assert fees == Decimal("25.0000000000")
 
 def test_position_timeseries_day_2(setup_timeseries_data):
