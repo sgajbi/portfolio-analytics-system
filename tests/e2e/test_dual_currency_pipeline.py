@@ -51,7 +51,7 @@ def setup_dual_currency_data(docker_services, db_engine, api_endpoints, poll_for
         data.get("positions") and len(data["positions"]) == 1 and
         data["positions"][0].get("valuation", {}).get("unrealized_gain_loss") is not None
     )
-    poll_for_data(pos_url, pos_validation, timeout=60)
+    poll_for_data(pos_url, pos_validation, timeout=120)
     
     return {"portfolio_id": portfolio_id, "query_url": query_url}
 
