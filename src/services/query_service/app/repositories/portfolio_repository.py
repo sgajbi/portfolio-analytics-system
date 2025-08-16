@@ -39,3 +39,9 @@ class PortfolioRepository:
         portfolios = results.scalars().all()
         logger.info(f"Found {len(portfolios)} portfolios with the given filters.")
         return portfolios
+
+    async def get_by_id(self, portfolio_id: str) -> Optional[Portfolio]:
+        """Retrieves a single portfolio by its unique portfolio_id."""
+        stmt = select(Portfolio).filter_by(portfolio_id=portfolio_id)
+        result = await self.db.execute(stmt)
+        return result.scalars().first()
