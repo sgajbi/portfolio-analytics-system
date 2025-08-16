@@ -59,7 +59,6 @@ services:
         condition: service_healthy
     command: ["python", "-m", "tools.kafka_setup"]
     environment:
-      PYTHONPATH: "/app:/app/src/libs/portfolio-common"
       KAFKA_BOOTSTRAP_SERVERS: kafka:9093
     networks:
       - app_network
@@ -91,7 +90,6 @@ services:
     hostname: migration-runner
     container_name: migration-runner
     environment:
-      PYTHONPATH: "/app:/app/src/libs/portfolio-common"
       DATABASE_URL: ${DATABASE_URL}
     depends_on:
       postgres:
@@ -110,7 +108,6 @@ services:
     ports:
       - "8000:8000"
     environment:
-      PYTHONPATH: "/app:/app/src/libs/portfolio-common"
       KAFKA_BOOTSTRAP_SERVERS: kafka:9093
     depends_on:
       kafka-topic-creator:
@@ -132,7 +129,6 @@ services:
     ports:
       - "8001:8001"
     environment:
-      PYTHONPATH: "/app:/app/src/libs/portfolio-common"
       DATABASE_URL: ${QUERY_DATABASE_URL}
     depends_on:
       migration-runner:
@@ -160,7 +156,6 @@ services:
     ports:
       - "8080:8080"
     environment:
-      PYTHONPATH: "/app:/app/src/libs/portfolio-common"
       KAFKA_BOOTSTRAP_SERVERS: kafka:9093
       DATABASE_URL: ${DATABASE_URL}
     depends_on:
@@ -191,7 +186,6 @@ services:
     ports:
       - "8083:8083"
     environment:
-      PYTHONPATH: "/app:/app/src/libs/portfolio-common:/app/src/libs/financial-calculator-engine/src"
       KAFKA_BOOTSTRAP_SERVERS: kafka:9093
       DATABASE_URL: ${DATABASE_URL}
     depends_on:
@@ -223,7 +217,6 @@ services:
     ports:
       - "8082:8082"
     environment:
-      PYTHONPATH: "/app:/app/src/libs/portfolio-common"
       KAFKA_BOOTSTRAP_SERVERS: kafka:9093
       DATABASE_URL: ${DATABASE_URL}
     depends_on:
@@ -254,7 +247,6 @@ services:
     ports:
       - "8081:8081"
     environment:
-      PYTHONPATH: "/app:/app/src/libs/portfolio-common"
       KAFKA_BOOTSTRAP_SERVERS: kafka:9093
       DATABASE_URL: ${DATABASE_URL}
     depends_on:
@@ -285,7 +277,6 @@ services:
     ports:
       - "8084:8084"
     environment:
-      PYTHONPATH: "/app:/app/src/libs/portfolio-common"
       KAFKA_BOOTSTRAP_SERVERS: kafka:9093
       DATABASE_URL: ${DATABASE_URL}
       VALUATION_SCHEDULER_POLL_INTERVAL: 2
@@ -317,7 +308,6 @@ services:
     ports:
       - "8085:8085"
     environment:
-      PYTHONPATH: "/app:/app/src/libs/portfolio-common"
       KAFKA_BOOTSTRAP_SERVERS: kafka:9093
       DATABASE_URL: ${DATABASE_URL}
     depends_on:
