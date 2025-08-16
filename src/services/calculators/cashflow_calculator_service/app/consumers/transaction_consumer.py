@@ -32,7 +32,7 @@ class CashflowCalculatorConsumer(BaseConsumer):
 
     @retry(
         wait=wait_fixed(2),
-        stop=stop_after_attempt(3),
+        stop=stop_after_attempt(15),
         before=before_log(logger, logging.INFO)
     )
     async def _process_message_with_retry(self, msg: Message):
