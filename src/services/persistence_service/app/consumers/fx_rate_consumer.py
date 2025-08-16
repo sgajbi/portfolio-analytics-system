@@ -34,8 +34,8 @@ class FxRateConsumer(BaseConsumer):
             await self._send_to_dlq_async(msg, e)
 
     @retry(
-        wait=wait_exponential(multiplier=1, min=2, max=10),
-        stop=stop_after_delay(90),
+        wait=wait_exponential(multiplier=1, min=2, max=10), 
+        stop=stop_after_delay(300),
         before=before_log(logger, logging.INFO),
         retry=retry_if_exception_type((DBAPIError, IntegrityError, OperationalError)),
         reraise=True

@@ -44,7 +44,7 @@ class TransactionPersistenceConsumer(BaseConsumer):
 
     @retry(
         wait=wait_exponential(multiplier=1, min=2, max=10),
-        stop=stop_after_delay(90),
+        stop=stop_after_delay(300),
         before=before_log(logger, logging.INFO),
         retry=retry_if_exception_type((DBAPIError, IntegrityError, PortfolioNotFoundError, OperationalError)),
         reraise=True
