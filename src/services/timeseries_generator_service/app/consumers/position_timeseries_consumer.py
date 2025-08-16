@@ -31,7 +31,7 @@ class PositionTimeseriesConsumer(BaseConsumer):
     async def process_message(self, msg: Message):
         retry_config = retry(
             wait=wait_fixed(3),
-            stop=stop_after_attempt(5),
+            stop=stop_after_attempt(15),  # Increased from 5 to 15 attempts
             before=before_log(logger, logging.INFO),
             retry=retry_if_exception_type((IntegrityError, InstrumentNotFoundError, PreviousTimeseriesNotFoundError))
         )
@@ -53,6 +53,7 @@ class PositionTimeseriesConsumer(BaseConsumer):
             async for db in get_async_db_session():
                 async with db.begin():
                     repo = TimeseriesRepository(db)
+                    
                     instrument = await repo.get_instrument(event.security_id)
                     if not instrument:
                         raise InstrumentNotFoundError(f"Instrument '{event.security_id}' not found. Will retry.")
@@ -107,7 +108,7 @@ class PositionTimeseriesConsumer(BaseConsumer):
                     )
                     await db.execute(job_stmt)
                     logger.info(f"Successfully staged aggregation job for portfolio {event.portfolio_id} on {event.date}")
-                    
+            
         except (json.JSONDecodeError, ValidationError) as e:
             logger.error(f"Message validation failed: {e}. Sending to DLQ.", exc_info=True)
             await self._send_to_dlq_async(msg, e)
