@@ -1,7 +1,7 @@
 """feat: add portfolio_aggregation_jobs table
 
 Revision ID: 45c3cea614f5
-Revises: 2431c840d504
+Revises: 84dd2172ef66
 Create Date: 2025-08-07 17:41:34.991907
 
 """
@@ -13,7 +13,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision: str = '45c3cea614f5'
-down_revision: Union[str, None] = '2431c840d504'
+down_revision: Union[str, None] = '84dd2172ef66'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
