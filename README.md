@@ -1,6 +1,3 @@
-
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/sgajbi/portfolio-analytics-system)
- 
 # Portfolio Analytics System
 
 [![Python Version](https://img.shields.io/badge/python-3.11-blue.svg)](https://www.python.org/downloads/release/python-3110/)
@@ -228,39 +225,35 @@ All services with a web server also expose an endpoint at `/metrics` for scrapin
 
 The project contains a comprehensive suite of tests to ensure correctness and reliability.
 
-1.  **Install Test Dependencies**:
+1.  **Install Test Dependencies**: Ensure you have completed the "Initial Setup" steps, which includes this command.
     ```bash
     pip install -r tests/requirements.txt
     ```
-2.  **Run All Tests (Unit, Integration, E2E)**:
+2.  **Run All Tests**: To run the complete test suite (unit, integration, and end-to-end), first start the Docker environment, then run pytest.
     ```bash
+    # Ensure all services are running
+    docker compose up -d
+
+    # Run all tests
     pytest
     ```
-3.  **Run Tests for a Specific Module or File**:
-    To run tests for a single part of the application, specify the directory or file path.
+3.  **Run Specific Tests**: To run tests for a single part of the application, specify the directory or file path.
     ```bash
      # Run all unit tests for the financial calculator
     pytest tests/unit/libs/financial-calculator-engine/
 
     # Run a single test file
-    pytest tests/unit/services/calculators/position_calculator/core/test_position_logic.py
+    pytest tests/e2e/test_timeseries_pipeline.py
     ```
-4.  **Run Only E2E Tests**:
-    These tests require the full Docker environment to be running.
+4.  **Generate Coverage Reports**: To measure which lines of code are executed by the tests, run pytest with coverage flags.
     ```bash
-    docker compose up -d
-    pytest tests/e2e/
-    ```
-5.  **Generate a Coverage Report**:
-    To measure which lines of code are executed by the tests, run pytest with the `coverage` flags.
-    ```bash
-    # Generate a summary in the terminal for unit tests
+    # Generate a quick summary in the terminal (useful for unit tests)
     pytest tests/unit/ --cov=src --cov-report term-missing
 
-    # Generate an interactive HTML report for all tests
+    # Generate a detailed, interactive HTML report for the full suite
     pytest --cov=src --cov-report=html
     ```
-    Open the `htmlcov/index.html` file in your browser to view the detailed interactive report.
+    After running, open the `htmlcov/index.html` file in your browser to explore the coverage report.
 
 -----
 
@@ -357,7 +350,7 @@ This example demonstrates the full flow from ingesting a cross-currency trade to
 
     ```bash
     curl -X 'POST' 'http://localhost:8000/ingest/transactions' -H 'Content-type: application/json' -d '{
-    "transactions": [{"transaction_id": "DC_SELL_01", "portfolio_id": "DUAL_CURRENCY_PORT_01", "instrument_id": "DAI", "security_id": "SEC_DAI_DE", "transaction_date": "2025-08-15T10:00:00Z", "transaction_type": "SELL", "quantity": 40, "price": 170, "gross_transaction_amount": 6800, "trade_currency": "EUR", "currency": "EUR"}]
+     "transactions": [{"transaction_id": "DC_SELL_01", "portfolio_id": "DUAL_CURRENCY_PORT_01", "instrument_id": "DAI", "security_id": "SEC_DAI_DE", "transaction_date": "2025-08-15T10:00:00Z", "transaction_type": "SELL", "quantity": 40, "price": 170, "gross_transaction_amount": 6800, "trade_currency": "EUR", "currency": "EUR"}]
     }'
     ```
 
@@ -424,7 +417,7 @@ This example demonstrates the full flow from ingesting a cross-currency trade to
           "transaction_date": "2025-08-15T10:00:00",
           "transaction_type": "SELL",
           "instrument_id": "DAI",
-          "security_id": "SEC_DAI_DE",
+           "security_id": "SEC_DAI_DE",
           "quantity": "40.0000000000",
           "price": "170.0000000000",
           "gross_transaction_amount": "6800.0000000000",
@@ -445,21 +438,21 @@ This example demonstrates the full flow from ingesting a cross-currency trade to
         },
         {
           "transaction_id": "DC_BUY_01",
-          "transaction_date": "2025-08-10T10:00:00",
+           "transaction_date": "2025-08-10T10:00:00",
           "transaction_type": "BUY",
           "instrument_id": "DAI",
           "security_id": "SEC_DAI_DE",
           "quantity": "100.0000000000",
           "price": "150.0000000000",
           "gross_transaction_amount": "15000.0000000000",
-          "currency": "EUR",
+           "currency": "EUR",
           "net_cost": "16500.0000000000",
           "realized_gain_loss": null,
           "net_cost_local": "15000.0000000000",
           "realized_gain_loss_local": null,
           "transaction_fx_rate": "1.1000000000",
           "cashflow": {
-            "amount": "-15000.0000000000",
+           "amount": "-15000.0000000000",
             "currency": "EUR",
             "classification": "INVESTMENT_OUTFLOW",
             "timing": "EOD",
