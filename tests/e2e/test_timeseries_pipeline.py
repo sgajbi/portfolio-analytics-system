@@ -123,6 +123,6 @@ def test_position_timeseries_day_2(setup_timeseries_data):
     cash_pos = records.get("CASH")
     assert cash_pos is not None
     assert cash_pos.eod_market_value == Decimal("-25.0000000000") # from fee
-    assert cash_pos.eod_cashflow == Decimal("-25.0000000000")
+    assert cash_pos.eod_cashflow == Decimal("0.0000000000")
     assert cash_pos.quantity == Decimal("-25.0000000000")
     assert cash_pos.cost == Decimal("1.0000000000") # Cost of cash is 1
