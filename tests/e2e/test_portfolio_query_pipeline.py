@@ -82,3 +82,15 @@ def test_query_no_filters(setup_portfolio_data):
     data = response.json()
 
     assert len(data["portfolios"]) >= 3
+
+def test_query_by_non_existent_portfolio_id_returns_404(setup_portfolio_data):
+    """
+    Tests that querying for a specific but non-existent portfolio ID returns a 404 Not Found.
+    """
+    query_url = setup_portfolio_data['query_url']
+    non_existent_id = "PORT_DOES_NOT_EXIST"
+    url = f"{query_url}/portfolios/{non_existent_id}"
+
+    response = requests.get(url)
+    assert response.status_code == 404
+    assert response.json() == {"detail": f"Portfolio with id {non_existent_id} not found"}
