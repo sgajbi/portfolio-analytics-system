@@ -3,27 +3,28 @@ import pytest
 import requests
 import time
 import uuid
+from sqlalchemy import text
+from sqlalchemy.orm import Session
 
-# This fixture provides the base URLs for the services under test.
 @pytest.fixture(scope="module")
-def api_endpoints(docker_services):
-    """Provides the URLs for the ingestion and query services."""
-    ingestion_host = docker_services.get_service_host("ingestion_service", 8000)
-    ingestion_port = docker_services.get_service_port("ingestion_service", 8000)
-    ingestion_url = f"http://{ingestion_host}:{ingestion_port}"
-
-    query_host = docker_services.get_service_host("query-service", 8001)
-    query_port = docker_services.get_service_port("query-service", 8001)
-    query_url = f"http://{query_host}:{query_port}"
-    
-    return {"ingestion": ingestion_url, "query": query_url}
-
-@pytest.fixture(scope="function")
-def setup_e2e_data(api_endpoints, clean_db):
+def setup_e2e_data(docker_services, db_engine, api_endpoints, poll_for_data):
     """
-    A function-scoped fixture to ingest a consistent set of data for each test.
+    A module-scoped fixture to ingest a consistent set of data for testing
+    API features like sorting, filtering, and pagination.
     """
+    # --- Clean the database once for this module ---
+    TABLES = [
+        "portfolio_valuation_jobs", "portfolio_aggregation_jobs", "transaction_costs", "cashflows", "position_history", "daily_position_snapshots",
+        "position_timeseries", "portfolio_timeseries", "transactions", "market_prices",
+        "instruments", "fx_rates", "portfolios", "processed_events", "outbox_events"
+    ]
+    truncate_query = text(f"TRUNCATE TABLE {', '.join(TABLES)} RESTART IDENTITY CASCADE;")
+    with db_engine.begin() as connection:
+        connection.execute(truncate_query)
+    # --- End Cleaning ---
+
     ingestion_url = api_endpoints["ingestion"]
+    query_url = api_endpoints["query"]
     portfolio_id = f"E2E_API_TEST_{uuid.uuid4()}"
     
     # Ingest Portfolio
@@ -39,10 +40,12 @@ def setup_e2e_data(api_endpoints, clean_db):
     ]
     requests.post(f"{ingestion_url}/ingest/transactions", json={"transactions": transactions})
     
-    # Wait for data to be processed through the pipeline
-    time.sleep(15)
+    # Poll until all transactions are available via the API
+    poll_url = f"{query_url}/portfolios/{portfolio_id}/transactions"
+    validation_func = lambda data: data.get("transactions") and len(data["transactions"]) == 4
+    poll_for_data(poll_url, validation_func, timeout=60)
 
-    return {"portfolio_id": portfolio_id, "query_url": api_endpoints["query"]}
+    return {"portfolio_id": portfolio_id, "query_url": query_url}
 
 
 def test_transaction_query_default_sort(setup_e2e_data):
