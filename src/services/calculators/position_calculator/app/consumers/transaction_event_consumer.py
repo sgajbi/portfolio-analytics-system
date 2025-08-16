@@ -28,8 +28,8 @@ class TransactionEventConsumer(BaseConsumer):
     """
 
     @retry(
-        wait=wait_fixed(2),
-        stop=stop_after_attempt(3),
+        wait=wait_fixed(3),
+        stop=stop_after_attempt(10),
         before=before_log(logger, logging.INFO),
         retry=retry_if_exception_type((DBAPIError, IntegrityError)),
         reraise=True

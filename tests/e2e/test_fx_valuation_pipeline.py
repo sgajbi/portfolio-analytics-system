@@ -34,7 +34,7 @@ def setup_fx_valuation_data(clean_db_module, api_endpoints, poll_for_data):
         data.get("positions") and len(data["positions"]) == 1 and
         data["positions"][0].get("valuation", {}).get("unrealized_gain_loss") is not None
     )
-    poll_for_data(poll_url, timeout=60)
+    poll_for_data(poll_url, validation_func, timeout=60)
     
     return {"portfolio_id": portfolio_id, "query_url": query_url}
 
