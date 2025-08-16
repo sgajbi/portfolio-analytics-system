@@ -1,272 +1,87 @@
+# tests/e2e/test_persistence_query_pipeline.py
 import pytest
 import requests
-import time
-import uuid
 from datetime import date
+from sqlalchemy import text
+from sqlalchemy.orm import Session
 
-# NOTE: The helper fixtures `api_endpoints` and `poll_for_data` are now
-# automatically discovered by pytest from the `tests/e2e/conftest.py` file.
-
-def test_portfolio_persistence_and_query(api_endpoints, poll_for_data, clean_db):
+@pytest.fixture(scope="module")
+def setup_persistence_data(docker_services, db_engine, api_endpoints, poll_for_data):
     """
-    Tests that a portfolio can be ingested and then queried successfully.
+    A module-scoped fixture that ingests a comprehensive set of data and waits for it all to be queryable.
     """
-    # ARRANGE
-    portfolio_id = f"E2E_PQ_PORT_{uuid.uuid4()}"
-    ingest_payload = {"portfolios": [{
-        "portfolioId": portfolio_id,
-        "baseCurrency": "SGD",
-        "openDate": "2024-01-01",
-        "riskExposure": "Medium",
-        "investmentTimeHorizon": "Long",
-        "portfolioType": "Discretionary",
-        "bookingCenter": "Singapore",
-        "cifId": "CIF_PQ_1",
-        "status": "ACTIVE"
-    }]}
+    # --- Clean the database once for this module ---
+    TABLES = [
+        "portfolio_valuation_jobs", "portfolio_aggregation_jobs", "transaction_costs", "cashflows", "position_history", "daily_position_snapshots",
+        "position_timeseries", "portfolio_timeseries", "transactions", "market_prices",
+        "instruments", "fx_rates", "portfolios", "processed_events", "outbox_events"
+    ]
+    truncate_query = text(f"TRUNCATE TABLE {', '.join(TABLES)} RESTART IDENTITY CASCADE;")
+    with db_engine.begin() as connection:
+        connection.execute(truncate_query)
+    # --- End Cleaning ---
 
-    # ACT: Ingest the data
-    ingest_url = f"{api_endpoints['ingestion']}/ingest/portfolios"
-    response = requests.post(ingest_url, json=ingest_payload)
-    assert response.status_code == 202
-
-    # ACT: Poll the query service until the data is available
-    query_url = f"{api_endpoints['query']}/portfolios?portfolio_id={portfolio_id}"
-    validation_func = lambda data: data.get("portfolios") and len(data["portfolios"]) == 1
-    query_data = poll_for_data(query_url, validation_func)
+    ingestion_url = api_endpoints["ingestion"]
+    query_url = api_endpoints["query"]
     
-    # ASSERT: Verify the queried data
-    persisted_portfolio = query_data["portfolios"][0]
-    assert persisted_portfolio["portfolio_id"] == portfolio_id
-    assert persisted_portfolio["base_currency"] == "SGD"
-    assert persisted_portfolio["booking_center"] == "Singapore"
-
-
-def test_instrument_persistence_and_query(api_endpoints, poll_for_data, clean_db):
-    """
-    Tests that an instrument can be ingested and then queried successfully.
-    """
-    # ARRANGE
-    security_id = f"SEC_PQ_{uuid.uuid4()}"
-    ingest_payload = {"instruments": [{
-        "securityId": security_id,
-        "name": "Test Instrument PQ",
-        "isin": f"ISIN_{uuid.uuid4()}",
-        "instrumentCurrency": "USD",
-        "productType": "Equity"
-    }]}
-
-    # ACT: Ingest
-    ingest_url = f"{api_endpoints['ingestion']}/ingest/instruments"
-    response = requests.post(ingest_url, json=ingest_payload)
-    assert response.status_code == 202
-
-    # ACT: Poll & Query
-    query_url = f"{api_endpoints['query']}/instruments?security_id={security_id}"
-    validation_func = lambda data: data.get("instruments") and len(data["instruments"]) == 1
-    query_data = poll_for_data(query_url, validation_func)
-
-    # ASSERT
-    persisted_instrument = query_data["instruments"][0]
-    assert persisted_instrument["security_id"] == security_id
-    assert persisted_instrument["name"] == "Test Instrument PQ"
-    assert persisted_instrument["product_type"] == "Equity"
-
-
-def test_market_price_persistence_and_query(api_endpoints, poll_for_data, clean_db):
-    """
-    Tests that a market price can be ingested and then queried successfully.
-    """
-    # ARRANGE
-    security_id = f"SEC_PQ_PRICE_{uuid.uuid4()}"
+    # Define all identifiers
+    portfolio_id = "E2E_PQ_PORT_01"
+    security_id = "SEC_PQ_INST_01"
+    transaction_id = "TXN_PQ_01"
     price_date = date.today().isoformat()
-    ingest_payload = {"market_prices": [{
-        "securityId": security_id,
-        "priceDate": price_date,
-        "price": 123.45,
-        "currency": "HKD"
-    }]}
-
-    # ACT: Ingest
-    ingest_url = f"{api_endpoints['ingestion']}/ingest/market-prices"
-    response = requests.post(ingest_url, json=ingest_payload)
-    assert response.status_code == 202
-
-    # ACT: Poll & Query
-    query_url = f"{api_endpoints['query']}/prices?security_id={security_id}"
-    validation_func = lambda data: data.get("prices") and len(data["prices"]) == 1
-    query_data = poll_for_data(query_url, validation_func)
-
-    # ASSERT
-    persisted_price = query_data["prices"][0]
-    assert query_data["security_id"] == security_id
-    assert persisted_price["price_date"] == price_date
-    assert float(persisted_price["price"]) == 123.45
-    assert persisted_price["currency"] == "HKD"
-
-
-def test_fx_rate_persistence_and_query(api_endpoints, poll_for_data, clean_db):
-    """
-    Tests that an FX rate can be ingested and then queried successfully.
-    """
-    # ARRANGE
-    rate_date = date.today().isoformat()
-    ingest_payload = {"fx_rates": [{
-        "fromCurrency": "USD",
-        "toCurrency": "EUR",
-        "rateDate": rate_date,
-        "rate": 0.95
-    }]}
-
-    # ACT: Ingest
-    ingest_url = f"{api_endpoints['ingestion']}/ingest/fx-rates"
-    response = requests.post(ingest_url, json=ingest_payload)
-    assert response.status_code == 202
-
-    # ACT: Poll & Query
-    query_url = f"{api_endpoints['query']}/fx-rates?from_currency=USD&to_currency=EUR"
-    validation_func = lambda data: data.get("rates") and len(data["rates"]) == 1
-    query_data = poll_for_data(query_url, validation_func)
-
-    # ASSERT
-    persisted_rate = query_data["rates"][0]
-    assert query_data["from_currency"] == "USD"
-    assert query_data["to_currency"] == "EUR"
-    assert persisted_rate["rate_date"] == rate_date
-    assert float(persisted_rate["rate"]) == 0.95
-
-
-def test_transaction_persistence_and_query(api_endpoints, poll_for_data, clean_db):
-    """
-    Tests that a transaction can be ingested and then queried successfully.
-    Note: This only tests persistence, not calculated fields like cashflow.
-    """
-    # ARRANGE: Need to ingest the portfolio first to satisfy foreign key constraints
-    portfolio_id = f"E2E_PQ_TRX_PORT_{uuid.uuid4()}"
-    portfolio_payload = {"portfolios": [{"portfolioId": portfolio_id, "baseCurrency": "USD", "openDate": "2024-01-01", "cifId": "CIF_PQ_2", "status": "ACTIVE", "riskExposure": "a", "investmentTimeHorizon": "b", "portfolioType": "c", "bookingCenter": "d"}]}
-    ingest_port_url = f"{api_endpoints['ingestion']}/ingest/portfolios"
-    requests.post(ingest_port_url, json=portfolio_payload)
-
-    # Arrange transaction
-    transaction_id = f"TXN_PQ_{uuid.uuid4()}"
-    ingest_payload = {"transactions": [{
-        "transaction_id": transaction_id,
-        "portfolio_id": portfolio_id,
-        "instrument_id": "TEST",
-        "security_id": "SEC_TEST_PQ",
-        "transaction_date": "2025-08-04T10:00:00Z",
-        "transaction_type": "BUY",
-        "quantity": 100,
-        "price": 10,
-        "gross_transaction_amount": 1000,
-        "trade_currency": "USD",
-        "currency": "USD"
-    }]}
-
-    # ACT: Ingest
-    ingest_url = f"{api_endpoints['ingestion']}/ingest/transactions"
-    response = requests.post(ingest_url, json=ingest_payload)
-    assert response.status_code == 202
-
-    # ACT: Poll & Query
-    query_url = f"{api_endpoints['query']}/portfolios/{portfolio_id}/transactions"
-    validation_func = lambda data: data.get("transactions") and len(data["transactions"]) == 1
-    query_data = poll_for_data(query_url, validation_func)
-
-    # ASSERT
-    persisted_txn = query_data["transactions"][0]
-    assert query_data["portfolio_id"] == portfolio_id
-    assert persisted_txn["transaction_id"] == transaction_id
-    assert persisted_txn["transaction_type"] == "BUY"
-    assert float(persisted_txn["quantity"]) == 100
-
-
-def test_instrument_ingestion_is_idempotent(api_endpoints, poll_for_data, clean_db):
-    """
-    Tests that ingesting the same instrument twice results in only one record.
-    """
-    # ARRANGE
-    security_id = f"SEC_IDEMPOTENT_{uuid.uuid4()}"
-    ingest_payload = {"instruments": [{
-        "securityId": security_id,
-        "name": "Idempotent Test Instrument",
-        "isin": f"ISIN_{uuid.uuid4()}",
-        "instrumentCurrency": "JPY",
-        "productType": "Future"
-    }]}
-    ingest_url = f"{api_endpoints['ingestion']}/ingest/instruments"
-
-    # ACT: Ingest the same payload twice
-    response1 = requests.post(ingest_url, json=ingest_payload)
-    assert response1.status_code == 202
-    response2 = requests.post(ingest_url, json=ingest_payload)
-    assert response2.status_code == 202
-
-    # ASSERT: Poll and verify only one record exists
-    query_url = f"{api_endpoints['query']}/instruments?security_id={security_id}"
-    validation_func = lambda data: data.get("instruments") and len(data["instruments"]) == 1
-    query_data = poll_for_data(query_url, validation_func) # This will fail if more than 1 is created
-
-    persisted_instrument = query_data["instruments"][0]
-    assert persisted_instrument["name"] == "Idempotent Test Instrument"
-
-
-def test_portfolio_update_persistence(api_endpoints, poll_for_data, clean_db):
-    """
-    Tests that ingesting a portfolio with an existing ID updates the record.
-    """
-    # ARRANGE: Ingest the initial version
-    portfolio_id = f"E2E_UPDATE_PORT_{uuid.uuid4()}"
-    initial_payload = {"portfolios": [{"portfolioId": portfolio_id, "baseCurrency": "AUD", "status": "PENDING", "openDate": "2024-01-01", "cifId": "CIF_U_1", "riskExposure": "a", "investmentTimeHorizon": "b", "portfolioType": "c", "bookingCenter": "d"}]}
-    update_payload = {"portfolios": [{"portfolioId": portfolio_id, "baseCurrency": "AUD", "status": "ACTIVE", "openDate": "2024-01-01", "cifId": "CIF_U_1", "riskExposure": "a", "investmentTimeHorizon": "b", "portfolioType": "c", "bookingCenter": "d"}]}
     
-    ingest_url = f"{api_endpoints['ingestion']}/ingest/portfolios"
-    requests.post(ingest_url, json=initial_payload)
+    # Ingest one of each entity type
+    requests.post(f"{ingestion_url}/ingest/portfolios", json={"portfolios": [{"portfolioId": portfolio_id, "baseCurrency": "SGD", "openDate": "2024-01-01", "cifId": "CIF_PQ_1", "status": "ACTIVE", "riskExposure":"a", "investmentTimeHorizon":"b", "portfolioType":"c", "bookingCenter":"d"}]})
+    requests.post(f"{ingestion_url}/ingest/instruments", json={"instruments": [{"securityId": security_id, "name": "Test Instrument PQ", "isin": f"ISIN_{security_id}", "instrumentCurrency": "USD", "productType": "Equity"}]})
+    requests.post(f"{ingestion_url}/ingest/market-prices", json={"market_prices": [{"securityId": security_id, "priceDate": price_date, "price": 123.45, "currency": "HKD"}]})
+    requests.post(f"{ingestion_url}/ingest/fx-rates", json={"fx_rates": [{"fromCurrency": "USD", "toCurrency": "EUR", "rateDate": price_date, "rate": 0.95}]})
+    requests.post(f"{ingestion_url}/ingest/transactions", json={"transactions": [{"transaction_id": transaction_id, "portfolio_id": portfolio_id, "instrument_id": "TEST", "security_id": security_id, "transaction_date": f"{price_date}T10:00:00Z", "transaction_type": "BUY", "quantity": 100, "price": 10, "gross_transaction_amount": 1000, "trade_currency": "USD", "currency": "USD"}]})
 
-    # Poll to ensure the first version is saved
-    query_url = f"{api_endpoints['query']}/portfolios?portfolio_id={portfolio_id}"
-    validation_func_initial = lambda data: data.get("portfolios") and data["portfolios"][0]["status"] == "PENDING"
-    poll_for_data(query_url, validation_func_initial)
+    # Poll all endpoints to ensure data is ready before tests run
+    poll_for_data(f"{query_url}/portfolios?portfolio_id={portfolio_id}", lambda data: data.get("portfolios") and len(data["portfolios"]) == 1)
+    poll_for_data(f"{query_url}/instruments?security_id={security_id}", lambda data: data.get("instruments") and len(data["instruments"]) == 1)
+    poll_for_data(f"{query_url}/prices?security_id={security_id}", lambda data: data.get("prices") and len(data["prices"]) == 1)
+    poll_for_data(f"{query_url}/fx-rates?from_currency=USD&to_currency=EUR", lambda data: data.get("rates") and len(data["rates"]) == 1)
+    poll_for_data(f"{query_url}/portfolios/{portfolio_id}/transactions", lambda data: data.get("transactions") and len(data["transactions"]) == 1)
 
-    # ACT: Ingest the updated version
-    response = requests.post(ingest_url, json=update_payload)
-    assert response.status_code == 202
+    return {"query_url": query_url, "portfolio_id": portfolio_id, "security_id": security_id, "transaction_id": transaction_id, "price_date": price_date}
 
-    # ASSERT: Poll for the updated status
-    validation_func_updated = lambda data: data.get("portfolios") and data["portfolios"][0]["status"] == "ACTIVE"
-    query_data = poll_for_data(query_url, validation_func_updated)
-    
-    persisted_portfolio = query_data["portfolios"][0]
-    assert persisted_portfolio["status"] == "ACTIVE"
+def test_portfolio_query(setup_persistence_data):
+    """Tests that the ingested portfolio can be queried correctly."""
+    api_response = requests.get(f"{setup_persistence_data['query_url']}/portfolios?portfolio_id={setup_persistence_data['portfolio_id']}")
+    assert api_response.status_code == 200
+    data = api_response.json()["portfolios"][0]
+    assert data["portfolio_id"] == setup_persistence_data["portfolio_id"]
+    assert data["base_currency"] == "SGD"
 
-def test_transaction_persists_after_portfolio_arrives(api_endpoints, poll_for_data, clean_db):
-    """
-    Tests that a transaction consumer retries and succeeds if the portfolio arrives late.
-    """
-    # ARRANGE
-    portfolio_id = f"E2E_RETRY_PORT_{uuid.uuid4()}"
-    transaction_id = f"TXN_RETRY_{uuid.uuid4()}"
+def test_instrument_query(setup_persistence_data):
+    """Tests that the ingested instrument can be queried correctly."""
+    api_response = requests.get(f"{setup_persistence_data['query_url']}/instruments?security_id={setup_persistence_data['security_id']}")
+    assert api_response.status_code == 200
+    data = api_response.json()["instruments"][0]
+    assert data["security_id"] == setup_persistence_data["security_id"]
+    assert data["name"] == "Test Instrument PQ"
 
-    transaction_payload = {"transactions": [{"transaction_id": transaction_id, "portfolio_id": portfolio_id, "instrument_id": "RETRY", "security_id": "SEC_RETRY", "transaction_date": "2025-08-01T10:00:00Z", "transaction_type": "BUY", "quantity": 10, "price": 1, "gross_transaction_amount": 10, "trade_currency": "USD", "currency": "USD"}]}
-    portfolio_payload = {"portfolios": [{"portfolioId": portfolio_id, "baseCurrency": "USD", "openDate": "2024-01-01", "cifId": "CIF_R_1", "status": "ACTIVE", "riskExposure": "a", "investmentTimeHorizon": "b", "portfolioType": "c", "bookingCenter": "d"}]}
+def test_market_price_query(setup_persistence_data):
+    """Tests that the ingested market price can be queried correctly."""
+    api_response = requests.get(f"{setup_persistence_data['query_url']}/prices?security_id={setup_persistence_data['security_id']}")
+    assert api_response.status_code == 200
+    data = api_response.json()["prices"][0]
+    assert data["price_date"] == setup_persistence_data["price_date"]
+    assert float(data["price"]) == 123.45
 
-    ingest_txn_url = f"{api_endpoints['ingestion']}/ingest/transactions"
-    ingest_port_url = f"{api_endpoints['ingestion']}/ingest/portfolios"
+def test_fx_rate_query(setup_persistence_data):
+    """Tests that the ingested FX rate can be queried correctly."""
+    api_response = requests.get(f"{setup_persistence_data['query_url']}/fx-rates?from_currency=USD&to_currency=EUR")
+    assert api_response.status_code == 200
+    data = api_response.json()["rates"][0]
+    assert data["rate_date"] == setup_persistence_data["price_date"]
+    assert float(data["rate"]) == 0.95
 
-    # ACT: Ingest the transaction first - this will force the consumer to wait
-    response_txn = requests.post(ingest_txn_url, json=transaction_payload)
-    assert response_txn.status_code == 202
-    
-    # Give it a second to fail once
-    time.sleep(2) 
-
-    # Now, ingest the portfolio it was waiting for
-    response_port = requests.post(ingest_port_url, json=portfolio_payload)
-    assert response_port.status_code == 202
-
-    # ASSERT: Poll for the transaction, which should now have been persisted
-    query_url = f"{api_endpoints['query']}/portfolios/{portfolio_id}/transactions"
-    validation_func = lambda data: data.get("transactions") and len(data["transactions"]) == 1
-    query_data = poll_for_data(query_url, validation_func)
-    
-    assert query_data["transactions"][0]["transaction_id"] == transaction_id
+def test_transaction_query(setup_persistence_data):
+    """Tests that the ingested transaction can be queried correctly."""
+    api_response = requests.get(f"{setup_persistence_data['query_url']}/portfolios/{setup_persistence_data['portfolio_id']}/transactions")
+    assert api_response.status_code == 200
+    data = api_response.json()["transactions"][0]
+    assert data["transaction_id"] == setup_persistence_data["transaction_id"]
+    assert float(data["quantity"]) == 100

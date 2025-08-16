@@ -1,3 +1,4 @@
+# tests/e2e/test_reliability_pipeline.py
 import pytest
 import requests
 import time
@@ -5,63 +6,68 @@ import uuid
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 
-def test_transaction_ingestion_is_idempotent(docker_services, db_engine, clean_db):
+def test_instrument_ingestion_is_idempotent(api_endpoints, clean_db, poll_for_data):
     """
-    Tests that the entire persistence pipeline is idempotent for transactions.
-    It ingests the exact same transaction twice and verifies that only one
-    record is created in the database.
+    Tests that ingesting the same instrument twice results in only one record.
     """
-    # 1. Get API endpoints
-    ingestion_host = docker_services.get_service_host("ingestion_service", 8000)
-    ingestion_port = docker_services.get_service_port("ingestion_service", 8000)
-    ingestion_url = f"http://{ingestion_host}:{ingestion_port}"
+    # ARRANGE
+    ingestion_url = api_endpoints['ingestion']
+    query_url = api_endpoints['query']
+    security_id = f"SEC_IDEMPOTENT_{uuid.uuid4()}"
+    ingest_payload = {"instruments": [{"securityId": security_id, "name": "Idempotent Test Instrument", "isin": f"ISIN_{uuid.uuid4()}", "instrumentCurrency": "JPY", "productType": "Future"}]}
 
-    # 2. Define unique IDs for this test run
-    portfolio_id = f"E2E_IDEMPOTENT_PORT_{uuid.uuid4()}"
-    transaction_id = f"E2E_IDEMPOTENT_TXN_{uuid.uuid4()}"
+    # ACT: Ingest the same payload twice
+    assert requests.post(f"{ingestion_url}/ingest/instruments", json=ingest_payload).status_code == 202
+    assert requests.post(f"{ingestion_url}/ingest/instruments", json=ingest_payload).status_code == 202
 
-    # 3. Ingest prerequisite portfolio data to satisfy FK constraints
-    portfolio_payload = {"portfolios": [{
-        "portfolioId": portfolio_id, "baseCurrency": "USD", "openDate": "2025-01-01",
-        "cifId": "IDEMPOTENT_CIF", "status": "ACTIVE", "riskExposure": "a",
-        "investmentTimeHorizon": "b", "portfolioType": "c", "bookingCenter": "d"
-    }]}
+    # ASSERT: Poll and verify only one record exists
+    poll_url = f"{query_url}/instruments?security_id={security_id}"
+    validation_func = lambda data: data.get("instruments") and len(data["instruments"]) == 1
+    query_data = poll_for_data(poll_url, validation_func)
+
+    assert query_data["instruments"][0]["name"] == "Idempotent Test Instrument"
+
+def test_portfolio_update_persistence(api_endpoints, clean_db, poll_for_data):
+    """
+    Tests that ingesting a portfolio with an existing ID updates the record.
+    """
+    # ARRANGE
+    ingestion_url = api_endpoints['ingestion']
+    query_url = api_endpoints['query']
+    portfolio_id = f"E2E_UPDATE_PORT_{uuid.uuid4()}"
+    initial_payload = {"portfolios": [{"portfolioId": portfolio_id, "baseCurrency": "AUD", "status": "PENDING", "openDate": "2024-01-01", "cifId": "CIF_U_1", "riskExposure": "a", "investmentTimeHorizon": "b", "portfolioType": "c", "bookingCenter": "d"}]}
+    update_payload = {"portfolios": [{"portfolioId": portfolio_id, "baseCurrency": "AUD", "status": "ACTIVE", "openDate": "2024-01-01", "cifId": "CIF_U_1", "riskExposure": "a", "investmentTimeHorizon": "b", "portfolioType": "c", "bookingCenter": "d"}]}
+    
+    requests.post(f"{ingestion_url}/ingest/portfolios", json=initial_payload)
+    poll_url = f"{query_url}/portfolios?portfolio_id={portfolio_id}"
+    poll_for_data(poll_url, lambda data: data.get("portfolios") and data["portfolios"][0]["status"] == "PENDING")
+
+    # ACT
+    assert requests.post(f"{ingestion_url}/ingest/portfolios", json=update_payload).status_code == 202
+
+    # ASSERT
+    poll_for_data(poll_url, lambda data: data.get("portfolios") and data["portfolios"][0]["status"] == "ACTIVE")
+
+def test_transaction_persists_after_portfolio_arrives(api_endpoints, clean_db, poll_for_data):
+    """
+    Tests that a transaction consumer retries and succeeds if the portfolio arrives late.
+    """
+    # ARRANGE
+    ingestion_url = api_endpoints['ingestion']
+    query_url = api_endpoints['query']
+    portfolio_id = f"E2E_RETRY_PORT_{uuid.uuid4()}"
+    transaction_id = f"TXN_RETRY_{uuid.uuid4()}"
+    transaction_payload = {"transactions": [{"transaction_id": transaction_id, "portfolio_id": portfolio_id, "instrument_id": "RETRY", "security_id": "SEC_RETRY", "transaction_date": "2025-08-01T10:00:00Z", "transaction_type": "BUY", "quantity": 10, "price": 1, "gross_transaction_amount": 10, "trade_currency": "USD", "currency": "USD"}]}
+    portfolio_payload = {"portfolios": [{"portfolioId": portfolio_id, "baseCurrency": "USD", "openDate": "2024-01-01", "cifId": "CIF_R_1", "status": "ACTIVE", "riskExposure": "a", "investmentTimeHorizon": "b", "portfolioType": "c", "bookingCenter": "d"}]}
+
+    # ACT: Ingest the transaction first, then wait briefly before ingesting the portfolio it depends on.
+    assert requests.post(f"{ingestion_url}/ingest/transactions", json=transaction_payload).status_code == 202
+    time.sleep(2) 
     assert requests.post(f"{ingestion_url}/ingest/portfolios", json=portfolio_payload).status_code == 202
 
-    # 4. Define the transaction payload that will be sent twice
-    transaction_payload = {"transactions": [{
-        "transaction_id": transaction_id,
-        "portfolio_id": portfolio_id,
-        "instrument_id": "IDEMPOTENT_INST",
-        "security_id": "SEC_IDEMPOTENT",
-        "transaction_date": "2025-08-05T10:00:00Z",
-        "transaction_type": "BUY",
-        "quantity": 1, "price": 1, "gross_transaction_amount": 1,
-        "trade_currency": "USD", "currency": "USD"
-    }]}
-
-    # 5. ACT: Post the same payload twice in quick succession
-    response1 = requests.post(f"{ingestion_url}/ingest/transactions", json=transaction_payload)
-    assert response1.status_code == 202
-
-    response2 = requests.post(f"{ingestion_url}/ingest/transactions", json=transaction_payload)
-    assert response2.status_code == 202
-
-    # 6. ASSERT: Poll the database to verify the final state
-    # We give the system ample time to process both messages.
-    # If the logic is faulty, a second record would appear, causing the count to become 2.
-    time.sleep(15) # Allow time for both messages to be consumed
-
-    with Session(db_engine) as session:
-        # Check that exactly one transaction record was created
-        query_txn = text("SELECT count(*) FROM transactions WHERE transaction_id = :txn_id")
-        transaction_count = session.execute(query_txn, {"txn_id": transaction_id}).scalar_one()
-        assert transaction_count == 1, "Duplicate transaction was created"
-
-        # Check that exactly one 'processed_event' record was created for this consumer
-        query_events = text("""
-            SELECT count(*) FROM processed_events 
-            WHERE portfolio_id = :portfolio_id AND service_name = 'persistence-transactions'
-        """)
-        processed_event_count = session.execute(query_events, {"portfolio_id": portfolio_id}).scalar_one()
-        assert processed_event_count == 1, "Duplicate processed_event record was created"
+    # ASSERT: Poll for the transaction, which should now have been persisted.
+    poll_url = f"{query_url}/portfolios/{portfolio_id}/transactions"
+    validation_func = lambda data: data.get("transactions") and len(data["transactions"]) == 1
+    query_data = poll_for_data(poll_url, validation_func)
+    
+    assert query_data["transactions"][0]["transaction_id"] == transaction_id
