@@ -116,7 +116,7 @@ services:
       - ./src/services/ingestion_service/app:/app/app
       - ./src/libs/portfolio-common:/app/src/libs/portfolio-common
     command: >
-      uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4 --timeout-keep-alive 30
+      uvicorn app.main:app --host 0.0.0.0 --port 8000 --timeout-keep-alive 30
     networks:
       - app_network
 
