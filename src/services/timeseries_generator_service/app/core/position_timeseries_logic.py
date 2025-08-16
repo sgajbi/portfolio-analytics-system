@@ -1,3 +1,4 @@
+# src/services/timeseries_generator_service/app/core/position_timeseries_logic.py
 from datetime import date
 from decimal import Decimal
 
@@ -28,7 +29,7 @@ class PositionTimeseriesLogic:
 
         eod_market_value = current_snapshot.market_value_local or Decimal(0)
         eod_quantity = current_snapshot.quantity
-        eod_cost_basis = current_snapshot.cost_basis
+        eod_cost_basis = current_snapshot.cost_basis_local or Decimal(0)
 
         eod_avg_cost = (eod_cost_basis / eod_quantity) if eod_quantity else Decimal(0)
 
