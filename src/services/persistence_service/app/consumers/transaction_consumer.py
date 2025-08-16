@@ -5,7 +5,7 @@ import sys
 from pydantic import ValidationError
 from confluent_kafka import Message
 from sqlalchemy.exc import DBAPIError, IntegrityError, OperationalError
-from tenacity import retry, stop_after_attempt, wait_exponential, before_log, retry_if_exception_type
+from tenacity import retry, stop_after_delay, wait_exponential, before_log, retry_if_exception_type
 
 from portfolio_common.kafka_consumer import BaseConsumer
 from portfolio_common.logging_utils import correlation_id_var
@@ -44,7 +44,7 @@ class TransactionPersistenceConsumer(BaseConsumer):
 
     @retry(
         wait=wait_exponential(multiplier=1, min=2, max=10),
-        stop=stop_after_attempt(5),
+        stop=stop_after_delay(90),
         before=before_log(logger, logging.INFO),
         retry=retry_if_exception_type((DBAPIError, IntegrityError, PortfolioNotFoundError, OperationalError)),
         reraise=True

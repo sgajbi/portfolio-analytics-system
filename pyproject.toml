@@ -34,7 +34,7 @@ exclude = ["tests*", "deployment*"]
 testpaths = [
     "tests"
 ]
-# --- NEW: Add source roots to the Python path for test discovery ---
+# Add source roots to the Python path for test discovery
 pythonpath = [
     "src",
     "src/libs/portfolio-common",
@@ -42,6 +42,8 @@ pythonpath = [
 ]
 addopts = "--strict-markers"
 minversion = "6.0"
+# FIX: Explicitly set the default loop scope to silence the warning
+asyncio_default_fixture_loop_scope = "function"
 markers = [
     "asyncio: mark a test as being an asyncio test",
 ]
