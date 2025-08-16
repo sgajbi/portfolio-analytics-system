@@ -1,10 +1,12 @@
-# src/services/persistence_service/app/consumers/transaction_consumer.py
+# services/persistence_service/app/consumers/transaction_consumer.py
 from typing import Dict, Any, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from portfolio_common.events import TransactionEvent
 from portfolio_common.config import KAFKA_RAW_TRANSACTIONS_COMPLETED_TOPIC
 from ..repositories.transaction_db_repo import TransactionDBRepository
 from .base_consumer import GenericPersistenceConsumer
+from tenacity import retry, stop_after_delay, wait_fixed, retry_if_exception_type
+
 
 class PortfolioNotFoundError(Exception):
     """Custom exception to signal a retryable condition."""
@@ -22,19 +24,25 @@ class TransactionPersistenceConsumer(GenericPersistenceConsumer):
     def service_name(self) -> str:
         return "persistence-transactions"
 
+    @retry(
+        wait=wait_fixed(2),
+        stop=stop_after_delay(10),
+        retry=retry_if_exception_type(PortfolioNotFoundError),
+        reraise=True,
+    )
     async def handle_persistence(self, db_session: AsyncSession, event: TransactionEvent) -> Any:
         """
         Checks for portfolio existence and persists the transaction.
         Returns the event for outbox creation.
         """
         repo = TransactionDBRepository(db_session)
-        
+
         portfolio_exists = await repo.check_portfolio_exists(event.portfolio_id)
         if not portfolio_exists:
             raise PortfolioNotFoundError(
                 f"Portfolio {event.portfolio_id} not found for transaction {event.transaction_id}. Retrying..."
             )
-        
+
         await repo.create_or_update_transaction(event)
         return event
 
