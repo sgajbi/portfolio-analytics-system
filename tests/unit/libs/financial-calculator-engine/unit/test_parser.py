@@ -35,3 +35,26 @@ def test_parse_invalid_transaction(parser, error_reporter):
     assert len(parsed) == 1
     assert error_reporter.has_errors()
     assert error_reporter.has_errors_for("txn1")
+
+def test_parse_transaction_missing_multiple_fields_creates_valid_stub(parser, error_reporter):
+    """
+    GIVEN a raw transaction dictionary missing multiple required fields (including portfolio_base_currency)
+    WHEN it is parsed
+    THEN it should create a single valid stub Transaction object with an error reason
+    AND not raise a secondary validation error.
+    """
+    raw_data = [{
+        "transaction_id": "txn_very_bad",
+    }]
+    
+    parsed = parser.parse_transactions(raw_data)
+    
+    assert len(parsed) == 1
+    assert error_reporter.has_errors()
+    assert error_reporter.has_errors_for("txn_very_bad")
+    
+    stub = parsed[0]
+    assert stub.error_reason is not None
+    # Verify the stub has valid defaults for required fields
+    assert stub.portfolio_id == "UNKNOWN"
+    assert stub.portfolio_base_currency == "UNK"
