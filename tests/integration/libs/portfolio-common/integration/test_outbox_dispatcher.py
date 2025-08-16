@@ -64,7 +64,6 @@ def test_dispatcher_processes_and_updates_pending_events(db_engine, clean_db, sm
     THEN it should publish the event and update its status to PROCESSED.
     """
     # ARRANGE
-    # FIX: Create a session factory bound to the test-specific engine
     TestSessionFactory = sessionmaker(autocommit=False, autoflush=False, bind=db_engine)
 
     aggregate_id = f"agg-id-{uuid.uuid4()}"
@@ -152,48 +151,49 @@ def test_dispatcher_recovers_after_failure(db_engine, clean_db, smart_mock_kafka
                 event_type="TestEvent", payload='{}', topic="resilience.topic"
             ))
 
-    original_flush_implementation = smart_mock_kafka_producer.flush
     call_count = 0
     def stateful_flush_side_effect(*args, **kwargs):
         nonlocal call_count
         call_count += 1
+        
         if call_count == 1:
-            # Simulate failure on first call by NOT triggering callbacks
-            # and throwing an exception.
             for call in smart_mock_kafka_producer.publish_message.call_args_list:
                 kwargs = call.kwargs
                 cb = kwargs.get("on_delivery")
                 outbox_id = kwargs.get("outbox_id")
                 if cb and outbox_id:
-                    cb(outbox_id, False, "Kafka is down!") # Simulate failure
+                    cb(outbox_id, False, "Kafka is down!")
+            smart_mock_kafka_producer.publish_message.call_args_list.clear()
             raise Exception("Kafka is down!")
         else:
-            # On second call, revert to normal successful behavior
-            original_flush_implementation(*args, **kwargs)
+            for call in smart_mock_kafka_producer.publish_message.call_args_list:
+                kwargs = call.kwargs
+                cb = kwargs.get("on_delivery")
+                outbox_id = kwargs.get("outbox_id")
+                if cb and outbox_id:
+                    cb(outbox_id, True, None)
+            smart_mock_kafka_producer.publish_message.call_args_list.clear()
 
     smart_mock_kafka_producer.flush.side_effect = stateful_flush_side_effect
     
-    # ACT
     dispatcher = OutboxDispatcher(
         kafka_producer=smart_mock_kafka_producer,
         db_session_factory=TestSessionFactory
     )
     
-    # 1. First poll cycle fails internally, but dispatcher should handle it
+    # ACT 1: First poll cycle fails internally, but dispatcher should handle it
     dispatcher._process_batch_sync()
 
+    # ASSERT 1
     with TestSessionFactory() as session:
         status, retry_count = session.execute(text("SELECT status, retry_count FROM outbox_events WHERE aggregate_id = :id"), {"id": aggregate_id}).one()
         assert status == "PENDING"
         assert retry_count == 1
 
-    # Clear the record of the first call so we can assert the second one cleanly
-    smart_mock_kafka_producer.publish_message.call_args_list.clear()
-    
-    # 2. Second poll cycle should succeed
+    # ACT 2: Second poll cycle should succeed
     dispatcher._process_batch_sync()
 
-    # ASSERT
+    # ASSERT 2
     assert smart_mock_kafka_producer.flush.call_count == 2
     with TestSessionFactory() as session:
         status = session.execute(text("SELECT status FROM outbox_events WHERE aggregate_id = :id"), {"id": aggregate_id}).scalar_one()
