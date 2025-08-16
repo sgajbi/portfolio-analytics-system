@@ -1,3 +1,4 @@
+
 # Portfolio Analytics System
 
 [![Python Version](https://img.shields.io/badge/python-3.11-blue.svg)](https://www.python.org/downloads/release/python-3110/)
@@ -135,6 +136,7 @@ The system relies on a well-defined sequence of events published to Kafka topics
 ### Read API (`query-service` @ `http://localhost:8001`)
 
   - `GET /portfolios/`: Retrieves details for portfolios, filterable by `portfolio_id`, `cif_id`, or `booking_center`.
+  - `GET /portfolios/{portfolio_id}`: Retrieves details for a single portfolio. Returns `404` if not found.
   - `GET /portfolios/{portfolio_id}/positions`: Retrieves the latest position for each security in a portfolio, including dual-currency valuation.
   - `GET /portfolios/{portfolio_id}/position-history`: Retrieves the historical time series of positions for a specific security within a portfolio.
   - `GET /portfolios/{portfolio_id}/transactions`: Retrieves a paginated list of transactions for a portfolio, including dual-currency costs and P\&L. Supports sorting and filtering.
@@ -265,7 +267,7 @@ Database schema changes are managed by Alembic.
     ```bash
     docker compose up -d postgres
     ```
-2.  **Generate a New Migration**: After changing a model in `libs/portfolio-common/portfolio_common/database_models.py`, run:
+2.  **Generate a New Migration**: After changing a model in `src/libs/portfolio-common/portfolio_common/database_models.py`, run:
     ```bash
     alembic revision --autogenerate -m "feat: Describe your schema change"
     ```
@@ -278,23 +280,41 @@ Database schema changes are managed by Alembic.
 
 ## 9\. Directory Structure
 
+A detailed overview of the project layout.
+
 ```
 sgajbi-portfolio-analytics-system/
-├── alembic/                  # Database migration scripts
-├── libs/                     # Shared Python libraries
-│   ├── portfolio-common/     # Common DB models, events, and utilities
-│   └── financial-calculator-engine/ # Core financial calculation logic
-├── services/                 # Individual microservices
-│   ├── ingestion_service/    # The Write API
-│   ├── persistence-service/  # Generic data persistence consumer
-│   ├── query-service/        # The Read API
-│   └── calculators/          # Business logic consumers
+├── alembic/                      # Database migration scripts managed by Alembic.
+├── docker-compose.yml            # Orchestrates all services for local development.
+├── pyproject.toml                # Project definition and dependencies for the root installer.
+├── src/
+│   ├── libs/                     # Shared Python libraries, installable as packages.
+│   │   ├── financial-calculator-engine/ # Core stateless financial calculation logic.
+│   │   └── portfolio-common/     # Common code: DB models, events, Kafka utils, etc.
+│   │
+│   └── services/                 # All individual microservices.
+│       ├── calculators/          # Services that perform business logic calculations.
+│       │   ├── cashflow_calculator_service/
+│       │   ├── cost_calculator_service/
+│       │   ├── position_calculator/
+│       │   └── position_valuation_calculator/
+│       │
+│       ├── ingestion_service/    # The public-facing Write API (FastAPI).
+│       ├── persistence_service/  # Consumes from raw topics and saves to the database.
+│       ├── query_service/        # The public-facing Read API (FastAPI).
+│       └── timeseries_generator_service/ # Aggregates daily data for performance analysis.
+│
 ├── tests/
-│   ├── e2e/                  # End-to-end tests for the whole system
-│   ├── integration/
-│   └── unit/
-├── docker-compose.yml        # Orchestrates all services for local development
-└── README.md                 # This file
+│   ├── e2e/                      # End-to-end tests that validate full data pipelines.
+│   ├── integration/              # Tests for component interaction (e.g., service -> DB).
+│   └── unit/                     # Tests for isolated business logic and components.
+│
+├── tools/                        # Standalone scripts for development/ops tasks.
+│   ├── db_reset_head.py          # Utility to fix a broken Alembic migration head.
+│   ├── dlq_replayer.py           # Script to consume and republish messages from a DLQ.
+│   └── kafka_setup.py            # Idempotently creates all required Kafka topics.
+│
+└── README.md                     # This file.
 ```
 
 -----
@@ -452,7 +472,7 @@ This example demonstrates the full flow from ingesting a cross-currency trade to
           "realized_gain_loss_local": null,
           "transaction_fx_rate": "1.1000000000",
           "cashflow": {
-           "amount": "-15000.0000000000",
+            "amount": "-15000.0000000000",
             "currency": "EUR",
             "classification": "INVESTMENT_OUTFLOW",
             "timing": "EOD",
@@ -466,4 +486,3 @@ This example demonstrates the full flow from ingesting a cross-currency trade to
 
 <!-- end list -->
 
- 
