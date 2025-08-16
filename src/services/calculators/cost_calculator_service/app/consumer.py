@@ -36,6 +36,10 @@ class FxRateNotFoundError(Exception):
     """Raised when a required FX rate is not yet available in the database."""
     pass
 
+class PortfolioNotFoundError(Exception):
+    """Raised when the portfolio for a transaction is not yet in the database."""
+    pass
+
 class CostCalculatorConsumer(BaseConsumer):
     """
     Consumes raw transaction events, calculates costs/realized P&L,
@@ -110,7 +114,7 @@ class CostCalculatorConsumer(BaseConsumer):
         wait=wait_fixed(3),
         stop=stop_after_attempt(5),
         before=before_log(logger, logging.INFO),
-        retry=retry_if_exception_type((DBAPIError, IntegrityError, FxRateNotFoundError)),
+        retry=retry_if_exception_type((DBAPIError, IntegrityError, FxRateNotFoundError, PortfolioNotFoundError)),
         reraise=True
     )
     async def process_message(self, msg: Message):
@@ -136,7 +140,7 @@ class CostCalculatorConsumer(BaseConsumer):
 
                     portfolio = await repo.get_portfolio(event.portfolio_id)
                     if not portfolio:
-                        raise ValueError(f"Portfolio {event.portfolio_id} not found.")
+                        raise PortfolioNotFoundError(f"Portfolio {event.portfolio_id} not found. Retrying...")
 
                     history_db = await repo.get_transaction_history(
                         portfolio_id=event.portfolio_id,
@@ -195,8 +199,8 @@ class CostCalculatorConsumer(BaseConsumer):
         except (json.JSONDecodeError, ValidationError) as e:
             logger.error(f"Invalid TransactionEvent; sending to DLQ. Error: {e}", exc_info=True)
             await self._send_to_dlq_async(msg, ValueError("invalid payload"))
-        except (DBAPIError, IntegrityError, FxRateNotFoundError):
-            logger.warning("DB or FX rate error; will retry...", exc_info=True)
+        except (DBAPIError, IntegrityError, FxRateNotFoundError, PortfolioNotFoundError):
+            logger.warning("DB or data availability error; will retry...", exc_info=True)
             raise
         except Exception as e:
             logger.error(
