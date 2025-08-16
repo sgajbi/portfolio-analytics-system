@@ -74,9 +74,9 @@ def test_db_outage_recovery(docker_services, db_engine, clean_db):
     subprocess.run(["docker", "compose", "start", "postgres"], check=True, capture_output=True)
     wait_for_postgres_ready(db_engine)
     
-    # FIX: Restart the persistence-service to force it to re-establish its connection pool
-    print("\n--- Restarting persistence-service to ensure DB reconnection ---")
-    subprocess.run(["docker", "compose", "restart", "persistence-service"], check=True, capture_output=True)
+    # FIX: Restart the persistence_service (with an underscore) to force it to re-establish its connection pool
+    print("\n--- Restarting persistence_service to ensure DB reconnection ---")
+    subprocess.run(["docker", "compose", "restart", "persistence_service"], check=True, capture_output=True)
     time.sleep(10) # Give the service a moment to start up and connect
 
     # 6. ASSERT: Verify the transaction is eventually persisted

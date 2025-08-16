@@ -65,14 +65,17 @@ def test_dispatcher_processes_and_updates_pending_events(db_engine, clean_db, sm
     """
     # ARRANGE
     TestSessionFactory = sessionmaker(autocommit=False, autoflush=False, bind=db_engine)
+    session = TestSessionFactory()
 
     aggregate_id = f"agg-id-{uuid.uuid4()}"
-    with TestSessionFactory() as session:
-        with session.begin():
-            session.add(OutboxEvent(
-                aggregate_type="TestAggregate", aggregate_id=aggregate_id, status="PENDING",
-                event_type="TestEvent", payload=json.dumps({"msg": "hi"}), topic="test.topic"
-            ))
+    new_event = OutboxEvent(
+        aggregate_type="TestAggregate", aggregate_id=aggregate_id, status="PENDING",
+        event_type="TestEvent", payload=json.dumps({"msg": "hi"}), topic="test.topic"
+    )
+    session.add(new_event)
+    session.commit()
+    event_id = new_event.id # Get the ID after commit
+    session.close()
 
     # ACT: Run one synchronous, deterministic cycle, injecting the test session factory
     dispatcher = OutboxDispatcher(
@@ -83,9 +86,13 @@ def test_dispatcher_processes_and_updates_pending_events(db_engine, clean_db, sm
 
     # ASSERT
     smart_mock_kafka_producer.publish_message.assert_called_once()
-    with TestSessionFactory() as session:
-        result = session.execute(text("SELECT status FROM outbox_events WHERE aggregate_id = :id"), {"id": aggregate_id}).scalar_one()
-        assert result == "PROCESSED"
+    
+    # Verify the database state in a new session to ensure the change was committed
+    session = TestSessionFactory()
+    result = session.get(OutboxEvent, event_id)
+    assert result is not None
+    assert result.status == "PROCESSED"
+    session.close()
 
 def test_dispatcher_propagates_correlation_id(db_engine, clean_db, smart_mock_kafka_producer):
     """
@@ -156,23 +163,21 @@ def test_dispatcher_recovers_after_failure(db_engine, clean_db, smart_mock_kafka
         nonlocal call_count
         call_count += 1
         
-        # On the first call, simulate failure by calling callbacks with an error
         if call_count == 1:
             for call in smart_mock_kafka_producer.publish_message.call_args_list:
                 kwargs = call.kwargs
                 cb = kwargs.get("on_delivery")
                 outbox_id = kwargs.get("outbox_id")
                 if cb and outbox_id:
-                    cb(outbox_id, False, "Kafka is down!") # Simulate failure
+                    cb(outbox_id, False, "Kafka is down!")
             smart_mock_kafka_producer.publish_message.call_args_list.clear()
-        # On subsequent calls, simulate success
         else:
             for call in smart_mock_kafka_producer.publish_message.call_args_list:
                 kwargs = call.kwargs
                 cb = kwargs.get("on_delivery")
                 outbox_id = kwargs.get("outbox_id")
                 if cb and outbox_id:
-                    cb(outbox_id, True, None) # Simulate success
+                    cb(outbox_id, True, None)
             smart_mock_kafka_producer.publish_message.call_args_list.clear()
 
     smart_mock_kafka_producer.flush.side_effect = stateful_flush_side_effect
@@ -182,7 +187,7 @@ def test_dispatcher_recovers_after_failure(db_engine, clean_db, smart_mock_kafka
         db_session_factory=TestSessionFactory
     )
     
-    # ACT 1: First poll cycle. It should complete without error, but the DB state will be updated for retry.
+    # ACT 1: First poll cycle fails internally, but dispatcher should handle it
     dispatcher._process_batch_sync()
 
     # ASSERT 1
