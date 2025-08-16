@@ -59,27 +59,35 @@ def db_engine(docker_services: DockerCompose):
     yield engine
     engine.dispose()
 
+# List of all tables to be cleaned. Centralized here.
+TABLES_TO_TRUNCATE = [
+    "portfolio_valuation_jobs", "portfolio_aggregation_jobs", "transaction_costs", "cashflows", "position_history", "daily_position_snapshots",
+    "position_timeseries", "portfolio_timeseries", "transactions", "market_prices",
+    "instruments", "fx_rates", "portfolios", "processed_events", "outbox_events"
+]
+
 @pytest.fixture(scope="function")
 def clean_db(db_engine):
     """
-    A function-scoped fixture that cleans all data from tables using TRUNCATE,
-    leaving the schema intact. This is much faster and more reliable than
-    dropping tables or running alembic downgrade/upgrade.
+    A function-scoped fixture that cleans all data from tables using TRUNCATE.
+    Used for integration and unit tests that require a clean state for each test function.
     """
-    print("\n--- Cleaning database tables ---")
-
-    TABLES = [
-        "portfolio_valuation_jobs", "portfolio_aggregation_jobs", "transaction_costs", "cashflows", "position_history", "daily_position_snapshots",
-        "position_timeseries", "portfolio_timeseries", "transactions", "market_prices",
-        "instruments", "fx_rates", "portfolios", "processed_events", "outbox_events"
-    ]
-    
-    truncate_query = text(f"TRUNCATE TABLE {', '.join(TABLES)} RESTART IDENTITY CASCADE;")
-
+    print("\n--- Cleaning database tables (function scope) ---")
+    truncate_query = text(f"TRUNCATE TABLE {', '.join(TABLES_TO_TRUNCATE)} RESTART IDENTITY CASCADE;")
     with db_engine.begin() as connection:
         connection.execute(truncate_query)
-    
-    print("--- Database tables cleaned ---")
+    yield
+
+@pytest.fixture(scope="module")
+def clean_db_module(db_engine):
+    """
+    A module-scoped fixture that cleans all data from tables using TRUNCATE.
+    Used for E2E tests that need a clean state for the entire test file (module).
+    """
+    print("\n--- Cleaning database tables (module scope) ---")
+    truncate_query = text(f"TRUNCATE TABLE {', '.join(TABLES_TO_TRUNCATE)} RESTART IDENTITY CASCADE;")
+    with db_engine.begin() as connection:
+        connection.execute(truncate_query)
     yield
 
 @pytest_asyncio.fixture(scope="function")
@@ -105,3 +113,53 @@ async def async_db_session(db_engine):
         yield session
 
     await async_engine.dispose()
+
+# --- E2E Helper Fixtures (Moved from tests/e2e/conftest.py) ---
+
+@pytest.fixture(scope="module")
+def api_endpoints(docker_services):
+    """
+    Provides the URLs for the ingestion and query services for the entire test module.
+    """
+    ingestion_host = docker_services.get_service_host("ingestion_service", 8000)
+    ingestion_port = docker_services.get_service_port("ingestion_service", 8000)
+    ingestion_url = f"http://{ingestion_host}:{ingestion_port}"
+
+    query_host = docker_services.get_service_host("query-service", 8001)
+    query_port = docker_services.get_service_port("query-service", 8001)
+    query_url = f"http://{query_host}:{query_port}"
+    
+    return {"ingestion": ingestion_url, "query": query_url}
+
+@pytest.fixture(scope="module")
+def poll_for_data():
+    """
+    Provides a generic polling utility to query an endpoint until a condition is met.
+    
+    Args:
+        url (str): The API endpoint to poll.
+        validation_func (callable): A function that takes the response JSON and returns True if valid.
+        timeout (int): The maximum time to wait in seconds.
+    Returns:
+        A callable polling function.
+    """
+    def _poll(url: str, validation_func, timeout: int = 45):
+        start_time = time.time()
+        last_response_data = None
+        while time.time() - start_time < timeout:
+            try:
+                response = requests.get(url, timeout=5)
+                if response.status_code == 200:
+                    last_response_data = response.json()
+                    if validation_func(last_response_data):
+                        return last_response_data
+            except requests.ConnectionError:
+                # Service may not be ready, just continue polling
+                pass 
+            time.sleep(1)
+        
+        pytest.fail(
+            f"Polling timed out after {timeout} seconds for URL {url}. "
+            f"Last response: {last_response_data}"
+        )
+    return _poll
