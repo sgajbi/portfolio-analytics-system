@@ -29,7 +29,6 @@ def docker_services(request):
 
         host = compose.get_service_host("ingestion_service", 8000)
         port = compose.get_service_port("ingestion_service", 8000)
-        # FIX: Poll the new /health/ready endpoint
         health_url = f"http://{host}:{port}/health/ready"
         
         start_time = time.time()
@@ -47,12 +46,11 @@ def docker_services(request):
             
         yield compose
 
-@pytest.fixture(scope="function")
+@pytest.fixture(scope="session")
 def db_engine(docker_services: DockerCompose):
     """
-    A function-scoped fixture that provides a SQLAlchemy Engine.
-    This ensures every test function gets a fresh connection pool,
-    guaranteeing test isolation.
+    A session-scoped fixture that provides a SQLAlchemy Engine.
+    The engine is created only once for the entire test session for efficiency.
     """
     host = docker_services.get_service_host("postgres", 5432)
     port = docker_services.get_service_port("postgres", 5432)
@@ -70,15 +68,12 @@ def clean_db(db_engine):
     """
     print("\n--- Cleaning database tables ---")
 
-    # List of all tables to be cleaned, in an order that respects potential (though unlikely) FK issues.
     TABLES = [
         "portfolio_valuation_jobs", "portfolio_aggregation_jobs", "transaction_costs", "cashflows", "position_history", "daily_position_snapshots",
         "position_timeseries", "portfolio_timeseries", "transactions", "market_prices",
         "instruments", "fx_rates", "portfolios", "processed_events", "outbox_events"
     ]
     
-    # Use TRUNCATE ... RESTART IDENTITY CASCADE to quickly delete all data
-    # and reset primary key sequences. This is the fastest and cleanest method.
     truncate_query = text(f"TRUNCATE TABLE {', '.join(TABLES)} RESTART IDENTITY CASCADE;")
 
     with db_engine.begin() as connection:
@@ -94,7 +89,6 @@ async def async_db_session(db_engine):
     connected to the test database. Ensures the engine and session are
     created and torn down within the active asyncio event loop of the test.
     """
-    # FIX: Reconstruct the URL properly to avoid password redaction from str(db_engine.url)
     sync_url = db_engine.url
     async_url = sync_url.render_as_string(hide_password=False).replace(
         "postgresql://", "postgresql+asyncpg://"
