@@ -6,22 +6,11 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 @pytest.fixture(scope="module")
-def setup_fx_valuation_data(docker_services, db_engine, api_endpoints, poll_for_data):
+def setup_fx_valuation_data(clean_db_module, api_endpoints, poll_for_data):
     """
-    A module-scoped fixture that cleans the DB, ingests data for a cross-currency
+    A module-scoped fixture that ingests data for a cross-currency
     valuation scenario, and waits for the calculation to complete.
     """
-    # --- Clean the database once for this module ---
-    TABLES = [
-        "portfolio_valuation_jobs", "portfolio_aggregation_jobs", "transaction_costs", "cashflows", "position_history", "daily_position_snapshots",
-        "position_timeseries", "portfolio_timeseries", "transactions", "market_prices",
-        "instruments", "fx_rates", "portfolios", "processed_events", "outbox_events"
-    ]
-    truncate_query = text(f"TRUNCATE TABLE {', '.join(TABLES)} RESTART IDENTITY CASCADE;")
-    with db_engine.begin() as connection:
-        connection.execute(truncate_query)
-    # --- End Cleaning ---
-
     ingestion_url = api_endpoints["ingestion"]
     query_url = api_endpoints["query"]
     portfolio_id = "E2E_FX_VAL_PORT_01"
@@ -45,7 +34,7 @@ def setup_fx_valuation_data(docker_services, db_engine, api_endpoints, poll_for_
         data.get("positions") and len(data["positions"]) == 1 and
         data["positions"][0].get("valuation", {}).get("unrealized_gain_loss") is not None
     )
-    poll_for_data(poll_url, validation_func, timeout=60)
+    poll_for_data(poll_url, timeout=60)
     
     return {"portfolio_id": portfolio_id, "query_url": query_url}
 

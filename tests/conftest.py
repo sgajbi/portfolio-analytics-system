@@ -56,6 +56,7 @@ def db_engine(docker_services: DockerCompose):
     port = docker_services.get_service_port("postgres", 5432)
     url = f"postgresql://{os.getenv('POSTGRES_USER', 'user')}:{os.getenv('POSTGRES_PASSWORD', 'password')}@{host}:{port}/{os.getenv('POSTGRES_DB', 'portfolio_db')}"
     engine = create_engine(url)
+    
     yield engine
     engine.dispose()
 
@@ -81,13 +82,34 @@ def clean_db(db_engine):
 @pytest.fixture(scope="module")
 def clean_db_module(db_engine):
     """
-    A module-scoped fixture that cleans all data from tables using TRUNCATE.
-    Used for E2E tests that need a clean state for the entire test file (module).
+    A module-scoped fixture that safely cleans the database between test modules.
+    It stops all services that might hold DB locks, truncates the tables,
+    and then restarts the services to ensure a clean state.
     """
+    services_to_manage = [
+        "persistence_service",
+        "cost_calculator_service",
+        "cashflow_calculator_service",
+        "position_calculator_service",
+        "position_valuation_calculator",
+        "timeseries_generator_service",
+    ]
+
+    print("\n--- Stopping services for module cleanup ---")
+    subprocess.run(["docker", "compose", "stop"] + services_to_manage, check=True, capture_output=True, text=True)
+
     print("\n--- Cleaning database tables (module scope) ---")
     truncate_query = text(f"TRUNCATE TABLE {', '.join(TABLES_TO_TRUNCATE)} RESTART IDENTITY CASCADE;")
     with db_engine.begin() as connection:
         connection.execute(truncate_query)
+    
+    print("\n--- Restarting services after module cleanup ---")
+    subprocess.run(["docker", "compose", "start"] + services_to_manage, check=True, capture_output=True, text=True)
+
+    # It's critical to wait for services to be healthy again before tests proceed.
+    print("\n--- Waiting for services to restart... ---")
+    time.sleep(15)
+
     yield
 
 @pytest_asyncio.fixture(scope="function")
