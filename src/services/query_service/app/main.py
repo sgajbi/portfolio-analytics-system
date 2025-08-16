@@ -1,13 +1,12 @@
 # services/query-service/app/main.py
 import logging
-import asyncio
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request, status, HTTPException
+from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
-from sqlalchemy import text
 from prometheus_fastapi_instrumentator import Instrumentator
+
 from portfolio_common.logging_utils import setup_logging, correlation_id_var, generate_correlation_id
-from portfolio_common.db import AsyncSessionLocal
+from portfolio_common.health import create_health_router
 from .routers import positions, transactions, instruments, prices, fx_rates, portfolios
 
 SERVICE_PREFIX = "QRY"
@@ -18,15 +17,10 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     """
     Manages application startup and shutdown events.
-    This is crucial for graceful shutdowns in production environments.
     """
     logger.info("Query Service starting up...")
-    # --- Future startup logic can go here (e.g., initializing resources) ---
     yield
-    # --- Shutdown logic ---
     logger.info("Query Service shutting down. Waiting for in-flight requests to complete...")
-    # Uvicorn will handle the graceful wait period.
-    # Future resource cleanup can go here.
     logger.info("Query Service has shut down gracefully.")
 
 
@@ -34,7 +28,7 @@ app = FastAPI(
     title="Query Service",
     description="Service for querying portfolio analytics data.",
     version="0.2.0",
-    lifespan=lifespan  # <-- ADDED LIFESPAN MANAGER
+    lifespan=lifespan
 )
 
 # --- Prometheus Metrics Instrumentation ---
@@ -70,40 +64,10 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
         },
     )
 
-# --- UPDATED: Async Health Probe Logic ---
-
-async def check_db_health():
-    """Checks if a valid connection can be established with the database."""
-    try:
-        # Use the async session factory directly for a self-contained check
-        async with AsyncSessionLocal() as session:
-            async with session.begin():
-                await session.execute(text("SELECT 1"))
-        return True
-    except Exception as e:
-        logger.error(f"Health Check: Database connection failed: {e}", exc_info=False)
-        return False
-
-@app.get("/health/live", status_code=status.HTTP_200_OK, tags=["Health"])
-async def liveness_probe():
-    logger.info("Liveness probe was called.")
-    return {"status": "alive"}
-
-@app.get("/health/ready", status_code=status.HTTP_200_OK, tags=["Health"])
-async def readiness_probe():
-    logger.info("Readiness probe was called.")
-    db_ok = await check_db_health()
-    if db_ok:
-        return {"status": "ready", "dependencies": {"database": "ok"}}
-    raise HTTPException(
-        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-        detail={"status": "not_ready", "dependencies": {"database": "unavailable"}},
-    )
-
-# --- Temporary Debug Endpoint ---
-@app.get("/debug-error", tags=["Debug"])
-async def trigger_error():
-    raise ValueError("This is a test exception to verify error handling.")
+# Create and include the standardized health router.
+# This service depends on the database.
+health_router = create_health_router('db')
+app.include_router(health_router)
 
 # Register the API routers
 app.include_router(portfolios.router)
@@ -112,7 +76,3 @@ app.include_router(transactions.router)
 app.include_router(instruments.router)
 app.include_router(prices.router)
 app.include_router(fx_rates.router)
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8001)

@@ -1,32 +1,10 @@
 # services/calculators/position_calculator/app/web.py
-import logging
-import asyncio
-from fastapi import FastAPI, status, HTTPException
-from sqlalchemy import text
+from fastapi import FastAPI
+from portfolio_common.health import create_health_router
 
-from portfolio_common.db import AsyncSessionLocal
-from portfolio_common.config import KAFKA_BOOTSTRAP_SERVERS
-
-logger = logging.getLogger(__name__)
 app = FastAPI(title="Position Calculator - Health")
 
-async def check_db_health():
-    try:
-        async with AsyncSessionLocal() as session:
-            async with session.begin():
-                await session.execute(text("SELECT 1"))
-        return True
-    except Exception as e:
-        logger.error(f"Health Check: Database connection failed: {e}", exc_info=False)
-        return False
-
-@app.get("/health/live", status_code=status.HTTP_200_OK)
-async def liveness_probe():
-    return {"status": "alive"}
-
-@app.get("/health/ready", status_code=status.HTTP_200_OK)
-async def readiness_probe():
-    db_ok = await check_db_health()
-    if db_ok:
-        return {"status": "ready", "dependencies": {"database": "ok"}}
-    raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE)
+# Create and include the standardized health router.
+# This service depends on the database.
+health_router = create_health_router('db')
+app.include_router(health_router)

@@ -1,16 +1,15 @@
 # services/ingestion_service/app/main.py
 import logging
 from contextlib import asynccontextmanager
-import asyncio
 
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 from prometheus_fastapi_instrumentator import Instrumentator
-from portfolio_common.kafka_utils import get_kafka_producer, KafkaProducer
+
+from portfolio_common.kafka_utils import get_kafka_producer
 from portfolio_common.logging_utils import setup_logging, correlation_id_var, generate_correlation_id
-from portfolio_common.config import KAFKA_BOOTSTRAP_SERVERS
+from portfolio_common.health import create_health_router
 from app.routers import transactions, instruments, market_prices, fx_rates, portfolios
-from confluent_kafka.admin import AdminClient
 
 SERVICE_PREFIX = "ING"
 setup_logging()
@@ -91,42 +90,10 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
         },
     )
 
-async def check_kafka_health():
-    """Checks if a connection can be established with Kafka."""
-    try:
-        conf = {'bootstrap.servers': KAFKA_BOOTSTRAP_SERVERS}
-        admin_client = AdminClient(conf)
-        await asyncio.to_thread(admin_client.list_topics, timeout=5)
-        return True
-    except Exception as e:
-        logger.error(f"Health Check: Kafka connection failed: {e}", exc_info=False)
-        return False
-
-# --- REFACTORED: Implement separate liveness and readiness probes ---
-
-@app.get("/health/live", tags=["Health"], status_code=status.HTTP_200_OK)
-async def liveness_probe():
-    """
-    Liveness probe. Returns OK if the service process is running.
-    This should not check external dependencies.
-    """
-    return {"status": "alive"}
-
-@app.get("/health/ready", tags=["Health"], status_code=status.HTTP_200_OK)
-async def readiness_probe():
-    """
-    Readiness probe. Returns OK if the service is ready to accept traffic.
-    This checks connectivity to critical dependencies like Kafka.
-    """
-    kafka_ok = await check_kafka_health()
-    if kafka_ok:
-        return {"status": "ready", "dependencies": {"kafka": "ok"}}
-    
-    # Return 503 Service Unavailable if a dependency is not ready
-    raise HTTPException(
-        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-        detail={"status": "not_ready", "dependencies": {"kafka": "unavailable"}}
-    )
+# Create and include the standardized health router.
+# This service depends on Kafka.
+health_router = create_health_router('kafka')
+app.include_router(health_router)
 
 # Include the API routers
 app.include_router(portfolios.router)
