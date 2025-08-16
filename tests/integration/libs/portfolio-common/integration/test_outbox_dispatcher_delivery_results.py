@@ -18,31 +18,25 @@ pytestmark = pytest.mark.asyncio
 @pytest.fixture
 def mock_kafka_producer() -> MagicMock:
     """
-    Mock KafkaProducer that triggers delivery callbacks:
-      - first message succeeds
-      - second message fails
-      - third message succeeds
+    Mock KafkaProducer that triggers delivery callbacks with a pattern of
+    Success, Failure, Success when flush is called.
     """
     mock = MagicMock(spec=KafkaProducer)
 
-    # We'll capture the callback passed by OutboxDispatcher via publish_message kwargs
-    callbacks = []
-
-    def _publish_message(**kwargs):
-        # record the callback so we can trigger it later
-        cb = kwargs.get("on_delivery")
-        outbox_id = kwargs.get("outbox_id")
-        callbacks.append((outbox_id, cb))
-        # no immediate callback; we'll simulate after flush
-
-    mock.publish_message.side_effect = lambda **kwargs: _publish_message(**kwargs)
-
     def _flush(timeout=10):
         # Simulate delivery results for 3 messages: S, F, S
-        outcomes = [True, False, True]
-        for (oid, cb), ok in zip(callbacks, outcomes):
-            if cb:
-                cb(oid, ok, None if ok else "simulated error")
+        outcomes = [
+            (True, None),                 # Success
+            (False, "simulated error"),   # Failure
+            (True, None)                  # Success
+        ]
+        
+        for call, (ok, err_msg) in zip(mock.publish_message.call_args_list, outcomes):
+            kwargs = call.kwargs
+            cb = kwargs.get("on_delivery")
+            outbox_id = kwargs.get("outbox_id")
+            if cb and outbox_id:
+                cb(outbox_id, ok, err_msg)
 
     mock.flush.side_effect = _flush
     return mock

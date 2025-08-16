@@ -17,26 +17,20 @@ from portfolio_common.outbox_repository import OutboxRepository
 @pytest.fixture
 def smart_mock_kafka_producer() -> MagicMock:
     """
-    Provides a more realistic mock of KafkaProducer that captures and
-    executes the `on_delivery` callback to simulate successful delivery.
+    Provides a mock of KafkaProducer that allows assertions on publish_message
+    and simulates successful delivery callbacks when flush is called.
     """
     mock = MagicMock(spec=KafkaProducer)
-    callbacks = []
-
-    def _publish_message(**kwargs):
-        # Capture the callback and its associated outbox_id
-        cb = kwargs.get("on_delivery")
-        outbox_id = kwargs.get("outbox_id")
-        if cb and outbox_id:
-            callbacks.append((outbox_id, cb))
 
     def _flush(timeout=10):
-        # Simulate successful delivery for all captured callbacks
-        for outbox_id, cb in callbacks:
-            cb(outbox_id, True, None) # Simulate success
-        callbacks.clear() # Clear after flushing
+        # Simulate successful delivery for all captured calls to publish_message
+        for call in mock.publish_message.call_args_list:
+            kwargs = call.kwargs
+            cb = kwargs.get("on_delivery")
+            outbox_id = kwargs.get("outbox_id")
+            if cb and outbox_id:
+                cb(outbox_id, True, None) # Simulate success
 
-    mock.publish_message.side_effect = _publish_message
     mock.flush.side_effect = _flush
     return mock
 
@@ -158,15 +152,24 @@ def test_dispatcher_recovers_after_failure(db_engine, clean_db, smart_mock_kafka
                 event_type="TestEvent", payload='{}', topic="resilience.topic"
             ))
 
-    original_flush_implementation = smart_mock_kafka_producer.flush.side_effect
+    original_flush_implementation = smart_mock_kafka_producer.flush
     call_count = 0
     def stateful_flush_side_effect(*args, **kwargs):
         nonlocal call_count
         call_count += 1
         if call_count == 1:
+            # Simulate failure on first call by NOT triggering callbacks
+            # and throwing an exception.
+            for call in smart_mock_kafka_producer.publish_message.call_args_list:
+                kwargs = call.kwargs
+                cb = kwargs.get("on_delivery")
+                outbox_id = kwargs.get("outbox_id")
+                if cb and outbox_id:
+                    cb(outbox_id, False, "Kafka is down!") # Simulate failure
             raise Exception("Kafka is down!")
         else:
-            return original_flush_implementation(*args, **kwargs)
+            # On second call, revert to normal successful behavior
+            original_flush_implementation(*args, **kwargs)
 
     smart_mock_kafka_producer.flush.side_effect = stateful_flush_side_effect
     
@@ -184,6 +187,9 @@ def test_dispatcher_recovers_after_failure(db_engine, clean_db, smart_mock_kafka
         assert status == "PENDING"
         assert retry_count == 1
 
+    # Clear the record of the first call so we can assert the second one cleanly
+    smart_mock_kafka_producer.publish_message.call_args_list.clear()
+    
     # 2. Second poll cycle should succeed
     dispatcher._process_batch_sync()
 
