@@ -68,17 +68,20 @@ def test_db_outage_recovery(docker_services, db_engine, clean_db):
     print("\n--- Stopping PostgreSQL container ---")
     subprocess.run(["docker", "compose", "stop", "postgres"], check=True, capture_output=True)
     
-    # Wait long enough for the consumer to fail its first attempt and start backing off
     time.sleep(5) 
     
     print("\n--- Starting PostgreSQL container ---")
     subprocess.run(["docker", "compose", "start", "postgres"], check=True, capture_output=True)
     wait_for_postgres_ready(db_engine)
+    
+    # FIX: Restart the persistence-service to force it to re-establish its connection pool
+    print("\n--- Restarting persistence-service to ensure DB reconnection ---")
+    subprocess.run(["docker", "compose", "restart", "persistence-service"], check=True, capture_output=True)
+    time.sleep(10) # Give the service a moment to start up and connect
 
     # 6. ASSERT: Verify the transaction is eventually persisted
     with Session(db_engine) as session:
         start_time = time.time()
-        # FIX: Increase timeout to allow for container restart and consumer backoff
         timeout = 120
         while time.time() - start_time < timeout:
             query = text("SELECT count(*) FROM transactions WHERE transaction_id = :txn_id")
