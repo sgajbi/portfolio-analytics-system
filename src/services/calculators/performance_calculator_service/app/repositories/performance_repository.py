@@ -20,7 +20,8 @@ class PerformanceRepository:
     async def upsert_daily_metrics(self, metrics: List[DailyPerformanceMetric]):
         """
         Idempotently inserts or updates a list of daily performance metrics by
-        executing an individual UPSERT for each record.
+        executing an individual UPSERT for each record. This approach is more
+        robust than a single bulk operation.
         """
         if not metrics:
             return
@@ -35,7 +36,6 @@ class PerformanceRepository:
                     daily_return_pct=metric.daily_return_pct,
                 )
 
-                # Define the update statement for the conflict case.
                 update_stmt = stmt.on_conflict_do_update(
                     index_elements=['portfolio_id', 'date', 'return_basis'],
                     set_={
