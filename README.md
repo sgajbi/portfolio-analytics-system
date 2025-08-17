@@ -197,9 +197,21 @@ All services with a web server also expose an endpoint at `/metrics` for scrapin
     py -3.11 -m venv .venv
     source .venv/Scripts/activate
     ```
-5.  **Install All Dependencies**: This simplified command installs all test requirements and then installs all local libraries and services in "editable" mode.
+5.  **Install All Dependencies**: This command installs test requirements and then installs all local libraries and services in "editable" mode so that changes are reflected immediately.
     ```bash
-    pip install -r tests/requirements.txt && pip install -e .[all]
+    pip install -r tests/requirements.txt
+    pip install -e src/libs/portfolio-common
+    pip install -e src/libs/financial-calculator-engine
+    pip install -e src/libs/performance-calculator-engine
+    pip install -e src/services/ingestion_service
+    pip install -e src/services/persistence_service
+    pip install -e src/services/query-service
+    pip install -e src/services/calculators/cashflow_calculator_service
+    pip install -e src/services/calculators/cost_calculator_service
+    pip install -e src/services/calculators/position_calculator
+    pip install -e src/services/calculators/position_valuation_calculator
+    pip install -e src/services/calculators/performance_calculator_service
+    pip install -e src/services/timeseries_generator_service
     ```
 
 ### Running the System
@@ -343,5 +355,3 @@ This example demonstrates the full flow from ingesting a cross-currency trade to
     The script will print the final `positions` and `transactions` JSON responses to the console, which should match the expected output shown in the previous version of this README.
 
 <!-- end list -->
-
- 
