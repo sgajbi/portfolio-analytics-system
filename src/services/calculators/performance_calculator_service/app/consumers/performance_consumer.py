@@ -18,8 +18,8 @@ from portfolio_common.config import KAFKA_PERFORMANCE_CALCULATED_TOPIC
 from portfolio_common.database_models import DailyPerformanceMetric
 from portfolio_common.repositories.timeseries_repository import TimeseriesRepository
 
-from performance_calculator_engine.calculator import PerformanceEngine
-from performance_calculator_engine.constants import METRIC_BASIS_NET, METRIC_BASIS_GROSS
+# FIX: Import the new class name
+from performance_calculator_engine.calculator import PerformanceCalculator
 from ..repositories.performance_repository import PerformanceRepository
 
 
@@ -69,8 +69,8 @@ class PerformanceCalculatorConsumer(BaseConsumer):
                     if not current_day_ts:
                         raise DataNotFoundError(f"Timeseries data for {event.portfolio_id} on {event.date} not found. Retrying.")
 
-                    # Calculate metrics using the engine
-                    daily_returns = PerformanceEngine.calculate_daily_metrics(
+                    # FIX: Use the refactored class and its static method
+                    daily_returns = PerformanceCalculator.calculate_daily_metrics(
                         current_day_ts.to_dict(),
                         previous_day_ts.to_dict() if previous_day_ts else None
                     )
