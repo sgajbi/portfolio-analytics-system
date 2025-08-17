@@ -43,7 +43,8 @@ class CashflowRule(BaseModel):
 CASHFLOW_CONFIG: dict[str, CashflowRule] = {
     "BUY": CashflowRule(
         classification=CashflowClassification.INVESTMENT_OUTFLOW,
-        level=CashflowLevel.POSITION
+        level=CashflowLevel.POSITION,
+        timing=CashflowTiming.BOD  # FIX: BUYs must be BOD for correct TWR calculation
     ),
     "SELL": CashflowRule(
         classification=CashflowClassification.INVESTMENT_INFLOW,
