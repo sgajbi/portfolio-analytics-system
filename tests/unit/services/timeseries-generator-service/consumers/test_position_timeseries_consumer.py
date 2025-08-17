@@ -13,7 +13,7 @@ from portfolio_common.database_models import DailyPositionSnapshot, PositionTime
 from services.timeseries_generator_service.app.consumers.position_timeseries_consumer import (
     PositionTimeseriesConsumer, InstrumentNotFoundError
 )
-from services.timeseries_generator_service.app.repositories.timeseries_repository import TimeseriesRepository
+from portfolio_common.repositories.timeseries_repository import TimeseriesRepository
 
 pytestmark = pytest.mark.asyncio
 
