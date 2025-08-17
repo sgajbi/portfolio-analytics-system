@@ -1,7 +1,7 @@
 # src/services/query_service/Dockerfile
 
 # Stage 1: Base image setup
-FROM python:3.11-slim-bookworm AS python-base
+FROM python:3.11-slim-bookworm as python-base
 
 ENV POETRY_VIRTUALENVS_CREATE=false \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -18,11 +18,16 @@ RUN python -m venv /opt/venv && chown -R appuser:appuser /opt/venv
 WORKDIR /app
 
 # Stage 2: Builder
-FROM python-base AS builder
+FROM python-base as builder
 
 # Shared libs for caching
 COPY src/libs/portfolio-common/ /app/src/libs/portfolio-common/
 RUN pip install -e /app/src/libs/portfolio-common
+
+# --- FIX: ADD THE PERFORMANCE CALCULATOR ENGINE ---
+COPY src/libs/performance-calculator-engine/ /app/src/libs/performance-calculator-engine/
+RUN pip install /app/src/libs/performance-calculator-engine
+# --- END FIX ---
 
 # Copy service (underscore path) and install
 COPY src/services/query_service/pyproject.toml /app/src/services/query_service/pyproject.toml
@@ -30,7 +35,7 @@ COPY src/services/query_service/app /app/src/services/query_service/app
 RUN pip install /app/src/services/query_service
 
 # Stage 3: Final
-FROM python-base AS final
+FROM python-base as final
 
 COPY --from=builder --chown=appuser:appuser /opt/venv /opt/venv
 COPY --from=builder --chown=appuser:appuser /app/src/services/query_service/app /app/app
