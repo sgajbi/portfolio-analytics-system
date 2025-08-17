@@ -55,7 +55,7 @@ services:
     hostname: kafka-topic-creator
     container_name: kafka-topic-creator
     depends_on:
-      kafka:
+       kafka:
         condition: service_healthy
     command: ["python", "-m", "tools.kafka_setup"]
     environment:
@@ -190,7 +190,7 @@ services:
       DATABASE_URL: ${DATABASE_URL}
     depends_on:
       kafka-topic-creator:
-        condition: service_completed_successfully
+       condition: service_completed_successfully
       migration-runner:
         condition: service_completed_successfully
     restart: unless-stopped
@@ -215,7 +215,7 @@ services:
     hostname: cashflow-calculator-service
     container_name: cashflow-calculator-service
     ports:
-      - "8082:8082"
+     - "8082:8082"
     environment:
       KAFKA_BOOTSTRAP_SERVERS: kafka:9093
       DATABASE_URL: ${DATABASE_URL}
@@ -253,7 +253,7 @@ services:
       kafka-topic-creator:
         condition: service_completed_successfully
       migration-runner:
-        condition: service_completed_successfully
+       condition: service_completed_successfully
     restart: unless-stopped
     volumes:
       - ./src/services/calculators/position_calculator/app:/app/app
@@ -329,6 +329,32 @@ services:
     networks:
       - app_network
 
+  performance-calculator-service:
+    build:
+      context: .
+      dockerfile: ./src/services/calculators/performance_calculator_service/Dockerfile
+    hostname: performance-calculator-service
+    container_name: performance-calculator-service
+    ports:
+      - "8086:8086"
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9093
+      DATABASE_URL: ${DATABASE_URL}
+    depends_on:
+      kafka-topic-creator:
+        condition: service_completed_successfully
+      migration-runner:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8086/health/ready || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - app_network
+
   prometheus:
     image: prom/prometheus:v2.47.2
     container_name: prometheus
@@ -349,6 +375,7 @@ services:
       - position_calculator_service
       - position_valuation_calculator
       - timeseries_generator_service
+      - performance-calculator-service
 
   grafana:
     image: grafana/grafana:10.1.5

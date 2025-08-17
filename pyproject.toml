@@ -13,11 +13,13 @@ requires-python = ">=3.11"
 [project.optional-dependencies]
 all = [
     "financial-calculator-engine @ file(src/libs/financial-calculator-engine)",
+    "performance-calculator-engine @ file(src/libs/performance-calculator-engine)",
     "portfolio-common @ file(src/libs/portfolio-common)",
     "cashflow-calculator-service @ file(src/services/calculators/cashflow_calculator_service)",
     "cost-calculator-service @ file(src/services/calculators/cost_calculator_service)",
     "position-calculator-service @ file(src/services/calculators/position_calculator)",
     "position-valuation-calculator @ file(src/services/calculators/position_valuation_calculator)",
+    "performance-calculator-service @ file(src/services/calculators/performance_calculator_service)",
     "ingestion_service @ file(src/services/ingestion_service)",
     "persistence_service @ file(src/services/persistence_service)",
     "query-service @ file(src/services/query-service)",
