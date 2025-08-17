@@ -17,7 +17,7 @@ from portfolio_common.db import get_async_db_session
 from portfolio_common.database_models import DailyPositionSnapshot, PortfolioAggregationJob
 
 from ..core.position_timeseries_logic import PositionTimeseriesLogic
-from ..repositories.timeseries_repository import TimeseriesRepository
+from portfolio_common.repositories.timeseries_repository import TimeseriesRepository
 
 logger = logging.getLogger(__name__)
 

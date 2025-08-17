@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects import postgresql
+from unittest.mock import AsyncMock, MagicMock
 
 from portfolio_common.database_models import PortfolioAggregationJob
 from portfolio_common.repositories.timeseries_repository import TimeseriesRepository
