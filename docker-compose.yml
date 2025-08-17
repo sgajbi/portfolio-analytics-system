@@ -350,7 +350,7 @@ services:
       - ./src/services/calculators/performance_calculator_service/app:/app/app
       - ./src/libs/portfolio-common:/app/src/libs/portfolio-common
       - ./src/libs/performance-calculator-engine:/app/src/libs/performance-calculator-engine
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8086
+    command: ["python", "-m", "app.main"]
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8086/health/ready || exit 1"]
       interval: 15s
