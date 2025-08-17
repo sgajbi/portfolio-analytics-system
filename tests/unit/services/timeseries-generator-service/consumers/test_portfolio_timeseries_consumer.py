@@ -11,7 +11,7 @@ from portfolio_common.database_models import (
     Portfolio, PositionTimeseries, Instrument
 )
 from services.timeseries_generator_service.app.consumers.portfolio_timeseries_consumer import PortfolioTimeseriesConsumer
-from services.timeseries_generator_service.app.repositories.timeseries_repository import TimeseriesRepository
+from portfolio_common.repositories.timeseries_repository import TimeseriesRepository
 from portfolio_common.outbox_repository import OutboxRepository
 
 pytestmark = pytest.mark.asyncio

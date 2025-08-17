@@ -1,14 +1,13 @@
-# tests/unit/services/timeseries-generator-service/repositories/test_timeseries_repository.py
+# tests/unit/services/timeseries-generator-service/repositories/test_unit_timeseries_repo.py
 import pytest
-from unittest.mock import AsyncMock, MagicMock
 from datetime import date, datetime, timedelta, timezone
-
+from sqlalchemy.orm import Session
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import text, TextClause
 from sqlalchemy.dialects import postgresql
 
-from src.services.timeseries_generator_service.app.repositories.timeseries_repository import TimeseriesRepository
-from portfolio_common.database_models import PositionTimeseries, PortfolioTimeseries, PortfolioAggregationJob
+from portfolio_common.database_models import PortfolioAggregationJob
+from portfolio_common.repositories.timeseries_repository import TimeseriesRepository
 
 pytestmark = pytest.mark.asyncio
 

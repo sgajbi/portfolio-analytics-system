@@ -1,3 +1,4 @@
+# src/services/timeseries_generator_service/app/core/portfolio_timeseries_logic.py
 import logging
 from datetime import date
 from decimal import Decimal
@@ -9,7 +10,7 @@ from portfolio_common.database_models import (
     Cashflow, 
     Portfolio,
 )
-from ..repositories.timeseries_repository import TimeseriesRepository
+from portfolio_common.repositories.timeseries_repository import TimeseriesRepository
 
 logger = logging.getLogger(__name__)
 

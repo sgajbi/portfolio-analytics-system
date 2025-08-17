@@ -15,12 +15,12 @@ from portfolio_common.db import get_async_db_session
 from portfolio_common.database_models import PortfolioAggregationJob
 from portfolio_common.config import KAFKA_PORTFOLIO_TIMESERIES_GENERATED_TOPIC
 from portfolio_common.outbox_repository import OutboxRepository
+from portfolio_common.repositories.timeseries_repository import TimeseriesRepository
 
 from ..core.portfolio_timeseries_logic import PortfolioTimeseriesLogic
-from ..repositories.timeseries_repository import TimeseriesRepository
+
 
 logger = logging.getLogger(__name__)
-
 class PortfolioTimeseriesConsumer(BaseConsumer):
     """
     Consumes scheduled aggregation jobs, calculates the daily portfolio time series

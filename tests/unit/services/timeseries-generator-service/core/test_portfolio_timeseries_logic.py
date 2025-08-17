@@ -8,7 +8,7 @@ from portfolio_common.database_models import (
     Portfolio, PositionTimeseries, Cashflow, Instrument, FxRate, PortfolioTimeseries
 )
 from services.timeseries_generator_service.app.core.portfolio_timeseries_logic import PortfolioTimeseriesLogic, FxRateNotFoundError
-from services.timeseries_generator_service.app.repositories.timeseries_repository import TimeseriesRepository
+from portfolio_common.repositories.timeseries_repository import TimeseriesRepository
 
 pytestmark = pytest.mark.asyncio
 @pytest.fixture
