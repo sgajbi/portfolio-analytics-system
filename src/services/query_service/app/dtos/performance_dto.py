@@ -1,43 +1,80 @@
 # src/services/query_service/app/dtos/performance_dto.py
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, field_validator
 from typing import List, Literal, Union, Optional, Dict
 from datetime import date
+from decimal import Decimal
 
-# FIX: Import the missing constants
-from performance_calculator_engine.constants import METRIC_BASIS_NET
+# --- API Request Models ---
 
-# Define the allowed symbolic period types
-PerformancePeriodType = Literal["YTD", "MTD", "QTD", "SI"]
+class PerformanceRequestScope(BaseModel):
+    """Defines the overall context for the performance calculation."""
+    as_of_date: date = Field(default_factory=date.today, description="The reference date for calculations like MTD, YTD. Defaults to today.")
+    reporting_currency: Optional[str] = Field(None, description="ISO currency code for reporting. Defaults to portfolio's base currency.")
+    net_or_gross: Literal["NET", "GROSS"] = Field("NET", description="Specifies whether to calculate Net or Gross performance.")
 
-class PerformancePeriod(BaseModel):
-    """Defines a custom, explicit date range for a performance calculation."""
-    start_date: date
-    end_date: date
+class PeriodBase(BaseModel):
+    """Base model for a period definition to enable discriminated union."""
+    breakdown: Optional[Literal["DAILY", "WEEKLY", "MONTHLY", "QUARTERLY"]] = Field(None, description="Optional breakdown of results for this period.")
 
-class PerformanceRequestPeriod(BaseModel):
-    """
-    Defines a single period to be calculated in a request.
-    It has a name for the result key and specifies the period.
-    """
-    name: str = Field(..., description="A unique name for this calculation, used as the key in the response.")
-    period: Union[PerformancePeriodType, PerformancePeriod] = Field(..., description="The period to calculate (e.g., 'YTD' or a custom date range).")
+class ExplicitPeriod(PeriodBase):
+    """Defines a custom period with explicit start and end dates."""
+    type: Literal["EXPLICIT"]
+    from_date: date = Field(..., alias="from", description="The start date of the period (inclusive).")
+    to_date: date = Field(..., alias="to", description="The end date of the period (inclusive).")
+
+class YearPeriod(PeriodBase):
+    """Defines a calendar year period."""
+    type: Literal["YEAR"]
+    year: int = Field(..., gt=1900, lt=2100, description="The calendar year to calculate performance for.")
+
+class StandardPeriod(PeriodBase):
+    """Defines standard, relative period types."""
+    type: Literal["MTD", "QTD", "YTD", "THREE_YEAR", "SI"]
+
+# A discriminated union to handle different types of period requests
+PerformanceRequestPeriod = Union[ExplicitPeriod, YearPeriod, StandardPeriod]
+
+class PerformanceRequestOptions(BaseModel):
+    """Defines options for tailoring the response."""
+    include_annualized: bool = Field(True, description="Whether to include annualized returns for periods over one year.")
+    include_cumulative: bool = Field(True, description="Whether to include the total cumulative return for each period.")
+    include_attributes: Optional[List[str]] = Field(None, description="Specific attributes to include in the response (e.g., 'market_value').")
 
 class PerformanceRequest(BaseModel):
     """The main request body for the performance calculation endpoint."""
-    periods: List[PerformanceRequestPeriod] = Field(..., description="A list of performance periods to calculate.")
-    metric_basis: Literal["NET", "GROSS"] = Field(METRIC_BASIS_NET, description="The basis for the return calculation (NET or GROSS).")
-    reporting_currency: Optional[str] = Field(None, description="Optional currency to report results in (e.g., 'EUR'). Defaults to portfolio base currency.")
+    scope: PerformanceRequestScope
+    periods: List[PerformanceRequestPeriod]
+    options: PerformanceRequestOptions = Field(default_factory=PerformanceRequestOptions)
+
+# --- API Response Models ---
+
+class PerformanceAttributes(BaseModel):
+    """Holds the raw financial attributes for a given period."""
+    begin_market_value: Optional[Decimal] = None
+    end_market_value: Optional[Decimal] = None
+    bod_cashflow: Optional[Decimal] = None
+    eod_cashflow: Optional[Decimal] = None
+    fees: Optional[Decimal] = None
+    
+    model_config = ConfigDict(from_attributes=True)
 
 class PerformanceResult(BaseModel):
-    """Contains the calculated performance for a single period."""
-    return_pct: float = Field(..., alias="returnPct", description="The final time-weighted return for the period as a percentage.")
-    
-    model_config = ConfigDict(
-        populate_by_name=True,
-        from_attributes=True
-    )
-        
+    """Contains the calculated performance and attributes for a single period or sub-period."""
+    start_date: date
+    end_date: date
+    cumulative_return: Optional[float] = Field(None, description="The total geometric return for the period.")
+    annualized_return: Optional[float] = Field(None, description="The annualized return, if applicable.")
+    attributes: Optional[PerformanceAttributes] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+class PerformanceBreakdown(BaseModel):
+    """Contains the detailed breakdown results for a single requested period."""
+    breakdown_type: Literal["DAILY", "WEEKLY", "MONTHLY", "QUARTERLY"]
+    results: List[PerformanceResult]
+
 class PerformanceResponse(BaseModel):
-    """The final response object containing results for all requested periods."""
-    portfolio_id: str
-    results: Dict[str, PerformanceResult]
+    """The final, complete response object."""
+    scope: PerformanceRequestScope
+    summary: Dict[str, PerformanceResult] = Field(..., description="A dictionary mapping the requested period type/name to its summary result.")
+    breakdowns: Optional[Dict[str, PerformanceBreakdown]] = Field(None, description="A dictionary containing detailed breakdowns, if requested.")
