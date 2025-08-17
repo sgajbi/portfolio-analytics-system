@@ -44,8 +44,7 @@ getcontext().prec = 28
 class PerformanceCalculator:
     """
     Performs complex, stateful time-weighted return calculations on a series of daily data.
-    This engine is ported from the logic in the performanceAnalytics repository,
-    and adapted for the portfolio-analytics-system's architecture and conventions.
+    Also provides a stateless method for simple, single-day return calculations.
     """
     def __init__(self, config: Dict[str, Any]):
         logger.info("Initializing PerformanceCalculator.")
@@ -68,6 +67,41 @@ class PerformanceCalculator:
             raise MissingConfigurationError("'performance_start_date' and 'report_end_date' are required.")
 
         logger.info(f"Calculator configured for period {self.report_start_date} to {self.report_end_date} ({self.period_type}, {self.metric_basis})")
+
+    @staticmethod
+    def calculate_daily_metrics(
+        current_day_ts: Dict[str, Any],
+        previous_day_ts: Dict[str, Any] | None = None
+    ) -> Dict[str, Decimal]:
+        """
+        A stateless method to calculate Net and Gross daily returns for a single day.
+        This is used by the persistence consumer.
+        """
+        try:
+            bod_market_value = Decimal(previous_day_ts['eod_market_value']) if previous_day_ts else Decimal(0)
+            eod_market_value = Decimal(current_day_ts['eod_market_value'])
+            bod_cashflow = Decimal(current_day_ts['bod_cashflow'])
+            eod_cashflow = Decimal(current_day_ts['eod_cashflow'])
+            fees = Decimal(current_day_ts['fees'])
+
+            net_cashflow = bod_cashflow + eod_cashflow
+            denominator = bod_market_value + net_cashflow
+
+            if denominator.is_zero():
+                return {METRIC_BASIS_NET: Decimal(0), METRIC_BASIS_GROSS: Decimal(0)}
+
+            change_in_mv = eod_market_value - bod_market_value
+            gross_profit_loss = change_in_mv - net_cashflow
+            gross_return = (gross_profit_loss / denominator) * 100
+
+            net_profit_loss = gross_profit_loss - fees
+            net_return = (net_profit_loss / denominator) * 100
+
+            return {METRIC_BASIS_NET: net_return, METRIC_BASIS_GROSS: gross_return}
+        except (KeyError, TypeError) as e:
+            logger.error(f"Input time-series data is missing required fields for daily metric calculation: {e}")
+            raise CalculationLogicError(f"Input time-series data is missing required fields: {e}")
+
 
     def calculate_performance(self, daily_data_list: List[Dict[str, Any]]) -> pd.DataFrame:
         """
