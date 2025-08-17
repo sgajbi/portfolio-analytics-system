@@ -1,32 +1,29 @@
 # src/libs/performance-calculator-engine/src/performance_calculator_engine/constants.py
 
-# Field Names
-PERF_DATE_FIELD = "Perf. Date"
-BEGIN_MARKET_VALUE_FIELD = "Begin Market Value"
-BOD_CASHFLOW_FIELD = "BOD Cashflow"
-EOD_CASHFLOW_FIELD = "Eod Cashflow"
-MGMT_FEES_FIELD = "Mgmt fees"
-END_MARKET_VALUE_FIELD = "End Market Value"
-DAILY_ROR_PERCENT_FIELD = "daily ror %"
-TEMP_LONG_CUM_ROR_PERCENT_FIELD = "Temp Long Cum Ror %"
-TEMP_SHORT_CUM_ROR_PERCENT_FIELD = "Temp short Cum RoR %"
-NCTRL_1_FIELD = "NCTRL 1"
-NCTRL_2_FIELD = "NCTRL 2"
-NCTRL_3_FIELD = "NCTRL 3"
-NCTRL_4_FIELD = "NCTRL 4"
-PERF_RESET_FIELD = "Perf Reset"
-NIP_FIELD = "NIP"
-LONG_CUM_ROR_PERCENT_FIELD = "Long Cum Ror %"
-SHORT_CUM_ROR_PERCENT_FIELD = "Short Cum RoR %"
-LONG_SHORT_FIELD = "Long /Short"
-FINAL_CUMULATIVE_ROR_PERCENT_FIELD = "Final Cumulative ROR %"
+# --- Input Field Names (from portfolio_timeseries table) ---
+DATE = "date"
+BOD_MARKET_VALUE = "bod_market_value"
+EOD_MARKET_VALUE = "eod_market_value"
+BOD_CASHFLOW = "bod_cashflow"
+EOD_CASHFLOW = "eod_cashflow"
+FEES = "fees"
 
-# Metric Basis
+# --- Intermediate & Output Field Names (ported from performanceAnalytics logic) ---
+SIGN = "sign"
+DAILY_ROR_PCT = "daily_ror_pct"
+TEMP_LONG_CUM_ROR_PCT = "temp_long_cum_ror_pct"
+TEMP_SHORT_CUM_ROR_PCT = "temp_short_cum_ror_pct"
+NCTRL_1 = "nctrl_1"
+NCTRL_2 = "nctrl_2"
+NCTRL_3 = "nctrl_3"
+NCTRL_4 = "nctrl_4"
+PERF_RESET = "perf_reset"
+NIP = "nip"
+LONG_CUM_ROR_PCT = "long_cum_ror_pct"
+SHORT_CUM_ROR_PCT = "short_cum_ror_pct"
+LONG_SHORT = "long_short"
+FINAL_CUMULATIVE_ROR_PCT = "final_cumulative_ror_pct"
+
+# --- Configuration Values ---
 METRIC_BASIS_NET = "NET"
 METRIC_BASIS_GROSS = "GROSS"
-
-# Period Types
-PERIOD_TYPE_MTD = "MTD"
-PERIOD_TYPE_QTD = "QTD"
-PERIOD_TYPE_YTD = "YTD"
-PERIOD_TYPE_EXPLICIT = "Explicit"
