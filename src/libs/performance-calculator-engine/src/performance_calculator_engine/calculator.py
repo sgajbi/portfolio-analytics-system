@@ -43,7 +43,6 @@ class PortfolioPerformanceCalculator:
         if not config:
             raise MissingConfigurationError("Calculator configuration cannot be empty.")
 
-        # Set precision for Decimal operations
         getcontext().prec = 28
 
         self.performance_start_date = self._parse_date(config.get("performance_start_date"))
@@ -81,7 +80,44 @@ class PortfolioPerformanceCalculator:
             return Decimal(str(value))
         except (ValueError, TypeError, SystemError):
             return Decimal(0)
+    
+    def _get_sign(self, value):
+        value = self._parse_decimal(value)
+        if value > 0:
+            return Decimal(1)
+        elif value < 0:
+            return Decimal(-1)
+        else:
+            return Decimal(0)
 
+    def _is_eomonth(self, date_obj):
+        return date_obj.day == calendar.monthrange(date_obj.year, date_obj.month)[1]
+
+    def _calculate_nip_vectorized(self, df: pd.DataFrame) -> pd.Series:
+        cond1 = (
+            df[BEGIN_MARKET_VALUE_FIELD] + df[BOD_CASHFLOW_FIELD] + df[END_MARKET_VALUE_FIELD] + df[EOD_CASHFLOW_FIELD]
+            == 0
+        ) & (df[EOD_CASHFLOW_FIELD] == -df[BOD_CASHFLOW_FIELD].apply(self._get_sign))
+        return cond1.astype(int)
+
+    def _calculate_daily_ror_vectorized(self, df, effective_start_date_series):
+        daily_ror = pd.Series([Decimal(0)] * len(df), index=df.index, dtype=object)
+
+        condition = (df[PERF_DATE_FIELD] >= effective_start_date_series) & (
+            df[BEGIN_MARKET_VALUE_FIELD] + df[BOD_CASHFLOW_FIELD] != 0
+        )
+
+        numerator = (
+            df[END_MARKET_VALUE_FIELD] - df[BOD_CASHFLOW_FIELD] - df[BEGIN_MARKET_VALUE_FIELD] - df[EOD_CASHFLOW_FIELD]
+        )
+        if self.metric_basis == METRIC_BASIS_NET:
+            numerator += df[MGMT_FEES_FIELD]
+
+        denominator = abs(df[BEGIN_MARKET_VALUE_FIELD] + df[BOD_CASHFLOW_FIELD])
+        ror_calc = (numerator / denominator * 100).where(denominator != 0, Decimal(0))
+        daily_ror = daily_ror.mask(condition, ror_calc)
+        return daily_ror
+    
     def calculate_performance(self, daily_data_list):
         if not daily_data_list:
             raise InvalidInputDataError("Daily data list cannot be empty.")
@@ -92,8 +128,8 @@ class PortfolioPerformanceCalculator:
             raise InvalidInputDataError(f"Failed to create DataFrame from daily data: {e}")
 
         numeric_cols = [
-            BEGIN_MARKET_VALUE_FIELD, BOD_CASHFLOW_FIELD, EOD_CASHFLOW_FIELD,
-            MGMT_FEES_FIELD, END_MARKET_VALUE_FIELD,
+            "Day", BEGIN_MARKET_VALUE_FIELD, BOD_CASHFLOW_FIELD,
+            EOD_CASHFLOW_FIELD, MGMT_FEES_FIELD, END_MARKET_VALUE_FIELD,
         ]
         for col in numeric_cols:
             if col in df.columns:
@@ -103,59 +139,60 @@ class PortfolioPerformanceCalculator:
         if df[PERF_DATE_FIELD].isnull().any():
             raise InvalidInputDataError("One or more 'Perf. Date' values are invalid or missing.")
 
-        # Filter data for the relevant date range
+        # Determine effective start date for filtering
+        overall_effective_report_start_date = self.report_start_date or self.performance_start_date
         df = df[df[PERF_DATE_FIELD] <= self.report_end_date].copy()
         if df.empty:
             return []
 
-        # --- Vectorized Calculations ---
-        numerator = (
-            df[END_MARKET_VALUE_FIELD] - df[BOD_CASHFLOW_FIELD] -
-            df[BEGIN_MARKET_VALUE_FIELD] - df[EOD_CASHFLOW_FIELD]
+        # Initialize columns
+        for col in [
+            "sign", DAILY_ROR_PERCENT_FIELD, TEMP_LONG_CUM_ROR_PERCENT_FIELD,
+            TEMP_SHORT_CUM_ROR_PERCENT_FIELD, LONG_CUM_ROR_PERCENT_FIELD,
+            SHORT_CUM_ROR_PERCENT_FIELD, FINAL_CUMULATIVE_ROR_PERCENT_FIELD,
+        ]:
+            df[col] = Decimal(0)
+        for col in [NCTRL_1_FIELD, NCTRL_2_FIELD, NCTRL_3_FIELD, NCTRL_4_FIELD, PERF_RESET_FIELD, NIP_FIELD]:
+            df[col] = 0
+        df[LONG_SHORT_FIELD] = ""
+
+        # Vectorized calculations first
+        df[NIP_FIELD] = self._calculate_nip_vectorized(df)
+        
+        # This logic is simplified for now but captures the period-based start date concept
+        df["effective_period_start_date"] = df[PERF_DATE_FIELD].apply(
+            lambda x: date(x.year, 1, 1) if self.period_type == PERIOD_TYPE_YTD else self.performance_start_date
         )
-        if self.metric_basis == METRIC_BASIS_NET:
-            numerator += df[MGMT_FEES_FIELD]
+        df[DAILY_ROR_PERCENT_FIELD] = self._calculate_daily_ror_vectorized(df, df["effective_period_start_date"])
 
-        denominator = (df[BEGIN_MARKET_VALUE_FIELD] + df[BOD_CASHFLOW_FIELD]).abs()
+        # Iterative calculations for stateful logic
+        calculated_rows = []
+        for i in range(len(df)):
+            row = df.iloc[i].to_dict()
+            prev_row = calculated_rows[i - 1] if i > 0 else None
+            
+            # This is a simplified sequential calculation that mimics the intent of the original logic
+            # for a typical case without resets. The full NCTRL/reset logic is complex and will be
+            # added back based on more detailed test cases.
+            if prev_row:
+                prev_cumulative_factor = (Decimal(1) + prev_row[FINAL_CUMULATIVE_ROR_PERCENT_FIELD] / 100)
+                current_daily_factor = (Decimal(1) + row[DAILY_ROR_PERCENT_FIELD] / 100)
+                row[FINAL_CUMULATIVE_ROR_PERCENT_FIELD] = (prev_cumulative_factor * current_daily_factor - 1) * 100
+            else:
+                row[FINAL_CUMULATIVE_ROR_PERCENT_FIELD] = row[DAILY_ROR_PERCENT_FIELD]
+            
+            calculated_rows.append(row)
 
-        # Initialize with zeros
-        df[DAILY_ROR_PERCENT_FIELD] = Decimal(0)
+        final_df = pd.DataFrame(calculated_rows)
         
-        # Calculate only where denominator is not zero
-        valid_mask = denominator != 0
-        df.loc[valid_mask, DAILY_ROR_PERCENT_FIELD] = (numerator[valid_mask] / denominator[valid_mask]) * 100
+        # Filter again for the final report range
+        final_df = final_df[final_df[PERF_DATE_FIELD] >= overall_effective_report_start_date].copy()
 
-        # --- For now, return a simplified dictionary for testing ---
-        # The full iterative logic will be tested and integrated subsequently.
-        df[FINAL_CUMULATIVE_ROR_PERCENT_FIELD] = \
-            ((1 + df[DAILY_ROR_PERCENT_FIELD] / 100).cumprod() - 1) * 100
-
-        # Convert Decimal columns to float for JSON serialization
-        for col in df.select_dtypes(include=['object']).columns:
-            if all(isinstance(x, Decimal) for x in df[col] if x is not None):
-                df[col] = df[col].astype(float)
+        # Convert Decimal columns to float for simpler JSON serialization
+        for col in final_df.select_dtypes(include=['object']):
+            if not final_df[col].empty and isinstance(final_df[col].iloc[0], Decimal):
+                final_df[col] = final_df[col].astype(float)
         
-        df[PERF_DATE_FIELD] = df[PERF_DATE_FIELD].astype(str)
-
-        return df.to_dict(orient="records")
-
-    def get_summary_performance(self, calculated_results):
-        if not calculated_results:
-            return {}
+        final_df[PERF_DATE_FIELD] = final_df[PERF_DATE_FIELD].astype(str)
         
-        df = pd.DataFrame(calculated_results)
-        
-        first_day = df.iloc[0]
-        last_day = df.iloc[-1]
-
-        summary = {
-            "report_start_date": self.report_start_date.strftime("%Y-%m-%d") if self.report_start_date else None,
-            "report_end_date": self.report_end_date.strftime("%Y-%m-%d"),
-            BEGIN_MARKET_VALUE_FIELD: float(first_day[BEGIN_MARKET_VALUE_FIELD]),
-            END_MARKET_VALUE_FIELD: float(last_day[END_MARKET_VALUE_FIELD]),
-            BOD_CASHFLOW_FIELD: float(df[BOD_CASHFLOW_FIELD].sum()),
-            EOD_CASHFLOW_FIELD: float(df[EOD_CASHFLOW_FIELD].sum()),
-            MGMT_FEES_FIELD: float(df[MGMT_FEES_FIELD].sum()),
-            FINAL_CUMULATIVE_ROR_PERCENT_FIELD: float(last_day[FINAL_CUMULATIVE_ROR_PERCENT_FIELD])
-        }
-        return summary
+        return final_df.to_dict(orient="records")

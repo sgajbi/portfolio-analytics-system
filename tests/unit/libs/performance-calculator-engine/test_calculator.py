@@ -35,17 +35,16 @@ def test_calculator_with_valid_net_data(sample_input_data):
     # ASSERT
     assert len(results) == 5
     
-    # Verify daily returns for a few key days
+    # Verify daily returns for key days
     # Day 1: (101000 - 100000) / 100000 = 1.0%
     assert pytest.approx(results[0]['daily ror %']) == 1.0
-    # Day 3: (108000 - 5000 - 102500 - 10) / (102500 + 5000) = 0.456%
-    assert pytest.approx(results[2]['daily ror %'], abs=1e-3) == 0.456
-    # Day 4: (106500 - 108000 - (-2000) - 12) / 108000 = 0.45185%
-    assert pytest.approx(results[3]['daily ror %'], abs=1e-3) == 0.451
+    # Day 3: (108000 - 102500 - 5000 + (-10)) / (102500 + 5000) = 0.4558%
+    assert pytest.approx(results[2]['daily ror %'], abs=1e-4) == 0.4558
+    # Day 4: (106500 - 108000 - (-2000) + (-12)) / 108000 = 0.45185%
+    assert pytest.approx(results[3]['daily ror %'], abs=1e-4) == 0.45185
 
-    # Verify final cumulative return
-    # (1.01 * 1.01485 * 1.00456 * 1.00451 * 1.00469) - 1 = 3.93%
-    assert pytest.approx(results[4]['Final Cumulative ROR %'], abs=1e-2) == 3.93
+    # Verify final cumulative return is now correct
+    assert pytest.approx(results[4]['Final Cumulative ROR %'], abs=1e-3) == 3.918
 
 def test_calculator_raises_for_empty_data(sample_input_data):
     """
