@@ -1,6 +1,6 @@
 # src/libs/performance-calculator-engine/src/performance_calculator_engine/calculator.py
 import logging
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal, getcontext
 from typing import List, Dict, Any
 
@@ -85,7 +85,7 @@ class PerformanceCalculator:
 
         # Convert Decimal columns to float for easier consumption by APIs
         for col in df.select_dtypes(include=['object']).columns:
-            if all(isinstance(x, Decimal) for x in df[col]):
+            if all(isinstance(x, Decimal) for x in df[col] if pd.notna(x)):
                 df[col] = df[col].astype(float)
 
         return df
@@ -153,7 +153,7 @@ class PerformanceCalculator:
 
         # Update original DataFrame with calculated values
         for col in df.columns:
-            if col != 'index': # Avoid trying to assign the old index
+            if col != 'index' and col in calculated_rows[0]: 
                 df[col] = [row[col] for row in calculated_rows]
         df.drop(columns=["effective_period_start_date"], inplace=True)
 
@@ -191,9 +191,13 @@ class PerformanceCalculator:
             numerator += df[FEES]
         denominator = df[BOD_MARKET_VALUE] + df[BOD_CASHFLOW]
         
-        daily_ror = pd.Series([Decimal(0)] * len(df), index=df.index)
+        daily_ror = pd.Series([Decimal(0)] * len(df), index=df.index, dtype=object)
         mask = (df[DATE] >= df["effective_period_start_date"]) & (denominator != 0)
-        daily_ror[mask] = (numerator[mask] / denominator[mask]) * Decimal(100)
+        
+        daily_ror[mask] = (
+            (numerator[mask] / denominator[mask]) * Decimal(100)
+        )
+        
         return daily_ror
 
     # --- Iterative Calculation Logic Methods ---
