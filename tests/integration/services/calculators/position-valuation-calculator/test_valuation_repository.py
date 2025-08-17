@@ -1,10 +1,11 @@
 # tests/integration/services/calculators/position-valuation-calculator/test_valuation_repository.py
 import pytest
+import pytest_asyncio
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from sqlalchemy.orm import Session
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 
 from portfolio_common.database_models import PortfolioValuationJob, DailyPositionSnapshot, Portfolio, MarketPrice
 from src.services.calculators.position_valuation_calculator.app.repositories.valuation_repository import ValuationRepository
@@ -82,6 +83,16 @@ def setup_price_data(db_engine):
         session.add_all(prices)
         session.commit()
 
+@pytest_asyncio.fixture(scope="function")
+async def session_factory(db_engine):
+    """Provides a factory for creating new, isolated AsyncSessions for the test."""
+    sync_url = db_engine.url
+    async_url = sync_url.render_as_string(hide_password=False).replace("postgresql://", "postgresql+asyncpg://")
+    async_engine = create_async_engine(async_url)
+    factory = async_sessionmaker(bind=async_engine, class_=AsyncSession, expire_on_commit=False)
+    yield factory
+    await async_engine.dispose()
+
 async def test_get_all_open_positions(db_engine, clean_db, setup_holdings_data, async_db_session: AsyncSession):
     """
     GIVEN a database with various positions, some open and some closed
@@ -144,34 +155,31 @@ async def test_find_portfolios_holding_security_on_date(db_engine, clean_db, set
     assert len(portfolio_ids) == 1
     assert portfolio_ids[0] == "P1"
 
-async def test_find_and_reset_stale_jobs(db_engine, clean_db, setup_stale_job_data, async_db_session: AsyncSession):
+async def test_find_and_reset_stale_jobs(clean_db, setup_stale_job_data, session_factory: async_sessionmaker):
     """
     GIVEN a mix of recent and stale jobs in various states
     WHEN find_and_reset_stale_jobs is called
-    THEN it should only reset the single stale 'PROCESSING' job to 'PENDING'
-    AND return a count of 1.
+    THEN it should only reset the single stale 'PROCESSING' job to 'PENDING'.
     """
-    # ARRANGE
-    repo = ValuationRepository(async_db_session)
-    
-    # ACT
-    reset_count = await repo.find_and_reset_stale_jobs(timeout_minutes=15)
-    await async_db_session.commit()
+    # ARRANGE & ACT
+    async with session_factory() as session:
+        repo = ValuationRepository(session)
+        reset_count = await repo.find_and_reset_stale_jobs(timeout_minutes=15)
+        await session.commit()
+        assert reset_count == 1
 
-    # ASSERT
-    assert reset_count == 1
-    
-    with Session(db_engine) as session:
+    # ASSERT in a new, clean session
+    async with session_factory() as session:
         # Verify the stale PROCESSING job was reset
-        job1 = session.query(PortfolioValuationJob).filter_by(portfolio_id="P1").one()
+        job1 = await session.get(PortfolioValuationJob, 1) # Assuming P1 is id=1
         assert job1.status == "PENDING"
         
         # Verify the other jobs were untouched
-        job2 = session.query(PortfolioValuationJob).filter_by(portfolio_id="P2").one()
+        job2 = await session.get(PortfolioValuationJob, 2)
         assert job2.status == "PROCESSING"
         
-        job3 = session.query(PortfolioValuationJob).filter_by(portfolio_id="P3").one()
+        job3 = await session.get(PortfolioValuationJob, 3)
         assert job3.status == "PENDING"
         
-        job4 = session.query(PortfolioValuationJob).filter_by(portfolio_id="P4").one()
+        job4 = await session.get(PortfolioValuationJob, 4)
         assert job4.status == "COMPLETE"
