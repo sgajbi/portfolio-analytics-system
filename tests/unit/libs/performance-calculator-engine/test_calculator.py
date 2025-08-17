@@ -1,65 +1,73 @@
 # tests/unit/libs/performance-calculator-engine/test_calculator.py
 import pytest
-import json
-from pathlib import Path
 from decimal import Decimal
 
-from performance_calculator_engine.calculator import PortfolioPerformanceCalculator
-from performance_calculator_engine.exceptions import InvalidInputDataError
+from performance_calculator_engine.calculator import PerformanceEngine
+from performance_calculator_engine.constants import METRIC_BASIS_NET, METRIC_BASIS_GROSS
+from performance_calculator_engine.exceptions import CalculationLogicError
 
-@pytest.fixture
-def sample_input_data():
-    """Loads the sample input data from the JSON file."""
-    p = Path(__file__).parent / "sampleInput.json"
-    with open(p, 'r') as f:
-        return json.load(f)
-
-def test_calculator_with_valid_net_data(sample_input_data):
+def test_calculate_daily_metrics_first_day():
     """
-    Tests that the calculator produces the correct daily and cumulative returns
-    for a standard NET basis calculation.
+    Tests calculation for the first day of a portfolio's history.
+    BOD Market Value should be 0.
     """
     # ARRANGE
-    config = {
-        "performance_start_date": sample_input_data["performance_start_date"],
-        "metric_basis": sample_input_data["metric_basis"],
-        "report_start_date": sample_input_data["report_start_date"],
-        "report_end_date": sample_input_data["report_end_date"],
-        "period_type": sample_input_data["period_type"],
+    current_day_ts = {
+        'eod_market_value': Decimal("10050"),
+        'bod_cashflow': Decimal("10000"),
+        'eod_cashflow': Decimal("0"),
+        'fees': Decimal("5")
     }
-    calculator = PortfolioPerformanceCalculator(config)
 
     # ACT
-    results = calculator.calculate_performance(sample_input_data["daily_data"])
+    result = PerformanceEngine.calculate_daily_metrics(current_day_ts, None)
 
     # ASSERT
-    assert len(results) == 5
-    
-    # Verify daily returns for key days
-    # Day 1: (101000 - 100000) / 100000 = 1.0%
-    assert pytest.approx(results[0]['daily ror %']) == 1.0
-    # Day 3: (108000 - 102500 - 5000 + (-10)) / (102500 + 5000) = 0.4558%
-    assert pytest.approx(results[2]['daily ror %'], abs=1e-4) == 0.4558
-    # Day 4: (106500 - 108000 - (-2000) + (-12)) / 108000 = 0.45185%
-    assert pytest.approx(results[3]['daily ror %'], abs=1e-4) == 0.45185
+    # Gross Profit = 10050 - 0 - 10000 = 50
+    # Denominator = 0 + 10000 = 10000
+    # Gross Return = (50 / 10000) * 100 = 0.5%
+    assert pytest.approx(result[METRIC_BASIS_GROSS]) == Decimal("0.5")
 
-    # Verify final cumulative return is now correct
-    assert pytest.approx(results[4]['Final Cumulative ROR %'], abs=1e-3) == 3.918
+    # Net Profit = 50 - 5 = 45
+    # Net Return = (45 / 10000) * 100 = 0.45%
+    assert pytest.approx(result[METRIC_BASIS_NET]) == Decimal("0.45")
 
-def test_calculator_raises_for_empty_data(sample_input_data):
+def test_calculate_daily_metrics_subsequent_day():
     """
-    Tests that the calculator raises an InvalidInputDataError if the daily_data list is empty.
+    Tests calculation for a subsequent day with various cashflows and fees.
     """
     # ARRANGE
-    config = {
-        "performance_start_date": sample_input_data["performance_start_date"],
-        "metric_basis": sample_input_data["metric_basis"],
-        "report_start_date": sample_input_data["report_start_date"],
-        "report_end_date": sample_input_data["report_end_date"],
-        "period_type": sample_input_data["period_type"],
+    previous_day_ts = {'eod_market_value': Decimal("10050")}
+    current_day_ts = {
+        'eod_market_value': Decimal("10200"),
+        'bod_cashflow': Decimal("100"),
+        'eod_cashflow': Decimal("-50"),
+        'fees': Decimal("2")
     }
-    calculator = PortfolioPerformanceCalculator(config)
+
+    # ACT
+    result = PerformanceEngine.calculate_daily_metrics(current_day_ts, previous_day_ts)
+
+    # ASSERT
+    # Net Cashflow = 100 - 50 = 50
+    # Change in MV = 10200 - 10050 = 150
+    # Denominator = 10050 + 50 = 10100
+    # Gross Profit = 150 - 50 = 100
+    # Gross Return = (100 / 10100) * 100 = 0.990099...%
+    assert pytest.approx(result[METRIC_BASIS_GROSS]) == Decimal("0.990099")
+
+    # Net Profit = 100 - 2 = 98
+    # Net Return = (98 / 10100) * 100 = 0.970297...%
+    assert pytest.approx(result[METRIC_BASIS_NET]) == Decimal("0.970297")
+
+def test_calculate_daily_metrics_raises_on_missing_data():
+    """
+    Tests that a CalculationLogicError is raised if the input data is malformed.
+    """
+    # ARRANGE
+    # 'eod_market_value' is missing
+    malformed_ts = {'bod_cashflow': Decimal(0), 'fees': Decimal(0)}
 
     # ACT & ASSERT
-    with pytest.raises(InvalidInputDataError, match="Daily data list cannot be empty."):
-        calculator.calculate_performance([])
+    with pytest.raises(CalculationLogicError):
+        PerformanceEngine.calculate_daily_metrics(malformed_ts, None)
