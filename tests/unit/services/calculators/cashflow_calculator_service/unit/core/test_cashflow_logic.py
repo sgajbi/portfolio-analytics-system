@@ -27,7 +27,7 @@ def base_transaction_event() -> TransactionEvent:
 
 def test_calculate_buy_transaction(base_transaction_event: TransactionEvent):
     """
-    Tests that a BUY transaction correctly generates a negative cashflow (outflow).
+    Tests that a BUY transaction correctly generates a positive cashflow (contribution).
     """
     # Arrange
     event = base_transaction_event
@@ -38,16 +38,16 @@ def test_calculate_buy_transaction(base_transaction_event: TransactionEvent):
     cashflow = CashflowLogic.calculate(event, rule)
 
     # Assert
-    # Expected amount = -(Gross Amount + Fee)
-    expected_amount = -(event.gross_transaction_amount + event.trade_fee)
+    # Expected amount = (Gross Amount + Fee)
+    expected_amount = event.gross_transaction_amount + event.trade_fee
     assert cashflow.amount == expected_amount
     assert cashflow.classification == "INVESTMENT_OUTFLOW"
-    assert cashflow.timing == "EOD"
+    assert cashflow.timing == "BOD"
     assert cashflow.level == "POSITION"
 
 def test_calculate_sell_transaction(base_transaction_event: TransactionEvent):
     """
-    Tests that a SELL transaction correctly generates a positive cashflow (inflow).
+    Tests that a SELL transaction correctly generates a negative cashflow (withdrawal).
     """
     # Arrange
     event = base_transaction_event
@@ -59,15 +59,15 @@ def test_calculate_sell_transaction(base_transaction_event: TransactionEvent):
     cashflow = CashflowLogic.calculate(event, rule)
 
     # Assert
-    # Expected amount = (Gross Amount - Fee)
-    expected_amount = event.gross_transaction_amount - event.trade_fee
+    # Expected amount = -(Gross Amount - Fee)
+    expected_amount = -(event.gross_transaction_amount - event.trade_fee)
     assert cashflow.amount == expected_amount
     assert cashflow.classification == "INVESTMENT_INFLOW"
     assert cashflow.timing == "EOD"
 
 def test_calculate_dividend_transaction(base_transaction_event: TransactionEvent):
     """
-    Tests that a DIVIDEND transaction correctly generates a positive cashflow
+    Tests that a DIVIDEND transaction correctly generates a negative cashflow (withdrawal)
     classified as INCOME with a BOD timing.
     """
     # Arrange
@@ -82,14 +82,14 @@ def test_calculate_dividend_transaction(base_transaction_event: TransactionEvent
     cashflow = CashflowLogic.calculate(event, rule)
 
     # Assert
-    assert cashflow.amount == event.gross_transaction_amount
+    assert cashflow.amount == -event.gross_transaction_amount
     assert cashflow.classification == "INCOME"
     assert cashflow.timing == "BOD" # Dividends are typically BOD cashflows
     assert cashflow.level == "POSITION"
 
 def test_calculate_fee_transaction(base_transaction_event: TransactionEvent):
     """
-    Tests that a FEE transaction correctly generates a negative cashflow (outflow)
+    Tests that a FEE transaction correctly generates a negative cashflow (withdrawal)
     at the PORTFOLIO level.
     """
     # Arrange
@@ -111,7 +111,7 @@ def test_calculate_fee_transaction(base_transaction_event: TransactionEvent):
 
 def test_calculate_interest_transaction(base_transaction_event: TransactionEvent):
     """
-    Tests that an INTEREST transaction correctly generates a positive cashflow
+    Tests that an INTEREST transaction correctly generates a negative cashflow (withdrawal)
     classified as INCOME at the PORTFOLIO level.
     """
     # Arrange
@@ -126,7 +126,7 @@ def test_calculate_interest_transaction(base_transaction_event: TransactionEvent
     cashflow = CashflowLogic.calculate(event, rule)
 
     # Assert
-    assert cashflow.amount == event.gross_transaction_amount
+    assert cashflow.amount == -event.gross_transaction_amount
     assert cashflow.classification == "INCOME"
     assert cashflow.level == "PORTFOLIO"
     assert cashflow.security_id is None

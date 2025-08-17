@@ -17,15 +17,7 @@ class CashflowLogic:
         rule: CashflowRule
     ) -> Cashflow:
         """
-
         Applies the calculation rule to a transaction to generate a cashflow.
-
-        Args:
-            transaction: The incoming transaction event.
-            rule: The cashflow configuration rule to apply.
-
-        Returns:
-            A populated Cashflow database model instance, ready for persistence.
         """
         amount = Decimal(0)
 
@@ -34,7 +26,6 @@ class CashflowLogic:
             amount = transaction.gross_transaction_amount
         elif rule.calc_type == CashflowCalculationType.NET:
             # For NET, we adjust the gross amount by the fee.
-            # BUYs and FEEs are outflows (negative), SELLs are inflows (positive).
             if transaction.transaction_type in ["BUY", "FEE"]:
                 amount = transaction.gross_transaction_amount + (transaction.trade_fee or 0)
             else: # SELL, DIVIDEND, INTEREST, etc.
@@ -42,15 +33,16 @@ class CashflowLogic:
         elif rule.calc_type == CashflowCalculationType.MVT:
             amount = transaction.quantity * transaction.price
 
-        # Investment outflows (like BUYs) and expenses should be negative.
+        # FIX: Correct the sign logic for performance calculation formulas.
+        # Contributions TO the portfolio (BUYs, Deposits) must be positive.
+        # Withdrawals FROM the portfolio (SELLs, Fees, Dividends) must be negative.
         if rule.classification in [
-            "INVESTMENT_OUTFLOW",
-            "EXPENSE",
-            "CASHFLOW_OUT"
+            "INVESTMENT_OUTFLOW", # e.g., BUY
+            "CASHFLOW_IN"         # e.g., DEPOSIT
         ]:
-            amount = -abs(amount)
-        else: # Inflows are positive
             amount = abs(amount)
+        else: # e.g., SELL, DIVIDEND, FEE, WITHDRAWAL
+            amount = -abs(amount)
 
         # Create the Cashflow database object
         cashflow = Cashflow(
