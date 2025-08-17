@@ -27,3 +27,9 @@ FINAL_CUMULATIVE_ROR_PCT = "final_cumulative_ror_pct"
 # --- Configuration Values ---
 METRIC_BASIS_NET = "NET"
 METRIC_BASIS_GROSS = "GROSS"
+
+# --- Period Types ---
+PERIOD_TYPE_MTD = "MTD"
+PERIOD_TYPE_QTD = "QTD"
+PERIOD_TYPE_YTD = "YTD"
+PERIOD_TYPE_EXPLICIT = "EXPLICIT"
