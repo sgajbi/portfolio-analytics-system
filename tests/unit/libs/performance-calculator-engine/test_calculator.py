@@ -1,73 +1,107 @@
 # tests/unit/libs/performance-calculator-engine/test_calculator.py
 import pytest
+import pandas as pd
 from decimal import Decimal
 
-from performance_calculator_engine.calculator import PerformanceEngine
-from performance_calculator_engine.constants import METRIC_BASIS_NET, METRIC_BASIS_GROSS
-from performance_calculator_engine.exceptions import CalculationLogicError
+from performance_calculator_engine.calculator import PerformanceCalculator
+from performance_calculator_engine.constants import (
+    DAILY_ROR_PCT,
+    METRIC_BASIS_NET,
+    METRIC_BASIS_GROSS
+)
+from performance_calculator_engine.exceptions import InvalidInputDataError
 
-def test_calculate_daily_metrics_first_day():
+@pytest.fixture
+def sample_timeseries_data() -> list[dict]:
+    """Provides a sample list of daily time-series data for testing."""
+    return [
+        { # Day 1: Initial investment, 1% gross gain
+            "date": "2025-01-01",
+            "bod_market_value": "0.0",
+            "eod_market_value": "101000.0",
+            "bod_cashflow": "100000.0",
+            "eod_cashflow": "0.0",
+            "fees": "-10.0"
+        },
+        { # Day 2: No cashflow, further gain
+            "date": "2025-01-02",
+            "bod_market_value": "101000.0",
+            "eod_market_value": "102500.0",
+            "bod_cashflow": "0.0",
+            "eod_cashflow": "0.0",
+            "fees": "-12.0"
+        },
+        { # Day 3: Deposit, small loss
+            "date": "2025-01-03",
+            "bod_market_value": "102500.0",
+            "eod_market_value": "107000.0",
+            "bod_cashflow": "5000.0",
+            "eod_cashflow": "0.0",
+            "fees": "-15.0"
+        },
+        { # Day 4: Zero denominator case
+            "date": "2025-01-04",
+            "bod_market_value": "0.0",
+            "eod_market_value": "0.0",
+            "bod_cashflow": "0.0",
+            "eod_cashflow": "0.0",
+            "fees": "0.0"
+        }
+    ]
+
+def test_calculate_daily_ror_net_basis(sample_timeseries_data):
     """
-    Tests calculation for the first day of a portfolio's history.
-    BOD Market Value should be 0.
+    Tests that daily RoR is calculated correctly on a NET basis (including fees).
     """
     # ARRANGE
-    current_day_ts = {
-        'eod_market_value': Decimal("10050"),
-        'bod_cashflow': Decimal("10000"),
-        'eod_cashflow': Decimal("0"),
-        'fees': Decimal("5")
-    }
+    calculator = PerformanceCalculator(metric_basis=METRIC_BASIS_NET)
 
     # ACT
-    result = PerformanceEngine.calculate_daily_metrics(current_day_ts, None)
+    results_df = calculator.calculate_performance(sample_timeseries_data)
+    results = results_df[DAILY_ROR_PCT].apply(lambda x: round(x, 6)).tolist()
 
     # ASSERT
-    # Gross Profit = 10050 - 0 - 10000 = 50
-    # Denominator = 0 + 10000 = 10000
-    # Gross Return = (50 / 10000) * 100 = 0.5%
-    assert pytest.approx(result[METRIC_BASIS_GROSS]) == Decimal("0.5")
+    # Day 1: (101000 - 0 - 100000 + (-10)) / (0 + 100000) = 990 / 100000 = 0.99%
+    assert results[0] == Decimal("0.990000")
+    # Day 2: (102500 - 101000 - 0 + (-12)) / (101000 + 0) = 1488 / 101000 = 1.473267%
+    assert results[1] == Decimal("1.473267")
+    # Day 3: (107000 - 102500 - 5000 + (-15)) / (102500 + 5000) = -515 / 107500 = -0.479070%
+    assert results[2] == Decimal("-0.479070")
+    # Day 4: Zero denominator should result in 0% RoR
+    assert results[3] == Decimal("0.000000")
 
-    # Net Profit = 50 - 5 = 45
-    # Net Return = (45 / 10000) * 100 = 0.45%
-    assert pytest.approx(result[METRIC_BASIS_NET]) == Decimal("0.45")
-
-def test_calculate_daily_metrics_subsequent_day():
+def test_calculate_daily_ror_gross_basis(sample_timeseries_data):
     """
-    Tests calculation for a subsequent day with various cashflows and fees.
+    Tests that daily RoR is calculated correctly on a GROSS basis (excluding fees).
     """
     # ARRANGE
-    previous_day_ts = {'eod_market_value': Decimal("10050")}
-    current_day_ts = {
-        'eod_market_value': Decimal("10200"),
-        'bod_cashflow': Decimal("100"),
-        'eod_cashflow': Decimal("-50"),
-        'fees': Decimal("2")
-    }
+    calculator = PerformanceCalculator(metric_basis=METRIC_BASIS_GROSS)
 
     # ACT
-    result = PerformanceEngine.calculate_daily_metrics(current_day_ts, previous_day_ts)
+    results_df = calculator.calculate_performance(sample_timeseries_data)
+    results = results_df[DAILY_ROR_PCT].apply(lambda x: round(x, 6)).tolist()
 
     # ASSERT
-    # Net Cashflow = 100 - 50 = 50
-    # Change in MV = 10200 - 10050 = 150
-    # Denominator = 10050 + 50 = 10100
-    # Gross Profit = 150 - 50 = 100
-    # Gross Return = (100 / 10100) * 100 = 0.990099...%
-    assert pytest.approx(result[METRIC_BASIS_GROSS]) == Decimal("0.990099")
+    # Day 1: (101000 - 0 - 100000) / (0 + 100000) = 1000 / 100000 = 1.0%
+    assert results[0] == Decimal("1.000000")
+    # Day 2: (102500 - 101000 - 0) / (101000 + 0) = 1500 / 101000 = 1.485149%
+    assert results[1] == Decimal("1.485149")
+    # Day 3: (107000 - 102500 - 5000) / (102500 + 5000) = -500 / 107500 = -0.465116%
+    assert results[2] == Decimal("-0.465116")
+    # Day 4: Zero denominator should result in 0% RoR
+    assert results[3] == Decimal("0.000000")
 
-    # Net Profit = 100 - 2 = 98
-    # Net Return = (98 / 10100) * 100 = 0.970297...%
-    assert pytest.approx(result[METRIC_BASIS_NET]) == Decimal("0.970297")
-
-def test_calculate_daily_metrics_raises_on_missing_data():
+def test_calculator_raises_on_invalid_basis():
     """
-    Tests that a CalculationLogicError is raised if the input data is malformed.
+    Tests that the calculator raises an InvalidInputDataError for an invalid metric basis.
     """
-    # ARRANGE
-    # 'eod_market_value' is missing
-    malformed_ts = {'bod_cashflow': Decimal(0), 'fees': Decimal(0)}
+    with pytest.raises(InvalidInputDataError, match="Invalid 'metric_basis'"):
+        PerformanceCalculator(metric_basis="INVALID_BASIS")
 
-    # ACT & ASSERT
-    with pytest.raises(CalculationLogicError):
-        PerformanceEngine.calculate_daily_metrics(malformed_ts, None)
+def test_calculator_raises_on_empty_data():
+    """
+    Tests that the calculator raises an InvalidInputDataError if the input list is empty.
+    """
+    calculator = PerformanceCalculator()
+    with pytest.raises(InvalidInputDataError, match="cannot be empty"):
+        calculator.calculate_performance([])
