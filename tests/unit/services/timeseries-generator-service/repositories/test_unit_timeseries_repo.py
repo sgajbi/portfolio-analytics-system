@@ -2,12 +2,12 @@
 import pytest
 from datetime import date, datetime, timedelta, timezone
 from sqlalchemy.orm import Session
-from sqlalchemy import text
+from sqlalchemy import text, TextClause
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects import postgresql
 from unittest.mock import AsyncMock, MagicMock
 
-from portfolio_common.database_models import PortfolioAggregationJob
+from portfolio_common.database_models import PortfolioAggregationJob, PositionTimeseries, PortfolioTimeseries
 from portfolio_common.repositories.timeseries_repository import TimeseriesRepository
 
 pytestmark = pytest.mark.asyncio
@@ -43,7 +43,6 @@ async def test_find_and_claim_eligible_jobs(repository: TimeseriesRepository, mo
     assert isinstance(executed_stmt, TextClause)
     assert "UPDATE portfolio_aggregation_jobs" in str(executed_stmt)
     assert "FOR UPDATE SKIP LOCKED" in str(executed_stmt)
-    # FIX: Correctly access the parameters dictionary from the positional arguments
     params = mock_db_session.execute.call_args[0][1]
     assert params['batch_size'] == 50
 
