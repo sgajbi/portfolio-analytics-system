@@ -1,4 +1,4 @@
-# services/timeseries-generator-service/app/repositories/timeseries_repository.py
+# src/libs/portfolio-common/portfolio_common/repositories/timeseries_repository.py
 import logging
 from datetime import date, datetime, timedelta, timezone
 from typing import Optional, List
@@ -28,13 +28,15 @@ class TimeseriesRepository:
     def __init__(self, db: AsyncSession):
         self.db = db
 
+    @async_timed(repository="TimeseriesRepository", method="get_portfolio_timeseries_for_date")
+    async def get_portfolio_timeseries_for_date(self, portfolio_id: str, a_date: date) -> Optional[PortfolioTimeseries]:
+        """Fetches a single portfolio timeseries record for a specific date."""
+        stmt = select(PortfolioTimeseries).filter_by(portfolio_id=portfolio_id, date=a_date)
+        result = await self.db.execute(stmt)
+        return result.scalars().first()
+
     @async_timed(repository="TimeseriesRepository", method="find_and_claim_eligible_jobs")
     async def find_and_claim_eligible_jobs(self, batch_size: int) -> List[PortfolioAggregationJob]:
-        """
-        Finds PENDING aggregation jobs where the previous day's job is COMPLETE (or doesn't exist)
-        and atomically claims them by updating their status to PROCESSING.
-        """
-        # FIX: Add FOR UPDATE SKIP LOCKED to the subquery to prevent race conditions.
         query = text("""
             UPDATE portfolio_aggregation_jobs
             SET status = 'PROCESSING', updated_at = now()
@@ -64,19 +66,16 @@ class TimeseriesRepository:
 
     @async_timed(repository="TimeseriesRepository", method="get_portfolio")
     async def get_portfolio(self, portfolio_id: str) -> Optional[Portfolio]:
-        """Fetches portfolio details by its ID."""
         result = await self.db.execute(select(Portfolio).filter_by(portfolio_id=portfolio_id))
         return result.scalars().first()
 
     @async_timed(repository="TimeseriesRepository", method="get_instrument")
     async def get_instrument(self, security_id: str) -> Optional[Instrument]:
-        """Fetches an instrument by its security ID."""
         result = await self.db.execute(select(Instrument).filter_by(security_id=security_id))
         return result.scalars().first()
 
     @async_timed(repository="TimeseriesRepository", method="get_instruments_by_ids")
     async def get_instruments_by_ids(self, security_ids: List[str]) -> List[Instrument]:
-        """Fetches multiple instruments by their security IDs in a single query."""
         if not security_ids:
             return []
         stmt = select(Instrument).where(Instrument.security_id.in_(security_ids))
@@ -85,7 +84,6 @@ class TimeseriesRepository:
 
     @async_timed(repository="TimeseriesRepository", method="get_fx_rate")
     async def get_fx_rate(self, from_currency: str, to_currency: str, a_date: date) -> Optional[FxRate]:
-        """Fetches the latest FX rate on or before a given date."""
         stmt = select(FxRate).filter(
             FxRate.from_currency == from_currency,
             FxRate.to_currency == to_currency,
@@ -93,13 +91,9 @@ class TimeseriesRepository:
         ).order_by(FxRate.rate_date.desc())
         result = await self.db.execute(stmt)
         return result.scalars().first()
-
     
     @async_timed(repository="TimeseriesRepository", method="get_latest_price_for_position")
     async def get_latest_price_for_position(self, security_id: str, position_date: date) -> Optional[MarketPrice]:
-        """
-        Finds the most recent market price for a given security on or before the position's date.
-        """
         stmt = select(MarketPrice).filter(
             MarketPrice.security_id == security_id,
             MarketPrice.price_date <= position_date
@@ -124,10 +118,6 @@ class TimeseriesRepository:
 
     @async_timed(repository="TimeseriesRepository", method="is_first_position")
     async def is_first_position(self, portfolio_id: str, security_id: str, position_date: date) -> bool:
-        """
-        Checks if there is any transactional history for this security prior to the given date.
-        Returns True if this is the first known position, False otherwise.
-        """
         stmt = select(
             exists().where(
                 Transaction.portfolio_id == portfolio_id,
@@ -174,7 +164,6 @@ class TimeseriesRepository:
 
     @async_timed(repository="TimeseriesRepository", method="upsert_position_timeseries")
     async def upsert_position_timeseries(self, timeseries_record: PositionTimeseries):
-        """Idempotent insert/update for a position time series record."""
         try:
             insert_dict = {c.name: getattr(timeseries_record, c.name) for c in timeseries_record.__table__.columns}
             update_dict = {k: v for k, v in insert_dict.items() if k not in ['portfolio_id', 'security_id', 'date']}
@@ -193,7 +182,6 @@ class TimeseriesRepository:
     
     @async_timed(repository="TimeseriesRepository", method="upsert_portfolio_timeseries")
     async def upsert_portfolio_timeseries(self, timeseries_record: PortfolioTimeseries):
-        """Idempotent insert/update for a portfolio time series record."""
         try:
             insert_dict = {c.name: getattr(timeseries_record, c.name) for c in timeseries_record.__table__.columns}
             update_dict = {k: v for k, v in insert_dict.items() if k not in ['portfolio_id', 'date']}
@@ -221,16 +209,12 @@ class TimeseriesRepository:
 
     @async_timed(repository="TimeseriesRepository", method="get_all_open_positions_as_of")
     async def get_all_open_positions_as_of(self, portfolio_id: str, a_date: date) -> List[str]:
-        """
-        Returns the security_ids of all positions with a nonzero quantity as of a given date.
-        Used for daily roll-forward to ensure all open positions are materialized.
-        """
         stmt = text("""
             SELECT DISTINCT security_id
             FROM position_timeseries
             WHERE portfolio_id = :portfolio_id
             AND date <= :a_date
-              AND quantity != 0
+            AND quantity != 0
             ORDER BY security_id
         """)
         result = await self.db.execute(stmt, {"portfolio_id": portfolio_id, "a_date": a_date})
@@ -238,9 +222,6 @@ class TimeseriesRepository:
 
     @async_timed(repository="TimeseriesRepository", method="find_and_reset_stale_jobs")
     async def find_and_reset_stale_jobs(self, timeout_minutes: int = 15) -> int:
-        """
-        Finds aggregation jobs stuck in 'PROCESSING' and resets them to 'PENDING'.
-        """
         stale_threshold = datetime.now(timezone.utc) - timedelta(minutes=timeout_minutes)
         
         stmt = (

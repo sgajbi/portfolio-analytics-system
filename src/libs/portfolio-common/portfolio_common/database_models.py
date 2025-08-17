@@ -207,6 +207,10 @@ class PortfolioTimeseries(Base):
     created_at = Column(DateTime(timezone=True), default=func.now())
     updated_at = Column(DateTime(timezone=True), default=func.now(), onupdate=func.now())
 
+    def to_dict(self):
+        """Converts the object to a dictionary."""
+        return {c.name: getattr(self, c.name) for c in self.__table__.columns}
+
 class ProcessedEvent(Base):
     __tablename__ = "processed_events"
 

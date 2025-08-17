@@ -16,11 +16,11 @@ from portfolio_common.idempotency_repository import IdempotencyRepository
 from portfolio_common.outbox_repository import OutboxRepository
 from portfolio_common.config import KAFKA_PERFORMANCE_CALCULATED_TOPIC
 from portfolio_common.database_models import DailyPerformanceMetric
+from portfolio_common.repositories.timeseries_repository import TimeseriesRepository
 
 from performance_calculator_engine.calculator import PerformanceEngine
 from performance_calculator_engine.constants import METRIC_BASIS_NET, METRIC_BASIS_GROSS
 from ..repositories.performance_repository import PerformanceRepository
-from ..repositories.timeseries_repository import TimeseriesRepository
 
 
 logger = logging.getLogger(__name__)
