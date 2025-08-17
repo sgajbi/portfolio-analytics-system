@@ -3,6 +3,9 @@ from pydantic import BaseModel, Field, ConfigDict
 from typing import List, Literal, Union, Optional, Dict
 from datetime import date
 
+# FIX: Import the missing constants
+from performance_calculator_engine.constants import METRIC_BASIS_NET
+
 # Define the allowed symbolic period types
 PerformancePeriodType = Literal["YTD", "MTD", "QTD", "SI"]
 
