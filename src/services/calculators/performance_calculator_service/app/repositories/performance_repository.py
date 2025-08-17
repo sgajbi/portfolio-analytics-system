@@ -1,6 +1,7 @@
 # src/services/calculators/performance_calculator_service/app/repositories/performance_repository.py
 import logging
 from typing import List
+from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from portfolio_common.database_models import DailyPerformanceMetric
@@ -38,12 +39,15 @@ class PerformanceRepository:
 
             stmt = pg_insert(DailyPerformanceMetric).values(insert_data)
 
+            # Define the update statement for the conflict case.
+            # This ensures that values from the attempted insert (the 'excluded' table)
+            # are used to update the existing row.
             update_stmt = stmt.on_conflict_do_update(
                 index_elements=['portfolio_id', 'date', 'return_basis'],
                 set_={
                     'linking_factor': stmt.excluded.linking_factor,
                     'daily_return_pct': stmt.excluded.daily_return_pct,
-                    'updated_at': stmt.excluded.updated_at,
+                    'updated_at': func.now(),
                 }
             )
             await self.db.execute(update_stmt)
