@@ -1,4 +1,4 @@
-# tests/integration/services/timeseries_generator_service/test_timeseries_repository.py
+# tests/integration/services/timeseries_generator_service/test_int_timeseries_repo.py
 import pytest
 from datetime import date, datetime, timedelta, timezone
 from sqlalchemy.orm import Session
@@ -6,7 +6,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from portfolio_common.database_models import PortfolioAggregationJob
-from src.services.timeseries_generator_service.app.repositories.timeseries_repository import TimeseriesRepository
+from portfolio_common.repositories.timeseries_repository import TimeseriesRepository
 
 pytestmark = pytest.mark.asyncio
 
