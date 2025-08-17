@@ -5,7 +5,7 @@ from datetime import date
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from portfolio_common.database_models import DailyPerformanceMetric
+from portfolio_common.database_models import DailyPerformanceMetric, PortfolioTimeseries
 from portfolio_common.utils import async_timed
 
 logger = logging.getLogger(__name__)
@@ -32,6 +32,26 @@ class PerformanceRepository:
             DailyPerformanceMetric.date <= end_date,
             DailyPerformanceMetric.return_basis == metric_basis
         ).order_by(DailyPerformanceMetric.date.asc())
+
+        result = await self.db.execute(stmt)
+        return result.scalars().all()
+
+    @async_timed(repository="PerformanceRepository", method="get_portfolio_timeseries_for_range")
+    async def get_portfolio_timeseries_for_range(
+        self,
+        portfolio_id: str,
+        start_date: date,
+        end_date: date,
+    ) -> List[PortfolioTimeseries]:
+        """
+        Fetches the raw, daily portfolio_timeseries data required as input
+        for on-the-fly performance calculations.
+        """
+        stmt = select(PortfolioTimeseries).where(
+            PortfolioTimeseries.portfolio_id == portfolio_id,
+            PortfolioTimeseries.date >= start_date,
+            PortfolioTimeseries.date <= end_date
+        ).order_by(PortfolioTimeseries.date.asc())
 
         result = await self.db.execute(stmt)
         return result.scalars().all()
