@@ -101,7 +101,8 @@ graph TD
       - **`cashflow-calculator-service`**: Generates cashflow records from transactions based on configurable business rules.
       - **`position-calculator-service`**: Computes and maintains a historical time series of portfolio positions, including dual-currency cost basis. It is designed to correctly handle back-dated transactions.
       - **`position-valuation-calculator`**: Calculates the market value and unrealized gain/loss of positions using the latest market prices and FX rates.
-      - **`timeseries-generator-service`**: Consumes position and cashflow data to generate daily, aggregated time series records at both the position and portfolio level. This service provides the data needed for performance and attribution analysis.
+      - **`timeseries-generator-service`**: Consumes position and cashflow data to generate daily, aggregated time series records at both the position and portfolio level.
+      - **`performance-calculator-service`**: Consumes portfolio time series data to generate daily performance metrics (linking factors for TWR), preparing the data for on-the-fly performance queries.
 
 -----
 
@@ -140,6 +141,7 @@ The system relies on a well-defined sequence of events published to Kafka topics
   - `GET /portfolios/{portfolio_id}/positions`: Retrieves the latest position for each security in a portfolio, including dual-currency valuation.
   - `GET /portfolios/{portfolio_id}/position-history`: Retrieves the historical time series of positions for a specific security within a portfolio.
   - `GET /portfolios/{portfolio_id}/transactions`: Retrieves a paginated list of transactions for a portfolio, including dual-currency costs and P\&L. Supports sorting and filtering.
+  - `POST /portfolios/{portfolio_id}/performance`: Calculates Time-Weighted Return (TWR) for a portfolio over one or more specified periods.
   - `GET /instruments/`: Retrieves a paginated list of all financial instruments.
   - `GET /prices/`: Retrieves historical market prices for a security.
   - `GET /fx-rates/`: Retrieves historical FX rates for a currency pair.
@@ -205,7 +207,7 @@ All services with a web server also expose an endpoint at `/metrics` for scrapin
     pip install -e src/libs/performance-calculator-engine
     pip install -e src/services/ingestion_service
     pip install -e src/services/persistence_service
-    pip install -e src/services/query-service
+    pip install -e src/services/query_service
     pip install -e src/services/calculators/cashflow_calculator_service
     pip install -e src/services/calculators/cost_calculator_service
     pip install -e src/services/calculators/position_calculator
@@ -355,3 +357,4 @@ This example demonstrates the full flow from ingesting a cross-currency trade to
     The script will print the final `positions` and `transactions` JSON responses to the console, which should match the expected output shown in the previous version of this README.
 
 <!-- end list -->
+ 
