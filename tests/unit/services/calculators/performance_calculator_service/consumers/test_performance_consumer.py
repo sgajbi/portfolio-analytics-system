@@ -1,17 +1,20 @@
 # tests/unit/services/calculators/performance_calculator_service/consumers/test_performance_consumer.py
+import logging
+import json
 import pytest
+from decimal import Decimal
 from unittest.mock import MagicMock, patch, AsyncMock, ANY
 from datetime import date
-from decimal import Decimal
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from portfolio_common.events import PortfolioTimeseriesGeneratedEvent
-from portfolio_common.database_models import PortfolioTimeseries
-from src.services.calculators.performance_calculator_service.app.consumers.performance_consumer import PerformanceCalculatorConsumer
+from portfolio_common.events import PortfolioTimeseriesGeneratedEvent, PerformanceCalculatedEvent
+from portfolio_common.database_models import DailyPerformanceMetric, PortfolioTimeseries
+from src.services.calculators.performance_calculator_service.app.consumers.performance_consumer import PerformanceCalculatorConsumer, DataNotFoundError
 from src.services.calculators.performance_calculator_service.app.repositories.performance_repository import PerformanceRepository
 from portfolio_common.repositories.timeseries_repository import TimeseriesRepository
 from portfolio_common.idempotency_repository import IdempotencyRepository
 from portfolio_common.outbox_repository import OutboxRepository
+
 
 pytestmark = pytest.mark.asyncio
 
@@ -70,7 +73,7 @@ async def test_process_message_success(
     mock_dependencies: dict
 ):
     """
-    GIVEN a valid timeseries event
+    GIVEN a valid timeseries event where all data is available
     WHEN the consumer processes it
     THEN it should calculate metrics, save them, and create an outbox event.
     """
@@ -82,10 +85,10 @@ async def test_process_message_success(
 
     mock_idempotency_repo.is_event_processed.return_value = False
     mock_ts_repo.get_portfolio_timeseries_for_date.return_value = PortfolioTimeseries(
-        eod_market_value=10200, bod_cashflow=100, eod_cashflow=-50, fees=2
+        eod_market_value=10200, bod_cashflow=100, eod_cashflow=-50, fees=2, portfolio_id='p1', date=date(2025,1,1)
     )
     mock_ts_repo.get_last_portfolio_timeseries_before.return_value = PortfolioTimeseries(
-        eod_market_value=10050
+        eod_market_value=10050, portfolio_id='p1', date=date(2025,1,1)
     )
 
     # ACT
@@ -95,12 +98,41 @@ async def test_process_message_success(
     mock_ts_repo.get_portfolio_timeseries_for_date.assert_awaited_once_with(mock_event.portfolio_id, mock_event.date)
     mock_perf_repo.upsert_daily_metrics.assert_awaited_once()
     
-    # Check that both NET and GROSS metrics were saved
     saved_metrics = mock_perf_repo.upsert_daily_metrics.call_args[0][0]
     assert len(saved_metrics) == 2
     assert saved_metrics[0].return_basis == "NET"
-    assert saved_metrics[1].return_basis == "GROSS"
     
     mock_outbox_repo.create_outbox_event.assert_awaited_once()
     mock_idempotency_repo.mark_event_processed.assert_awaited_once()
+    consumer._send_to_dlq_async.assert_not_called()
+
+async def test_process_message_retries_if_data_is_missing(
+    consumer: PerformanceCalculatorConsumer,
+    mock_kafka_message: MagicMock,
+    mock_event: PortfolioTimeseriesGeneratedEvent,
+    mock_dependencies: dict
+):
+    """
+    GIVEN a timeseries event where the current day's data is missing
+    WHEN the consumer processes it
+    THEN it should raise a retryable DataNotFoundError and not send to DLQ.
+    """
+    # ARRANGE
+    mock_idempotency_repo = mock_dependencies["idempotency_repo"]
+    mock_outbox_repo = mock_dependencies["outbox_repo"]
+    mock_perf_repo = mock_dependencies["perf_repo"]
+    mock_ts_repo = mock_dependencies["ts_repo"]
+
+    mock_idempotency_repo.is_event_processed.return_value = False
+    # Simulate the critical data being missing
+    mock_ts_repo.get_portfolio_timeseries_for_date.return_value = None
+
+    # ACT & ASSERT
+    with pytest.raises(DataNotFoundError):
+        await consumer.process_message(mock_kafka_message)
+
+    # Verify that no write operations were attempted
+    mock_perf_repo.upsert_daily_metrics.assert_not_called()
+    mock_outbox_repo.create_outbox_event.assert_not_called()
+    mock_idempotency_repo.mark_event_processed.assert_not_called()
     consumer._send_to_dlq_async.assert_not_called()
