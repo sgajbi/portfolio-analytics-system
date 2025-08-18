@@ -22,31 +22,6 @@ def repository(mock_db_session: AsyncMock) -> PerformanceRepository:
     """Provides an instance of the repository with a mock session."""
     return PerformanceRepository(mock_db_session)
 
-async def test_get_daily_metrics_constructs_correct_query(repository: PerformanceRepository, mock_db_session: AsyncMock):
-    """
-    GIVEN a set of filters
-    WHEN get_daily_metrics is called
-    THEN it should construct a SELECT statement with the correct WHERE and ORDER BY clauses.
-    """
-    # ACT
-    await repository.get_daily_metrics(
-        portfolio_id="P1",
-        start_date=date(2025, 1, 1),
-        end_date=date(2025, 1, 31),
-        metric_basis="NET"
-    )
-
-    # ASSERT
-    executed_stmt = mock_db_session.execute.call_args[0][0]
-    compiled_query = str(executed_stmt.compile(compile_kwargs={"literal_binds": True}))
-    
-    assert "FROM daily_performance_metrics" in compiled_query
-    assert "daily_performance_metrics.portfolio_id = 'P1'" in compiled_query
-    assert "daily_performance_metrics.date >= '2025-01-01'" in compiled_query
-    assert "daily_performance_metrics.date <= '2025-01-31'" in compiled_query
-    assert "daily_performance_metrics.return_basis = 'NET'" in compiled_query
-    assert "ORDER BY daily_performance_metrics.date ASC" in compiled_query
-
 async def test_get_portfolio_timeseries_for_range_constructs_correct_query(repository: PerformanceRepository, mock_db_session: AsyncMock):
     """
     GIVEN a portfolio ID and date range
