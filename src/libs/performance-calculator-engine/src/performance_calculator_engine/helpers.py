@@ -53,13 +53,19 @@ def resolve_period(
 def calculate_annualized_return(cumulative_return: float, start_date: date, end_date: date) -> Optional[float]:
     """
     Calculates the annualized return for a given cumulative return over a period.
-    Returns None if the period is one year or less.
+    Returns None if the period is one year or less (366 days to account for leap year).
     """
     days = (end_date - start_date).days + 1
-    if days <= 365:
+    if days <= 366: # FIX: Changed from 365 to 366 to correctly handle leap years.
         return None
     
     years = days / 365.25
     
     # Formula: ((1 + CumulativeReturn) ^ (1 / Years)) - 1
-    return (((1 + cumulative_return / 100) ** (1 / years)) - 1) * 100
+    # Handle negative returns correctly by checking the base
+    base = 1 + cumulative_return / 100
+    if base < 0:
+        # Cannot take a root of a negative number, annualized return is not meaningful
+        return None
+        
+    return ((base ** (1 / years)) - 1) * 100
