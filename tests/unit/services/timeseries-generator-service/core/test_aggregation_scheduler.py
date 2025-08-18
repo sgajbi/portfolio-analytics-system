@@ -3,14 +3,13 @@ import pytest
 from unittest.mock import MagicMock, patch, AsyncMock
 from datetime import date
 import asyncio
-from contextlib import asynccontextmanager
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from portfolio_common.database_models import PortfolioAggregationJob
 from portfolio_common.kafka_utils import KafkaProducer
 from portfolio_common.config import KAFKA_PORTFOLIO_AGGREGATION_REQUIRED_TOPIC
 from services.timeseries_generator_service.app.core.aggregation_scheduler import AggregationScheduler
-from portfolio_common.repositories.timeseries_repository import TimeseriesRepository
+from src.services.timeseries_generator_service.app.repositories.timeseries_repository import TimeseriesRepository
 
 pytestmark = pytest.mark.asyncio
 

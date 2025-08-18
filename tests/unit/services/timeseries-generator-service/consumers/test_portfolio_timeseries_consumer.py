@@ -3,15 +3,12 @@ import pytest
 from unittest.mock import MagicMock, patch, AsyncMock, ANY
 from datetime import date
 from decimal import Decimal
-from contextlib import asynccontextmanager
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from portfolio_common.events import PortfolioAggregationRequiredEvent
-from portfolio_common.database_models import (
-    Portfolio, PositionTimeseries, Instrument
-)
-from services.timeseries_generator_service.app.consumers.portfolio_timeseries_consumer import PortfolioTimeseriesConsumer
-from portfolio_common.repositories.timeseries_repository import TimeseriesRepository
+from portfolio_common.database_models import Portfolio, PositionTimeseries, Instrument
+from src.services.timeseries_generator_service.app.consumers.portfolio_timeseries_consumer import PortfolioTimeseriesConsumer
+from src.services.timeseries_generator_service.app.repositories.timeseries_repository import TimeseriesRepository
 
 pytestmark = pytest.mark.asyncio
 
