@@ -1,4 +1,5 @@
 # src/services/query_service/app/routers/performance.py
+import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -6,12 +7,15 @@ from portfolio_common.db import get_async_db_session
 from ..dtos.performance_dto import PerformanceRequest, PerformanceResponse
 from ..services.performance_service import PerformanceService
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(
     prefix="/portfolios",
     tags=["Performance"]
 )
 
 @router.post(
+  
     "/{portfolio_id}/performance",
     response_model=PerformanceResponse,
     summary="Calculate On-the-Fly Portfolio Performance",
@@ -38,7 +42,7 @@ async def calculate_performance(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     except Exception as e:
         # Catch-all for any unexpected errors during calculation
-        logger.exception("An unexpected error occurred during performance calculation.") # Add logging for better debugging
+        logger.exception("An unexpected error occurred during performance calculation.")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"An unexpected server error occurred."
