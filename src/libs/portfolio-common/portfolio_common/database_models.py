@@ -281,24 +281,3 @@ class PortfolioValuationJob(Base):
     __table_args__ = (
         UniqueConstraint('portfolio_id', 'security_id', 'valuation_date', name='_portfolio_security_valuation_date_uc'),
     )
-
-class DailyPerformanceMetric(Base):
-    """
-    Stores the fundamental daily performance metrics (linking factors) for a portfolio.
-    This is the core persisted data for all on-the-fly TWR calculations.
-    """
-    __tablename__ = 'daily_performance_metrics'
-
-    portfolio_id = Column(String, ForeignKey('portfolios.portfolio_id'), primary_key=True)
-    date = Column(Date, primary_key=True, index=True)
-    return_basis = Column(String, primary_key=True)  # 'NET' or 'GROSS'
-    
-    linking_factor = Column(Numeric(precision=28, scale=18), nullable=False)
-    daily_return_pct = Column(Numeric(precision=28, scale=18), nullable=False)
-
-    created_at = Column(DateTime(timezone=True), default=func.now())
-    updated_at = Column(DateTime(timezone=True), default=func.now(), onupdate=func.now())
-
-    __table_args__ = (
-        Index('ix_daily_performance_metrics_portfolio_date_basis', 'portfolio_id', 'date', 'return_basis'),
-    )
