@@ -6,8 +6,10 @@ from decimal import Decimal
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from portfolio_common.events import PortfolioAggregationRequiredEvent
-from portfolio_common.database_models import Portfolio, PositionTimeseries, Instrument
-from src.services.timeseries_generator_service.app.consumers.portfolio_timeseries_consumer import PortfolioTimeseriesConsumer
+from portfolio_common.database_models import (
+    Portfolio, PositionTimeseries, Instrument
+)
+from services.timeseries_generator_service.app.consumers.portfolio_timeseries_consumer import PortfolioTimeseriesConsumer
 from src.services.timeseries_generator_service.app.repositories.timeseries_repository import TimeseriesRepository
 
 pytestmark = pytest.mark.asyncio
@@ -53,10 +55,13 @@ def mock_dependencies():
     async def get_session_gen():
         yield mock_db_session
 
+    # FIX: Patch with a mock class that returns our configured mock instance
+    mock_repo_class = MagicMock(return_value=mock_repo)
+
     with patch(
         "services.timeseries_generator_service.app.consumers.portfolio_timeseries_consumer.get_async_db_session", new=get_session_gen
     ), patch(
-        "services.timeseries_generator_service.app.consumers.portfolio_timeseries_consumer.TimeseriesRepository", return_value=mock_repo
+        "services.timeseries_generator_service.app.consumers.portfolio_timeseries_consumer.TimeseriesRepository", new=mock_repo_class
     ):
         yield {"repo": mock_repo}
 
