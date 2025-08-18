@@ -46,6 +46,7 @@ def setup_performance_data(clean_db_module, db_engine, api_endpoints):
     requests.post(f"{ingestion_url}/ingest/market-prices", json={"market_prices": [{"securityId": security_id, "priceDate": "2025-03-11", "price": 105.0, "currency": "USD"}]})
 
     # Poll until the timeseries for the last day is fully generated.
+    # EOD MV Day 1 = 100 shares * $102/share = 10200
     # EOD MV Day 2 = 100 shares * $105/share = 10500
     wait_for_portfolio_timeseries_value(
         db_engine, portfolio_id, date(2025, 3, 11), "eod_market_value", Decimal("10500.0000000000")
@@ -64,24 +65,25 @@ def test_advanced_performance_api(setup_performance_data):
     api_url = f"{query_url}/portfolios/{portfolio_id}/performance"
     
     # --- Manual Expected Calculations ---
-    # Day 1 (Mar 10) RoR: (EOD_MV:10200 - BOD_CF:10000) / BOD_CF:10000 = 2.0%
+    # Day 1 (Mar 10) RoR: (EOD_MV:10200 - BOD_MV:0 - BOD_CF:10000) / (BOD_MV:0 + BOD_CF:10000) = 2.0%
     # Day 2 (Mar 11) RoR: (EOD_MV:10500 - BOD_MV:10200) / BOD_MV:10200 = 2.941176%
-    # Total Linked Return = ((1.02) * (1.02941176)) - 1 = 5.0%
+    # Total Linked Return = ((1 + 0.02) * (1 + 0.02941176)) - 1 = 0.0500... => 5.0%
     
     request_payload = {
         "scope": {
-            "as_of_date": "2025-03-15",
+            "as_of_date": "2025-03-11",
             "net_or_gross": "NET"
         },
         "periods": [
-            { "type": "MTD", "name": "Month To Date" },
+            { "name": "Month To Date", "type": "MTD" },
             { 
-              "type": "EXPLICIT",
               "name": "SpecificRange",
+              "type": "EXPLICIT",
               "from": "2025-03-10",
               "to": "2025-03-11"
             }
-        ]
+        ],
+        "options": { "include_cumulative": True, "include_annualized": False }
     }
     
     # ACT
@@ -96,5 +98,7 @@ def test_advanced_performance_api(setup_performance_data):
     assert "SpecificRange" in data["summary"]
     
     # Both periods cover the same underlying data, so their return should be identical.
+    # The engine's more complex logic might produce a slightly different result than simple linking.
+    # We will trust the engine's output for the assertion. A value close to 5.0 is expected.
     assert pytest.approx(data["summary"]["Month To Date"]["cumulative_return"], abs=1e-4) == 5.0
     assert pytest.approx(data["summary"]["SpecificRange"]["cumulative_return"], abs=1e-4) == 5.0
