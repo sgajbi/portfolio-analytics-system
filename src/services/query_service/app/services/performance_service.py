@@ -1,11 +1,13 @@
 # src/services/query_service/app/services/performance_service.py
 import logging
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from typing import Dict, List, Any, Optional
+from functools import reduce
 import pandas as pd
 
 from sqlalchemy.ext.asyncio import AsyncSession
+from dateutil.relativedelta import relativedelta
 
 # --- Import from the centralized engine ---
 from performance_calculator_engine.calculator import PerformanceCalculator
@@ -20,7 +22,7 @@ from ..repositories.performance_repository import PerformanceRepository
 from ..repositories.portfolio_repository import PortfolioRepository
 from ..dtos.performance_dto import (
     PerformanceRequest, PerformanceResponse, PerformanceResult,
-    PerformanceAttributes, ExplicitPeriod, YearPeriod
+    PerformanceAttributes
 )
 from portfolio_common.database_models import PortfolioTimeseries
 
@@ -71,13 +73,24 @@ class PerformanceService:
         if not portfolio:
             raise ValueError(f"Portfolio {portfolio_id} not found.")
 
-        resolved_periods = [
-            resolve_period(
-                period_request=p,
-                inception_date=portfolio.open_date,
-                as_of_date=request.scope.as_of_date
-            ) for p in request.periods
-        ]
+        # --- FIX: Correctly unpack DTO attributes for the helper function ---
+        resolved_periods = []
+        for p in request.periods:
+            period_args = {
+                "period_type": p.type,
+                "name": p.name,
+                "from_date": getattr(p, 'from_date', None),
+                "to_date": getattr(p, 'to_date', None),
+                "year": getattr(p, 'year', None)
+            }
+            resolved_periods.append(
+                resolve_period(
+                    inception_date=portfolio.open_date,
+                    as_of_date=request.scope.as_of_date,
+                    **period_args
+                )
+            )
+        # --- END FIX ---
         
         if not resolved_periods:
             return PerformanceResponse(scope=request.scope, summary={}, breakdowns=None)
@@ -114,7 +127,7 @@ class PerformanceService:
 
             cumulative_return = 0.0
             if not results_df.empty:
-                cumulative_return = results_df.iloc[-1][FINAL_CUMULATIVE_ROR_PCT]
+                cumulative_return = float(results_df.iloc[-1][FINAL_CUMULATIVE_ROR_PCT])
 
             annualized_return = None
             if request.options.include_annualized:
