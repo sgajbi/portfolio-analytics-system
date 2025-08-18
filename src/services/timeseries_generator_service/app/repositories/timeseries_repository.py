@@ -1,4 +1,4 @@
-# src/libs/portfolio-common/portfolio_common/repositories/timeseries_repository.py
+# src/services/timeseries_generator_service/app/repositories/timeseries_repository.py
 import logging
 from datetime import date, datetime, timedelta, timezone
 from typing import Optional, List

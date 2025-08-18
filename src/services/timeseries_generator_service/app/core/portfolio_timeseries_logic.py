@@ -10,7 +10,7 @@ from portfolio_common.database_models import (
     Cashflow, 
     Portfolio,
 )
-from portfolio_common.repositories.timeseries_repository import TimeseriesRepository
+from ..repositories.timeseries_repository import TimeseriesRepository
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +68,6 @@ class PortfolioTimeseriesLogic:
                     raise FxRateNotFoundError(error_msg)
                 rate = fx_rate.rate
 
-            # FIX: Defensively treat None as 0
             total_bod_cf += (pos_ts.bod_cashflow or Decimal(0)) * rate
             total_eod_cf += (pos_ts.eod_cashflow or Decimal(0)) * rate
             total_eod_mv += (pos_ts.eod_market_value or Decimal(0)) * rate

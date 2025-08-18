@@ -14,10 +14,10 @@ from portfolio_common.kafka_consumer import BaseConsumer
 from portfolio_common.logging_utils import correlation_id_var
 from portfolio_common.events import DailyPositionSnapshotPersistedEvent
 from portfolio_common.db import get_async_db_session
-from portfolio_common.database_models import DailyPositionSnapshot, PortfolioAggregationJob
+from portfolio_common.database_models import DailyPositionSnapshot, PortfolioAggregationJob, Instrument
 
 from ..core.position_timeseries_logic import PositionTimeseriesLogic
-from portfolio_common.repositories.timeseries_repository import TimeseriesRepository
+from ..repositories.timeseries_repository import TimeseriesRepository
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +31,7 @@ class PositionTimeseriesConsumer(BaseConsumer):
     async def process_message(self, msg: Message):
         retry_config = retry(
             wait=wait_fixed(3),
-            stop=stop_after_attempt(15),  # Increased from 5 to 15 attempts
+            stop=stop_after_attempt(15),
             before=before_log(logger, logging.INFO),
             retry=retry_if_exception_type((IntegrityError, InstrumentNotFoundError, PreviousTimeseriesNotFoundError))
         )
@@ -96,7 +96,6 @@ class PositionTimeseriesConsumer(BaseConsumer):
                     
                     await repo.upsert_position_timeseries(new_timeseries_record)
 
-                    # Create an aggregation job for this date.
                     job_stmt = pg_insert(PortfolioAggregationJob).values(
                         portfolio_id=event.portfolio_id,
                         aggregation_date=event.date,

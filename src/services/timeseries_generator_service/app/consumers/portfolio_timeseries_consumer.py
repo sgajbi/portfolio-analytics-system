@@ -13,7 +13,7 @@ from portfolio_common.logging_utils import correlation_id_var
 from portfolio_common.events import PortfolioAggregationRequiredEvent
 from portfolio_common.db import get_async_db_session
 from portfolio_common.database_models import PortfolioAggregationJob
-from portfolio_common.repositories.timeseries_repository import TimeseriesRepository
+from ..repositories.timeseries_repository import TimeseriesRepository
 
 from ..core.portfolio_timeseries_logic import PortfolioTimeseriesLogic
 
@@ -26,9 +26,6 @@ class PortfolioTimeseriesConsumer(BaseConsumer):
     """
 
     async def process_message(self, msg: Message):
-        """
-        Processes a single aggregation job event from the scheduler.
-        """
         try:
             event_data = json.loads(msg.value().decode('utf-8'))
             event = PortfolioAggregationRequiredEvent.model_validate(event_data)
@@ -48,20 +45,15 @@ class PortfolioTimeseriesConsumer(BaseConsumer):
             await self._send_to_dlq_async(msg, e)
         except Exception as e:
             logger.error(f"Unexpected error processing aggregation job for {msg.key()}: {e}", exc_info=True)
-            # Mark the job as FAILED before sending the trigger message to DLQ
             event = locals().get('event')
             if event:
                 await self._update_job_status(event.portfolio_id, event.aggregation_date, 'FAILED')
             await self._send_to_dlq_async(msg, e)
 
     async def _perform_aggregation(self, portfolio_id: str, a_date: date, correlation_id: Optional[str]):
-        """
-        Contains the full aggregation logic for a single portfolio and date,
-        executed within a single atomic transaction.
-        """
         try:
             async for db in get_async_db_session():
-                async with db.begin():  # Main atomic transaction
+                async with db.begin():
                     repo = TimeseriesRepository(db)
                     
                     portfolio = await repo.get_portfolio(portfolio_id)
@@ -80,8 +72,6 @@ class PortfolioTimeseriesConsumer(BaseConsumer):
                     )
 
                     await repo.upsert_portfolio_timeseries(new_portfolio_record)
-
-                    # The outbox event creation that was here has been removed as it is no longer needed.
                     
                     await self._update_job_status(portfolio_id, a_date, 'COMPLETE', db_session=db)
                     logger.info(f"Aggregation job for ({portfolio_id}, {a_date}) transactionally completed.")
@@ -92,10 +82,6 @@ class PortfolioTimeseriesConsumer(BaseConsumer):
             
     
     async def _update_job_status(self, portfolio_id: str, a_date: date, status: str, db_session=None):
-        """
-        Updates a job's status.
-        If no session is provided, it creates a new one.
-        """
         update_stmt = update(PortfolioAggregationJob).where(
             PortfolioAggregationJob.portfolio_id == portfolio_id,
             PortfolioAggregationJob.aggregation_date == a_date
