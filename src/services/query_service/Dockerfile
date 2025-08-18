@@ -24,10 +24,8 @@ FROM python-base as builder
 COPY src/libs/portfolio-common/ /app/src/libs/portfolio-common/
 RUN pip install -e /app/src/libs/portfolio-common
 
-# --- FIX: ADD THE PERFORMANCE CALCULATOR ENGINE ---
 COPY src/libs/performance-calculator-engine/ /app/src/libs/performance-calculator-engine/
 RUN pip install /app/src/libs/performance-calculator-engine
-# --- END FIX ---
 
 # Copy service (underscore path) and install
 COPY src/services/query_service/pyproject.toml /app/src/services/query_service/pyproject.toml
