@@ -10,11 +10,9 @@ from confluent_kafka import Message
 
 from portfolio_common.kafka_consumer import BaseConsumer
 from portfolio_common.logging_utils import correlation_id_var
-from portfolio_common.events import PortfolioAggregationRequiredEvent, PortfolioTimeseriesGeneratedEvent
+from portfolio_common.events import PortfolioAggregationRequiredEvent
 from portfolio_common.db import get_async_db_session
 from portfolio_common.database_models import PortfolioAggregationJob
-from portfolio_common.config import KAFKA_PORTFOLIO_TIMESERIES_GENERATED_TOPIC
-from portfolio_common.outbox_repository import OutboxRepository
 from portfolio_common.repositories.timeseries_repository import TimeseriesRepository
 
 from ..core.portfolio_timeseries_logic import PortfolioTimeseriesLogic
@@ -65,7 +63,6 @@ class PortfolioTimeseriesConsumer(BaseConsumer):
             async for db in get_async_db_session():
                 async with db.begin():  # Main atomic transaction
                     repo = TimeseriesRepository(db)
-                    outbox_repo = OutboxRepository(db)
                     
                     portfolio = await repo.get_portfolio(portfolio_id)
                     if not portfolio:
@@ -84,16 +81,7 @@ class PortfolioTimeseriesConsumer(BaseConsumer):
 
                     await repo.upsert_portfolio_timeseries(new_portfolio_record)
 
-                    completion_event = PortfolioTimeseriesGeneratedEvent.model_validate(new_portfolio_record)
-                    
-                    await outbox_repo.create_outbox_event(
-                        aggregate_type='PortfolioTimeseries',
-                        aggregate_id=str(portfolio_id),
-                        event_type='PortfolioTimeseriesGenerated',
-                        topic=KAFKA_PORTFOLIO_TIMESERIES_GENERATED_TOPIC,
-                        payload=completion_event.model_dump(mode='json'),
-                        correlation_id=correlation_id
-                    )
+                    # The outbox event creation that was here has been removed as it is no longer needed.
                     
                     await self._update_job_status(portfolio_id, a_date, 'COMPLETE', db_session=db)
                     logger.info(f"Aggregation job for ({portfolio_id}, {a_date}) transactionally completed.")

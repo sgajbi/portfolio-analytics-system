@@ -12,7 +12,6 @@ from portfolio_common.database_models import (
 )
 from services.timeseries_generator_service.app.consumers.portfolio_timeseries_consumer import PortfolioTimeseriesConsumer
 from portfolio_common.repositories.timeseries_repository import TimeseriesRepository
-from portfolio_common.outbox_repository import OutboxRepository
 
 pytestmark = pytest.mark.asyncio
 
@@ -49,7 +48,6 @@ def mock_kafka_message(mock_event: PortfolioAggregationRequiredEvent) -> MagicMo
 def mock_dependencies():
     """A fixture to patch all external dependencies for the consumer test."""
     mock_repo = AsyncMock(spec=TimeseriesRepository)
-    mock_outbox_repo = AsyncMock(spec=OutboxRepository)
     
     mock_db_session = AsyncMock(spec=AsyncSession)
     mock_transaction = AsyncMock()
@@ -62,13 +60,8 @@ def mock_dependencies():
         "services.timeseries_generator_service.app.consumers.portfolio_timeseries_consumer.get_async_db_session", new=get_session_gen
     ), patch(
         "services.timeseries_generator_service.app.consumers.portfolio_timeseries_consumer.TimeseriesRepository", return_value=mock_repo
-    ), patch(
-        "services.timeseries_generator_service.app.consumers.portfolio_timeseries_consumer.OutboxRepository", return_value=mock_outbox_repo
     ):
-        yield {
-            "repo": mock_repo,
-            "outbox_repo": mock_outbox_repo
-        }
+        yield {"repo": mock_repo}
 
 async def test_process_message_success(
     consumer: PortfolioTimeseriesConsumer,
@@ -83,7 +76,6 @@ async def test_process_message_success(
     """
     # ARRANGE
     mock_repo = mock_dependencies["repo"]
-    mock_outbox_repo = mock_dependencies["outbox_repo"]
     
     mock_repo.get_portfolio.return_value = Portfolio(portfolio_id=mock_event.portfolio_id, base_currency="USD")
     mock_repo.get_all_position_timeseries_for_date.return_value = [
@@ -100,7 +92,6 @@ async def test_process_message_success(
         # ASSERT
         mock_repo.get_portfolio.assert_called_once_with(mock_event.portfolio_id)
         mock_repo.upsert_portfolio_timeseries.assert_called_once()
-        mock_outbox_repo.create_outbox_event.assert_called_once()
         mock_update_status.assert_called_once_with(mock_event.portfolio_id, mock_event.aggregation_date, 'COMPLETE', db_session=ANY)
         consumer._send_to_dlq_async.assert_not_called()
 
@@ -117,7 +108,6 @@ async def test_process_message_fails_if_portfolio_missing(
     """
     # ARRANGE
     mock_repo = mock_dependencies["repo"]
-    mock_outbox_repo = mock_dependencies["outbox_repo"]
     
     mock_repo.get_portfolio.return_value = None  # Simulate portfolio not found
 
@@ -128,7 +118,6 @@ async def test_process_message_fails_if_portfolio_missing(
         # ASSERT
         mock_repo.get_portfolio.assert_called_once_with(mock_event.portfolio_id)
         mock_repo.upsert_portfolio_timeseries.assert_not_called()
-        mock_outbox_repo.create_outbox_event.assert_not_called()
         # Crucially, assert the job was marked as FAILED
         mock_update_status.assert_called_once_with(mock_event.portfolio_id, mock_event.aggregation_date, 'FAILED')
         consumer._send_to_dlq_async.assert_not_called()
