@@ -174,3 +174,30 @@ def test_sell_strategy_multi_lot_fifo():
     # Assert that 30 shares from the second lot remain.
     remaining_quantity = disposition_engine.get_available_quantity("P1", "AAPL")
     assert remaining_quantity == Decimal("30")
+
+def test_deposit_strategy_creates_cost_lot(cost_calculator, mock_disposition_engine):
+    """
+    Tests that a DEPOSIT transaction correctly uses the CashInflowStrategy
+    to create a cost lot in the disposition engine.
+    """
+    # Arrange
+    deposit_transaction = Transaction(
+        transaction_id="DEPOSIT001", portfolio_id="P1", instrument_id="CASH_USD", security_id="CASH_USD",
+        transaction_type=TransactionType.DEPOSIT, transaction_date=datetime(2023, 1, 1),
+        quantity=Decimal("10000"), price=Decimal("1"), gross_transaction_amount=Decimal("10000"),
+        trade_currency="USD", portfolio_base_currency="USD", transaction_fx_rate=Decimal("1.0")
+    )
+
+    # Act
+    cost_calculator.calculate_transaction_costs(deposit_transaction)
+
+    # Assert
+    assert deposit_transaction.net_cost == Decimal("10000")
+    assert deposit_transaction.gross_cost == Decimal("10000")
+    
+    # Verify that a cost lot was created
+    mock_disposition_engine.add_buy_lot.assert_called_once()
+    call_args = mock_disposition_engine.add_buy_lot.call_args[0][0]
+    
+    # The quantity of the "lot" should be the amount of cash
+    assert call_args.quantity == Decimal("10000")

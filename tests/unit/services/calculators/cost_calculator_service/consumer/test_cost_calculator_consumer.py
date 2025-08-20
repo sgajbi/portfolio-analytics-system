@@ -18,7 +18,9 @@ pytestmark = pytest.mark.asyncio
 
 @pytest.fixture
 def cost_calculator_consumer():
-    """Provides an instance of the consumer."""
+    """
+    Provides an instance of the consumer.
+    """
     consumer = CostCalculatorConsumer(
         bootstrap_servers="mock_server",
         topic="raw_transactions_completed",
@@ -38,7 +40,6 @@ def mock_dependencies():
     mock_transaction = AsyncMock()
     mock_db_session.begin.return_value = mock_transaction
     
-    # This is now a correct async generator, not a context manager
     async def get_session_gen():
         yield mock_db_session
 
