@@ -7,7 +7,7 @@ from sqlalchemy import select, func, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from portfolio_common.database_models import PositionHistory, Transaction, DailyPositionSnapshot
-from portfolio_common.utils import async_timed # <-- IMPORT DECORATOR
+from portfolio_common.utils import async_timed
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +17,39 @@ class PositionRepository:
     """
     def __init__(self, db: AsyncSession):
         self.db = db
+
+    @async_timed(repository="PositionRepository", method="upsert_daily_snapshot")
+    async def upsert_daily_snapshot(self, snapshot: DailyPositionSnapshot):
+        """
+        Idempotently creates or updates a daily position snapshot.
+        """
+        try:
+            insert_dict = {
+                c.name: getattr(snapshot, c.name) 
+                for c in snapshot.__table__.columns 
+                if c.name not in ['id', 'created_at', 'updated_at']
+            }
+            
+            stmt = pg_insert(DailyPositionSnapshot).values(**insert_dict)
+            
+            update_dict = {
+                'quantity': stmt.excluded.quantity,
+                'cost_basis': stmt.excluded.cost_basis,
+                'cost_basis_local': stmt.excluded.cost_basis_local,
+                'valuation_status': 'UNVALUED', # Reset status on update
+                'updated_at': func.now()
+            }
+
+            final_stmt = stmt.on_conflict_do_update(
+                index_elements=['portfolio_id', 'security_id', 'date'],
+                set_=update_dict
+            )
+
+            await self.db.execute(final_stmt)
+            logger.info(f"Staged upsert for daily snapshot for {snapshot.security_id} on {snapshot.date}")
+        except Exception as e:
+            logger.error(f"Failed to stage upsert for daily snapshot: {e}", exc_info=True)
+            raise
 
     @async_timed(repository="PositionRepository", method="find_open_security_ids_as_of")
     async def find_open_security_ids_as_of(self, portfolio_id: str, a_date: date) -> List[str]:

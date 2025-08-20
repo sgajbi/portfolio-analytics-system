@@ -76,18 +76,23 @@ def test_annualized_return_for_long_period():
     # 2 years period (731 days including a leap year)
     result = calculate_annualized_return(21, date(2023, 1, 1), date(2024, 12, 31))
     assert result is not None
-    # FIX: Use the precise calculated value for the assertion
     assert pytest.approx(result) == 9.99282915
 
-def test_annualized_return_for_short_period():
+def test_annualized_return_for_short_period_returns_cumulative():
+    """
+    Tests that for periods <= 1 year, the function returns the original cumulative return.
+    """
     # Less than 1 year period
-    result = calculate_annualized_return(5, date(2024, 1, 1), date(2024, 6, 30))
-    assert result is None
+    result = calculate_annualized_return(5.0, date(2024, 1, 1), date(2024, 6, 30))
+    assert result == 5.0
 
-def test_annualized_return_for_exactly_one_year():
+def test_annualized_return_for_exactly_one_year_returns_cumulative():
+    """
+    Tests that for a full year, the function returns the original cumulative return.
+    """
     # A full leap year (366 days) should not be annualized
-    result = calculate_annualized_return(8, date(2024, 1, 1), date(2024, 12, 31))
-    assert result is None
+    result = calculate_annualized_return(8.0, date(2024, 1, 1), date(2024, 12, 31))
+    assert result == 8.0
 
 def test_annualized_return_for_loss():
     # 3 years period with a loss (1096 days)

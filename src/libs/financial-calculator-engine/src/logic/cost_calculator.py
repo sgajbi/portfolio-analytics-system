@@ -47,6 +47,18 @@ class SellStrategy:
             transaction.net_cost_local = -cogs_local
             transaction.gross_cost = -cogs_base
 
+class CashInflowStrategy:
+    def calculate_costs(self, transaction: Transaction, disposition_engine: DispositionEngine, error_reporter: ErrorReporter) -> None:
+        """Treats deposits/transfers-in like a BUY for cost lot creation purposes."""
+        transaction.gross_cost = transaction.gross_transaction_amount
+        transaction.net_cost_local = transaction.gross_transaction_amount
+        fx_rate = transaction.transaction_fx_rate or Decimal(1)
+        transaction.net_cost = transaction.net_cost_local * fx_rate
+        cash_buy_equivalent = transaction.model_copy()
+        cash_buy_equivalent.quantity = transaction.gross_transaction_amount
+        
+        disposition_engine.add_buy_lot(cash_buy_equivalent)
+
 class DefaultStrategy:
     def calculate_costs(self, transaction: Transaction, disposition_engine: DispositionEngine, error_reporter: ErrorReporter) -> None:
         transaction.gross_cost = transaction.gross_transaction_amount
@@ -63,7 +75,7 @@ class CostCalculator:
             TransactionType.SELL: SellStrategy(),
             TransactionType.INTEREST: DefaultStrategy(),
             TransactionType.DIVIDEND: DefaultStrategy(),
-            TransactionType.DEPOSIT: DefaultStrategy(),
+            TransactionType.DEPOSIT: CashInflowStrategy(),
             TransactionType.WITHDRAWAL: DefaultStrategy(),
             TransactionType.FEE: DefaultStrategy(),
             TransactionType.OTHER: DefaultStrategy(),
