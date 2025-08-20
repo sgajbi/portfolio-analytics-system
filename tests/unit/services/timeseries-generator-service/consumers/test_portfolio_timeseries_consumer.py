@@ -55,7 +55,6 @@ def mock_dependencies():
     async def get_session_gen():
         yield mock_db_session
 
-    # FIX: Patch with a mock class that returns our configured mock instance
     mock_repo_class = MagicMock(return_value=mock_repo)
 
     with patch(
@@ -80,11 +79,21 @@ async def test_process_message_success(
     mock_repo = mock_dependencies["repo"]
     
     mock_repo.get_portfolio.return_value = Portfolio(portfolio_id=mock_event.portfolio_id, base_currency="USD")
+    
+    # FIX: Initialize the mock object with all required fields to prevent TypeError
     mock_repo.get_all_position_timeseries_for_date.return_value = [
-        PositionTimeseries(security_id="SEC_USD", date=mock_event.aggregation_date, eod_market_value=Decimal("1000"))
+        PositionTimeseries(
+            security_id="SEC_USD", 
+            date=mock_event.aggregation_date, 
+            eod_market_value=Decimal("1000"),
+            bod_cashflow_position=Decimal(0),
+            eod_cashflow_position=Decimal(0),
+            bod_cashflow_portfolio=Decimal(0),
+            eod_cashflow_portfolio=Decimal(0)
+        )
     ]
-    mock_repo.get_portfolio_level_cashflows_for_date.return_value = []
-    mock_repo.get_instruments_by_ids.return_value = [Instrument(security_id="SEC_USD", currency="USD")]
+    
+    mock_repo.get_instruments_by_ids.return_value = [Instrument(security_id="SEC_USD", currency="USD", product_type="Equity")]
     mock_repo.get_last_portfolio_timeseries_before.return_value = None
 
     with patch.object(consumer, '_update_job_status', new_callable=AsyncMock) as mock_update_status:

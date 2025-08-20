@@ -71,7 +71,8 @@ class CashflowCalculatorConsumer(BaseConsumer):
                     cashflow_to_save = CashflowLogic.calculate(event, rule)
                     saved = await cashflow_repo.create_cashflow(cashflow_to_save)
 
-                    # Build the event with ALL required fields
+                    # --- LOGIC CHANGE ---
+                    # Build the event with the new boolean flags
                     completion_evt = CashflowCalculatedEvent(
                         id=saved.id,
                         transaction_id=saved.transaction_id,
@@ -82,9 +83,11 @@ class CashflowCalculatorConsumer(BaseConsumer):
                         currency=saved.currency,
                         classification=saved.classification,
                         timing=saved.timing,
-                        level=saved.level,
+                        is_position_flow=saved.is_position_flow,
+                        is_portfolio_flow=saved.is_portfolio_flow,
                         calculationType=saved.calculation_type
                     )
+                    # --- END LOGIC CHANGE ---
 
                     # 🔑 Keying policy: use portfolio_id for strict partition affinity
                     await outbox_repo.create_outbox_event(

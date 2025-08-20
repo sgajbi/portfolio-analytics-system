@@ -61,13 +61,11 @@ class PortfolioTimeseriesConsumer(BaseConsumer):
                         raise ValueError(f"Portfolio {portfolio_id} not found during aggregation.")
 
                     position_timeseries_list = await repo.get_all_position_timeseries_for_date(portfolio_id, a_date)
-                    portfolio_cashflows = await repo.get_portfolio_level_cashflows_for_date(portfolio_id, a_date)
                     
                     new_portfolio_record = await PortfolioTimeseriesLogic.calculate_daily_record(
                         portfolio=portfolio,
                         a_date=a_date,
                         position_timeseries_list=position_timeseries_list,
-                        portfolio_cashflows=portfolio_cashflows,
                         repo=repo
                     )
 

@@ -106,6 +106,10 @@ class CashflowCalculatedEvent(BaseModel):
     amount: Decimal
     currency: str
     classification: str
+    timing: str
+    is_position_flow: bool
+    is_portfolio_flow: bool
+    calculation_type: str = Field(..., alias="calculationType")
 
 class PositionTimeseriesGeneratedEvent(BaseModel):
     model_config = ConfigDict(from_attributes=True)

@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from portfolio_common.logging_utils import correlation_id_var
-from portfolio_common.events import TransactionEvent
+from portfolio_common.events import TransactionEvent, CashflowCalculatedEvent
 from portfolio_common.database_models import Cashflow
 from src.services.calculators.cashflow_calculator_service.app.consumers.transaction_consumer import CashflowCalculatorConsumer
 from src.services.calculators.cashflow_calculator_service.app.repositories.cashflow_repository import CashflowRepository
@@ -103,11 +103,14 @@ async def test_process_message_success(
 
     mock_idempotency_repo.is_event_processed.return_value = False
     
+    # This mock represents the object returned from the database after saving
     mock_saved_cashflow = Cashflow(
         id=1, transaction_id="TXN_CASHFLOW_CONSUMER", portfolio_id="PORT_CFC_01",
         security_id="SEC_CFC_01", cashflow_date=date(2025, 8, 1),
-        amount=Decimal("-1005.50"), currency="USD", classification="INVESTMENT_OUTFLOW",
-        timing="EOD", level="POSITION", calculation_type="NET"
+        amount=Decimal("1005.50"), currency="USD", classification="INVESTMENT_OUTFLOW",
+        timing="BOD", calculation_type="NET",
+        is_position_flow=True,
+        is_portfolio_flow=False # Correct for a BUY
     )
     mock_cashflow_repo.create_cashflow.return_value = mock_saved_cashflow
 
@@ -118,6 +121,13 @@ async def test_process_message_success(
     mock_idempotency_repo.is_event_processed.assert_called_once_with("raw_transactions_completed-0-123", "cashflow-calculator")
     mock_cashflow_repo.create_cashflow.assert_called_once()
     mock_outbox_repo.create_outbox_event.assert_called_once()
+    
+    # Inspect the payload sent to the outbox to ensure it's correct
+    outbox_payload = mock_outbox_repo.create_outbox_event.call_args.kwargs['payload']
+    assert outbox_payload['is_position_flow'] is True
+    assert outbox_payload['is_portfolio_flow'] is False
+    assert 'level' not in outbox_payload
+    
     mock_idempotency_repo.mark_event_processed.assert_called_once()
     cashflow_consumer._send_to_dlq_async.assert_not_called()
 
