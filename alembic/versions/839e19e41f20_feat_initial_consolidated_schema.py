@@ -1,8 +1,8 @@
 """feat: Initial consolidated schema
 
-Revision ID: 1d9f5b399677
+Revision ID: 839e19e41f20
 Revises: 
-Create Date: 2025-08-20 14:36:01.546224
+Create Date: 2025-08-20 14:49:38.613845
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = '1d9f5b399677'
+revision: str = '839e19e41f20'
 down_revision: Union[str, None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -230,8 +230,9 @@ def upgrade() -> None:
     sa.Column('currency', sa.String(length=3), nullable=False),
     sa.Column('classification', sa.String(), nullable=False),
     sa.Column('timing', sa.String(), nullable=False),
-    sa.Column('level', sa.String(), nullable=False),
     sa.Column('calculation_type', sa.String(), nullable=False),
+    sa.Column('is_position_flow', sa.Boolean(), server_default='f', nullable=False),
+    sa.Column('is_portfolio_flow', sa.Boolean(), server_default='f', nullable=False),
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=True),
     sa.Column('updated_at', sa.DateTime(timezone=True), nullable=True),
     sa.ForeignKeyConstraint(['portfolio_id'], ['portfolios.portfolio_id'], ),

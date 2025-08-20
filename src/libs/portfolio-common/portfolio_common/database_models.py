@@ -168,8 +168,9 @@ class Cashflow(Base):
     currency = Column(String(3), nullable=False)
     classification = Column(String, nullable=False)
     timing = Column(String, nullable=False)
-    level = Column(String, nullable=False)
     calculation_type = Column(String, nullable=False)
+    is_position_flow = Column(Boolean, server_default='f', nullable=False)
+    is_portfolio_flow = Column(Boolean, server_default='f', nullable=False)
     created_at = Column(DateTime(timezone=True), default=func.now())
     updated_at = Column(DateTime(timezone=True), default=func.now(), onupdate=func.now())
 
@@ -244,6 +245,10 @@ class OutboxEvent(Base):
 
 
 class PortfolioAggregationJob(Base):
+    """
+    Tracks portfolio-date pairs that require aggregation.
+    This table acts as a stateful, idempotent queue to trigger portfolio time series calculations.
+    """
     __tablename__ = 'portfolio_aggregation_jobs'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -259,6 +264,11 @@ class PortfolioAggregationJob(Base):
     )
 
 class PortfolioValuationJob(Base):
+    """
+    Tracks portfolio-security-date combinations that require valuation.
+    This table acts as a stateful, idempotent work set to trigger valuation calculations,
+    preventing race conditions from multiple upstream events.
+    """
     __tablename__ = 'portfolio_valuation_jobs'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
