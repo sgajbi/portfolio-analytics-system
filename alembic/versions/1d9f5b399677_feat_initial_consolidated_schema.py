@@ -1,8 +1,8 @@
-"""feat: add valuation_status to daily_position_snapshots
+"""feat: Initial consolidated schema
 
-Revision ID: 84dd2172ef66
+Revision ID: 1d9f5b399677
 Revises: 
-Create Date: 2025-08-07 10:37:45.357543
+Create Date: 2025-08-20 14:36:01.546224
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = '84dd2172ef66'
+revision: str = '1d9f5b399677'
 down_revision: Union[str, None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -26,8 +26,8 @@ def upgrade() -> None:
     sa.Column('to_currency', sa.String(length=3), nullable=False),
     sa.Column('rate_date', sa.Date(), nullable=False),
     sa.Column('rate', sa.Numeric(precision=18, scale=10), nullable=False),
-    sa.Column('created_at', sa.DateTime(), nullable=True),
-    sa.Column('updated_at', sa.DateTime(), nullable=True),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('updated_at', sa.DateTime(timezone=True), nullable=True),
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('from_currency', 'to_currency', 'rate_date', name='_currency_pair_date_uc')
     )
@@ -38,8 +38,8 @@ def upgrade() -> None:
     sa.Column('isin', sa.String(), nullable=False),
     sa.Column('currency', sa.String(), nullable=False),
     sa.Column('product_type', sa.String(), nullable=False),
-    sa.Column('created_at', sa.DateTime(), nullable=True),
-    sa.Column('updated_at', sa.DateTime(), nullable=True),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('updated_at', sa.DateTime(timezone=True), nullable=True),
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('isin')
     )
@@ -50,8 +50,8 @@ def upgrade() -> None:
     sa.Column('price_date', sa.Date(), nullable=False),
     sa.Column('price', sa.Numeric(precision=18, scale=10), nullable=False),
     sa.Column('currency', sa.String(), nullable=False),
-    sa.Column('created_at', sa.DateTime(), nullable=True),
-    sa.Column('updated_at', sa.DateTime(), nullable=True),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('updated_at', sa.DateTime(timezone=True), nullable=True),
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('security_id', 'price_date', name='_security_price_date_uc')
     )
@@ -66,14 +66,44 @@ def upgrade() -> None:
     sa.Column('status', sa.String(), nullable=False),
     sa.Column('correlation_id', sa.String(), nullable=True),
     sa.Column('retry_count', sa.Integer(), nullable=False),
-    sa.Column('last_attempted_at', sa.DateTime(), nullable=True),
-    sa.Column('created_at', sa.DateTime(), nullable=False),
-    sa.Column('processed_at', sa.DateTime(), nullable=True),
+    sa.Column('last_attempted_at', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
+    sa.Column('processed_at', sa.DateTime(timezone=True), nullable=True),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_outbox_events_aggregate_id'), 'outbox_events', ['aggregate_id'], unique=False)
     op.create_index(op.f('ix_outbox_events_aggregate_type'), 'outbox_events', ['aggregate_type'], unique=False)
     op.create_index(op.f('ix_outbox_events_status'), 'outbox_events', ['status'], unique=False)
+    op.create_table('portfolio_aggregation_jobs',
+    sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
+    sa.Column('portfolio_id', sa.String(), nullable=False),
+    sa.Column('aggregation_date', sa.Date(), nullable=False),
+    sa.Column('status', sa.String(), nullable=False),
+    sa.Column('correlation_id', sa.String(), nullable=True),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('updated_at', sa.DateTime(timezone=True), nullable=True),
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('portfolio_id', 'aggregation_date', name='_portfolio_date_uc')
+    )
+    op.create_index(op.f('ix_portfolio_aggregation_jobs_aggregation_date'), 'portfolio_aggregation_jobs', ['aggregation_date'], unique=False)
+    op.create_index(op.f('ix_portfolio_aggregation_jobs_portfolio_id'), 'portfolio_aggregation_jobs', ['portfolio_id'], unique=False)
+    op.create_index(op.f('ix_portfolio_aggregation_jobs_status'), 'portfolio_aggregation_jobs', ['status'], unique=False)
+    op.create_table('portfolio_valuation_jobs',
+    sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
+    sa.Column('portfolio_id', sa.String(), nullable=False),
+    sa.Column('security_id', sa.String(), nullable=False),
+    sa.Column('valuation_date', sa.Date(), nullable=False),
+    sa.Column('status', sa.String(), nullable=False),
+    sa.Column('correlation_id', sa.String(), nullable=True),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('updated_at', sa.DateTime(timezone=True), nullable=True),
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('portfolio_id', 'security_id', 'valuation_date', name='_portfolio_security_valuation_date_uc')
+    )
+    op.create_index(op.f('ix_portfolio_valuation_jobs_portfolio_id'), 'portfolio_valuation_jobs', ['portfolio_id'], unique=False)
+    op.create_index(op.f('ix_portfolio_valuation_jobs_security_id'), 'portfolio_valuation_jobs', ['security_id'], unique=False)
+    op.create_index(op.f('ix_portfolio_valuation_jobs_status'), 'portfolio_valuation_jobs', ['status'], unique=False)
+    op.create_index(op.f('ix_portfolio_valuation_jobs_valuation_date'), 'portfolio_valuation_jobs', ['valuation_date'], unique=False)
     op.create_table('portfolios',
     sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
     sa.Column('portfolio_id', sa.String(), nullable=False),
@@ -89,8 +119,8 @@ def upgrade() -> None:
     sa.Column('is_leverage_allowed', sa.Boolean(), nullable=False),
     sa.Column('advisor_id', sa.String(), nullable=True),
     sa.Column('status', sa.String(), nullable=False),
-    sa.Column('created_at', sa.DateTime(), nullable=True),
-    sa.Column('updated_at', sa.DateTime(), nullable=True),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('updated_at', sa.DateTime(timezone=True), nullable=True),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_portfolios_cif_id'), 'portfolios', ['cif_id'], unique=False)
@@ -101,7 +131,7 @@ def upgrade() -> None:
     sa.Column('portfolio_id', sa.String(), nullable=False),
     sa.Column('service_name', sa.String(), nullable=False),
     sa.Column('correlation_id', sa.String(), nullable=True),
-    sa.Column('processed_at', sa.DateTime(), server_default=sa.text('now()'), nullable=True),
+    sa.Column('processed_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=True),
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('event_id', 'service_name', name='_event_service_uc')
     )
@@ -112,16 +142,20 @@ def upgrade() -> None:
     sa.Column('date', sa.Date(), nullable=False),
     sa.Column('quantity', sa.Numeric(precision=18, scale=10), nullable=False),
     sa.Column('cost_basis', sa.Numeric(precision=18, scale=10), nullable=False),
+    sa.Column('cost_basis_local', sa.Numeric(precision=18, scale=10), nullable=True),
     sa.Column('market_price', sa.Numeric(precision=18, scale=10), nullable=True),
     sa.Column('market_value', sa.Numeric(precision=18, scale=10), nullable=True),
+    sa.Column('market_value_local', sa.Numeric(precision=18, scale=10), nullable=True),
     sa.Column('unrealized_gain_loss', sa.Numeric(precision=18, scale=10), nullable=True),
+    sa.Column('unrealized_gain_loss_local', sa.Numeric(precision=18, scale=10), nullable=True),
     sa.Column('valuation_status', sa.String(), server_default='UNVALUED', nullable=False),
-    sa.Column('created_at', sa.DateTime(), nullable=True),
-    sa.Column('updated_at', sa.DateTime(), nullable=True),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('updated_at', sa.DateTime(timezone=True), nullable=True),
     sa.ForeignKeyConstraint(['portfolio_id'], ['portfolios.portfolio_id'], ),
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('portfolio_id', 'security_id', 'date', name='_portfolio_security_date_uc')
     )
+    op.create_index('ix_daily_position_snapshots_covering', 'daily_position_snapshots', ['portfolio_id', 'security_id', sa.text('date DESC'), sa.text('id DESC')], unique=False)
     op.create_index(op.f('ix_daily_position_snapshots_date'), 'daily_position_snapshots', ['date'], unique=False)
     op.create_index(op.f('ix_daily_position_snapshots_portfolio_id'), 'daily_position_snapshots', ['portfolio_id'], unique=False)
     op.create_index(op.f('ix_daily_position_snapshots_security_id'), 'daily_position_snapshots', ['security_id'], unique=False)
@@ -134,8 +168,8 @@ def upgrade() -> None:
     sa.Column('eod_cashflow', sa.Numeric(precision=18, scale=10), nullable=False),
     sa.Column('eod_market_value', sa.Numeric(precision=18, scale=10), nullable=False),
     sa.Column('fees', sa.Numeric(precision=18, scale=10), nullable=False),
-    sa.Column('created_at', sa.DateTime(), nullable=True),
-    sa.Column('updated_at', sa.DateTime(), nullable=True),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('updated_at', sa.DateTime(timezone=True), nullable=True),
     sa.ForeignKeyConstraint(['portfolio_id'], ['portfolios.portfolio_id'], ),
     sa.PrimaryKeyConstraint('portfolio_id', 'date')
     )
@@ -144,14 +178,16 @@ def upgrade() -> None:
     sa.Column('security_id', sa.String(), nullable=False),
     sa.Column('date', sa.Date(), nullable=False),
     sa.Column('bod_market_value', sa.Numeric(precision=18, scale=10), nullable=False),
-    sa.Column('bod_cashflow', sa.Numeric(precision=18, scale=10), nullable=False),
-    sa.Column('eod_cashflow', sa.Numeric(precision=18, scale=10), nullable=False),
+    sa.Column('bod_cashflow_position', sa.Numeric(precision=18, scale=10), nullable=False),
+    sa.Column('eod_cashflow_position', sa.Numeric(precision=18, scale=10), nullable=False),
+    sa.Column('bod_cashflow_portfolio', sa.Numeric(precision=18, scale=10), nullable=False),
+    sa.Column('eod_cashflow_portfolio', sa.Numeric(precision=18, scale=10), nullable=False),
     sa.Column('eod_market_value', sa.Numeric(precision=18, scale=10), nullable=False),
     sa.Column('fees', sa.Numeric(precision=18, scale=10), nullable=False),
     sa.Column('quantity', sa.Numeric(precision=18, scale=10), nullable=False),
     sa.Column('cost', sa.Numeric(precision=18, scale=10), nullable=False),
-    sa.Column('created_at', sa.DateTime(), nullable=True),
-    sa.Column('updated_at', sa.DateTime(), nullable=True),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('updated_at', sa.DateTime(timezone=True), nullable=True),
     sa.ForeignKeyConstraint(['portfolio_id'], ['portfolios.portfolio_id'], ),
     sa.ForeignKeyConstraint(['security_id'], ['instruments.security_id'], ),
     sa.PrimaryKeyConstraint('portfolio_id', 'security_id', 'date')
@@ -171,11 +207,14 @@ def upgrade() -> None:
     sa.Column('transaction_date', sa.DateTime(timezone=True), nullable=False),
     sa.Column('settlement_date', sa.DateTime(timezone=True), nullable=True),
     sa.Column('trade_fee', sa.Numeric(precision=18, scale=10), nullable=True),
-    sa.Column('created_at', sa.DateTime(), nullable=True),
-    sa.Column('updated_at', sa.DateTime(), nullable=True),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('updated_at', sa.DateTime(timezone=True), nullable=True),
     sa.Column('gross_cost', sa.Numeric(precision=18, scale=10), nullable=True),
     sa.Column('net_cost', sa.Numeric(precision=18, scale=10), nullable=True),
     sa.Column('realized_gain_loss', sa.Numeric(precision=18, scale=10), nullable=True),
+    sa.Column('transaction_fx_rate', sa.Numeric(precision=18, scale=10), nullable=True),
+    sa.Column('net_cost_local', sa.Numeric(precision=18, scale=10), nullable=True),
+    sa.Column('realized_gain_loss_local', sa.Numeric(precision=18, scale=10), nullable=True),
     sa.ForeignKeyConstraint(['portfolio_id'], ['portfolios.portfolio_id'], ),
     sa.PrimaryKeyConstraint('id')
     )
@@ -193,8 +232,8 @@ def upgrade() -> None:
     sa.Column('timing', sa.String(), nullable=False),
     sa.Column('level', sa.String(), nullable=False),
     sa.Column('calculation_type', sa.String(), nullable=False),
-    sa.Column('created_at', sa.DateTime(), nullable=True),
-    sa.Column('updated_at', sa.DateTime(), nullable=True),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('updated_at', sa.DateTime(timezone=True), nullable=True),
     sa.ForeignKeyConstraint(['portfolio_id'], ['portfolios.portfolio_id'], ),
     sa.ForeignKeyConstraint(['transaction_id'], ['transactions.transaction_id'], ),
     sa.PrimaryKeyConstraint('id'),
@@ -211,8 +250,9 @@ def upgrade() -> None:
     sa.Column('position_date', sa.Date(), nullable=False),
     sa.Column('quantity', sa.Numeric(precision=18, scale=10), nullable=False),
     sa.Column('cost_basis', sa.Numeric(precision=18, scale=10), nullable=False),
-    sa.Column('created_at', sa.DateTime(), nullable=True),
-    sa.Column('updated_at', sa.DateTime(), nullable=True),
+    sa.Column('cost_basis_local', sa.Numeric(precision=18, scale=10), nullable=True),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('updated_at', sa.DateTime(timezone=True), nullable=True),
     sa.ForeignKeyConstraint(['portfolio_id'], ['portfolios.portfolio_id'], ),
     sa.ForeignKeyConstraint(['transaction_id'], ['transactions.transaction_id'], ),
     sa.PrimaryKeyConstraint('id')
@@ -226,8 +266,8 @@ def upgrade() -> None:
     sa.Column('fee_type', sa.String(), nullable=False),
     sa.Column('amount', sa.Numeric(precision=18, scale=10), nullable=False),
     sa.Column('currency', sa.String(), nullable=False),
-    sa.Column('created_at', sa.DateTime(), nullable=True),
-    sa.Column('updated_at', sa.DateTime(), nullable=True),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('updated_at', sa.DateTime(timezone=True), nullable=True),
     sa.ForeignKeyConstraint(['transaction_id'], ['transactions.transaction_id'], ),
     sa.PrimaryKeyConstraint('id')
     )
@@ -254,11 +294,21 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_daily_position_snapshots_security_id'), table_name='daily_position_snapshots')
     op.drop_index(op.f('ix_daily_position_snapshots_portfolio_id'), table_name='daily_position_snapshots')
     op.drop_index(op.f('ix_daily_position_snapshots_date'), table_name='daily_position_snapshots')
+    op.drop_index('ix_daily_position_snapshots_covering', table_name='daily_position_snapshots')
     op.drop_table('daily_position_snapshots')
     op.drop_table('processed_events')
     op.drop_index(op.f('ix_portfolios_portfolio_id'), table_name='portfolios')
     op.drop_index(op.f('ix_portfolios_cif_id'), table_name='portfolios')
     op.drop_table('portfolios')
+    op.drop_index(op.f('ix_portfolio_valuation_jobs_valuation_date'), table_name='portfolio_valuation_jobs')
+    op.drop_index(op.f('ix_portfolio_valuation_jobs_status'), table_name='portfolio_valuation_jobs')
+    op.drop_index(op.f('ix_portfolio_valuation_jobs_security_id'), table_name='portfolio_valuation_jobs')
+    op.drop_index(op.f('ix_portfolio_valuation_jobs_portfolio_id'), table_name='portfolio_valuation_jobs')
+    op.drop_table('portfolio_valuation_jobs')
+    op.drop_index(op.f('ix_portfolio_aggregation_jobs_status'), table_name='portfolio_aggregation_jobs')
+    op.drop_index(op.f('ix_portfolio_aggregation_jobs_portfolio_id'), table_name='portfolio_aggregation_jobs')
+    op.drop_index(op.f('ix_portfolio_aggregation_jobs_aggregation_date'), table_name='portfolio_aggregation_jobs')
+    op.drop_table('portfolio_aggregation_jobs')
     op.drop_index(op.f('ix_outbox_events_status'), table_name='outbox_events')
     op.drop_index(op.f('ix_outbox_events_aggregate_type'), table_name='outbox_events')
     op.drop_index(op.f('ix_outbox_events_aggregate_id'), table_name='outbox_events')

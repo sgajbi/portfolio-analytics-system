@@ -39,7 +39,7 @@ class PositionHistory(Base):
     position_date = Column(Date, index=True, nullable=False)
     quantity = Column(Numeric(18, 10), nullable=False)
     cost_basis = Column(Numeric(18, 10), nullable=False)
-    cost_basis_local = Column(Numeric(18, 10), nullable=True) # --- NEW ---
+    cost_basis_local = Column(Numeric(18, 10), nullable=True)
     created_at = Column(DateTime(timezone=True), default=func.now())
     updated_at = Column(DateTime(timezone=True), default=func.now(), onupdate=func.now())
 
@@ -52,12 +52,12 @@ class DailyPositionSnapshot(Base):
     date = Column(Date, index=True, nullable=False)
     quantity = Column(Numeric(18, 10), nullable=False)
     cost_basis = Column(Numeric(18, 10), nullable=False)
-    cost_basis_local = Column(Numeric(18, 10), nullable=True) # --- NEW ---
+    cost_basis_local = Column(Numeric(18, 10), nullable=True)
     market_price = Column(Numeric(18, 10), nullable=True)
     market_value = Column(Numeric(18, 10), nullable=True)
-    market_value_local = Column(Numeric(18, 10), nullable=True) # --- NEW ---
+    market_value_local = Column(Numeric(18, 10), nullable=True)
     unrealized_gain_loss = Column(Numeric(18, 10), nullable=True)
-    unrealized_gain_loss_local = Column(Numeric(18, 10), nullable=True) # --- NEW ---
+    unrealized_gain_loss_local = Column(Numeric(18, 10), nullable=True)
     valuation_status = Column(String, nullable=False, server_default='UNVALUED', index=True)
     created_at = Column(DateTime(timezone=True), default=func.now())
     updated_at = Column(DateTime(timezone=True), default=func.now(), onupdate=func.now())
@@ -244,10 +244,6 @@ class OutboxEvent(Base):
 
 
 class PortfolioAggregationJob(Base):
-    """
-    Tracks portfolio-date pairs that require aggregation.
-    This table acts as a stateful, idempotent queue to trigger portfolio time series calculations.
-    """
     __tablename__ = 'portfolio_aggregation_jobs'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -263,11 +259,6 @@ class PortfolioAggregationJob(Base):
     )
 
 class PortfolioValuationJob(Base):
-    """
-    Tracks portfolio-security-date combinations that require valuation.
-    This table acts as a stateful, idempotent work set to trigger valuation calculations,
-    preventing race conditions from multiple upstream events.
-    """
     __tablename__ = 'portfolio_valuation_jobs'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
