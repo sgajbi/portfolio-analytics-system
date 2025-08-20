@@ -7,7 +7,7 @@ from functools import reduce
 import pandas as pd
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from dateutil.relativedelta import relativedelta
+from dateutil.relativelta import relativedelta
 
 # --- Import from the centralized engine ---
 from performance_calculator_engine.calculator import PerformanceCalculator
@@ -62,6 +62,8 @@ class PerformanceService:
             begin_market_value=df.iloc[0][BOD_MARKET_VALUE],
             end_market_value=df.iloc[-1][EOD_MARKET_VALUE],
             total_cashflow=df[BOD_CASHFLOW].sum() + df[EOD_CASHFLOW].sum(),
+            bod_cashflow=df[BOD_CASHFLOW].sum(),
+            eod_cashflow=df[EOD_CASHFLOW].sum(),
             fees=df[FEES].sum()
         )
 
@@ -75,20 +77,8 @@ class PerformanceService:
 
         resolved_periods = []
         for p in request.periods:
-            period_args = {
-                "period_type": p.type,
-                "name": p.name or p.type,
-                "from_date": getattr(p, 'from_date', None),
-                "to_date": getattr(p, 'to_date', None),
-                "year": getattr(p, 'year', None)
-            }
-            resolved_periods.append(
-                resolve_period(
-                    inception_date=portfolio.open_date,
-                    as_of_date=request.scope.as_of_date,
-                    **period_args
-                )
-            )
+            period_args = { "period_type": p.type, "name": p.name or p.type, "from_date": getattr(p, 'from_date', None), "to_date": getattr(p, 'to_date', None), "year": getattr(p, 'year', None) }
+            resolved_periods.append(resolve_period(inception_date=portfolio.open_date, as_of_date=request.scope.as_of_date, **period_args))
         
         if not resolved_periods:
             return PerformanceResponse(scope=request.scope, summary={}, breakdowns=None)
@@ -96,32 +86,20 @@ class PerformanceService:
         min_date = min(p[1] for p in resolved_periods)
         max_date = max(p[2] for p in resolved_periods)
 
-        timeseries_data = await self.repo.get_portfolio_timeseries_for_range(
-            portfolio_id=portfolio_id, start_date=min_date, end_date=max_date
-        )
-
+        timeseries_data = await self.repo.get_portfolio_timeseries_for_range(portfolio_id=portfolio_id, start_date=min_date, end_date=max_date)
         timeseries_dicts = self._convert_timeseries_to_dict(timeseries_data)
         
         summary: Dict[str, PerformanceResult] = {}
         breakdowns: Dict[str, PerformanceBreakdown] = {}
 
         for name, start_date, end_date in resolved_periods:
-            period_ts_data = [
-                ts for ts in timeseries_dicts if start_date <= date.fromisoformat(ts['date']) <= end_date
-            ]
+            period_ts_data = [ts for ts in timeseries_dicts if start_date <= date.fromisoformat(ts['date']) <= end_date]
             
             if not period_ts_data:
-                summary[name] = PerformanceResult(start_date=start_date, end_date=end_date, cumulative_return=0.0)
+                summary[name] = PerformanceResult(start_date=start_date, end_date=end_date)
                 continue
 
-            config = {
-                "metric_basis": request.scope.net_or_gross,
-                "period_type": "EXPLICIT",
-                "performance_start_date": portfolio.open_date.isoformat(),
-                "report_start_date": start_date.isoformat(),
-                "report_end_date": end_date.isoformat(),
-            }
-
+            config = { "metric_basis": request.scope.net_or_gross, "period_type": "EXPLICIT", "performance_start_date": portfolio.open_date.isoformat(), "report_start_date": start_date.isoformat(), "report_end_date": end_date.isoformat() }
             calculator = PerformanceCalculator(config=config)
             results_df = calculator.calculate_performance(period_ts_data)
 
@@ -129,50 +107,61 @@ class PerformanceService:
             if not results_df.empty:
                 cumulative_return = float(results_df.iloc[-1][FINAL_CUMULATIVE_ROR_PCT])
 
-            annualized_return = None
-            if request.options.include_annualized:
-                annualized_return = calculate_annualized_return(cumulative_return, start_date, end_date)
-
-            attributes = None
-            if request.options.include_attributes:
-                attributes = self._aggregate_attributes(results_df)
+            annualized_return = calculate_annualized_return(cumulative_return, start_date, end_date) if request.options.include_annualized else None
+            attributes = self._aggregate_attributes(results_df) if request.options.include_attributes else None
 
             summary[name] = PerformanceResult(
-                start_date=start_date,
-                end_date=end_date,
-                cumulative_return=cumulative_return if request.options.include_cumulative else None,
-                annualized_return=annualized_return,
+                start_date=start_date, 
+                end_date=end_date, 
+                cumulative_return=cumulative_return if request.options.include_cumulative else None, 
+                annualized_return=annualized_return, 
                 attributes=attributes
             )
 
             requested_breakdown = next((p.breakdown for p in request.periods if (p.name or p.type) == name), None)
             if requested_breakdown and not results_df.empty:
-                if requested_breakdown == "DAILY":
-                    daily_results = []
-                    for index, row in results_df.iterrows():
-                        day_annualized = calculate_annualized_return(float(row[DAILY_ROR_PCT]), row[DATE], row[DATE])
+                breakdown_results = []
+                
+                df_for_breakdown = results_df.copy()
+                df_for_breakdown[DATE] = pd.to_datetime(df_for_breakdown[DATE])
+                df_for_breakdown.set_index(DATE, inplace=True)
+
+                resample_map = { "DAILY": "D", "WEEKLY": "W", "MONTHLY": "ME", "QUARTERLY": "QE" }
+                resample_freq = resample_map.get(requested_breakdown)
+
+                if resample_freq:
+                    grouped = df_for_breakdown.resample(resample_freq)
+
+                    for period_start_date, period_df in grouped:
+                        if period_df.empty:
+                            continue
+
+                        period_start = period_df.index.min().date()
+                        period_end = period_df.index.max().date()
                         
-                        daily_attrs = None
-                        if request.options.include_attributes:
-                             daily_attrs = PerformanceAttributes(
-                                begin_market_value=row[BOD_MARKET_VALUE],
-                                end_market_value=row[EOD_MARKET_VALUE],
-                                total_cashflow=row[BOD_CASHFLOW] + row[EOD_CASHFLOW],
-                                fees=row[FEES]
-                            )
+                        sub_period_ts_data = period_df.reset_index().to_dict('records')
                         
-                        daily_result = PerformanceResult(
-                            start_date=row[DATE],
-                            end_date=row[DATE],
-                            cumulative_return=float(row[DAILY_ROR_PCT]) if request.options.include_cumulative else None,
-                            annualized_return=day_annualized if request.options.include_annualized else None,
-                            attributes=daily_attrs
-                        )
-                        daily_results.append(daily_result)
+                        period_config = { "metric_basis": request.scope.net_or_gross, "period_type": "EXPLICIT", "performance_start_date": portfolio.open_date.isoformat(), "report_start_date": period_start.isoformat(), "report_end_date": period_end.isoformat() }
+                        period_calculator = PerformanceCalculator(config=period_config)
+                        period_results_df = period_calculator.calculate_performance(sub_period_ts_data)
+                        
+                        period_cumulative_return = float(period_results_df.iloc[-1][FINAL_CUMULATIVE_ROR_PCT])
+                        period_annualized_return = calculate_annualized_return(period_cumulative_return, period_start, period_end)
+                        period_attrs = self._aggregate_attributes(period_df) if request.options.include_attributes else None
+
+                        result_data = {
+                            "start_date": period_start, "end_date": period_end,
+                            "attributes": period_attrs
+                        }
+                        if request.options.include_cumulative:
+                            result_data["cumulative_return"] = period_cumulative_return
+                        if request.options.include_annualized:
+                            result_data["annualized_return"] = period_annualized_return
+                        
+                        result_data[f"{requested_breakdown.lower()}_return"] = period_cumulative_return
+                        
+                        breakdown_results.append(PerformanceResult(**result_data))
                     
-                    breakdowns[name] = PerformanceBreakdown(
-                        breakdown_type="DAILY",
-                        results=daily_results
-                    )
+                    breakdowns[name] = PerformanceBreakdown(breakdown_type=requested_breakdown, results=breakdown_results)
         
         return PerformanceResponse(scope=request.scope, summary=summary, breakdowns=breakdowns or None)

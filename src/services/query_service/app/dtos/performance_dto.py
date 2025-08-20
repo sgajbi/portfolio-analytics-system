@@ -80,6 +80,8 @@ class PerformanceAttributes(BaseModel):
     begin_market_value: Optional[Decimal] = None
     end_market_value: Optional[Decimal] = None
     total_cashflow: Optional[Decimal] = None
+    bod_cashflow: Optional[Decimal] = None
+    eod_cashflow: Optional[Decimal] = None
     fees: Optional[Decimal] = None
     
     model_config = ConfigDict(from_attributes=True, arbitrary_types_allowed=True)
@@ -90,9 +92,13 @@ class PerformanceResult(BaseModel):
     end_date: date
     cumulative_return: Optional[float] = Field(None, description="The total geometric return for the period as a percentage.")
     annualized_return: Optional[float] = Field(None, description="The annualized return as a percentage, if applicable.")
+    daily_return: Optional[float] = Field(None, alias="dailyReturn", description="The geometric return for this day.")
+    weekly_return: Optional[float] = Field(None, alias="weeklyReturn", description="The geometric return for this week.")
+    monthly_return: Optional[float] = Field(None, alias="monthlyReturn", description="The geometric return for this month.")
+    quarterly_return: Optional[float] = Field(None, alias="quarterlyReturn", description="The geometric return for this quarter.")
     attributes: Optional[PerformanceAttributes] = None
 
-    model_config = ConfigDict(from_attributes=True, arbitrary_types_allowed=True)
+    model_config = ConfigDict(from_attributes=True, arbitrary_types_allowed=True, populate_by_name=True)
 
 class PerformanceBreakdown(BaseModel):
     """Contains the detailed breakdown results for a single requested period."""
