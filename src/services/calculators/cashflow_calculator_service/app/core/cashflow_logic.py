@@ -33,9 +33,6 @@ class CashflowLogic:
         elif rule.calc_type == CashflowCalculationType.MVT:
             amount = transaction.quantity * transaction.price
 
-        # FIX: Correct the sign logic for performance calculation formulas.
-        # Contributions TO the portfolio (BUYs, Deposits) must be positive.
-        # Withdrawals FROM the portfolio (SELLs, Fees, Dividends) must be negative.
         if rule.classification in [
             "INVESTMENT_OUTFLOW", # e.g., BUY
             "CASHFLOW_IN"         # e.g., DEPOSIT
@@ -48,14 +45,15 @@ class CashflowLogic:
         cashflow = Cashflow(
             transaction_id=transaction.transaction_id,
             portfolio_id=transaction.portfolio_id,
-            security_id=transaction.security_id if rule.level == "POSITION" else None,
+            security_id=transaction.security_id,
             cashflow_date=transaction.transaction_date.date(),
             amount=amount,
             currency=transaction.currency,
             classification=rule.classification.value,
             timing=rule.timing.value,
-            level=rule.level.value,
             calculation_type=rule.calc_type.value,
+            is_position_flow=rule.is_position_flow,
+            is_portfolio_flow=rule.is_portfolio_flow
         )
 
         logger.info(f"Calculated cashflow for txn {transaction.transaction_id}: Amount={amount}, Class='{rule.classification.value}'")

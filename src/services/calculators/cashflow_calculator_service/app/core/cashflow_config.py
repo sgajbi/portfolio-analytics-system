@@ -1,5 +1,5 @@
 from enum import Enum
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 # --- Cashflow Attribute Enums ---
 
@@ -34,55 +34,67 @@ class CashflowClassification(str, Enum):
 class CashflowRule(BaseModel):
     """Defines the cashflow calculation rule for a specific transaction type."""
     classification: CashflowClassification
-    level: CashflowLevel
-    timing: CashflowTiming = CashflowTiming.EOD  # Default to EOD
-    calc_type: CashflowCalculationType = CashflowCalculationType.NET # Default to NET
+    timing: CashflowTiming = CashflowTiming.EOD
+    calc_type: CashflowCalculationType = CashflowCalculationType.NET
+    is_position_flow: bool = Field(..., description="Does this flow affect the specific instrument's cashflow?")
+    is_portfolio_flow: bool = Field(..., description="Does this flow represent an external contribution/withdrawal from the portfolio?")
 
 # --- Central Configuration Mapping ---
 
 CASHFLOW_CONFIG: dict[str, CashflowRule] = {
     "BUY": CashflowRule(
         classification=CashflowClassification.INVESTMENT_OUTFLOW,
-        level=CashflowLevel.POSITION,
-        timing=CashflowTiming.BOD  # FIX: BUYs must be BOD for correct TWR calculation
+        timing=CashflowTiming.BOD,
+        is_position_flow=True,
+        is_portfolio_flow=False
     ),
     "SELL": CashflowRule(
         classification=CashflowClassification.INVESTMENT_INFLOW,
-        level=CashflowLevel.POSITION
+        timing=CashflowTiming.EOD,
+        is_position_flow=True,
+        is_portfolio_flow=False
     ),
     "DIVIDEND": CashflowRule(
         classification=CashflowClassification.INCOME,
-        level=CashflowLevel.POSITION,
-        timing=CashflowTiming.BOD
+        timing=CashflowTiming.BOD,
+        is_position_flow=True,
+        is_portfolio_flow=False
     ),
     "INTEREST": CashflowRule(
         classification=CashflowClassification.INCOME,
-        level=CashflowLevel.PORTFOLIO
+        timing=CashflowTiming.EOD,
+        is_position_flow=True,
+        is_portfolio_flow=True
     ),
     "FEE": CashflowRule(
         classification=CashflowClassification.EXPENSE,
-        level=CashflowLevel.PORTFOLIO
+        timing=CashflowTiming.EOD,
+        is_position_flow=True,
+        is_portfolio_flow=True
     ),
-    # Assuming TAX is a possible transaction_type
     "TAX": CashflowRule(
         classification=CashflowClassification.EXPENSE,
-        level=CashflowLevel.PORTFOLIO
+        timing=CashflowTiming.EOD,
+        is_position_flow=True,
+        is_portfolio_flow=True
     ),
-    # Assuming TRANSFER_IN/OUT are possible transaction_types
     "TRANSFER_IN": CashflowRule(
         classification=CashflowClassification.CASHFLOW_IN,
-        level=CashflowLevel.PORTFOLIO,
-        timing=CashflowTiming.BOD
+        timing=CashflowTiming.BOD,
+        is_position_flow=True,
+        is_portfolio_flow=True
     ),
     "DEPOSIT": CashflowRule(
         classification=CashflowClassification.CASHFLOW_IN,
-        level=CashflowLevel.PORTFOLIO,
-        timing=CashflowTiming.BOD
+        timing=CashflowTiming.BOD,
+        is_position_flow=True,
+        is_portfolio_flow=True
     ),
     "TRANSFER_OUT": CashflowRule(
         classification=CashflowClassification.CASHFLOW_OUT,
-        level=CashflowLevel.PORTFOLIO,
-        timing=CashflowTiming.EOD
+        timing=CashflowTiming.EOD,
+        is_position_flow=True,
+        is_portfolio_flow=True
     ),
 }
 
