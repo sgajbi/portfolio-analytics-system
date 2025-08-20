@@ -16,6 +16,7 @@ class BuyStrategy:
         accrued_interest_local = transaction.accrued_interest or Decimal(0)
         
         # Calculate cost in the original trade currency (local)
+        transaction.gross_cost = transaction.gross_transaction_amount # ADDED THIS LINE
         transaction.net_cost_local = transaction.gross_transaction_amount + total_fees_local + accrued_interest_local
         
         # Convert to portfolio base currency
@@ -51,14 +52,16 @@ class SellStrategy:
             # PnL in both currencies
             transaction.realized_gain_loss_local = net_sell_proceeds_local - cogs_local
             transaction.realized_gain_loss = net_sell_proceeds_base - cogs_base
-            
+        
             # Net cost for a sell is negative COGS
             transaction.net_cost = -cogs_base
             transaction.net_cost_local = -cogs_local
+            transaction.gross_cost = -cogs_base # ADDED THIS LINE
 
 class DefaultStrategy:
     def calculate_costs(self, transaction: Transaction, disposition_engine: DispositionEngine, error_reporter: ErrorReporter) -> None:
         transaction.net_cost_local = transaction.gross_transaction_amount
+        transaction.gross_cost = transaction.gross_transaction_amount # ADDED THIS LINE
         fx_rate = transaction.transaction_fx_rate or Decimal(1)
         transaction.net_cost = transaction.net_cost_local * fx_rate
 

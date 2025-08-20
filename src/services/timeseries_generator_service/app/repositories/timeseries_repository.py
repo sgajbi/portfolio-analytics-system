@@ -165,9 +165,14 @@ class TimeseriesRepository:
     @async_timed(repository="TimeseriesRepository", method="upsert_position_timeseries")
     async def upsert_position_timeseries(self, timeseries_record: PositionTimeseries):
         try:
-            insert_dict = {c.name: getattr(timeseries_record, c.name) for c in timeseries_record.__table__.columns}
+            insert_dict = {
+                c.name: getattr(timeseries_record, c.name) 
+                for c in timeseries_record.__table__.columns
+                if c.name not in ['created_at', 'updated_at']
+            }
             update_dict = {k: v for k, v in insert_dict.items() if k not in ['portfolio_id', 'security_id', 'date']}
-            
+            update_dict['updated_at'] = func.now()
+
             stmt = pg_insert(PositionTimeseries).values(
                 **insert_dict
             ).on_conflict_do_update(
@@ -183,8 +188,13 @@ class TimeseriesRepository:
     @async_timed(repository="TimeseriesRepository", method="upsert_portfolio_timeseries")
     async def upsert_portfolio_timeseries(self, timeseries_record: PortfolioTimeseries):
         try:
-            insert_dict = {c.name: getattr(timeseries_record, c.name) for c in timeseries_record.__table__.columns}
+            insert_dict = {
+                c.name: getattr(timeseries_record, c.name) 
+                for c in timeseries_record.__table__.columns
+                if c.name not in ['created_at', 'updated_at']
+            }
             update_dict = {k: v for k, v in insert_dict.items() if k not in ['portfolio_id', 'date']}
+            update_dict['updated_at'] = func.now()
 
             stmt = pg_insert(PortfolioTimeseries).values(
                 **insert_dict
