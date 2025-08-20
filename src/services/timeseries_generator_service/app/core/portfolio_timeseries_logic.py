@@ -2,13 +2,13 @@
 import logging
 from datetime import date
 from decimal import Decimal
-from typing import List, Dict
+from typing import List
 
 from portfolio_common.database_models import (
     PortfolioTimeseries, 
     PositionTimeseries, 
-    Cashflow, 
     Portfolio,
+    Instrument
 )
 from ..repositories.timeseries_repository import TimeseriesRepository
 
@@ -28,7 +28,6 @@ class PortfolioTimeseriesLogic:
         portfolio: Portfolio,
         a_date: date,
         position_timeseries_list: List[PositionTimeseries],
-        portfolio_cashflows: List[Cashflow],
         repo: TimeseriesRepository
     ) -> PortfolioTimeseries:
         """
@@ -38,6 +37,7 @@ class PortfolioTimeseriesLogic:
         total_bod_cf = Decimal(0)
         total_eod_cf = Decimal(0)
         total_eod_mv = Decimal(0)
+        total_fees = Decimal(0)
 
         portfolio_currency = portfolio.base_currency
 
@@ -67,18 +67,21 @@ class PortfolioTimeseriesLogic:
                     logger.error(error_msg)
                     raise FxRateNotFoundError(error_msg)
                 rate = fx_rate.rate
-
-            total_bod_cf += (pos_ts.bod_cashflow or Decimal(0)) * rate
-            total_eod_cf += (pos_ts.eod_cashflow or Decimal(0)) * rate
+            
+            # --- LOGIC CHANGE: Aggregate ALL cashflows for BOD/EOD Market Value calculation ---
+            total_day_cashflow = (pos_ts.bod_cashflow_position + pos_ts.bod_cashflow_portfolio + 
+                                  pos_ts.eod_cashflow_position + pos_ts.eod_cashflow_portfolio)
+            
+            # --- LOGIC CHANGE: Aggregate ONLY portfolio flows for performance cashflow ---
+            total_bod_cf += (pos_ts.bod_cashflow_portfolio or Decimal(0)) * rate
+            total_eod_cf += (pos_ts.eod_cashflow_portfolio or Decimal(0)) * rate
             total_eod_mv += (pos_ts.eod_market_value or Decimal(0)) * rate
-
-        for port_cf in portfolio_cashflows:
-            if port_cf.timing == 'BOD':
-                total_bod_cf += port_cf.amount
-            elif port_cf.timing == 'EOD':
-                total_eod_cf += port_cf.amount
-
-        total_fees = sum(cf.amount for cf in portfolio_cashflows if cf.classification == 'EXPENSE')
+            
+            # Fee aggregation is now based on negative portfolio flows
+            if pos_ts.bod_cashflow_portfolio < 0:
+                total_fees += abs(pos_ts.bod_cashflow_portfolio * rate)
+            if pos_ts.eod_cashflow_portfolio < 0:
+                total_fees += abs(pos_ts.eod_cashflow_portfolio * rate)
 
         return PortfolioTimeseries(
             portfolio_id=portfolio.portfolio_id,
@@ -87,5 +90,5 @@ class PortfolioTimeseriesLogic:
             bod_cashflow=total_bod_cf,
             eod_cashflow=total_eod_cf,
             eod_market_value=total_eod_mv,
-            fees=abs(total_fees)
+            fees=total_fees
         )

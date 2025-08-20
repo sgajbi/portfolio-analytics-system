@@ -1,8 +1,9 @@
 # src/services/timeseries_generator_service/app/core/position_timeseries_logic.py
 from datetime import date
 from decimal import Decimal
+from typing import List
 
-from portfolio_common.database_models import PositionTimeseries, DailyPositionSnapshot
+from portfolio_common.database_models import PositionTimeseries, DailyPositionSnapshot, Instrument, Cashflow
 
 class PositionTimeseriesLogic:
     """
@@ -12,18 +13,10 @@ class PositionTimeseriesLogic:
     def calculate_daily_record(
         current_snapshot: DailyPositionSnapshot,
         previous_timeseries: PositionTimeseries | None,
-        bod_cashflow: Decimal,
-        eod_cashflow: Decimal
+        cashflows: List[Cashflow]
     ) -> PositionTimeseries:
         """
         Calculates a single, complete position time series record for a given day.
-        Args:
-            current_snapshot: The DailyPositionSnapshot record for the date being calculated.
-            previous_timeseries: The PositionTimeseries record for the previous day.
-            bod_cashflow: The sum of all beginning-of-day cashflows for the position.
-            eod_cashflow: The sum of all end-of-day cashflows for the position.
-        Returns:
-            A populated PositionTimeseries database model instance.
         """
         bod_market_value = previous_timeseries.eod_market_value if previous_timeseries else Decimal(0)
 
@@ -32,14 +25,33 @@ class PositionTimeseriesLogic:
         eod_cost_basis = current_snapshot.cost_basis_local or Decimal(0)
 
         eod_avg_cost = (eod_cost_basis / eod_quantity) if eod_quantity else Decimal(0)
+        
+        bod_cf_pos, eod_cf_pos = Decimal(0), Decimal(0)
+        bod_cf_port, eod_cf_port = Decimal(0), Decimal(0)
+        
+        # Segregate cashflows into the four buckets based on their boolean flags
+        for cf in cashflows:
+            if cf.is_position_flow:
+                if cf.timing == 'BOD':
+                    bod_cf_pos += cf.amount
+                else: # EOD
+                    eod_cf_pos += cf.amount
+            
+            if cf.is_portfolio_flow:
+                if cf.timing == 'BOD':
+                    bod_cf_port += cf.amount
+                else: # EOD
+                    eod_cf_port += cf.amount
 
         return PositionTimeseries(
             portfolio_id=current_snapshot.portfolio_id,
             security_id=current_snapshot.security_id,
             date=current_snapshot.date,
             bod_market_value=bod_market_value,
-            bod_cashflow=bod_cashflow,
-            eod_cashflow=eod_cashflow,
+            bod_cashflow_position=bod_cf_pos,
+            eod_cashflow_position=eod_cf_pos,
+            bod_cashflow_portfolio=bod_cf_port,
+            eod_cashflow_portfolio=eod_cf_port,
             eod_market_value=eod_market_value,
             fees=Decimal(0),
             quantity=eod_quantity,

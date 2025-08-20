@@ -9,6 +9,7 @@ from confluent_kafka import Message
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy import func
 from datetime import date
+from decimal import Decimal
 
 from portfolio_common.kafka_consumer import BaseConsumer
 from portfolio_common.logging_utils import correlation_id_var
@@ -80,18 +81,15 @@ class PositionTimeseriesConsumer(BaseConsumer):
                                 f"Previous day's timeseries for {event.security_id} not found for date {event.date}, but history exists. Retrying."
                             )
                     
+                    # Fetch all cashflows associated with this specific security on this date
                     cashflows = await repo.get_all_cashflows_for_security_date(
                         event.portfolio_id, event.security_id, event.date
                     )
                     
-                    bod_cashflow = sum(cf.amount for cf in cashflows if cf.timing == 'BOD')
-                    eod_cashflow = sum(cf.amount for cf in cashflows if cf.timing == 'EOD')
-
                     new_timeseries_record = PositionTimeseriesLogic.calculate_daily_record(
                         current_snapshot=current_snapshot,
                         previous_timeseries=previous_timeseries,
-                        bod_cashflow=bod_cashflow,
-                        eod_cashflow=eod_cashflow
+                        cashflows=cashflows
                     )
                     
                     await repo.upsert_position_timeseries(new_timeseries_record)

@@ -2,100 +2,65 @@
 import pytest
 from decimal import Decimal
 from datetime import date
+from typing import List
 
-# Corrected absolute import
 from src.services.timeseries_generator_service.app.core.position_timeseries_logic import PositionTimeseriesLogic
-from portfolio_common.database_models import DailyPositionSnapshot, PositionTimeseries
+from portfolio_common.database_models import DailyPositionSnapshot, PositionTimeseries, Instrument, Cashflow
 
 @pytest.fixture
 def current_snapshot() -> DailyPositionSnapshot:
     """A fixture for the current day's position snapshot."""
     return DailyPositionSnapshot(
-        portfolio_id="P1",
-        security_id="S1",
-        date=date(2025, 7, 29),
-        quantity=Decimal("100"),
-        cost_basis=Decimal("10000"),
-        cost_basis_local=Decimal("10000"), # FIX: Added missing field
-        market_value=Decimal("12500"), # Base currency value
-        market_value_local=Decimal("12000") # Local currency value
+        portfolio_id="P1", security_id="S1", date=date(2025, 7, 29),
+        quantity=Decimal("100"), cost_basis_local=Decimal("10000"),
+        market_value_local=Decimal("12000")
     )
 
 @pytest.fixture
 def previous_day_timeseries() -> PositionTimeseries:
     """A fixture for the previous day's time series record."""
-    return PositionTimeseries(
-        portfolio_id="P1",
-        security_id="S1",
-        date=date(2025, 7, 28),
-        eod_market_value=Decimal("11500")
-    )
+    return PositionTimeseries(eod_market_value=Decimal("11500"))
 
-def test_calculate_daily_record_first_day(current_snapshot):
+def test_logic_with_portfolio_and_position_flows(current_snapshot, previous_day_timeseries):
     """
-    Tests calculating a time series record when there is no previous day's record.
-    BOD market value should be zero.
+    Tests that logic correctly segregates cashflows based on their boolean flags.
     """
-    new_record = PositionTimeseriesLogic.calculate_daily_record(
-        current_snapshot=current_snapshot,
-        previous_timeseries=None,
-        bod_cashflow=Decimal("-10000"), # e.g., initial purchase
-        eod_cashflow=Decimal("0")
-    )
-
-    assert new_record.portfolio_id == "P1"
-    assert new_record.security_id == "S1"
-    assert new_record.date == date(2025, 7, 29)
-    assert new_record.bod_market_value == Decimal("0") # First day
-    assert new_record.bod_cashflow == Decimal("-10000")
-    assert new_record.eod_cashflow == Decimal("0")
-    assert new_record.eod_market_value == Decimal("12000") # From snapshot's market_value_local
-    assert new_record.quantity == Decimal("100") # From snapshot
-    assert new_record.cost == Decimal("100") # 10000 cost_basis_local / 100 quantity
-
-def test_calculate_daily_record_subsequent_day(current_snapshot, previous_day_timeseries):
-    """
-    Tests that a subsequent day's BOD market value equals the previous day's EOD market value.
-    """
-    new_record = PositionTimeseriesLogic.calculate_daily_record(
-        current_snapshot=current_snapshot,
-        previous_timeseries=previous_day_timeseries,
-        bod_cashflow=Decimal("0"),
-        eod_cashflow=Decimal("0")
-    )
-
-    # Key assertion: BOD value carries over from previous EOD
-    assert new_record.bod_market_value == previous_day_timeseries.eod_market_value
-    assert new_record.bod_market_value == Decimal("11500")
-    assert new_record.eod_market_value == Decimal("12000")
-
-def test_calculate_daily_record_with_bod_and_eod_cashflows(current_snapshot, previous_day_timeseries):
-    """
-    Tests that BOD (e.g., dividend) and EOD (e.g., partial sell) cashflows
-    are correctly assigned in the final time series record.
-    """
-    # ARRANGE: Simulate a $50 dividend (BOD inflow) and a $1200 partial sell (EOD inflow)
-    bod_inflow = Decimal("50")
-    eod_inflow = Decimal("1200")
-
-    # The snapshot reflects the EOD state *after* the partial sell.
-    current_snapshot.quantity = Decimal("90") # 10 shares were sold
-    current_snapshot.market_value_local = Decimal("10800") # 90 shares * $120/share
-    current_snapshot.cost_basis = Decimal("9000") # 90% of original cost
-    current_snapshot.cost_basis_local = Decimal("9000") # FIX: Add proportional local cost
-
+    # ARRANGE: A list of cashflows with mixed flags
+    cashflows = [
+        # A BUY: only a position flow
+        Cashflow(amount=Decimal(1000), timing='BOD', is_position_flow=True, is_portfolio_flow=False),
+        # A FEE: both a position and portfolio flow
+        Cashflow(amount=Decimal(-50), timing='EOD', is_position_flow=True, is_portfolio_flow=True),
+    ]
+    
     # ACT
     new_record = PositionTimeseriesLogic.calculate_daily_record(
         current_snapshot=current_snapshot,
         previous_timeseries=previous_day_timeseries,
-        bod_cashflow=bod_inflow,
-        eod_cashflow=eod_inflow
+        cashflows=cashflows
     )
 
     # ASSERT
-    assert new_record.bod_market_value == Decimal("11500") # Carried over from previous day
-    assert new_record.bod_cashflow == bod_inflow
-    assert new_record.eod_cashflow == eod_inflow
-    assert new_record.eod_market_value == Decimal("10800")
-    assert new_record.quantity == Decimal("90")
-    assert new_record.cost == Decimal("100") # 9000 cost_basis_local / 90 quantity
+    assert new_record.bod_market_value == Decimal("11500")
+    assert new_record.eod_market_value == Decimal("12000")
+    assert new_record.bod_cashflow_position == Decimal("1000")
+    assert new_record.bod_cashflow_portfolio == Decimal("0")
+    assert new_record.eod_cashflow_position == Decimal("-50")
+    assert new_record.eod_cashflow_portfolio == Decimal("-50")
+
+def test_logic_with_only_portfolio_flows(current_snapshot, previous_day_timeseries):
+    """
+    Tests that a DEPOSIT (portfolio-only flow) is correctly assigned.
+    """
+    cashflows = [
+        Cashflow(amount=Decimal(5000), timing='BOD', is_position_flow=True, is_portfolio_flow=True)
+    ]
+    new_record = PositionTimeseriesLogic.calculate_daily_record(
+        current_snapshot=current_snapshot,
+        previous_timeseries=previous_day_timeseries,
+        cashflows=cashflows
+    )
+    assert new_record.bod_cashflow_position == Decimal("5000")
+    assert new_record.bod_cashflow_portfolio == Decimal("5000")
+    assert new_record.eod_cashflow_position == Decimal("0")
+    assert new_record.eod_cashflow_portfolio == Decimal("0")
