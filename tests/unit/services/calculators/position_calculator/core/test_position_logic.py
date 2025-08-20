@@ -95,6 +95,23 @@ def test_fee_transaction_decreases_cash_position(zero_position_state):
     assert new_state.cost_basis == Decimal("-25")
     assert new_state.cost_basis_local == Decimal("-25")
 
+def test_deposit_transaction_increases_cash_position(zero_position_state):
+    """
+    Tests that a DEPOSIT transaction correctly increases a cash position's quantity and cost.
+    """
+    deposit_transaction = TransactionEvent(
+        transaction_id="T_DEPOSIT", portfolio_id="P1", instrument_id="CASH", security_id="CASH",
+        transaction_date=datetime.now(), transaction_type="DEPOSIT", quantity=Decimal("10000"),
+        price=Decimal("1"), gross_transaction_amount=Decimal("10000"),
+        trade_currency="USD", currency="USD"
+    )
+
+    new_state = PositionCalculator.calculate_next_position(zero_position_state, deposit_transaction)
+
+    assert new_state.quantity == Decimal("10000")
+    assert new_state.cost_basis == Decimal("10000")
+    assert new_state.cost_basis_local == Decimal("10000")
+
 def test_dividend_transaction_does_not_change_position(existing_position_state):
     """
     Tests that a DIVIDEND transaction does not change the quantity or cost basis of the position.

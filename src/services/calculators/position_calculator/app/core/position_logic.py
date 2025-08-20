@@ -86,6 +86,11 @@ class PositionCalculator:
             quantity += transaction.quantity
             cost_basis += net_cost
             cost_basis_local += net_cost_local
+        elif txn_type in ["DEPOSIT", "TRANSFER_IN"]:
+            # These are cash inflows that increase the cash position quantity and cost basis
+            quantity += transaction.gross_transaction_amount
+            cost_basis += transaction.gross_transaction_amount
+            cost_basis_local += transaction.gross_transaction_amount
         elif txn_type == "SELL":
             if quantity != Decimal(0):
                 proportion_sold = transaction.quantity / quantity
