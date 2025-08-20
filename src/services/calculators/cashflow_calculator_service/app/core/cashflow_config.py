@@ -3,11 +3,6 @@ from pydantic import BaseModel, Field
 
 # --- Cashflow Attribute Enums ---
 
-class CashflowLevel(str, Enum):
-    """Defines whether the cashflow is at a position or portfolio level."""
-    POSITION = "POSITION"
-    PORTFOLIO = "PORTFOLIO"
-
 class CashflowTiming(str, Enum):
     """Defines if the cashflow occurs at the beginning or end of the day."""
     BOD = "BOD"  # Beginning of Day
@@ -91,6 +86,12 @@ CASHFLOW_CONFIG: dict[str, CashflowRule] = {
         is_portfolio_flow=True
     ),
     "TRANSFER_OUT": CashflowRule(
+        classification=CashflowClassification.CASHFLOW_OUT,
+        timing=CashflowTiming.EOD,
+        is_position_flow=True,
+        is_portfolio_flow=True
+    ),
+    "WITHDRAWAL": CashflowRule(
         classification=CashflowClassification.CASHFLOW_OUT,
         timing=CashflowTiming.EOD,
         is_position_flow=True,

@@ -78,3 +78,25 @@ def test_calculate_fee_transaction(base_transaction_event: TransactionEvent):
     assert cashflow.is_position_flow is True
     assert cashflow.is_portfolio_flow is True
     assert cashflow.security_id == event.security_id
+
+
+def test_calculate_withdrawal_transaction(base_transaction_event: TransactionEvent):
+    """A WITHDRAWAL is both a position-level and portfolio-level flow."""
+    # Arrange
+    event = base_transaction_event
+    event.transaction_type = "WITHDRAWAL"
+    event.gross_transaction_amount = Decimal("5000")
+    event.trade_fee = Decimal("0")
+    rule = get_rule_for_transaction("WITHDRAWAL")
+    assert rule is not None
+
+    # Act
+    cashflow = CashflowLogic.calculate(event, rule)
+
+    # Assert
+    assert cashflow.amount == -event.gross_transaction_amount
+    assert cashflow.classification == "CASHFLOW_OUT"
+    assert cashflow.timing == "EOD"
+    assert cashflow.is_position_flow is True
+    assert cashflow.is_portfolio_flow is True
+    assert cashflow.security_id == event.security_id
