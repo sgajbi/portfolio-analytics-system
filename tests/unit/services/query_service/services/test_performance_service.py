@@ -96,6 +96,50 @@ async def test_calculate_performance_happy_path(
         assert summary_result.cumulative_return == 5.5
         assert summary_result.attributes is not None
         assert summary_result.attributes.begin_market_value == Decimal("1000")
+async def test_calculate_performance_with_daily_breakdown(
+    service: PerformanceService,
+    mock_performance_calculator: MagicMock
+):
+    """
+    GIVEN a performance request with a daily breakdown
+    WHEN calculate_performance is called
+    THEN the response should contain a correctly formatted breakdowns section.
+    """
+    # ARRANGE
+    request = PerformanceRequest.model_validate({
+        "scope": {"as_of_date": "2025-02-15", "net_or_gross": "NET"},
+        "periods": [{"type": "YTD", "name": "YTD_With_Breakdown", "breakdown": "DAILY"}],
+        "options": {"include_cumulative": True, "include_annualized": True}
+    })
+
+    # Mock the engine to return a multi-day DataFrame
+    mock_df = pd.DataFrame([
+        {'date': date(2025, 1, 1), 'daily_ror_pct': Decimal("1.0"), 'final_cumulative_ror_pct': Decimal("1.0")},
+        {'date': date(2025, 1, 2), 'daily_ror_pct': Decimal("0.5"), 'final_cumulative_ror_pct': Decimal("1.505")}
+    ])
+    mock_performance_calculator.return_value.calculate_performance.return_value = mock_df
+
+    with patch(
+        "src.services.query_service.app.services.performance_service.PerformanceCalculator",
+        new=mock_performance_calculator
+    ):
+        # ACT
+        response = await service.calculate_performance("P1", request)
+
+        # ASSERT
+        assert response.breakdowns is not None
+        assert "YTD_With_Breakdown" in response.breakdowns
+        
+        breakdown_result = response.breakdowns["YTD_With_Breakdown"]
+        assert breakdown_result.breakdown_type == "DAILY"
+        assert len(breakdown_result.results) == 2
+        
+        # Check the content of the first daily result
+        day1_result = breakdown_result.results[0]
+        assert day1_result.start_date == date(2025, 1, 1)
+        assert day1_result.cumulative_return == 1.0
+        assert day1_result.annualized_return == 1.0 # Annualized equals cumulative for short periods
+
 
 async def test_calculate_performance_raises_for_missing_portfolio(
     service: PerformanceService,

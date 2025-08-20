@@ -14,7 +14,7 @@ from performance_calculator_engine.calculator import PerformanceCalculator
 from performance_calculator_engine.helpers import resolve_period, calculate_annualized_return
 from performance_calculator_engine.constants import (
     FINAL_CUMULATIVE_ROR_PCT, BOD_MARKET_VALUE, EOD_MARKET_VALUE, 
-    BOD_CASHFLOW, EOD_CASHFLOW, FEES
+    BOD_CASHFLOW, EOD_CASHFLOW, FEES, DAILY_ROR_PCT, DATE
 )
 # --- End Engine Imports ---
 
@@ -22,7 +22,7 @@ from ..repositories.performance_repository import PerformanceRepository
 from ..repositories.portfolio_repository import PortfolioRepository
 from ..dtos.performance_dto import (
     PerformanceRequest, PerformanceResponse, PerformanceResult,
-    PerformanceAttributes
+    PerformanceAttributes, PerformanceBreakdown
 )
 from portfolio_common.database_models import PortfolioTimeseries
 
@@ -73,12 +73,11 @@ class PerformanceService:
         if not portfolio:
             raise ValueError(f"Portfolio {portfolio_id} not found.")
 
-        # --- FIX: Correctly unpack DTO attributes for the helper function ---
         resolved_periods = []
         for p in request.periods:
             period_args = {
                 "period_type": p.type,
-                "name": p.name,
+                "name": p.name or p.type,
                 "from_date": getattr(p, 'from_date', None),
                 "to_date": getattr(p, 'to_date', None),
                 "year": getattr(p, 'year', None)
@@ -90,7 +89,6 @@ class PerformanceService:
                     **period_args
                 )
             )
-        # --- END FIX ---
         
         if not resolved_periods:
             return PerformanceResponse(scope=request.scope, summary={}, breakdowns=None)
@@ -105,6 +103,8 @@ class PerformanceService:
         timeseries_dicts = self._convert_timeseries_to_dict(timeseries_data)
         
         summary: Dict[str, PerformanceResult] = {}
+        breakdowns: Dict[str, PerformanceBreakdown] = {}
+
         for name, start_date, end_date in resolved_periods:
             period_ts_data = [
                 ts for ts in timeseries_dicts if start_date <= date.fromisoformat(ts['date']) <= end_date
@@ -144,5 +144,35 @@ class PerformanceService:
                 annualized_return=annualized_return,
                 attributes=attributes
             )
+
+            requested_breakdown = next((p.breakdown for p in request.periods if (p.name or p.type) == name), None)
+            if requested_breakdown and not results_df.empty:
+                if requested_breakdown == "DAILY":
+                    daily_results = []
+                    for index, row in results_df.iterrows():
+                        day_annualized = calculate_annualized_return(float(row[DAILY_ROR_PCT]), row[DATE], row[DATE])
+                        
+                        daily_attrs = None
+                        if request.options.include_attributes:
+                             daily_attrs = PerformanceAttributes(
+                                begin_market_value=row[BOD_MARKET_VALUE],
+                                end_market_value=row[EOD_MARKET_VALUE],
+                                total_cashflow=row[BOD_CASHFLOW] + row[EOD_CASHFLOW],
+                                fees=row[FEES]
+                            )
+                        
+                        daily_result = PerformanceResult(
+                            start_date=row[DATE],
+                            end_date=row[DATE],
+                            cumulative_return=float(row[DAILY_ROR_PCT]) if request.options.include_cumulative else None,
+                            annualized_return=day_annualized if request.options.include_annualized else None,
+                            attributes=daily_attrs
+                        )
+                        daily_results.append(daily_result)
+                    
+                    breakdowns[name] = PerformanceBreakdown(
+                        breakdown_type="DAILY",
+                        results=daily_results
+                    )
         
-        return PerformanceResponse(scope=request.scope, summary=summary, breakdowns=None)
+        return PerformanceResponse(scope=request.scope, summary=summary, breakdowns=breakdowns or None)
