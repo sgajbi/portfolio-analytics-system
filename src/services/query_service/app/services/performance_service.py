@@ -7,7 +7,8 @@ from functools import reduce
 import pandas as pd
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from dateutil.relativelta import relativedelta
+from dateutil.relativedelta import relativedelta
+
 
 # --- Import from the centralized engine ---
 from performance_calculator_engine.calculator import PerformanceCalculator
