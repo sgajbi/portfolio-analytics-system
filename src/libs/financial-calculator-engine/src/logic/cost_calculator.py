@@ -15,11 +15,9 @@ class BuyStrategy:
         total_fees_local = transaction.fees.total_fees if transaction.fees else Decimal(0)
         accrued_interest_local = transaction.accrued_interest or Decimal(0)
         
-        # Calculate cost in the original trade currency (local)
-        transaction.gross_cost = transaction.gross_transaction_amount # ADDED THIS LINE
+        transaction.gross_cost = transaction.gross_transaction_amount
         transaction.net_cost_local = transaction.gross_transaction_amount + total_fees_local + accrued_interest_local
         
-        # Convert to portfolio base currency
         fx_rate = transaction.transaction_fx_rate or Decimal(1)
         transaction.net_cost = transaction.net_cost_local * fx_rate
         
@@ -31,17 +29,11 @@ class BuyStrategy:
 
 class SellStrategy:
     def calculate_costs(self, transaction: Transaction, disposition_engine: DispositionEngine, error_reporter: ErrorReporter) -> None:
-        sell_quantity = transaction.quantity
         sell_fees_local = transaction.fees.total_fees if transaction.fees else Decimal(0)
-
-        # Proceeds in local (trade) currency
         net_sell_proceeds_local = transaction.gross_transaction_amount - sell_fees_local
-
-        # Convert proceeds to portfolio base currency
         fx_rate = transaction.transaction_fx_rate or Decimal(1)
         net_sell_proceeds_base = net_sell_proceeds_local * fx_rate
         
-        # Consume from lots to get COGS in both currencies
         cogs_base, cogs_local, consumed_quantity, error_reason = disposition_engine.consume_sell_quantity(transaction)
         
         if error_reason:
@@ -49,19 +41,16 @@ class SellStrategy:
             return
 
         if consumed_quantity > Decimal(0):
-            # PnL in both currencies
             transaction.realized_gain_loss_local = net_sell_proceeds_local - cogs_local
             transaction.realized_gain_loss = net_sell_proceeds_base - cogs_base
-        
-            # Net cost for a sell is negative COGS
             transaction.net_cost = -cogs_base
             transaction.net_cost_local = -cogs_local
-            transaction.gross_cost = -cogs_base # ADDED THIS LINE
+            transaction.gross_cost = -cogs_base
 
 class DefaultStrategy:
     def calculate_costs(self, transaction: Transaction, disposition_engine: DispositionEngine, error_reporter: ErrorReporter) -> None:
+        transaction.gross_cost = transaction.gross_transaction_amount
         transaction.net_cost_local = transaction.gross_transaction_amount
-        transaction.gross_cost = transaction.gross_transaction_amount # ADDED THIS LINE
         fx_rate = transaction.transaction_fx_rate or Decimal(1)
         transaction.net_cost = transaction.net_cost_local * fx_rate
 
@@ -82,15 +71,10 @@ class CostCalculator:
         self._default_strategy = DefaultStrategy()
 
     def _validate_fx(self, t: Transaction) -> bool:
-        """Return True if FX context is valid, else report error and return False."""
-        # Same-currency is always fine
         if t.trade_currency == t.portfolio_base_currency:
-            # Normalize missing rate to 1 for same-currency
             if not t.transaction_fx_rate:
                 t.transaction_fx_rate = Decimal(1)
             return True
-
-        # Cross-currency must have a positive FX rate
         if t.transaction_fx_rate is None or t.transaction_fx_rate <= 0:
             self._error_reporter.add_error(
                 t.transaction_id,
@@ -100,15 +84,12 @@ class CostCalculator:
         return True
 
     def calculate_transaction_costs(self, transaction: Transaction):
-        # Strict FX validation (prevents silent zeroing)
         if not self._validate_fx(transaction):
             return
-
         try:
             transaction_type_enum = TransactionType(transaction.transaction_type)
         except ValueError:
             self._error_reporter.add_error(transaction.transaction_id, f"Unknown transaction type '{transaction.transaction_type}'.")
             return
-            
         strategy = self._strategies.get(transaction_type_enum, self._default_strategy)
         strategy.calculate_costs(transaction, self._disposition_engine, self._error_reporter)

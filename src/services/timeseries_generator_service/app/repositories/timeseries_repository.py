@@ -5,32 +5,65 @@ from typing import Optional, List
 from sqlalchemy import select, text, update, exists, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import insert as pg_insert
-
 from portfolio_common.database_models import (
-    PositionTimeseries,
-    PortfolioTimeseries,
-    Portfolio,
-    Cashflow,
-    FxRate,
-    Instrument,
-    PortfolioAggregationJob,
-    MarketPrice,
-    Transaction
+    PositionTimeseries, PortfolioTimeseries, Portfolio, Cashflow, FxRate,
+    Instrument, PortfolioAggregationJob, MarketPrice, Transaction
 )
 from portfolio_common.utils import async_timed
 
 logger = logging.getLogger(__name__)
 
 class TimeseriesRepository:
-    """
-    Handles all database read/write operations for time series data.
-    """
     def __init__(self, db: AsyncSession):
         self.db = db
 
+    @async_timed(repository="TimeseriesRepository", method="upsert_position_timeseries")
+    async def upsert_position_timeseries(self, timeseries_record: PositionTimeseries):
+        try:
+            insert_dict = {
+                c.name: getattr(timeseries_record, c.name) 
+                for c in timeseries_record.__table__.columns
+                if c.name not in ['created_at', 'updated_at']
+            }
+            update_dict = {k: v for k, v in insert_dict.items() if k not in ['portfolio_id', 'security_id', 'date']}
+            update_dict['updated_at'] = func.now()
+            stmt = pg_insert(PositionTimeseries).values(
+                **insert_dict
+            ).on_conflict_do_update(
+                index_elements=['portfolio_id', 'security_id', 'date'],
+                set_=update_dict
+            )
+            await self.db.execute(stmt)
+            logger.info(f"Staged upsert for position time series for {timeseries_record.security_id} on {timeseries_record.date}")
+        except Exception as e:
+            logger.error(f"Failed to stage upsert for position time series: {e}", exc_info=True)
+            raise
+    
+    @async_timed(repository="TimeseriesRepository", method="upsert_portfolio_timeseries")
+    async def upsert_portfolio_timeseries(self, timeseries_record: PortfolioTimeseries):
+        try:
+            insert_dict = {
+                c.name: getattr(timeseries_record, c.name) 
+                for c in timeseries_record.__table__.columns
+                if c.name not in ['created_at', 'updated_at']
+            }
+            update_dict = {k: v for k, v in insert_dict.items() if k not in ['portfolio_id', 'date']}
+            update_dict['updated_at'] = func.now()
+            stmt = pg_insert(PortfolioTimeseries).values(
+                **insert_dict
+            ).on_conflict_do_update(
+                index_elements=['portfolio_id', 'date'],
+                set_=update_dict
+            )
+            await self.db.execute(stmt)
+            logger.info(f"Staged upsert for portfolio time series for {timeseries_record.portfolio_id} on {timeseries_record.date}")
+        except Exception as e:
+            logger.error(f"Failed to stage upsert for portfolio time series: {e}", exc_info=True)
+            raise
+ 
+    
     @async_timed(repository="TimeseriesRepository", method="get_portfolio_timeseries_for_date")
     async def get_portfolio_timeseries_for_date(self, portfolio_id: str, a_date: date) -> Optional[PortfolioTimeseries]:
-        """Fetches a single portfolio timeseries record for a specific date."""
         stmt = select(PortfolioTimeseries).filter_by(portfolio_id=portfolio_id, date=a_date)
         result = await self.db.execute(stmt)
         return result.scalars().first()
@@ -151,62 +184,6 @@ class TimeseriesRepository:
         )
         result = await self.db.execute(stmt)
         return result.scalars().all()
-
-    @async_timed(repository="TimeseriesRepository", method="get_portfolio_level_cashflows_for_date")
-    async def get_portfolio_level_cashflows_for_date(self, portfolio_id: str, a_date: date) -> List[Cashflow]:
-        stmt = select(Cashflow).filter_by(
-            portfolio_id=portfolio_id,
-            cashflow_date=a_date,
-            level='PORTFOLIO'
-        )
-        result = await self.db.execute(stmt)
-        return result.scalars().all()
-
-    @async_timed(repository="TimeseriesRepository", method="upsert_position_timeseries")
-    async def upsert_position_timeseries(self, timeseries_record: PositionTimeseries):
-        try:
-            insert_dict = {
-                c.name: getattr(timeseries_record, c.name) 
-                for c in timeseries_record.__table__.columns
-                if c.name not in ['created_at', 'updated_at']
-            }
-            update_dict = {k: v for k, v in insert_dict.items() if k not in ['portfolio_id', 'security_id', 'date']}
-            update_dict['updated_at'] = func.now()
-
-            stmt = pg_insert(PositionTimeseries).values(
-                **insert_dict
-            ).on_conflict_do_update(
-                index_elements=['portfolio_id', 'security_id', 'date'],
-                set_=update_dict
-            )
-            await self.db.execute(stmt)
-            logger.info(f"Staged upsert for position time series for {timeseries_record.security_id} on {timeseries_record.date}")
-        except Exception as e:
-            logger.error(f"Failed to stage upsert for position time series: {e}", exc_info=True)
-            raise
-    
-    @async_timed(repository="TimeseriesRepository", method="upsert_portfolio_timeseries")
-    async def upsert_portfolio_timeseries(self, timeseries_record: PortfolioTimeseries):
-        try:
-            insert_dict = {
-                c.name: getattr(timeseries_record, c.name) 
-                for c in timeseries_record.__table__.columns
-                if c.name not in ['created_at', 'updated_at']
-            }
-            update_dict = {k: v for k, v in insert_dict.items() if k not in ['portfolio_id', 'date']}
-            update_dict['updated_at'] = func.now()
-
-            stmt = pg_insert(PortfolioTimeseries).values(
-                **insert_dict
-            ).on_conflict_do_update(
-                index_elements=['portfolio_id', 'date'],
-                set_=update_dict
-            )
-            await self.db.execute(stmt)
-            logger.info(f"Staged upsert for portfolio time series for {timeseries_record.portfolio_id} on {timeseries_record.date}")
-        except Exception as e:
-            logger.error(f"Failed to stage upsert for portfolio time series: {e}", exc_info=True)
-            raise
 
     @async_timed(repository="TimeseriesRepository", method="get_last_portfolio_timeseries_before")
     async def get_last_portfolio_timeseries_before(self, portfolio_id: str, a_date: date) -> Optional[PortfolioTimeseries]:
