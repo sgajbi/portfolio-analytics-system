@@ -152,6 +152,27 @@ def test_calculate_transfer_in_transaction(base_transaction_event: TransactionEv
     assert cashflow.timing == "BOD"
     assert cashflow.level == "PORTFOLIO"
 
+def test_calculate_deposit_transaction(base_transaction_event: TransactionEvent):
+    """
+    Tests that a DEPOSIT transaction correctly generates a positive cashflow (contribution).
+    """
+    # Arrange
+    event = base_transaction_event
+    event.transaction_type = "DEPOSIT"
+    event.gross_transaction_amount = Decimal("100000")
+    event.trade_fee = Decimal("0")
+    rule = get_rule_for_transaction("DEPOSIT")
+    assert rule is not None
+
+    # Act
+    cashflow = CashflowLogic.calculate(event, rule)
+
+    # Assert
+    assert cashflow.amount == event.gross_transaction_amount
+    assert cashflow.classification == "CASHFLOW_IN"
+    assert cashflow.timing == "BOD"
+    assert cashflow.level == "PORTFOLIO"
+
 def test_calculate_transfer_out_transaction(base_transaction_event: TransactionEvent):
     """
     Tests that a TRANSFER_OUT transaction generates a negative EOD cashflow.

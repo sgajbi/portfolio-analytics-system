@@ -74,6 +74,11 @@ CASHFLOW_CONFIG: dict[str, CashflowRule] = {
         level=CashflowLevel.PORTFOLIO,
         timing=CashflowTiming.BOD
     ),
+    "DEPOSIT": CashflowRule(
+        classification=CashflowClassification.CASHFLOW_IN,
+        level=CashflowLevel.PORTFOLIO,
+        timing=CashflowTiming.BOD
+    ),
     "TRANSFER_OUT": CashflowRule(
         classification=CashflowClassification.CASHFLOW_OUT,
         level=CashflowLevel.PORTFOLIO,
