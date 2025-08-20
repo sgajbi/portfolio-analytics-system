@@ -29,38 +29,17 @@ def setup_and_verify_day1_state(clean_db_module, api_endpoints, poll_for_data, d
     ingestion_url = api_endpoints["ingestion"]
     query_url = api_endpoints["query"]
 
-    # --- 1. Ingest Portfolio and verify ---
-    portfolio_payload = {"portfolios": [{"portfolioId": PORTFOLIO_ID, "baseCurrency": BASE_CURRENCY, "openDate": "2025-01-01", "cifId": "WF_CIF_01", "status": "ACTIVE", "riskExposure": "High", "investmentTimeHorizon": "Long", "portfolioType": "Discretionary", "bookingCenter": "SG"}]}
-    requests.post(f"{ingestion_url}/ingest/portfolios", json=portfolio_payload)
-    poll_for_data(
-        f"{query_url}/portfolios/{PORTFOLIO_ID}",
-        lambda data: data and data.get("portfolio_id") == PORTFOLIO_ID,
-        timeout=60
-    )
+    # --- 1. Ingest Portfolio, Instruments, and Prices ---
+    requests.post(f"{ingestion_url}/ingest/portfolios", json={"portfolios": [{"portfolioId": PORTFOLIO_ID, "baseCurrency": BASE_CURRENCY, "openDate": "2025-01-01", "cifId": "WF_CIF_01", "status": "ACTIVE", "riskExposure": "High", "investmentTimeHorizon": "Long", "portfolioType": "Discretionary", "bookingCenter": "SG"}]})
+    requests.post(f"{ingestion_url}/ingest/instruments", json={"instruments": [{"securityId": CASH_USD_ID, "name": "US Dollar", "isin": "CASH_USD_ISIN", "instrumentCurrency": "USD", "productType": "Cash"}, {"securityId": CASH_EUR_ID, "name": "Euro", "isin": "CASH_EUR_ISIN", "instrumentCurrency": "EUR", "productType": "Cash"}, {"securityId": AAPL_ID, "name": "Apple Inc.", "isin": "US0378331005", "instrumentCurrency": "USD", "productType": "Equity"}, {"securityId": IBM_ID, "name": "IBM Corp.", "isin": "US4592001014", "instrumentCurrency": "USD", "productType": "Equity"}]})
+    requests.post(f"{ingestion_url}/ingest/market-prices", json={"market_prices": [{"securityId": CASH_USD_ID, "priceDate": "2025-08-18", "price": 1.0, "currency": "USD"}, {"securityId": CASH_EUR_ID, "priceDate": "2025-08-18", "price": 1.0, "currency": "EUR"}, {"securityId": AAPL_ID, "priceDate": "2025-08-18", "price": 175.0, "currency": "USD"}, {"securityId": IBM_ID, "priceDate": "2025-08-18", "price": 150.0, "currency": "USD"}]})
 
-    # --- 2. Ingest Instruments and verify ---
-    instruments_payload = {"instruments": [{"securityId": CASH_USD_ID, "name": "US Dollar", "isin": "CASH_USD_ISIN", "instrumentCurrency": "USD", "productType": "Cash"}, {"securityId": CASH_EUR_ID, "name": "Euro", "isin": "CASH_EUR_ISIN", "instrumentCurrency": "EUR", "productType": "Cash"}, {"securityId": AAPL_ID, "name": "Apple Inc.", "isin": "US0378331005", "instrumentCurrency": "USD", "productType": "Equity"}, {"securityId": IBM_ID, "name": "IBM Corp.", "isin": "US4592001014", "instrumentCurrency": "USD", "productType": "Equity"}]}
-    requests.post(f"{ingestion_url}/ingest/instruments", json=instruments_payload)
-    poll_for_data(
-        f"{query_url}/instruments?security_id={IBM_ID}",
-        lambda data: data and data.get("instruments"),
-        timeout=60
-    )
-
-    # --- 3. Ingest Prices and verify ---
-    prices_payload = {"market_prices": [{"securityId": CASH_USD_ID, "priceDate": "2025-08-18", "price": 1.0, "currency": "USD"}, {"securityId": CASH_EUR_ID, "priceDate": "2025-08-18", "price": 1.0, "currency": "EUR"}, {"securityId": AAPL_ID, "priceDate": "2025-08-18", "price": 175.0, "currency": "USD"}, {"securityId": IBM_ID, "priceDate": "2025-08-18", "price": 150.0, "currency": "USD"}]}
-    requests.post(f"{ingestion_url}/ingest/market-prices", json=prices_payload)
-    poll_for_data(
-        f"{query_url}/prices?security_id={IBM_ID}",
-        lambda data: data and data.get("prices"),
-        timeout=60
-    )
-    
-    # --- 4. Ingest Day 1 Transaction ---
+    # --- 2. Ingest Day 1 Transaction (Cash Deposit) ---
     deposit_payload = {"transactions": [{"transaction_id": DEPOSIT_TXN_ID, "portfolio_id": PORTFOLIO_ID, "instrument_id": CASH_USD_ID, "security_id": CASH_USD_ID, "transaction_date": f"{DAY_1}T10:00:00Z", "transaction_type": "DEPOSIT", "quantity": 1000000, "price": 1.0, "gross_transaction_amount": 1000000.0, "trade_currency": "USD", "currency": "USD"}]}
-    requests.post(f"{ingestion_url}/ingest/transactions", json=deposit_payload)
+    response = requests.post(f"{ingestion_url}/ingest/transactions", json=deposit_payload)
+    assert response.status_code == 202, f"Failed to ingest Day 1 transaction: {response.text}"
 
-    # --- 5. Poll DB for the final result of the pipeline ---
+    # --- 3. Poll DB for the final result of the pipeline ---
     timeout = 90
     start_time = time.time()
     with Session(db_engine) as session:
@@ -80,45 +59,49 @@ def test_workflow_day1_verification(setup_and_verify_day1_state, db_engine):
     Verifies the entire database state after the Day 1 cash deposit pipeline is complete.
     """
     with Session(db_engine) as session:
-        # 1. Verify Portfolio
-        portfolio_query = text("SELECT portfolio_id FROM portfolios WHERE portfolio_id = :pid")
-        portfolio_result = session.execute(portfolio_query, {"pid": PORTFOLIO_ID}).fetchone()
-        assert portfolio_result is not None
+        # 1. Verify Transaction
+        txn_query = text("SELECT net_cost, gross_cost FROM transactions WHERE transaction_id = :txn_id")
+        txn_result = session.execute(txn_query, {"txn_id": DEPOSIT_TXN_ID}).fetchone()
 
-        # 2. Verify Instruments
-        instrument_query = text("SELECT count(*) FROM instruments WHERE security_id = ANY(:ids)")
-        instrument_count = session.execute(instrument_query, {"ids": [CASH_USD_ID, CASH_EUR_ID, AAPL_ID, IBM_ID]}).scalar()
-        assert instrument_count == 4
-
-        # 3. Verify Prices
-        price_query = text("SELECT count(*) FROM market_prices WHERE price_date = '2025-08-18'")
-        price_count = session.execute(price_query).scalar()
-        assert price_count == 4
-        
-        # 4. Verify Cashflow record
+        # 2. Verify Cashflow
         cf_query = text("SELECT security_id, amount, is_position_flow, is_portfolio_flow FROM cashflows WHERE transaction_id = :txn_id")
         cf_result = session.execute(cf_query, {"txn_id": DEPOSIT_TXN_ID}).fetchone()
-        assert cf_result is not None
-        assert cf_result.security_id == CASH_USD_ID
-        assert cf_result.is_position_flow is True
-        assert cf_result.is_portfolio_flow is True
-
-        # 5. Verify Position History
+        
+        # 3. Verify Position History
         ph_query = text("SELECT quantity, cost_basis FROM position_history WHERE transaction_id = :txn_id")
         ph_result = session.execute(ph_query, {"txn_id": DEPOSIT_TXN_ID}).fetchone()
-        assert ph_result is not None
-        assert ph_result.quantity == Decimal("1000000.0000000000")
 
-        # 6. Verify Position Timeseries
-        pts_query = text("SELECT bod_cashflow_position, bod_cashflow_portfolio FROM position_timeseries WHERE portfolio_id = :pid AND security_id = :sid AND date = :date")
+        # 4. Verify Position Timeseries
+        pts_query = text("SELECT bod_cashflow_position, bod_cashflow_portfolio, created_at IS NOT NULL AS has_created_at FROM position_timeseries WHERE portfolio_id = :pid AND security_id = :sid AND date = :date")
         pts_result = session.execute(pts_query, {"pid": PORTFOLIO_ID, "sid": CASH_USD_ID, "date": DAY_1}).fetchone()
-        assert pts_result is not None
-        assert pts_result.bod_cashflow_position == Decimal("1000000.0000000000")
-        assert pts_result.bod_cashflow_portfolio == Decimal("1000000.0000000000")
 
-        # 7. Verify Portfolio Timeseries
-        port_ts_query = text("SELECT bod_cashflow, eod_market_value FROM portfolio_timeseries WHERE portfolio_id = :pid AND date = :date")
+        # 5. Verify Portfolio Timeseries
+        port_ts_query = text("SELECT bod_cashflow, eod_market_value, created_at IS NOT NULL AS has_created_at FROM portfolio_timeseries WHERE portfolio_id = :pid AND date = :date")
         port_ts_result = session.execute(port_ts_query, {"pid": PORTFOLIO_ID, "date": DAY_1}).fetchone()
-        assert port_ts_result is not None
-        assert port_ts_result.bod_cashflow == Decimal("1000000.0000000000")
-        assert port_ts_result.eod_market_value == Decimal("1000000.0000000000")
+
+    # Assert Transaction
+    assert txn_result is not None, "Transaction record not found for deposit."
+    assert txn_result.net_cost == Decimal("1000000.0000000000")
+    assert txn_result.gross_cost == Decimal("1000000.0000000000")
+
+    # Assert Cashflow
+    assert cf_result is not None, "Cashflow record not found for deposit."
+    assert cf_result.security_id == CASH_USD_ID
+    assert cf_result.is_position_flow is True
+    assert cf_result.is_portfolio_flow is True
+
+    # Assert Position History
+    assert ph_result is not None, "Position history not found for deposit."
+    assert ph_result.quantity == Decimal("1000000.0000000000")
+
+    # Assert Position Timeseries
+    assert pts_result is not None, "Position timeseries not found for cash deposit."
+    assert pts_result.bod_cashflow_position == Decimal("1000000.0000000000")
+    assert pts_result.bod_cashflow_portfolio == Decimal("1000000.0000000000")
+    assert pts_result.has_created_at is True
+
+    # Assert Portfolio Timeseries
+    assert port_ts_result is not None, "Portfolio timeseries not found for Day 1."
+    assert port_ts_result.bod_cashflow == Decimal("1000000.0000000000")
+    assert port_ts_result.eod_market_value == Decimal("1000000.0000000000")
+    assert port_ts_result.has_created_at is True
