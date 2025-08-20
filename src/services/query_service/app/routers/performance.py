@@ -18,6 +18,7 @@ router = APIRouter(
   
     "/{portfolio_id}/performance",
     response_model=PerformanceResponse,
+    response_model_exclude_none=True,
     summary="Calculate On-the-Fly Portfolio Performance",
     description="Calculates time-weighted return (TWR) for a portfolio over one or more specified periods, with support for various period types, breakdowns, and currency conversion."
 )
