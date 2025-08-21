@@ -7,16 +7,15 @@ import uvicorn
 from portfolio_common.config import (
     KAFKA_BOOTSTRAP_SERVERS,
     KAFKA_VALUATION_REQUIRED_TOPIC,
-    KAFKA_MARKET_PRICE_PERSISTED_TOPIC # <-- IMPORT NEW TOPIC
+    KAFKA_MARKET_PRICE_PERSISTED_TOPIC 
 )
-# REMOVE OLD CONSUMER IMPORTS
 from portfolio_common.kafka_admin import ensure_topics_exist
 from portfolio_common.kafka_utils import get_kafka_producer
 from portfolio_common.outbox_dispatcher import OutboxDispatcher
 from .web import app as web_app
 from .core.valuation_scheduler import ValuationScheduler
 from .consumers.valuation_consumer import ValuationConsumer
-from .consumers.price_event_consumer import PriceEventConsumer # <-- IMPORT NEW CONSUMER
+from .consumers.price_event_consumer import PriceEventConsumer
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +41,7 @@ class ConsumerManager:
             )
         )
 
-        # --- NEW: Add the PriceEventConsumer ---
+        # --- Add back the PriceEventConsumer ---
         self.consumers.append(
             PriceEventConsumer(
                 bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,

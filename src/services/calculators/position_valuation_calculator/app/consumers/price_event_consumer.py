@@ -23,7 +23,7 @@ SERVICE_NAME = "valuation-job-creator"
 class PriceEventConsumer(BaseConsumer):
     """
     Consumes market price persisted events and creates valuation jobs for all
-    affected portfolios and dates.
+    affected portfolios and dates to trigger historical re-valuation.
     """
     @retry(
         wait=wait_fixed(3),
@@ -65,19 +65,23 @@ class PriceEventConsumer(BaseConsumer):
                     else:
                         logger.info(f"Found {len(affected_portfolios)} portfolios to re-value for {event.security_id}: {affected_portfolios}")
                         
+                        # Re-value from the new price date until the next price, or the latest business date
                         next_price_date = await repo.get_next_price_date(
                             security_id=event.security_id,
                             after_date=event.price_date
                         )
                         
                         latest_business_date = await repo.get_latest_business_date() or event.price_date
-
+                        
+                        # The range to re-value is from the event date up to (but not including) the next price date,
+                        # or up to and including the latest business date if no future price exists.
                         end_date = next_price_date or (latest_business_date + timedelta(days=1))
 
                         for portfolio_id in affected_portfolios:
                             job_count = 0
                             # Ensure we don't create jobs for dates before the position existed.
                             first_txn_date = await repo.get_first_transaction_date(portfolio_id, event.security_id)
+                            
                             if not first_txn_date:
                                 continue
 

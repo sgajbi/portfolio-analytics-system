@@ -18,9 +18,9 @@ logger = logging.getLogger(__name__)
 
 class ValuationScheduler:
     """
-    A background task that polls the portfolio_valuation_jobs table, finds jobs
-    that are ready to be processed, and dispatches them as Kafka events.
-    It also acts as the system's heartbeat, creating roll-forward jobs daily.
+    A background task that acts as the system's daily heartbeat. It polls for the
+    latest business date, finds all open positions, and creates valuation jobs
+    for any days that have been missed, ensuring a complete time series.
     """
     def __init__(self, poll_interval: int = 30, batch_size: int = 100):
         # Read interval from env var, fall back to the passed argument.
@@ -37,7 +37,7 @@ class ValuationScheduler:
     async def _create_daily_roll_forward_jobs(self, db):
         """
         Finds all open positions and creates valuation jobs for any days
-        between their last snapshot and the latest business day.
+        between their last snapshot and the latest business day from the business_dates table.
         """
         repo = ValuationRepository(db)
         job_repo = ValuationJobRepository(db)
@@ -59,8 +59,12 @@ class ValuationScheduler:
             security_id = pos['security_id']
 
             last_snapshot_date = await repo.get_last_snapshot_date(portfolio_id, security_id)
+            
+            # If a position exists but has no snapshots yet, start from its first transaction date
             if not last_snapshot_date:
-                continue
+                last_snapshot_date = await repo.get_first_transaction_date(portfolio_id, security_id)
+                if not last_snapshot_date:
+                    continue # Should not happen if it's an open position, but defensive check
 
             if last_snapshot_date < latest_business_date:
                 job_count = 0
