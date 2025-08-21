@@ -1,6 +1,7 @@
 # services/calculators/position_calculator/app/consumers/transaction_event_consumer.py
 import logging
 import json
+from datetime import timedelta
 from pydantic import ValidationError
 from confluent_kafka import Message
 from sqlalchemy.exc import DBAPIError, IntegrityError
@@ -23,9 +24,52 @@ SERVICE_NAME = "position-calculator"
 
 class TransactionEventConsumer(BaseConsumer):
     """
-    Consumes processed transaction events, recalculates positions, persists them,
-    and creates valuation jobs for the affected dates.
+    Consumes processed transaction events, rolls forward prior positions,
+    recalculates new positions, persists them as snapshots, and creates valuation jobs.
+    This service is the sole owner of DailyPositionSnapshot CREATION.
     """
+
+    async def _roll_forward_position(
+        self,
+        portfolio_id: str,
+        security_id: str,
+        event_date: date,
+        repo: PositionRepository,
+        valuation_job_repo: ValuationJobRepository,
+        correlation_id: str
+    ):
+        """
+        Checks if there's a gap between the last snapshot and the current event.
+        If so, creates new snapshots for each missing day to roll the position forward.
+        """
+        last_snapshot_date = await repo.get_last_snapshot_date(portfolio_id, security_id)
+
+        if last_snapshot_date and last_snapshot_date < event_date:
+            last_snapshot = await repo.get_snapshot(portfolio_id, security_id, last_snapshot_date)
+            if not last_snapshot or last_snapshot.quantity == 0:
+                return # No open position to roll forward
+
+            logger.info(f"Gap detected for {security_id}. Rolling forward from {last_snapshot_date} to {event_date}.")
+            current_fill_date = last_snapshot_date + timedelta(days=1)
+            
+            while current_fill_date < event_date:
+                rolled_snapshot = DailyPositionSnapshot(
+                    portfolio_id=portfolio_id,
+                    security_id=security_id,
+                    date=current_fill_date,
+                    quantity=last_snapshot.quantity,
+                    cost_basis=last_snapshot.cost_basis,
+                    cost_basis_local=last_snapshot.cost_basis_local,
+                    valuation_status='UNVALUED'
+                )
+                await repo.upsert_daily_snapshot(rolled_snapshot)
+                await valuation_job_repo.upsert_job(
+                    portfolio_id=portfolio_id,
+                    security_id=security_id,
+                    valuation_date=current_fill_date,
+                    correlation_id=correlation_id
+                )
+                current_fill_date += timedelta(days=1)
 
     @retry(
         wait=wait_fixed(3),
@@ -56,12 +100,21 @@ class TransactionEventConsumer(BaseConsumer):
                     repo = PositionRepository(db)
                     valuation_job_repo = ValuationJobRepository(db)
                     
+                    # --- NEW LOGIC: Roll forward positions before calculating ---
+                    await self._roll_forward_position(
+                        portfolio_id=event.portfolio_id,
+                        security_id=event.security_id,
+                        event_date=event.transaction_date.date(),
+                        repo=repo,
+                        valuation_job_repo=valuation_job_repo,
+                        correlation_id=correlation_id
+                    )
+
                     # Recalculate & stage all affected position history rows
                     new_positions = await PositionCalculator.calculate(event, db, repo=repo)
 
                     # Create a valuation job for each new or updated position record
                     for record in new_positions:
-                        # NEW: Create and save the DailyPositionSnapshot
                         snapshot = DailyPositionSnapshot(
                             portfolio_id=record.portfolio_id,
                             security_id=record.security_id,

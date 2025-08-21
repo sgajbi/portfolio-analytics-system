@@ -30,6 +30,7 @@ class ValuationConsumer(BaseConsumer):
     """
     Consumes scheduled valuation jobs, calculates the market value for a position
     on a specific date, and saves the result as a daily position snapshot.
+    It now assumes the snapshot record has already been created and will retry if it is not found.
     """
     @retry(
         wait=wait_fixed(3),
@@ -64,23 +65,8 @@ class ValuationConsumer(BaseConsumer):
                     snapshot = await repo.get_daily_snapshot(event.portfolio_id, event.security_id, event.valuation_date)
                     
                     if not snapshot:
-                        # --- NEW LOGIC: ROLL FORWARD ---
-                        logger.warning(f"Snapshot for {event.valuation_date} not found. Attempting to roll forward.")
-                        previous_snapshot = await repo.get_last_snapshot_before_date(event.portfolio_id, event.security_id, event.valuation_date)
-                        
-                        if not previous_snapshot:
-                            raise SnapshotNotFoundError(f"No previous snapshot found for {event.security_id} before {event.valuation_date}. Cannot roll forward.")
-
-                        snapshot = DailyPositionSnapshot(
-                            portfolio_id=previous_snapshot.portfolio_id,
-                            security_id=previous_snapshot.security_id,
-                            date=event.valuation_date,
-                            quantity=previous_snapshot.quantity,
-                            cost_basis=previous_snapshot.cost_basis,
-                            cost_basis_local=previous_snapshot.cost_basis_local
-                        )
-                        logger.info(f"Created new rolled-forward snapshot for {event.valuation_date} from {previous_snapshot.date}.")
-                        # --- END NEW LOGIC ---
+                        # The snapshot SHOULD exist. If not, it's a transient issue. Raise to retry.
+                        raise SnapshotNotFoundError(f"Snapshot for {event.security_id} on {event.valuation_date} not found. Retrying.")
 
                     instrument = await repo.get_instrument(snapshot.security_id)
                     portfolio = await repo.get_portfolio(snapshot.portfolio_id)

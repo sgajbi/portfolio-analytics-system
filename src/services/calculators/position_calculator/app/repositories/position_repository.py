@@ -1,6 +1,6 @@
 # services/calculators/position_calculator/app/repositories/position_repository.py
 import logging
-from datetime import date
+from datetime import date, timedelta
 from typing import List, Optional
 
 from sqlalchemy import select, func, delete
@@ -17,6 +17,27 @@ class PositionRepository:
     """
     def __init__(self, db: AsyncSession):
         self.db = db
+
+    @async_timed(repository="PositionRepository", method="get_last_snapshot_date")
+    async def get_last_snapshot_date(self, portfolio_id: str, security_id: str) -> Optional[date]:
+        """Gets the date of the most recent daily position snapshot for a security."""
+        stmt = select(func.max(DailyPositionSnapshot.date)).where(
+            DailyPositionSnapshot.portfolio_id == portfolio_id,
+            DailyPositionSnapshot.security_id == security_id
+        )
+        result = await self.db.execute(stmt)
+        return result.scalars().first()
+
+    @async_timed(repository="PositionRepository", method="get_snapshot")
+    async def get_snapshot(self, portfolio_id: str, security_id: str, a_date: date) -> Optional[DailyPositionSnapshot]:
+        """Fetches a single daily position snapshot for a specific key."""
+        stmt = select(DailyPositionSnapshot).filter_by(
+            portfolio_id=portfolio_id,
+            security_id=security_id,
+            date=a_date
+        )
+        result = await self.db.execute(stmt)
+        return result.scalars().first()
 
     @async_timed(repository="PositionRepository", method="upsert_daily_snapshot")
     async def upsert_daily_snapshot(self, snapshot: DailyPositionSnapshot):
@@ -57,7 +78,6 @@ class PositionRepository:
         Finds all security_ids in a portfolio that had a non-zero quantity
         based on the last known snapshot on or before the given date.
         """
-        # Subquery to find the latest snapshot for each security on or before the target date
         latest_snapshot_subq = (
             select(
                 DailyPositionSnapshot.security_id,
@@ -74,7 +94,6 @@ class PositionRepository:
             .subquery('latest_snapshot')
         )
 
-        # Main query to filter for those with non-zero quantity
         stmt = (
             select(latest_snapshot_subq.c.security_id)
             .where(
@@ -154,30 +173,3 @@ class PositionRepository:
         self.db.add_all(positions)
         await self.db.flush()
         logger.info(f"Staged and flushed {len(positions)} new position records for saving.")
-        
-    @async_timed(repository="PositionRepository", method="upsert_daily_snapshot")
-    async def upsert_daily_snapshot(self, snapshot: DailyPositionSnapshot):
-        """
-        Idempotently creates or updates a daily position snapshot.
-        """
-        try:
-            insert_dict = {c.name: getattr(snapshot, c.name) for c in snapshot.__table__.columns if c.name not in ['id', 'created_at', 'updated_at']}
-            
-            stmt = pg_insert(DailyPositionSnapshot).values(**insert_dict)
-            
-            final_stmt = stmt.on_conflict_do_update(
-                index_elements=['portfolio_id', 'security_id', 'date'],
-                set_={
-                    'quantity': stmt.excluded.quantity,
-                    'cost_basis': stmt.excluded.cost_basis,
-                    'cost_basis_local': stmt.excluded.cost_basis_local,
-                    'valuation_status': 'UNVALUED', # Reset status on update
-                    'updated_at': func.now()
-                }
-            )
-
-            await self.db.execute(final_stmt)
-            logger.info(f"Staged upsert for daily snapshot for {snapshot.security_id} on {snapshot.date}")
-        except Exception as e:
-            logger.error(f"Failed to stage upsert for daily snapshot: {e}", exc_info=True)
-            raise
