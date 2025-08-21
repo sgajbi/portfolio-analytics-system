@@ -9,7 +9,7 @@ from sqlalchemy.orm import aliased
 
 from portfolio_common.database_models import (
     PositionHistory, MarketPrice, DailyPositionSnapshot, FxRate, Instrument, Portfolio,
-    PortfolioValuationJob, Transaction
+    PortfolioValuationJob, Transaction, BusinessDate
 )
 from portfolio_common.utils import async_timed
 
@@ -132,20 +132,12 @@ class ValuationRepository:
     @async_timed(repository="ValuationRepository", method="get_latest_business_date")
     async def get_latest_business_date(self) -> Optional[date]:
         """
-        Finds the most recent date present in either the market_prices or transactions table.
+        Finds the most recent date present in the dedicated business_dates table.
         """
-        latest_price_date_query = select(func.max(MarketPrice.price_date))
-        latest_txn_date_query = select(func.max(func.date(Transaction.transaction_date)))
-
-        price_result = await self.db.execute(latest_price_date_query)
-        txn_result = await self.db.execute(latest_txn_date_query)
-
-        latest_price_date = price_result.scalar_one_or_none()
-        latest_txn_date = txn_result.scalar_one_or_none()
-
-        if latest_price_date and latest_txn_date:
-            return max(latest_price_date, latest_txn_date)
-        return latest_price_date or latest_txn_date
+        stmt = select(func.max(BusinessDate.date))
+        result = await self.db.execute(stmt)
+        latest_date = result.scalar_one_or_none()
+        return latest_date
 
     @async_timed(repository="ValuationRepository", method="get_last_snapshot_before_date")
     async def get_last_snapshot_before_date(self, portfolio_id: str, security_id: str, a_date: date) -> Optional[DailyPositionSnapshot]:
