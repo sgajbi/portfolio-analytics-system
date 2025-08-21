@@ -7,13 +7,15 @@ from app.DTOs.instrument_dto import Instrument
 from app.DTOs.market_price_dto import MarketPrice
 from app.DTOs.fx_rate_dto import FxRate
 from app.DTOs.portfolio_dto import Portfolio
+from app.DTOs.business_date_dto import BusinessDate
 from portfolio_common.kafka_utils import KafkaProducer, get_kafka_producer
 from portfolio_common.config import (
     KAFKA_RAW_TRANSACTIONS_TOPIC, 
     KAFKA_INSTRUMENTS_TOPIC, 
     KAFKA_MARKET_PRICES_TOPIC,
     KAFKA_FX_RATES_TOPIC,
-    KAFKA_RAW_PORTFOLIOS_TOPIC
+    KAFKA_RAW_PORTFOLIOS_TOPIC,
+    KAFKA_RAW_BUSINESS_DATES_TOPIC
 )
 from portfolio_common.logging_utils import correlation_id_var
 from portfolio_common.monitoring import KAFKA_MESSAGES_PUBLISHED_TOTAL
@@ -28,6 +30,21 @@ class IngestionService:
         if corr_id:
             return [('correlation_id', corr_id.encode('utf-8'))]
         return None
+
+    async def publish_business_dates(self, business_dates: List[BusinessDate]) -> None:
+        """Publishes a list of business dates to the raw business dates topic."""
+        headers = self._get_headers()
+        for business_date in business_dates:
+            # Key by the date string to ensure messages for the same date go to the same partition
+            key = business_date.business_date.isoformat()
+            payload = business_date.model_dump(by_alias=True)
+            self._kafka_producer.publish_message(
+                topic=KAFKA_RAW_BUSINESS_DATES_TOPIC,
+                key=key,
+                value=payload,
+                headers=headers
+            )
+            KAFKA_MESSAGES_PUBLISHED_TOTAL.labels(topic=KAFKA_RAW_BUSINESS_DATES_TOPIC).inc()
 
     async def publish_portfolios(self, portfolios: List[Portfolio]) -> None:
         """Publishes a list of portfolios to the raw portfolios topic."""
