@@ -42,6 +42,7 @@ TOPICS_TO_CREATE = [
     "instruments",
     "market_prices",
     "fx_rates",
+    "raw_business_dates", # New Topic
     # Persistence completion topics
     "raw_transactions_completed",
     "market_price_persisted",
