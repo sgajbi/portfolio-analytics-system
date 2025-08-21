@@ -18,15 +18,15 @@ IBM_ID = "SEC_IBM_E2E"
 DAY_1 = "2025-08-19"
 DAY_2 = "2025-08-20"
 DAY_3 = "2025-08-21"
-DAY_4 = "2025-08-22" # New constant for Day 4
+DAY_4 = "2025-08-22"
 
 DEPOSIT_TXN_ID = "TXN_DAY1_DEPOSIT_01"
 BUY_AAPL_TXN_ID = "TXN_DAY2_BUY_AAPL_01"
 SELL_CASH_TXN_ID = "TXN_DAY2_SELL_CASH_01"
 BUY_IBM_TXN_ID = "TXN_DAY3_BUY_IBM_01"
 SELL_CASH_D3_TXN_ID = "TXN_DAY3_SELL_CASH_01"
-SELL_AAPL_TXN_ID = "TXN_DAY4_SELL_AAPL_01" # New constant
-BUY_CASH_D4_TXN_ID = "TXN_DAY4_BUY_CASH_01"   # New constant
+SELL_AAPL_TXN_ID = "TXN_DAY4_SELL_AAPL_01"
+BUY_CASH_D4_TXN_ID = "TXN_DAY4_BUY_CASH_01"
 
 # --- Helper Functions ---
 
@@ -78,6 +78,16 @@ def setup_day4_workflow(clean_db_module, api_endpoints, db_engine):
     ]}
     response = requests.post(f"{ingestion_url}/ingest/instruments", json=instruments_payload)
     assert response.status_code == 202, f"Failed to ingest instruments: {response.text}"
+
+    # --- NEW: Ingest Business Dates to Drive the Scheduler ---
+    business_dates_payload = {"business_dates": [
+        {"businessDate": DAY_1},
+        {"businessDate": DAY_2},
+        {"businessDate": DAY_3},
+        {"businessDate": DAY_4},
+    ]}
+    response = requests.post(f"{ingestion_url}/ingest/business-dates", json=business_dates_payload)
+    assert response.status_code == 202, f"Failed to ingest business dates: {response.text}"
 
     # --- Day 1 Ingestion ---
     day1_deposit_payload = {"transactions": [{"transaction_id": DEPOSIT_TXN_ID, "portfolio_id": PORTFOLIO_ID, "instrument_id": CASH_USD_ID, "security_id": CASH_USD_ID, "transaction_date": f"{DAY_1}T10:00:00Z", "transaction_type": "DEPOSIT", "quantity": 1000000, "price": 1.0, "gross_transaction_amount": 1000000.0, "trade_currency": "USD", "currency": "USD"}]}
