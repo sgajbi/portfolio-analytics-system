@@ -1,6 +1,6 @@
 # services/calculators/position_calculator/app/repositories/position_repository.py
 import logging
-from datetime import date, timedelta
+from datetime import date
 from typing import List, Optional
 
 from sqlalchemy import select, func, delete
@@ -17,27 +17,6 @@ class PositionRepository:
     """
     def __init__(self, db: AsyncSession):
         self.db = db
-
-    @async_timed(repository="PositionRepository", method="get_last_snapshot_date")
-    async def get_last_snapshot_date(self, portfolio_id: str, security_id: str) -> Optional[date]:
-        """Gets the date of the most recent daily position snapshot for a security."""
-        stmt = select(func.max(DailyPositionSnapshot.date)).where(
-            DailyPositionSnapshot.portfolio_id == portfolio_id,
-            DailyPositionSnapshot.security_id == security_id
-        )
-        result = await self.db.execute(stmt)
-        return result.scalars().first()
-
-    @async_timed(repository="PositionRepository", method="get_snapshot")
-    async def get_snapshot(self, portfolio_id: str, security_id: str, a_date: date) -> Optional[DailyPositionSnapshot]:
-        """Fetches a single daily position snapshot for a specific key."""
-        stmt = select(DailyPositionSnapshot).filter_by(
-            portfolio_id=portfolio_id,
-            security_id=security_id,
-            date=a_date
-        )
-        result = await self.db.execute(stmt)
-        return result.scalars().first()
 
     @async_timed(repository="PositionRepository", method="upsert_daily_snapshot")
     async def upsert_daily_snapshot(self, snapshot: DailyPositionSnapshot):
