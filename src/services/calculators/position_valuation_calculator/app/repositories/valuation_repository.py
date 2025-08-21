@@ -45,7 +45,6 @@ class ValuationRepository:
         last known snapshot on or before a given date. This is used to find all
         portfolios affected by a new market price.
         """
-        # Subquery to find the latest snapshot date for each portfolio for the given security on or before the target date
         latest_snapshot_subq = (
             select(
                 DailyPositionSnapshot.portfolio_id,
@@ -59,7 +58,6 @@ class ValuationRepository:
             .subquery('latest_snapshot_dates')
         )
 
-        # Main query to get the actual snapshot record for that latest date
         stmt = (
             select(DailyPositionSnapshot.portfolio_id)
             .join(
@@ -80,7 +78,6 @@ class ValuationRepository:
     async def get_all_open_positions(self) -> List[Dict[str, any]]:
         """
         Finds all distinct (portfolio_id, security_id) pairs that currently have an open position.
-        Excludes cash positions from valuation.
         """
         latest_snapshot_subq = (
             select(
@@ -102,8 +99,7 @@ class ValuationRepository:
             )
             .where(
                 latest_snapshot_subq.c.rn == 1,
-                latest_snapshot_subq.c.quantity > 0,
-                latest_snapshot_subq.c.security_id != 'CASH'
+                latest_snapshot_subq.c.quantity > 0
             )
         )
         result = await self.db.execute(stmt)
