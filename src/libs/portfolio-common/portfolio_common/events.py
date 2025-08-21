@@ -4,6 +4,11 @@ from typing import Optional
 from pydantic import BaseModel, Field, ConfigDict
 from decimal import Decimal
 
+class BusinessDateEvent(BaseModel):
+    """Event model for a raw business date."""
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+    business_date: date = Field(..., alias="businessDate")
+
 class PortfolioEvent(BaseModel):
     """
     Event model for raw portfolio data.

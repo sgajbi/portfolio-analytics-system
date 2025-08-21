@@ -11,13 +11,15 @@ from portfolio_common.config import (
     KAFKA_MARKET_PRICES_TOPIC,
     KAFKA_FX_RATES_TOPIC,
     KAFKA_RAW_PORTFOLIOS_TOPIC,
-    KAFKA_PERSISTENCE_DLQ_TOPIC
+    KAFKA_PERSISTENCE_DLQ_TOPIC,
+    KAFKA_RAW_BUSINESS_DATES_TOPIC
 )
 from .consumers.transaction_consumer import TransactionPersistenceConsumer
 from .consumers.instrument_consumer import InstrumentConsumer
 from .consumers.market_price_consumer import MarketPriceConsumer
 from .consumers.fx_rate_consumer import FxRateConsumer
 from .consumers.portfolio_consumer import PortfolioConsumer
+from .consumers.business_date_consumer import BusinessDateConsumer
 from portfolio_common.kafka_utils import get_kafka_producer
 from portfolio_common.outbox_dispatcher import OutboxDispatcher
 from portfolio_common.kafka_admin import ensure_topics_exist
@@ -88,6 +90,16 @@ class ConsumerManager:
                 bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
                 topic=KAFKA_FX_RATES_TOPIC,
                 group_id="persistence_group_fx_rates",
+                dlq_topic=dlq_topic,
+                service_prefix=service_prefix,
+                metrics=custom_metrics
+            )
+        )
+        self.consumers.append(
+            BusinessDateConsumer(
+                bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
+                topic=KAFKA_RAW_BUSINESS_DATES_TOPIC,
+                group_id="persistence_group_business_dates",
                 dlq_topic=dlq_topic,
                 service_prefix=service_prefix,
                 metrics=custom_metrics
