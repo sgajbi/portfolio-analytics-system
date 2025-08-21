@@ -33,25 +33,22 @@ class TransactionEventConsumer(BaseConsumer):
         self,
         portfolio_id: str,
         event_date: date,
-        event_security_id: str,
         repo: PositionRepository,
         valuation_job_repo: ValuationJobRepository,
         correlation_id: str
     ):
         """
-        Finds all open positions in the portfolio (excluding the one from the current event)
-        and creates roll-forward snapshots for any days missed up to the event date.
+        Finds all open positions in the portfolio and creates roll-forward snapshots 
+        for any days missed up to the day before the event.
         """
         # Find all securities that were open at the beginning of the event day
         open_securities = await repo.find_open_security_ids_as_of(portfolio_id, event_date - timedelta(days=1))
 
         for security_id in open_securities:
-            if security_id == event_security_id:
-                continue # Skip the security from the current event, it will be handled separately
-
             last_snapshot_date = await repo.get_last_snapshot_date(portfolio_id, security_id)
 
-            if last_snapshot_date and last_snapshot_date < event_date:
+            # We need to fill the gap between the last known date and the day *before* the event
+            if last_snapshot_date and last_snapshot_date < (event_date - timedelta(days=1)):
                 last_snapshot = await repo.get_snapshot(portfolio_id, security_id, last_snapshot_date)
                 if not last_snapshot or last_snapshot.quantity == 0:
                     continue 
@@ -59,8 +56,6 @@ class TransactionEventConsumer(BaseConsumer):
                 logger.info(f"Gap detected for {security_id}. Rolling forward from {last_snapshot_date} to {event_date}.")
                 current_fill_date = last_snapshot_date + timedelta(days=1)
                 
-                # Corrected Loop Condition: The loop was not running because `current_fill_date` was equal to `event_date`.
-                # This logic is now correct: we only fill the days *before* the event.
                 while current_fill_date < event_date:
                     rolled_snapshot = DailyPositionSnapshot(
                         portfolio_id=portfolio_id,
@@ -109,20 +104,16 @@ class TransactionEventConsumer(BaseConsumer):
                     repo = PositionRepository(db)
                     valuation_job_repo = ValuationJobRepository(db)
                     
-                    # --- NEW LOGIC: Roll forward OTHER open positions first ---
                     await self._roll_forward_portfolio_positions(
                         portfolio_id=event.portfolio_id,
                         event_date=event.transaction_date.date(),
-                        event_security_id=event.security_id,
                         repo=repo,
                         valuation_job_repo=valuation_job_repo,
                         correlation_id=correlation_id
                     )
 
-                    # Recalculate & stage all affected position history rows for the event's security
                     new_positions = await PositionCalculator.calculate(event, db, repo=repo)
 
-                    # Create a valuation job for each new or updated position record
                     for record in new_positions:
                         snapshot = DailyPositionSnapshot(
                             portfolio_id=record.portfolio_id,
