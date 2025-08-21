@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.services.calculators.position_calculator.app.consumers.transaction_event_consumer import TransactionEventConsumer
 from portfolio_common.events import TransactionEvent
-from portfolio_common.database_models import PositionHistory
+from portfolio_common.database_models import PositionHistory, Transaction as DBTransaction
 from portfolio_common.idempotency_repository import IdempotencyRepository
 from portfolio_common.valuation_job_repository import ValuationJobRepository
 from portfolio_common.logging_utils import correlation_id_var
@@ -87,8 +87,13 @@ async def test_consumer_recalculates_positions_and_creates_job(
     )
     mock_position_repo.get_last_position_before.return_value = anchor_position
 
+    # --- THIS IS THE FIX ---
+    # Mock the transaction that the calculator will find to replay.
+    mock_db_transaction = DBTransaction(**mock_transaction_event.model_dump())
+    mock_position_repo.get_transactions_on_or_after.return_value = [mock_db_transaction]
+    # --- END FIX ---
+
     mock_db_session = AsyncMock(spec=AsyncSession)
-    # --- FIX: `begin` must be an awaitable mock ---
     mock_db_session.begin = AsyncMock()
     mock_transaction = AsyncMock()
     mock_db_session.begin.return_value = mock_transaction
