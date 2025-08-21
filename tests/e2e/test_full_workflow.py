@@ -172,13 +172,13 @@ def test_day3_ibm_buy(api_endpoints, db_engine):
     ]}
     requests.post(f"{ingestion_url}/ingest/market-prices", json=day3_prices_payload)
 
-    # Poll for the final state of Day 3
+    # Poll for the final state of Day 3, specifically for the corrected AAPL value
     poll_db_until(
         db_engine=db_engine,
-        query="SELECT 1 FROM portfolio_timeseries WHERE portfolio_id = :pid AND date = :date",
-        params={"pid": PORTFOLIO_ID, "date": DAY_3},
-        validation_func=lambda result: result is not None,
-        fail_message="Pipeline did not create portfolio_timeseries record for Day 3."
+        query="SELECT market_value FROM daily_position_snapshots WHERE portfolio_id = :pid AND security_id = :sid AND date = :date",
+        params={"pid": PORTFOLIO_ID, "sid": AAPL_ID, "date": DAY_3},
+        validation_func=lambda result: result is not None and result.market_value == Decimal("90000.0000000000"),
+        fail_message="Pipeline did not correctly re-value AAPL snapshot for Day 3."
     )
 
     # Assert Day 3 State
