@@ -9,6 +9,13 @@ from sqlalchemy.orm import relationship
 
 from .db_base import Base
 
+class BusinessDate(Base):
+    __tablename__ = 'business_dates'
+
+    # The business date itself is the primary key.
+    date = Column(Date, primary_key=True, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=func.now())
+
 class Portfolio(Base):
     __tablename__ = 'portfolios'
 
