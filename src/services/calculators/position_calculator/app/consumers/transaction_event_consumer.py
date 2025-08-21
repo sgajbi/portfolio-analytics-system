@@ -1,7 +1,7 @@
 # services/calculators/position_calculator/app/consumers/transaction_event_consumer.py
 import logging
 import json
-from datetime import timedelta
+from datetime import timedelta, date # <-- FIX IS HERE
 from pydantic import ValidationError
 from confluent_kafka import Message
 from sqlalchemy.exc import DBAPIError, IntegrityError
