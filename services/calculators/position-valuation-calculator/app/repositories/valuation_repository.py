@@ -245,25 +245,39 @@ class ValuationRepository:
         Idempotently inserts or updates a daily position snapshot and returns the result.
         """
         try:
-            insert_dict = {
-                c.name: getattr(snapshot, c.name) 
-                for c in snapshot.__table__.columns 
-                if c.name not in ['id', 'created_at', 'updated_at']
+            insert_values = {
+                "portfolio_id": snapshot.portfolio_id,
+                "security_id": snapshot.security_id,
+                "date": snapshot.date,
+                "quantity": snapshot.quantity,
+                "cost_basis": snapshot.cost_basis,
+                "cost_basis_local": snapshot.cost_basis_local,
+                "market_price": snapshot.market_price,
+                "market_value": snapshot.market_value,
+                "market_value_local": snapshot.market_value_local,
+                "unrealized_gain_loss": snapshot.unrealized_gain_loss,
+                "unrealized_gain_loss_local": snapshot.unrealized_gain_loss_local,
+                "valuation_status": snapshot.valuation_status,
             }
             
-            stmt = pg_insert(DailyPositionSnapshot).values(**insert_dict)
+            stmt = pg_insert(DailyPositionSnapshot).values(**insert_values)
 
-            # Define the update dictionary for the ON CONFLICT clause.
-            # This ensures 'updated_at' is set correctly on updates.
-            update_dict = {
-                k: getattr(stmt.excluded, k) for k, v in insert_dict.items() 
-                if k not in ['portfolio_id', 'security_id', 'date']
+            update_values = {
+                "quantity": stmt.excluded.quantity,
+                "cost_basis": stmt.excluded.cost_basis,
+                "cost_basis_local": stmt.excluded.cost_basis_local,
+                "market_price": stmt.excluded.market_price,
+                "market_value": stmt.excluded.market_value,
+                "market_value_local": stmt.excluded.market_value_local,
+                "unrealized_gain_loss": stmt.excluded.unrealized_gain_loss,
+                "unrealized_gain_loss_local": stmt.excluded.unrealized_gain_loss_local,
+                "valuation_status": stmt.excluded.valuation_status,
+                "updated_at": func.now(),
             }
-            update_dict['updated_at'] = func.now()
 
             final_stmt = stmt.on_conflict_do_update(
                 index_elements=['portfolio_id', 'security_id', 'date'],
-                set_=update_dict
+                set_=update_values
             ).returning(DailyPositionSnapshot)
 
             result = await self.db.execute(final_stmt)

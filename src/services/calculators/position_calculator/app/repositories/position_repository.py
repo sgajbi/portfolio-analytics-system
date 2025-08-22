@@ -24,25 +24,29 @@ class PositionRepository:
         Idempotently creates or updates a daily position snapshot.
         """
         try:
-            insert_dict = {
-                c.name: getattr(snapshot, c.name) 
-                for c in snapshot.__table__.columns 
-                if c.name not in ['id', 'created_at', 'updated_at']
+            insert_values = {
+                "portfolio_id": snapshot.portfolio_id,
+                "security_id": snapshot.security_id,
+                "date": snapshot.date,
+                "quantity": snapshot.quantity,
+                "cost_basis": snapshot.cost_basis,
+                "cost_basis_local": snapshot.cost_basis_local,
+                "valuation_status": snapshot.valuation_status
             }
             
-            stmt = pg_insert(DailyPositionSnapshot).values(**insert_dict)
+            stmt = pg_insert(DailyPositionSnapshot).values(**insert_values)
             
-            update_dict = {
-                k: getattr(stmt.excluded, k) for k, v in insert_dict.items() 
-                if k not in ['portfolio_id', 'security_id', 'date']
+            update_values = {
+                "quantity": stmt.excluded.quantity,
+                "cost_basis": stmt.excluded.cost_basis,
+                "cost_basis_local": stmt.excluded.cost_basis_local,
+                "valuation_status": 'UNVALUED',
+                "updated_at": func.now()
             }
-            # Explicitly set valuation_status to UNVALUED on conflict to trigger re-valuation
-            update_dict['valuation_status'] = 'UNVALUED'
-            update_dict['updated_at'] = func.now()
 
             final_stmt = stmt.on_conflict_do_update(
                 index_elements=['portfolio_id', 'security_id', 'date'],
-                set_=update_dict
+                set_=update_values
             )
 
             await self.db.execute(final_stmt)
