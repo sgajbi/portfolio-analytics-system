@@ -12,13 +12,14 @@ class PositionTimeseriesLogic:
     @staticmethod
     def calculate_daily_record(
         current_snapshot: DailyPositionSnapshot,
-        previous_timeseries: PositionTimeseries | None,
+        previous_snapshot: DailyPositionSnapshot | None,
         cashflows: List[Cashflow]
     ) -> PositionTimeseries:
         """
         Calculates a single, complete position time series record for a given day.
         """
-        bod_market_value = previous_timeseries.eod_market_value if previous_timeseries else Decimal(0)
+        # Use the previous day's snapshot as the source of truth for BOD market value
+        bod_market_value = previous_snapshot.market_value_local if previous_snapshot and previous_snapshot.market_value_local is not None else Decimal(0)
 
         eod_market_value = current_snapshot.market_value_local or Decimal(0)
         eod_quantity = current_snapshot.quantity

@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from portfolio_common.database_models import (
     PositionTimeseries, PortfolioTimeseries, Portfolio, Cashflow, FxRate,
-    Instrument, PortfolioAggregationJob, MarketPrice, Transaction
+    Instrument, PortfolioAggregationJob, MarketPrice, Transaction, DailyPositionSnapshot
 )
 from portfolio_common.utils import async_timed
 
@@ -79,10 +79,9 @@ class TimeseriesRepository:
                 WHERE p1.status = 'PENDING'
                 AND NOT EXISTS (
                     SELECT 1
-                    FROM portfolio_aggregation_jobs p2
-                    WHERE p2.portfolio_id = p1.portfolio_id
-                    AND p2.aggregation_date = p1.aggregation_date - INTERVAL '1 day'
-                    AND p2.status != 'COMPLETE'
+                    FROM portfolio_timeseries p_ts
+                    WHERE p_ts.portfolio_id = p1.portfolio_id
+                    AND p_ts.date = p1.aggregation_date - INTERVAL '1 day'
                 )
                 ORDER BY p1.portfolio_id, p1.aggregation_date
                 LIMIT :batch_size
@@ -239,3 +238,21 @@ class TimeseriesRepository:
         )
         result = await self.db.execute(stmt)
         return result.scalar()
+
+    @async_timed(repository="TimeseriesRepository", method="get_last_snapshot_before")
+    async def get_last_snapshot_before(
+        self, portfolio_id: str, security_id: str, a_date: date
+    ) -> Optional[DailyPositionSnapshot]:
+        """Fetches the most recent daily position snapshot strictly before a given date."""
+        stmt = (
+            select(DailyPositionSnapshot)
+            .filter(
+                DailyPositionSnapshot.portfolio_id == portfolio_id,
+                DailyPositionSnapshot.security_id == security_id,
+                DailyPositionSnapshot.date < a_date,
+            )
+            .order_by(DailyPositionSnapshot.date.desc())
+            .limit(1)
+        )
+        result = await self.db.execute(stmt)
+        return result.scalars().first()

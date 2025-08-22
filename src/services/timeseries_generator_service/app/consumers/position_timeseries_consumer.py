@@ -6,16 +6,16 @@ from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError
 from tenacity import retry, stop_after_attempt, wait_fixed, before_log, retry_if_exception_type
 from confluent_kafka import Message
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy import func
 from datetime import date, timedelta
+from decimal import Decimal
 
 from portfolio_common.kafka_consumer import BaseConsumer
 from portfolio_common.logging_utils import correlation_id_var
-from portfolio_common.events import DailyPositionSnapshotPersistedEvent, PortfolioValuationRequiredEvent
+from portfolio_common.events import DailyPositionSnapshotPersistedEvent
 from portfolio_common.db import get_async_db_session
-from portfolio_common.database_models import DailyPositionSnapshot, Instrument
-from portfolio_common.kafka_utils import get_kafka_producer
-from portfolio_common.config import KAFKA_VALUATION_REQUIRED_TOPIC
+from portfolio_common.database_models import DailyPositionSnapshot, PortfolioAggregationJob, Instrument
 
 from ..core.position_timeseries_logic import PositionTimeseriesLogic
 from ..repositories.timeseries_repository import TimeseriesRepository
@@ -43,6 +43,20 @@ class PositionTimeseriesConsumer(BaseConsumer):
             logger.error(f"Fatal error after all retries for message {msg.topic()}-{msg.partition()}-{msg.offset()}. Sending to DLQ.", exc_info=True)
             await self._send_to_dlq_async(msg, e)
 
+    async def _stage_aggregation_job(self, db_session, portfolio_id: str, a_date: date, correlation_id: str):
+        """Helper to idempotently create or reset an aggregation job."""
+        job_stmt = pg_insert(PortfolioAggregationJob).values(
+            portfolio_id=portfolio_id,
+            aggregation_date=a_date,
+            status='PENDING',
+            correlation_id=correlation_id
+        ).on_conflict_do_update(
+            index_elements=['portfolio_id', 'aggregation_date'],
+            set_={'status': 'PENDING', 'updated_at': func.now()}
+        )
+        await db_session.execute(job_stmt)
+        logger.info(f"Successfully staged aggregation job for portfolio {portfolio_id} on {a_date}")
+
     async def _process_message_with_retry(self, msg: Message):
         try:
             event_data = json.loads(msg.value().decode('utf-8'))
@@ -64,22 +78,12 @@ class PositionTimeseriesConsumer(BaseConsumer):
                         logger.warning(f"DailyPositionSnapshot record with id {event.id} not found. Skipping.")
                         return
 
-                    previous_timeseries = await repo.get_last_position_timeseries_before(
+                    # --- LOGIC CHANGE: Fetch previous day's SNAPSHOT, not timeseries ---
+                    previous_snapshot = await repo.get_last_snapshot_before(
                         portfolio_id=event.portfolio_id,
                         security_id=event.security_id,
                         a_date=event.date
                     )
-
-                    if previous_timeseries is None:
-                        is_truly_first = await repo.is_first_position(
-                            portfolio_id=event.portfolio_id,
-                            security_id=event.security_id,
-                            position_date=event.date
-                        )
-                        if not is_truly_first:
-                            raise PreviousTimeseriesNotFoundError(
-                                f"Previous day's timeseries for {event.security_id} not found for date {event.date}, but history exists. Retrying."
-                            )
                     
                     cashflows = await repo.get_all_cashflows_for_security_date(
                         event.portfolio_id, event.security_id, event.date
@@ -87,40 +91,19 @@ class PositionTimeseriesConsumer(BaseConsumer):
                     
                     new_timeseries_record = PositionTimeseriesLogic.calculate_daily_record(
                         current_snapshot=current_snapshot,
-                        previous_timeseries=previous_timeseries,
+                        previous_snapshot=previous_snapshot, # Pass snapshot instead of timeseries
                         cashflows=cashflows
                     )
                     
                     await repo.upsert_position_timeseries(new_timeseries_record)
 
-                    # --- NEW: Robust Cascade Logic ---
-                    # After successfully processing today, trigger a re-valuation for the next day
-                    # if it is a known business day. This ensures the BOD/EOD values chain correctly.
-                    next_day = event.date + timedelta(days=1)
-                    latest_business_date = await repo.get_latest_business_date()
-                    
-                    if latest_business_date and next_day <= latest_business_date:
-                        logger.info(f"Position timeseries for {event.date} changed. Triggering re-valuation cascade for next day: {next_day}.")
-                        producer = get_kafka_producer()
-                        next_event = PortfolioValuationRequiredEvent(
-                            portfolio_id=event.portfolio_id,
-                            security_id=event.security_id,
-                            valuation_date=next_day,
-                            correlation_id=correlation_id
-                        )
-                        headers = [('correlation_id', (correlation_id or "").encode('utf-8'))] if correlation_id else []
-                        producer.publish_message(
-                            topic=KAFKA_VALUATION_REQUIRED_TOPIC,
-                            key=event.portfolio_id,
-                            value=next_event.model_dump(mode='json'),
-                            headers=headers
-                        )
-                    # --- END: Robust Cascade Logic ---
+                    # Trigger an aggregation job for the current day.
+                    await self._stage_aggregation_job(db, event.portfolio_id, event.date, correlation_id)
             
         except (json.JSONDecodeError, ValidationError) as e:
             logger.error(f"Message validation failed: {e}. Sending to DLQ.", exc_info=True)
             await self._send_to_dlq_async(msg, e)
-        except (InstrumentNotFoundError, PreviousTimeseriesNotFoundError, IntegrityError) as e:
+        except (InstrumentNotFoundError, IntegrityError) as e:
             logger.warning(f"A recoverable error occurred: {e}. Retrying...")
             raise
         except Exception as e:
