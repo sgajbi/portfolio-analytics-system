@@ -2,9 +2,10 @@
 import logging
 import json
 from pydantic import ValidationError
-from datetime import date
+from datetime import date, timedelta
 from typing import Optional
-from sqlalchemy import update
+from sqlalchemy import update, func
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from confluent_kafka import Message
 
@@ -72,6 +73,23 @@ class PortfolioTimeseriesConsumer(BaseConsumer):
                     await repo.upsert_portfolio_timeseries(new_portfolio_record)
                     
                     await self._update_job_status(portfolio_id, a_date, 'COMPLETE', db_session=db)
+                    
+                    # --- NEW: Chain Reaction Logic ---
+                    next_day = a_date + timedelta(days=1)
+                    if await repo.does_timeseries_exist(portfolio_id, next_day):
+                        logger.info(f"Stale timeseries for next day ({next_day}) found. Triggering cascade recalculation.")
+                        job_stmt = pg_insert(PortfolioAggregationJob).values(
+                            portfolio_id=portfolio_id,
+                            aggregation_date=next_day,
+                            status='PENDING',
+                            correlation_id=correlation_id
+                        ).on_conflict_do_update(
+                            index_elements=['portfolio_id', 'aggregation_date'],
+                            set_={'status': 'PENDING', 'updated_at': func.now()}
+                        )
+                        await db.execute(job_stmt)
+                    # --- END: Chain Reaction Logic ---
+
                     logger.info(f"Aggregation job for ({portfolio_id}, {a_date}) transactionally completed.")
 
         except Exception:
