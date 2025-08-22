@@ -112,7 +112,7 @@ def test_prerequisites_loaded(setup_prerequisites, db_engine):
 
 
 @pytest.mark.dependency(depends=["test_prerequisites_loaded"])
-def test_day1_deposit(setup_prerequisites, api_endpoints, db_engine):
+def test_day1_deposit(api_endpoints, db_engine):
     """Ingests Day 1 data and verifies the final state for that day."""
     ingestion_url = api_endpoints["ingestion"]
 
@@ -123,17 +123,22 @@ def test_day1_deposit(setup_prerequisites, api_endpoints, db_engine):
     day1_prices_payload = {"market_prices": [{"securityId": CASH_USD_ID, "priceDate": DAY_1, "price": 1.0, "currency": "USD"}]}
     requests.post(f"{ingestion_url}/ingest/market-prices", json=day1_prices_payload)
 
-    # Poll for the final state of Day 1
+    # Poll for the final state of Day 1 by checking for the last roll-forward snapshot
     poll_db_until(
         db_engine=db_engine,
-        query="SELECT 1 FROM portfolio_timeseries WHERE portfolio_id = :pid AND date = :date",
-        params={"pid": PORTFOLIO_ID, "date": DAY_1},
+        query="SELECT 1 FROM daily_position_snapshots WHERE portfolio_id = :pid AND date = :date",
+        params={"pid": PORTFOLIO_ID, "date": DAY_5}, # Poll for the last expected snapshot
         validation_func=lambda result: result is not None,
-        fail_message="Pipeline did not create portfolio_timeseries record for Day 1."
+        fail_message=f"Pipeline did not create roll-forward snapshot for Day 5."
     )
 
     # Assert Day 1 State
     with Session(db_engine) as session:
+        # Check that all 5 snapshots were created
+        snapshot_count = session.execute(text("SELECT count(*) FROM daily_position_snapshots WHERE portfolio_id = :pid"), {"pid": PORTFOLIO_ID}).scalar()
+        assert snapshot_count == 5, "Expected 5 snapshots (1 for Day 1 + 4 roll-forwards)."
+
+        # Check the details of the Day 1 snapshot
         cash_snapshot = session.execute(text("SELECT quantity FROM daily_position_snapshots WHERE portfolio_id = :pid AND security_id = :sid AND date = :date"), {"pid": PORTFOLIO_ID, "sid": CASH_USD_ID, "date": DAY_1}).fetchone()
         assert cash_snapshot is not None, "Cash position snapshot for Day 1 not found."
         assert cash_snapshot.quantity == Decimal("1000000.0000000000")
