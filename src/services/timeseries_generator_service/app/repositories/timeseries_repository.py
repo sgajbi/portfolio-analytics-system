@@ -227,3 +227,15 @@ class TimeseriesRepository:
             logger.warning(f"Reset {reset_count} stale aggregation jobs from 'PROCESSING' to 'PENDING'.")
             
         return reset_count
+
+    @async_timed(repository="TimeseriesRepository", method="does_timeseries_exist")
+    async def does_timeseries_exist(self, portfolio_id: str, a_date: date) -> bool:
+        """Checks if a portfolio_timeseries record exists for a specific day."""
+        stmt = select(
+            exists().where(
+                PortfolioTimeseries.portfolio_id == portfolio_id,
+                PortfolioTimeseries.date == a_date
+            )
+        )
+        result = await self.db.execute(stmt)
+        return result.scalar()
