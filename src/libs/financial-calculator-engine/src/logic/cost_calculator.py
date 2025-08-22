@@ -59,6 +59,16 @@ class CashInflowStrategy:
         
         disposition_engine.add_buy_lot(cash_buy_equivalent)
 
+class IncomeStrategy:
+    """New strategy for income events that do not affect cost basis."""
+    def calculate_costs(self, transaction: Transaction, disposition_engine: DispositionEngine, error_reporter: ErrorReporter) -> None:
+        """Sets cost to zero, as income does not alter the cost basis of the holding."""
+        transaction.net_cost = Decimal(0)
+        transaction.net_cost_local = Decimal(0)
+        transaction.gross_cost = Decimal(0)
+        transaction.realized_gain_loss = None
+        transaction.realized_gain_loss_local = None
+
 class DefaultStrategy:
     def calculate_costs(self, transaction: Transaction, disposition_engine: DispositionEngine, error_reporter: ErrorReporter) -> None:
         transaction.gross_cost = transaction.gross_transaction_amount
@@ -73,8 +83,8 @@ class CostCalculator:
         self._strategies: dict[TransactionType, TransactionCostStrategy] = {
             TransactionType.BUY: BuyStrategy(),
             TransactionType.SELL: SellStrategy(),
-            TransactionType.INTEREST: DefaultStrategy(),
-            TransactionType.DIVIDEND: DefaultStrategy(),
+            TransactionType.INTEREST: IncomeStrategy(),
+            TransactionType.DIVIDEND: IncomeStrategy(),
             TransactionType.DEPOSIT: CashInflowStrategy(),
             TransactionType.WITHDRAWAL: DefaultStrategy(),
             TransactionType.FEE: DefaultStrategy(),

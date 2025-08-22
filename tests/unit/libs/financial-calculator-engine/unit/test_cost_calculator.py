@@ -201,3 +201,34 @@ def test_deposit_strategy_creates_cost_lot(cost_calculator, mock_disposition_eng
     
     # The quantity of the "lot" should be the amount of cash
     assert call_args.quantity == Decimal("10000")
+
+def test_dividend_transaction_has_zero_cost(cost_calculator, mock_disposition_engine):
+    """
+    Tests that a DIVIDEND transaction is processed but results in a net_cost of zero,
+    as it represents income and does not alter the position's cost basis.
+    """
+    # ARRANGE
+    dividend_transaction = Transaction(
+        transaction_id="DIV001",
+        portfolio_id="P1",
+        instrument_id="AAPL",
+        security_id="S1",
+        transaction_type=TransactionType.DIVIDEND,
+        transaction_date=datetime(2023, 1, 15),
+        quantity=Decimal("0"),
+        price=Decimal("0"),
+        gross_transaction_amount=Decimal("500.00"),
+        trade_currency="USD",
+        portfolio_base_currency="USD",
+        transaction_fx_rate=Decimal("1.0")
+    )
+
+    # ACT
+    cost_calculator.calculate_transaction_costs(dividend_transaction)
+
+    # ASSERT
+    # Net cost should be None or 0, not the gross amount of the dividend.
+    assert dividend_transaction.net_cost == Decimal("0")
+    assert dividend_transaction.realized_gain_loss is None
+    # A dividend should not create a new cost lot.
+    mock_disposition_engine.add_buy_lot.assert_not_called()
