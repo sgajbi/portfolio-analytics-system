@@ -12,6 +12,7 @@ from .db_base import Base
 class BusinessDate(Base):
     __tablename__ = 'business_dates'
 
+    
     # The business date itself is the primary key.
     date = Column(Date, primary_key=True, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
@@ -289,4 +290,25 @@ class PortfolioValuationJob(Base):
 
     __table_args__ = (
         UniqueConstraint('portfolio_id', 'security_id', 'valuation_date', name='_portfolio_security_valuation_date_uc'),
+    )
+
+class RecalculationJob(Base):
+    """
+    Tracks portfolio-security pairs that require a full historical recalculation.
+    This table is the source of truth for the recalculation-service and provides
+    a locking and deduplication mechanism.
+    """
+    __tablename__ = 'recalculation_jobs'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    portfolio_id = Column(String, nullable=False, index=True)
+    security_id = Column(String, nullable=False, index=True)
+    from_date = Column(Date, nullable=False)
+    status = Column(String, nullable=False, default='PENDING', index=True)
+    correlation_id = Column(String, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint('portfolio_id', 'security_id', name='_portfolio_security_recalc_uc'),
     )
