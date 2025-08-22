@@ -11,7 +11,8 @@ class CashflowRecord(BaseModel):
     currency: str
     classification: str
     timing: str
-    level: str
+    is_position_flow: bool
+    is_portfolio_flow: bool
     calculation_type: str = Field(..., alias="calculationType")
 
     model_config = ConfigDict(
