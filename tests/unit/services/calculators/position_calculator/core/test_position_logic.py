@@ -130,3 +130,32 @@ def test_dividend_transaction_does_not_change_position(existing_position_state):
     assert new_state.quantity == existing_position_state.quantity
     assert new_state.cost_basis == existing_position_state.cost_basis
     assert new_state.cost_basis_local == existing_position_state.cost_basis_local
+
+def test_calculate_next_position_sell_cash_instrument(zero_position_state):
+    """
+    Tests that a SELL transaction against a cash instrument correctly reduces its
+    quantity and cost basis, modeling the cash leg of a purchase.
+    """
+    # ARRANGE: Start with a cash balance of $1,000,000
+    initial_cash_state = PositionState(
+        quantity=Decimal("1000000"),
+        cost_basis=Decimal("1000000"),
+        cost_basis_local=Decimal("1000000")
+    )
+
+    # ARRANGE: A SELL transaction representing the cash settlement for buying an equity
+    cash_settlement_transaction = TransactionEvent(
+        transaction_id="T_CASH_SELL", portfolio_id="P1", instrument_id="CASH_USD", security_id="CASH_USD",
+        transaction_date=datetime.now(), transaction_type="SELL", quantity=Decimal("175025.50"),
+        price=Decimal("1"), gross_transaction_amount=Decimal("175025.50"),
+        trade_currency="USD", currency="USD"
+    )
+
+    # ACT
+    new_state = PositionCalculator.calculate_next_position(initial_cash_state, cash_settlement_transaction)
+
+    # ASSERT: The cash quantity and cost basis should be reduced by the settlement amount
+    expected_cash = Decimal("824974.50") # 1,000,000 - 175,025.50
+    assert new_state.quantity == expected_cash
+    assert new_state.cost_basis == expected_cash
+    assert new_state.cost_basis_local == expected_cash
