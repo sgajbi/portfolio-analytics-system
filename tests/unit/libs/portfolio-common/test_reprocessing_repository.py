@@ -38,7 +38,8 @@ async def test_reprocess_transactions_by_ids_success(repository: ReprocessingRep
         DBTransaction(
             transaction_id="TXN1", portfolio_id="P1", instrument_id="I1", security_id="S1",
             transaction_date=datetime.now(), transaction_type="BUY", quantity=10, price=100,
-            gross_transaction_amount=1000, currency="USD", trade_currency="USD"
+            gross_transaction_amount=1000, currency="USD", trade_currency="USD",
+            trade_fee=Decimal("0.0") # FIX: Provide a valid default value
         )
     ]
     
@@ -62,7 +63,7 @@ async def test_reprocess_transactions_by_ids_success(repository: ReprocessingRep
     
     mock_kafka_producer.flush.assert_called_once()
 
-async def test_reprocess_transactions_no_ids_found(repository: ReprocessingRepository, mock_db_session: AsyncMock, mock_kafka_producer: MagicMock):
+async def test_reprocess_no_transactions_found(repository: ReprocessingRepository, mock_db_session: AsyncMock, mock_kafka_producer: MagicMock):
     """
     GIVEN a list of transaction IDs that do not exist in the database
     WHEN reprocess_transactions_by_ids is called
