@@ -9,7 +9,7 @@ from prometheus_fastapi_instrumentator import Instrumentator
 from portfolio_common.kafka_utils import get_kafka_producer
 from portfolio_common.logging_utils import setup_logging, correlation_id_var, generate_correlation_id
 from portfolio_common.health import create_health_router
-from app.routers import transactions, instruments, market_prices, fx_rates, portfolios, business_dates
+from app.routers import transactions, instruments, market_prices, fx_rates, portfolios, business_dates, reprocessing
 
 SERVICE_PREFIX = "ING"
 setup_logging()
@@ -102,3 +102,4 @@ app.include_router(instruments.router)
 app.include_router(market_prices.router)
 app.include_router(fx_rates.router)
 app.include_router(business_dates.router)
+app.include_router(reprocessing.router) 

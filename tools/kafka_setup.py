@@ -58,6 +58,8 @@ TOPICS_TO_CREATE = [
     "persistence_service.dlq",
     # Valuation Job Topic
     "valuation_required",
+    # Reprocessing Topic
+    "transactions_reprocessing_requested", # <-- NEW TOPIC
 ]
 
 def create_topics(admin_client: AdminClient):
