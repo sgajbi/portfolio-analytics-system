@@ -1,7 +1,7 @@
 # docker-compose.yml
 services:
   zookeeper:
-    image: confluentinc/cp-zookeeper:7.2.15
+    image: confluentinc/cp-zookeeper:7.5.0
     hostname: zookeeper
     container_name: zookeeper
     ports:
