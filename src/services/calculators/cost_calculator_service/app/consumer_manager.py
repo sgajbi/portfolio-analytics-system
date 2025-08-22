@@ -10,6 +10,7 @@ from portfolio_common.config import (
     KAFKA_PERSISTENCE_DLQ_TOPIC
 )
 from .consumer import CostCalculatorConsumer
+from .consumers.reprocessing_consumer import ReprocessingConsumer, REPROCESSING_REQUESTED_TOPIC
 from portfolio_common.kafka_utils import get_kafka_producer
 from portfolio_common.outbox_dispatcher import OutboxDispatcher
 from portfolio_common.kafka_admin import ensure_topics_exist
@@ -34,6 +35,17 @@ class ConsumerManager:
                 group_id="cost_calculator_group",
                 dlq_topic=KAFKA_PERSISTENCE_DLQ_TOPIC,
                 service_prefix="COST"
+            )
+        )
+        
+        # Add the new reprocessing consumer
+        self.consumers.append(
+            ReprocessingConsumer(
+                bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
+                topic=REPROCESSING_REQUESTED_TOPIC,
+                group_id="cost_reprocessing_group",
+                dlq_topic=KAFKA_PERSISTENCE_DLQ_TOPIC, # Share DLQ for now
+                service_prefix="COST_REPRO"
             )
         )
 
