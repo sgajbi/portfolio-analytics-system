@@ -47,7 +47,7 @@ def test_calculate_sell_transaction(base_transaction_event: TransactionEvent):
     assert cashflow.security_id == event.security_id
 
 def test_calculate_dividend_transaction(base_transaction_event: TransactionEvent):
-    """A DIVIDEND is only a position-level flow."""
+    """A DIVIDEND is only a position-level flow and should have EOD timing."""
     event = base_transaction_event
     event.transaction_type = "DIVIDEND"
     rule = get_rule_for_transaction("DIVIDEND")
@@ -56,6 +56,7 @@ def test_calculate_dividend_transaction(base_transaction_event: TransactionEvent
     assert cashflow.is_position_flow is True
     assert cashflow.is_portfolio_flow is False
     assert cashflow.security_id == event.security_id
+    assert cashflow.timing == "EOD" # Assert EOD timing
 
 def test_calculate_deposit_transaction(base_transaction_event: TransactionEvent):
     """A DEPOSIT is both a position-level and portfolio-level flow."""

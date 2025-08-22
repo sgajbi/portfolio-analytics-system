@@ -51,7 +51,7 @@ CASHFLOW_CONFIG: dict[str, CashflowRule] = {
     ),
     "DIVIDEND": CashflowRule(
         classification=CashflowClassification.INCOME,
-        timing=CashflowTiming.BOD,
+        timing=CashflowTiming.EOD, # <-- CHANGED FROM BOD TO EOD
         is_position_flow=True,
         is_portfolio_flow=False
     ),
