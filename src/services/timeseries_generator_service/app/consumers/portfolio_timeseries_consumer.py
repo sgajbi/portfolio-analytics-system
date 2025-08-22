@@ -14,8 +14,6 @@ from portfolio_common.logging_utils import correlation_id_var
 from portfolio_common.events import PortfolioAggregationRequiredEvent
 from portfolio_common.db import get_async_db_session
 from portfolio_common.database_models import PortfolioAggregationJob
-from portfolio_common.kafka_utils import get_kafka_producer # <-- NEW IMPORT
-from portfolio_common.config import KAFKA_PORTFOLIO_AGGREGATION_REQUIRED_TOPIC # <-- NEW IMPORT
 from ..repositories.timeseries_repository import TimeseriesRepository
 
 from ..core.portfolio_timeseries_logic import PortfolioTimeseriesLogic
@@ -75,27 +73,6 @@ class PortfolioTimeseriesConsumer(BaseConsumer):
                     await repo.upsert_portfolio_timeseries(new_portfolio_record)
                     
                     await self._update_job_status(portfolio_id, a_date, 'COMPLETE', db_session=db)
-                    
-                    # --- NEW: Chain Reaction Logic ---
-                    next_day = a_date + timedelta(days=1)
-                    latest_business_date = await repo.get_latest_business_date()
-
-                    if latest_business_date and next_day <= latest_business_date:
-                        logger.info(f"Recalculation cascade needed. Triggering aggregation for next business day: {next_day}.")
-                        producer = get_kafka_producer()
-                        next_event = PortfolioAggregationRequiredEvent(
-                            portfolio_id=portfolio_id,
-                            aggregation_date=next_day,
-                            correlation_id=correlation_id
-                        )
-                        headers = [('correlation_id', (correlation_id or "").encode('utf-8'))] if correlation_id else []
-                        producer.publish_message(
-                            topic=KAFKA_PORTFOLIO_AGGREGATION_REQUIRED_TOPIC,
-                            key=portfolio_id,
-                            value=next_event.model_dump(mode='json'),
-                            headers=headers
-                        )
-                    # --- END: Chain Reaction Logic ---
 
                     logger.info(f"Aggregation job for ({portfolio_id}, {a_date}) transactionally completed.")
 
