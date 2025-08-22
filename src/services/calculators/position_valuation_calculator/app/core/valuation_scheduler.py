@@ -1,4 +1,4 @@
-# src/services/calculators/position_valuation_calculator/app/core/valuation_scheduler.py
+# services/calculators/position_valuation_calculator/app/core/valuation_scheduler.py
 import logging
 import asyncio
 import os
@@ -43,6 +43,7 @@ class ValuationScheduler:
         job_repo = ValuationJobRepository(db)
         
         latest_business_date = await repo.get_latest_business_date()
+        
         if not latest_business_date:
             logger.info("Scheduler: No business dates found, skipping roll-forward job creation.")
             return
@@ -109,20 +110,22 @@ class ValuationScheduler:
         """The main polling loop for the scheduler."""
         logger.info(f"ValuationScheduler started. Polling every {self._poll_interval} seconds.")
         while self._running:
+            claimed_jobs = []
             try:
                 async for db in get_async_db_session():
                     async with db.begin():
                         repo = ValuationRepository(db)
                         
-                        # 1. Create any missing daily jobs
-                        await self._create_daily_roll_forward_jobs(db)
-                        
-                        # 2. Recover any jobs that may have been orphaned.
+                        # 1. Recover any jobs that may have been orphaned.
                         await repo.find_and_reset_stale_jobs()
-                        
-                        # 3. Now, find and claim new eligible jobs.
+                    
+                        # 2. Create any missing daily jobs for roll-forward.
+                        await self._create_daily_roll_forward_jobs(db)
+                    
+                        # 3. Atomically find and claim new eligible jobs.
                         claimed_jobs = await repo.find_and_claim_eligible_jobs(self._batch_size)
                 
+                # 4. Dispatch the claimed jobs AFTER the transaction has been successfully committed.
                 if claimed_jobs:
                     await self._dispatch_jobs(claimed_jobs)
 
