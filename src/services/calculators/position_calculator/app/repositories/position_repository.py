@@ -33,12 +33,12 @@ class PositionRepository:
             stmt = pg_insert(DailyPositionSnapshot).values(**insert_dict)
             
             update_dict = {
-                'quantity': stmt.excluded.quantity,
-                'cost_basis': stmt.excluded.cost_basis,
-                'cost_basis_local': stmt.excluded.cost_basis_local,
-                'valuation_status': 'UNVALUED', # Reset status on update
-                'updated_at': func.now()
+                k: getattr(stmt.excluded, k) for k, v in insert_dict.items() 
+                if k not in ['portfolio_id', 'security_id', 'date']
             }
+            # Explicitly set valuation_status to UNVALUED on conflict to trigger re-valuation
+            update_dict['valuation_status'] = 'UNVALUED'
+            update_dict['updated_at'] = func.now()
 
             final_stmt = stmt.on_conflict_do_update(
                 index_elements=['portfolio_id', 'security_id', 'date'],
@@ -152,3 +152,25 @@ class PositionRepository:
         self.db.add_all(positions)
         await self.db.flush()
         logger.info(f"Staged and flushed {len(positions)} new position records for saving.")
+
+
+    @async_timed(repository="PositionRepository", method="get_snapshot")
+    async def get_snapshot(self, portfolio_id: str, security_id: str, a_date: date) -> Optional[DailyPositionSnapshot]:
+        """ Fetches a single snapshot for a specific date """
+        stmt = select(DailyPositionSnapshot).filter_by(
+            portfolio_id=portfolio_id,
+            security_id=security_id,
+            date=a_date
+        )
+        result = await self.db.execute(stmt)
+        return result.scalars().first()
+
+    @async_timed(repository="PositionRepository", method="get_last_snapshot_date")
+    async def get_last_snapshot_date(self, portfolio_id: str, security_id: str) -> Optional[date]:
+        """Gets the date of the most recent snapshot for a security in a portfolio."""
+        stmt = select(func.max(DailyPositionSnapshot.date)).where(
+            DailyPositionSnapshot.portfolio_id == portfolio_id,
+            DailyPositionSnapshot.security_id == security_id
+        )
+        result = await self.db.execute(stmt)
+        return result.scalar_one_or_none()
