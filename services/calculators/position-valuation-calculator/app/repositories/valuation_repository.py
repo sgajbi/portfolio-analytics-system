@@ -9,7 +9,7 @@ from sqlalchemy.orm import aliased
 
 from portfolio_common.database_models import (
     PositionHistory, MarketPrice, DailyPositionSnapshot, FxRate, Instrument, Portfolio,
-    PortfolioValuationJob, Transaction
+    PortfolioValuationJob, Transaction, BusinessDate
 )
 from portfolio_common.utils import async_timed
 
@@ -45,7 +45,6 @@ class ValuationRepository:
         last known snapshot on or before a given date. This is used to find all
         portfolios affected by a new market price.
         """
-        # Subquery to find the latest snapshot date for each portfolio for the given security on or before the target date
         latest_snapshot_subq = (
             select(
                 DailyPositionSnapshot.portfolio_id,
@@ -59,7 +58,6 @@ class ValuationRepository:
             .subquery('latest_snapshot_dates')
         )
 
-        # Main query to get the actual snapshot record for that latest date
         stmt = (
             select(DailyPositionSnapshot.portfolio_id)
             .join(
@@ -80,7 +78,6 @@ class ValuationRepository:
     async def get_all_open_positions(self) -> List[Dict[str, any]]:
         """
         Finds all distinct (portfolio_id, security_id) pairs that currently have an open position.
-        Excludes cash positions from valuation.
         """
         latest_snapshot_subq = (
             select(
@@ -102,8 +99,7 @@ class ValuationRepository:
             )
             .where(
                 latest_snapshot_subq.c.rn == 1,
-                latest_snapshot_subq.c.quantity > 0,
-                latest_snapshot_subq.c.security_id != 'CASH'
+                latest_snapshot_subq.c.quantity > 0
             )
         )
         result = await self.db.execute(stmt)
@@ -132,20 +128,12 @@ class ValuationRepository:
     @async_timed(repository="ValuationRepository", method="get_latest_business_date")
     async def get_latest_business_date(self) -> Optional[date]:
         """
-        Finds the most recent date present in either the market_prices or transactions table.
+        Finds the most recent date present in the dedicated business_dates table.
         """
-        latest_price_date_query = select(func.max(MarketPrice.price_date))
-        latest_txn_date_query = select(func.max(func.date(Transaction.transaction_date)))
-
-        price_result = await self.db.execute(latest_price_date_query)
-        txn_result = await self.db.execute(latest_txn_date_query)
-
-        latest_price_date = price_result.scalar_one_or_none()
-        latest_txn_date = txn_result.scalar_one_or_none()
-
-        if latest_price_date and latest_txn_date:
-            return max(latest_price_date, latest_txn_date)
-        return latest_price_date or latest_txn_date
+        stmt = select(func.max(BusinessDate.date))
+        result = await self.db.execute(stmt)
+        latest_date = result.scalar_one_or_none()
+        return latest_date
 
     @async_timed(repository="ValuationRepository", method="get_last_snapshot_before_date")
     async def get_last_snapshot_before_date(self, portfolio_id: str, security_id: str, a_date: date) -> Optional[DailyPositionSnapshot]:
@@ -257,16 +245,28 @@ class ValuationRepository:
         Idempotently inserts or updates a daily position snapshot and returns the result.
         """
         try:
-            insert_dict = {c.name: getattr(snapshot, c.name) for c in snapshot.__table__.columns if c.name != 'id'}
+            insert_dict = {
+                c.name: getattr(snapshot, c.name) 
+                for c in snapshot.__table__.columns 
+                if c.name not in ['id', 'created_at', 'updated_at']
+            }
             
-            stmt = pg_insert(DailyPositionSnapshot).values(
-                **insert_dict
-            ).on_conflict_do_update(
+            stmt = pg_insert(DailyPositionSnapshot).values(**insert_dict)
+
+            # Define the update dictionary for the ON CONFLICT clause.
+            # This ensures 'updated_at' is set correctly on updates.
+            update_dict = {
+                k: getattr(stmt.excluded, k) for k, v in insert_dict.items() 
+                if k not in ['portfolio_id', 'security_id', 'date']
+            }
+            update_dict['updated_at'] = func.now()
+
+            final_stmt = stmt.on_conflict_do_update(
                 index_elements=['portfolio_id', 'security_id', 'date'],
-                set_={k: v for k, v in insert_dict.items() if k not in ['portfolio_id', 'security_id', 'date']}
+                set_=update_dict
             ).returning(DailyPositionSnapshot)
 
-            result = await self.db.execute(stmt)
+            result = await self.db.execute(final_stmt)
             persisted_snapshot = result.scalar_one()
             await self.db.flush()
             logger.info(f"Staged upsert for daily snapshot for {snapshot.security_id} on {snapshot.date}")
