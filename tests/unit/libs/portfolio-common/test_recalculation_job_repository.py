@@ -42,22 +42,38 @@ async def test_upsert_job_builds_correct_statement(mock_pg_insert, repository: R
     await repository.upsert_job(**job_details)
 
     # ASSERT
-    # 1. Assert that pg_insert was called with the correct table model
     mock_pg_insert.assert_called_once()
     assert mock_pg_insert.call_args[0][0].__tablename__ == 'recalculation_jobs'
-
-    # 2. Assert that the .values() method was called with the correct data
     called_values = mock_pg_insert.return_value.values.call_args.kwargs
     assert called_values['portfolio_id'] == job_details['portfolio_id']
     assert called_values['status'] == 'PENDING'
-    
-    # 3. Assert that the on_conflict_do_update method was configured correctly
     on_conflict_args = mock_pg_insert.return_value.values.return_value.on_conflict_do_update.call_args
     assert on_conflict_args.kwargs['index_elements'] == ['portfolio_id', 'security_id']
-    
-    # 4. Verify that the LEAST function is being used to update the from_date
     update_dict = on_conflict_args.kwargs['set_']
     assert "least(recalculation_jobs.from_date" in str(update_dict['from_date'].compile())
-
-    # 5. Assert that the final constructed statement was executed
     mock_db_session.execute.assert_awaited_once_with(mock_final_statement)
+
+async def test_is_job_processing(repository: RecalculationJobRepository, mock_db_session: AsyncMock):
+    """
+    GIVEN a portfolio and security ID
+    WHEN is_job_processing is called
+    THEN it should construct and execute the correct SELECT EXISTS query.
+    """
+    # ARRANGE
+    mock_result = MagicMock()
+    mock_result.scalar.return_value = True
+    mock_db_session.execute.return_value = mock_result
+
+    # ACT
+    result = await repository.is_job_processing("P1", "S1")
+
+    # ASSERT
+    assert result is True
+    mock_db_session.execute.assert_awaited_once()
+    executed_stmt = mock_db_session.execute.call_args[0][0]
+    compiled_query = str(executed_stmt.compile(compile_kwargs={"literal_binds": True}))
+    
+    assert "SELECT EXISTS" in compiled_query
+    assert "recalculation_jobs.portfolio_id = 'P1'" in compiled_query
+    assert "recalculation_jobs.security_id = 'S1'" in compiled_query
+    assert "recalculation_jobs.status = 'PROCESSING'" in compiled_query

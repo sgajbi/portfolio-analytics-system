@@ -3,7 +3,7 @@ import logging
 from datetime import date
 from typing import Optional
 
-from sqlalchemy import func
+from sqlalchemy import func, select, exists
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -45,6 +45,7 @@ class RecalculationJobRepository:
 
             stmt = pg_insert(RecalculationJob).values(**job_data)
 
+            # On conflict, update the job to ensure it runs again from the earliest required date.
             update_dict = {
                 "status": "PENDING",
                 "from_date": func.least(RecalculationJob.from_date, stmt.excluded.from_date),
@@ -77,3 +78,18 @@ class RecalculationJobRepository:
                 exc_info=True,
             )
             raise
+
+    async def is_job_processing(self, portfolio_id: str, security_id: str) -> bool:
+        """
+        Checks if a recalculation job is currently in the 'PROCESSING' state
+        for a specific portfolio and security.
+        """
+        stmt = select(
+            exists().where(
+                RecalculationJob.portfolio_id == portfolio_id,
+                RecalculationJob.security_id == security_id,
+                RecalculationJob.status == 'PROCESSING'
+            )
+        )
+        result = await self.db.execute(stmt)
+        return result.scalar()
