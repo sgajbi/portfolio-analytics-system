@@ -190,7 +190,31 @@ def test_day_4_workflow(setup_prerequisites, db_engine):
     expected_pnl = Decimal("1389.90")
     
     def validation_func(result):
-        # The value can be None initially, so we must handle that
         return result is not None and result.realized_gain_loss is not None and result.realized_gain_loss == expected_pnl
 
     poll_db_until(db_engine, query, validation_func, params)
+
+@pytest.mark.dependency(depends=["test_day_4_workflow"])
+def test_day_5_workflow(setup_prerequisites, db_engine):
+    """
+    Tests Day 5: Ingests a dividend and verifies the final portfolio value.
+    """
+    ingestion_url = setup_prerequisites["ingestion"]
+
+    requests.post(f"{ingestion_url}/ingest/business-dates", json={"business_dates": [{"businessDate": DAY_5}]})
+    transactions_payload = {"transactions": [
+        {"transaction_id": "TXN_DAY5_DIV_IBM_01", "portfolio_id": PORTFOLIO_ID, "security_id": IBM_ID, "instrument_id": "IBM", "transaction_date": f"{DAY_5}T09:00:00Z", "transaction_type": "DIVIDEND", "quantity": 0, "price": 0, "gross_transaction_amount": 750.0, "trade_currency": "USD", "currency": "USD"},
+        {"transaction_id": "TXN_DAY5_CASH_SETTLE_04", "portfolio_id": PORTFOLIO_ID, "security_id": CASH_USD_ID, "instrument_id": "CASH_USD", "transaction_date": f"{DAY_5}T09:00:00Z", "transaction_type": "BUY", "quantity": 750.00, "price": 1.0, "gross_transaction_amount": 750.00, "trade_currency": "USD", "currency": "USD"}
+    ]}
+    requests.post(f"{ingestion_url}/ingest/transactions", json=transactions_payload)
+    prices_payload = {"market_prices": [
+        {"securityId": AAPL_ID, "priceDate": DAY_5, "price": 185.0, "currency": "USD"},
+        {"securityId": IBM_ID, "priceDate": DAY_5, "price": 140.0, "currency": "USD"},
+        {"securityId": CASH_USD_ID, "priceDate": DAY_5, "price": 1.0, "currency": "USD"}
+    ]}
+    requests.post(f"{ingestion_url}/ingest/market-prices", json=prices_payload)
+
+    query = "SELECT eod_market_value FROM portfolio_timeseries WHERE portfolio_id = :pid AND date = :date"
+    params = {"pid": PORTFOLIO_ID, "date": DAY_5}
+    expected_eod_mv = Decimal("1010104.50")
+    poll_db_until(db_engine, query, lambda r: r is not None and r.eod_market_value == expected_eod_mv, params)
