@@ -17,6 +17,16 @@ class TimeseriesRepository:
     def __init__(self, db: AsyncSession):
         self.db = db
 
+    @async_timed(repository="TimeseriesRepository", method="get_all_snapshots_for_date")
+    async def get_all_snapshots_for_date(self, portfolio_id: str, a_date: date) -> List[DailyPositionSnapshot]:
+        """Fetches all daily position snapshots for a portfolio on a specific date."""
+        stmt = select(DailyPositionSnapshot).filter_by(
+            portfolio_id=portfolio_id,
+            date=a_date
+        )
+        result = await self.db.execute(stmt)
+        return result.scalars().all()
+
     @async_timed(repository="TimeseriesRepository", method="upsert_position_timeseries")
     async def upsert_position_timeseries(self, timeseries_record: PositionTimeseries):
         try:
@@ -61,12 +71,6 @@ class TimeseriesRepository:
             logger.error(f"Failed to stage upsert for portfolio time series: {e}", exc_info=True)
             raise
  
-    @async_timed(repository="TimeseriesRepository", method="get_portfolio_timeseries_for_date")
-    async def get_portfolio_timeseries_for_date(self, portfolio_id: str, a_date: date) -> Optional[PortfolioTimeseries]:
-        stmt = select(PortfolioTimeseries).filter_by(portfolio_id=portfolio_id, date=a_date)
-        result = await self.db.execute(stmt)
-        return result.scalars().first()
-
     @async_timed(repository="TimeseriesRepository", method="find_and_claim_eligible_jobs")
     async def find_and_claim_eligible_jobs(self, batch_size: int) -> List[PortfolioAggregationJob]:
         """
@@ -142,21 +146,9 @@ class TimeseriesRepository:
         result = await self.db.execute(stmt)
         return result.scalars().first()
     
-    @async_timed(repository="TimeseriesRepository", method="get_latest_price_for_position")
-    async def get_latest_price_for_position(self, security_id: str, position_date: date) -> Optional[MarketPrice]:
-        stmt = select(MarketPrice).filter(
-            MarketPrice.security_id == security_id,
-            MarketPrice.price_date <= position_date
-        ).order_by(MarketPrice.price_date.desc())
-        result = await self.db.execute(stmt)
-        return result.scalars().first()
-
     @async_timed(repository="TimeseriesRepository", method="get_last_position_timeseries_before")
     async def get_last_position_timeseries_before(
-        self,
-        portfolio_id: str,
-        security_id: str,
-        a_date: date
+        self, portfolio_id: str, security_id: str, a_date: date
     ) -> Optional[PositionTimeseries]:
         stmt = select(PositionTimeseries).filter(
             PositionTimeseries.portfolio_id == portfolio_id,
@@ -165,19 +157,6 @@ class TimeseriesRepository:
         ).order_by(PositionTimeseries.date.desc())
         result = await self.db.execute(stmt)
         return result.scalars().first()
-
-    @async_timed(repository="TimeseriesRepository", method="is_first_position")
-    async def is_first_position(self, portfolio_id: str, security_id: str, position_date: date) -> bool:
-        stmt = select(
-            exists().where(
-                Transaction.portfolio_id == portfolio_id,
-                Transaction.security_id == security_id,
-                func.date(Transaction.transaction_date) < position_date,
-                Transaction.transaction_type.in_(['BUY', 'SELL'])
-            )
-        )
-        result = await self.db.execute(stmt)
-        return not result.scalar()
 
     @async_timed(repository="TimeseriesRepository", method="get_all_position_timeseries_for_date")
     async def get_all_position_timeseries_for_date(
@@ -190,18 +169,6 @@ class TimeseriesRepository:
         result = await self.db.execute(stmt)
         return result.scalars().all()
 
-    @async_timed(repository="TimeseriesRepository", method="get_all_cashflows_for_security_date")
-    async def get_all_cashflows_for_security_date(
-        self, portfolio_id: str, security_id: str, a_date: date
-    ) -> List[Cashflow]:
-        stmt = select(Cashflow).filter_by(
-            portfolio_id=portfolio_id,
-            security_id=security_id,
-            cashflow_date=a_date
-        )
-        result = await self.db.execute(stmt)
-        return result.scalars().all()
-
     @async_timed(repository="TimeseriesRepository", method="get_last_portfolio_timeseries_before")
     async def get_last_portfolio_timeseries_before(self, portfolio_id: str, a_date: date) -> Optional[PortfolioTimeseries]:
         stmt = select(PortfolioTimeseries).filter(
@@ -210,19 +177,6 @@ class TimeseriesRepository:
         ).order_by(PortfolioTimeseries.date.desc())
         result = await self.db.execute(stmt)
         return result.scalars().first()
-
-    @async_timed(repository="TimeseriesRepository", method="get_all_open_positions_as_of")
-    async def get_all_open_positions_as_of(self, portfolio_id: str, a_date: date) -> List[str]:
-        stmt = text("""
-            SELECT DISTINCT security_id
-            FROM position_timeseries
-            WHERE portfolio_id = :portfolio_id
-            AND date <= :a_date
-            AND quantity != 0
-            ORDER BY security_id
-        """)
-        result = await self.db.execute(stmt, {"portfolio_id": portfolio_id, "a_date": a_date})
-        return [row.security_id for row in result.fetchall()]
 
     @async_timed(repository="TimeseriesRepository", method="find_and_reset_stale_jobs")
     async def find_and_reset_stale_jobs(self, timeout_minutes: int = 15) -> int:
@@ -245,23 +199,10 @@ class TimeseriesRepository:
             
         return reset_count
 
-    @async_timed(repository="TimeseriesRepository", method="does_timeseries_exist")
-    async def does_timeseries_exist(self, portfolio_id: str, a_date: date) -> bool:
-        """Checks if a portfolio_timeseries record exists for a specific day."""
-        stmt = select(
-            exists().where(
-                PortfolioTimeseries.portfolio_id == portfolio_id,
-                PortfolioTimeseries.date == a_date
-            )
-        )
-        result = await self.db.execute(stmt)
-        return result.scalar()
-
     @async_timed(repository="TimeseriesRepository", method="get_last_snapshot_before")
     async def get_last_snapshot_before(
         self, portfolio_id: str, security_id: str, a_date: date
     ) -> Optional[DailyPositionSnapshot]:
-        """Fetches the most recent daily position snapshot strictly before a given date."""
         stmt = (
             select(DailyPositionSnapshot)
             .filter(

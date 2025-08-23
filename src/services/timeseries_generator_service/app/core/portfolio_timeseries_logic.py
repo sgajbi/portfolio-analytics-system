@@ -8,7 +8,8 @@ from portfolio_common.database_models import (
     PortfolioTimeseries, 
     PositionTimeseries, 
     Portfolio,
-    Instrument
+    Instrument,
+    DailyPositionSnapshot
 )
 from ..repositories.timeseries_repository import TimeseriesRepository
 
@@ -41,12 +42,15 @@ class PortfolioTimeseriesLogic:
 
         portfolio_currency = portfolio.base_currency
 
+        # 1. Determine Beginning of Day Market Value
         previous_portfolio_ts = await repo.get_last_portfolio_timeseries_before(portfolio.portfolio_id, a_date)
         if previous_portfolio_ts:
             total_bod_mv = previous_portfolio_ts.eod_market_value
         else:
             total_bod_mv = Decimal(0)
 
+        # 2. Aggregate Portfolio-Level Cashflows and Fees from Position Timeseries
+        # (Per user clarification, this logic remains unchanged)
         security_ids = [pt.security_id for pt in position_timeseries_list]
         instruments_list = await repo.get_instruments_by_ids(security_ids)
         instruments = {inst.security_id: inst for inst in instruments_list}
@@ -56,32 +60,31 @@ class PortfolioTimeseriesLogic:
             if not instrument:
                 logger.warning(f"Could not find instrument {pos_ts.security_id}. Skipping its contribution.")
                 continue
-
+            
             instrument_currency = instrument.currency
             rate = Decimal(1.0)
 
             if instrument_currency != portfolio_currency:
                 fx_rate = await repo.get_fx_rate(instrument_currency, portfolio_currency, pos_ts.date)
                 if not fx_rate:
-                    error_msg = f"Missing FX rate from {instrument_currency} to {portfolio_currency} for date {pos_ts.date}. Cannot convert."
+                    error_msg = f"Missing FX rate from {instrument_currency} to {portfolio_currency} for date {pos_ts.date}."
                     logger.error(error_msg)
                     raise FxRateNotFoundError(error_msg)
                 rate = fx_rate.rate
             
-            # --- LOGIC CHANGE: Aggregate ALL cashflows for BOD/EOD Market Value calculation ---
-            total_day_cashflow = (pos_ts.bod_cashflow_position + pos_ts.bod_cashflow_portfolio + 
-                                  pos_ts.eod_cashflow_position + pos_ts.eod_cashflow_portfolio)
-            
-            # --- LOGIC CHANGE: Aggregate ONLY portfolio flows for performance cashflow ---
             total_bod_cf += (pos_ts.bod_cashflow_portfolio or Decimal(0)) * rate
             total_eod_cf += (pos_ts.eod_cashflow_portfolio or Decimal(0)) * rate
-            total_eod_mv += (pos_ts.eod_market_value or Decimal(0)) * rate
             
-            # Fee aggregation is now based on negative portfolio flows
             if pos_ts.bod_cashflow_portfolio < 0:
                 total_fees += abs(pos_ts.bod_cashflow_portfolio * rate)
             if pos_ts.eod_cashflow_portfolio < 0:
                 total_fees += abs(pos_ts.eod_cashflow_portfolio * rate)
+        
+        # 3. Calculate End of Day Market Value from definitive snapshot records
+        all_snapshots_for_day = await repo.get_all_snapshots_for_date(portfolio.portfolio_id, a_date)
+        for snapshot in all_snapshots_for_day:
+            # The market_value in the snapshot is already in the portfolio's base currency.
+            total_eod_mv += (snapshot.market_value or Decimal(0))
 
         return PortfolioTimeseries(
             portfolio_id=portfolio.portfolio_id,
