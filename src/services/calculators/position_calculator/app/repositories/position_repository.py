@@ -6,7 +6,9 @@ from typing import List, Optional
 from sqlalchemy import select, func, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import insert as pg_insert
-from portfolio_common.database_models import PositionHistory, Transaction, DailyPositionSnapshot, BusinessDate
+from portfolio_common.database_models import (
+    PositionHistory, Transaction, DailyPositionSnapshot, BusinessDate, PortfolioValuationJob
+)
 from portfolio_common.utils import async_timed
 
 logger = logging.getLogger(__name__)
@@ -28,43 +30,39 @@ class PositionRepository:
         latest_date = result.scalar_one_or_none()
         return latest_date
 
-    @async_timed(repository="PositionRepository", method="upsert_daily_snapshot")
-    async def upsert_daily_snapshot(self, snapshot: DailyPositionSnapshot):
+    @async_timed(repository="PositionRepository", method="upsert_valuation_job")
+    async def upsert_valuation_job(
+        self,
+        portfolio_id: str,
+        security_id: str,
+        valuation_date: date,
+        correlation_id: Optional[str] = None
+    ) -> None:
         """
-        Idempotently creates or updates a daily position snapshot.
-        If a snapshot already exists, it updates the core position data
-        and resets the valuation status to trigger re-valuation.
+        Idempotently creates or updates a valuation job, setting its status to 'PENDING'.
         """
         try:
-            insert_values = {
-                "portfolio_id": snapshot.portfolio_id,
-                "security_id": snapshot.security_id,
-                "date": snapshot.date,
-                "quantity": snapshot.quantity,
-                "cost_basis": snapshot.cost_basis,
-                "cost_basis_local": snapshot.cost_basis_local,
-                "valuation_status": "UNVALUED"
+            job_data = {
+                "portfolio_id": portfolio_id,
+                "security_id": security_id,
+                "valuation_date": valuation_date,
+                "status": "PENDING",
+                "correlation_id": correlation_id,
             }
-            
-            stmt = pg_insert(DailyPositionSnapshot).values(**insert_values)
-            
-            update_values = {
-                "quantity": stmt.excluded.quantity,
-                "cost_basis": stmt.excluded.cost_basis,
-                "cost_basis_local": stmt.excluded.cost_basis_local,
-                "valuation_status": 'UNVALUED', # Reset status on update
-                "updated_at": func.now()
+            stmt = pg_insert(PortfolioValuationJob).values(**job_data)
+            update_dict = {
+                "status": "PENDING",
+                "correlation_id": stmt.excluded.correlation_id,
+                "updated_at": func.now(),
             }
-
             final_stmt = stmt.on_conflict_do_update(
-                index_elements=['portfolio_id', 'security_id', 'date'],
-                set_=update_values
+                index_elements=['portfolio_id', 'security_id', 'valuation_date'],
+                set_=update_dict
             )
-
             await self.db.execute(final_stmt)
-            logger.info(f"Staged upsert for daily snapshot for {snapshot.security_id} on {snapshot.date}")
+            logger.info(f"Staged upsert for valuation job for {security_id} on {valuation_date}")
         except Exception as e:
-            logger.error(f"Failed to stage upsert for daily snapshot: {e}", exc_info=True)
+            logger.error(f"Failed to stage upsert for valuation job: {e}", exc_info=True)
             raise
 
     @async_timed(repository="PositionRepository", method="find_open_security_ids_as_of")

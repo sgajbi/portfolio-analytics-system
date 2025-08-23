@@ -9,6 +9,7 @@ from portfolio_common.database_models import PositionHistory, Transaction as DBT
 from ..core.position_models import PositionState
 from portfolio_common.events import TransactionEvent
 from ..repositories.position_repository import PositionRepository
+from portfolio_common.logging_utils import correlation_id_var
 
 logger = logging.getLogger(__name__)
 
@@ -25,46 +26,38 @@ class PositionCalculator:
     async def calculate(cls, event: TransactionEvent, db_session: AsyncSession, repo: PositionRepository) -> List[PositionHistory]:
         """
         Orchestrates recalculation logic for a single transaction event.
-        Fetches the last known position before the event, replays all
-        transactions from that point forward, and creates a daily snapshot.
+        - Fetches the last known position before the event.
+        - Replays all transactions from that point forward.
+        - Creates a valuation job to trigger snapshot creation downstream.
         """
         portfolio_id = event.portfolio_id
         security_id = event.security_id
         transaction_date = event.transaction_date.date()
+        correlation_id = correlation_id_var.get()
 
-        # In case of a back-dated transaction, clear out any now-stale history
         await repo.delete_positions_from(portfolio_id, security_id, transaction_date)
-
-        # Get the state of the position right before this transaction occurred
         anchor_position = await repo.get_last_position_before(portfolio_id, security_id, transaction_date)
-
-        # Get all transactions that need to be replayed, starting from the event's date
         transactions_to_replay = await repo.get_transactions_on_or_after(portfolio_id, security_id, transaction_date)
         
-        # Convert DB models to event models for consistent processing
         events_to_replay = [TransactionEvent.model_validate(t) for t in transactions_to_replay]
 
-        # Calculate the new history from the anchor point
         new_positions = cls._calculate_new_positions(anchor_position, events_to_replay)
 
         if new_positions:
             await repo.save_positions(new_positions)
             
-            # Get the final state from the last record in the history
+            # The final state is the last record in the calculated history
             final_position_state = new_positions[-1]
 
-            # Create the initial, unvalued snapshot
-            snapshot = DailyPositionSnapshot(
+            # Create a job for the valuation service to create the snapshot
+            await repo.upsert_valuation_job(
                 portfolio_id=final_position_state.portfolio_id,
                 security_id=final_position_state.security_id,
-                date=final_position_state.position_date,
-                quantity=final_position_state.quantity,
-                cost_basis=final_position_state.cost_basis,
-                cost_basis_local=final_position_state.cost_basis_local,
+                valuation_date=final_position_state.position_date,
+                correlation_id=correlation_id
             )
-            await repo.upsert_daily_snapshot(snapshot)
 
-        logger.info(f"[Calculate] Staged {len(new_positions)} new/updated position record(s) for Portfolio={portfolio_id}, Security={security_id}")
+        logger.info(f"[Calculate] Staged {len(new_positions)} position records and 1 valuation job for Portfolio={portfolio_id}, Security={security_id}")
         return new_positions
 
     @staticmethod
@@ -79,7 +72,6 @@ class PositionCalculator:
         if not transactions:
             return []
 
-        # The state before the first transaction is the anchor position's state.
         current_state = PositionState(
             quantity=anchor_position.quantity if anchor_position else Decimal(0),
             cost_basis=anchor_position.cost_basis if anchor_position else Decimal(0),
@@ -102,7 +94,6 @@ class PositionCalculator:
             )
             new_history_records.append(new_position_record)
             
-            # The new state becomes the current state for the next iteration
             current_state = new_state
             
         return new_history_records
@@ -126,7 +117,6 @@ class PositionCalculator:
             cost_basis += net_cost
             cost_basis_local += net_cost_local
         elif txn_type in ["DEPOSIT", "TRANSFER_IN"]:
-            # These are cash inflows that increase the cash position quantity and cost basis
             quantity += transaction.gross_transaction_amount
             cost_basis += transaction.gross_transaction_amount
             cost_basis_local += transaction.gross_transaction_amount
@@ -141,7 +131,6 @@ class PositionCalculator:
             quantity -= transaction.quantity
         
         elif txn_type in ["FEE", "TAX", "TRANSFER_OUT", "WITHDRAWAL"]:
-            # These are cash outflows, decrease quantity and cost (value)
             quantity -= transaction.gross_transaction_amount
             cost_basis -= transaction.gross_transaction_amount
             cost_basis_local -= transaction.gross_transaction_amount
