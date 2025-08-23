@@ -54,7 +54,6 @@ def test_cashflow_pipeline(setup_cashflow_data, db_engine):
     
     # ACT: The pipeline has already run; we just verify the final state in the DB.
     with Session(db_engine) as session:
-        # FIX: Query for the correct columns and use the correct table name
         query = text("""
             SELECT amount, currency, classification, timing, is_position_flow, is_portfolio_flow, calculation_type
             FROM cashflows WHERE transaction_id = :txn_id
@@ -64,11 +63,10 @@ def test_cashflow_pipeline(setup_cashflow_data, db_engine):
     # ASSERT
     assert result is not None, f"Cashflow record for txn '{transaction_id}' not found."
     
-    # FIX: Unpack the correct columns and assert their values
     amount, currency, classification, timing, is_pos_flow, is_port_flow, calc_type = result
     
-    # Expected amount for a BUY is -(Gross Amount + Fee) = -(1000 + 5.50)
-    expected_amount = Decimal("-1005.50")
+    # FIX: A BUY is a positive inflow to the position. Expected amount = (Gross Amount + Fee)
+    expected_amount = Decimal("1005.50")
 
     assert amount.compare(expected_amount) == 0
     assert currency == "USD"
