@@ -3,7 +3,9 @@ import pytest
 import requests
 import time
 from sqlalchemy.orm import Session
-from sqlalchemy import text
+from sqlalchemy import text, Engine
+from decimal import Decimal
+from typing import Callable, Any
 
 # Constants for our test data
 PORTFOLIO_ID = "E2E_WORKFLOW_01"
@@ -12,38 +14,62 @@ CASH_EUR_ID = "CASH_EUR"
 AAPL_ID = "SEC_AAPL_E2E"
 IBM_ID = "SEC_IBM_E2E"
 
+DAY_1 = "2025-08-19"
+DAY_2 = "2025-08-20"
+DAY_3 = "2025-08-21"
+DAY_4 = "2025-08-22"
+DAY_5 = "2025-08-23"
+
 # Mark all tests in this file as being part of the 'dependency' group for ordering
 pytestmark = pytest.mark.dependency()
+
+def poll_db_until(
+    db_engine: Engine,
+    query: str,
+    validation_func: Callable[[Any], bool],
+    params: dict = {},
+    timeout: int = 45,
+    interval: int = 2,
+):
+    """
+    Polls the database by executing a query until a validation function returns True.
+    """
+    start_time = time.time()
+    last_result = None
+    while time.time() - start_time < timeout:
+        with Session(db_engine) as session:
+            result = session.execute(text(query), params).fetchone()
+            last_result = result
+            if validation_func(result):
+                return
+        time.sleep(interval)
+    
+    pytest.fail(
+        f"Polling timed out after {timeout} seconds. Last result: {last_result}"
+    )
+
 
 @pytest.fixture(scope="module")
 def setup_prerequisites(clean_db_module, api_endpoints):
     """
-    A module-scoped fixture that ingests all prerequisite static data for the workflow:
-    - The main portfolio.
-    - All instruments used throughout the 5-day scenario.
+    A module-scoped fixture that ingests all prerequisite static data for the workflow.
     """
     ingestion_url = api_endpoints["ingestion"]
 
-    # Ingest Portfolio [cite: 2012]
+    # Ingest Portfolio
     portfolio_payload = {
       "portfolios": [
         {
-          "portfolioId": PORTFOLIO_ID,
-          "baseCurrency": "USD",
-          "openDate": "2025-01-01",
-          "cifId": "E2E_WF_CIF_01",
-          "status": "ACTIVE",
-          "riskExposure": "High",
-          "investmentTimeHorizon": "Long",
-          "portfolioType": "Discretionary",
-          "bookingCenter": "SG"
+          "portfolioId": PORTFOLIO_ID, "baseCurrency": "USD", "openDate": "2025-01-01",
+          "cifId": "E2E_WF_CIF_01", "status": "ACTIVE", "riskExposure": "High",
+          "investmentTimeHorizon": "Long", "portfolioType": "Discretionary", "bookingCenter": "SG"
         }
       ]
     }
     response = requests.post(f"{ingestion_url}/ingest/portfolios", json=portfolio_payload, timeout=10)
     assert response.status_code == 202
 
-    # Ingest Instruments [cite: 2013, 2014, 2015, 2016]
+    # Ingest Instruments
     instruments_payload = {
         "instruments": [
             {"securityId": CASH_USD_ID, "name": "US Dollar", "isin": "CASH_USD_ISIN", "instrumentCurrency": "USD", "productType": "Cash"},
@@ -54,36 +80,54 @@ def setup_prerequisites(clean_db_module, api_endpoints):
     }
     response = requests.post(f"{ingestion_url}/ingest/instruments", json=instruments_payload, timeout=10)
     assert response.status_code == 202
-
-    # Allow a moment for the persistence service to process these events
+    
     time.sleep(5)
-
     yield api_endpoints
 
 def test_prerequisites_are_loaded(setup_prerequisites, db_engine):
     """
     Verifies that the portfolio and instruments from the setup fixture
-    have been successfully persisted to the database. This acts as a
-    gatekeeper for the rest of the tests in this file.
+    have been successfully persisted to the database.
     """
     with Session(db_engine) as session:
-        # Verify Portfolio
         portfolio_count = session.execute(text("SELECT count(*) FROM portfolios WHERE portfolio_id = :pid"), {"pid": PORTFOLIO_ID}).scalar()
         assert portfolio_count == 1, f"Portfolio {PORTFOLIO_ID} was not created."
 
-        # Verify Instruments
         instrument_ids = [CASH_USD_ID, CASH_EUR_ID, AAPL_ID, IBM_ID]
         instrument_count = session.execute(text("SELECT count(*) FROM instruments WHERE security_id IN :ids"), {"ids": tuple(instrument_ids)}).scalar()
         assert instrument_count == 4, "Not all instruments were created."
 
 @pytest.mark.dependency(depends=["test_prerequisites_are_loaded"])
-def test_full_5_day_workflow():
+def test_day_1_workflow(setup_prerequisites, db_engine):
     """
-    This test will orchestrate the full 5-day workflow, including:
-    1. Ingesting all prerequisite data (portfolios, instruments).
-    2. Ingesting transactions and prices day-by-day.
-    3. Polling for and verifying the state of positions and transactions at each stage.
-    4. Ingesting back-dated data.
-    5. Verifying the final, recalculated state of the portfolio.
+    Tests Day 1: Ingests a business date, a deposit, and a cash price,
+    then verifies the final state of the daily snapshot.
     """
-    pytest.skip("Test case for the full 5-day workflow is not yet implemented.")
+    # ARRANGE
+    ingestion_url = setup_prerequisites["ingestion"]
+
+    # ACT: Ingest all data for Day 1
+    requests.post(f"{ingestion_url}/ingest/business-dates", json={"business_dates": [{"businessDate": DAY_1}]})
+    requests.post(f"{ingestion_url}/ingest/transactions", json={"transactions": [{"transaction_id": "TXN_DAY1_DEPOSIT_01", "portfolio_id": PORTFOLIO_ID, "security_id": CASH_USD_ID, "instrument_id": "CASH_USD", "transaction_date": f"{DAY_1}T10:00:00Z", "transaction_type": "DEPOSIT", "quantity": 1000000, "price": 1.0, "gross_transaction_amount": 1000000.0, "trade_currency": "USD", "currency": "USD"}]})
+    requests.post(f"{ingestion_url}/ingest/market-prices", json={"market_prices": [{"securityId": CASH_USD_ID, "priceDate": DAY_1, "price": 1.0, "currency": "USD"}]})
+    
+    # ASSERT: Poll the database until the snapshot is fully valued
+    query = """
+        SELECT quantity, cost_basis, market_value, unrealized_gain_loss, valuation_status
+        FROM daily_position_snapshots
+        WHERE portfolio_id = :portfolio_id AND security_id = :security_id AND date = :date
+    """
+    params = {"portfolio_id": PORTFOLIO_ID, "security_id": CASH_USD_ID, "date": DAY_1}
+    
+    def validation_func(result):
+        return result is not None and result.valuation_status == 'VALUED_CURRENT'
+
+    poll_db_until(db_engine, query, validation_func, params)
+
+    # Final verification of the data
+    with Session(db_engine) as session:
+        final_snapshot = session.execute(text(query), params).fetchone()
+        assert final_snapshot.quantity == Decimal("1000000.0000000000")
+        assert final_snapshot.cost_basis == Decimal("1000000.0000000000")
+        assert final_snapshot.market_value == Decimal("1000000.0000000000")
+        assert final_snapshot.unrealized_gain_loss == Decimal("0.0000000000")
