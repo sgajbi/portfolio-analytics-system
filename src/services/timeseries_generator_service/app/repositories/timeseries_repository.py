@@ -61,7 +61,6 @@ class TimeseriesRepository:
             logger.error(f"Failed to stage upsert for portfolio time series: {e}", exc_info=True)
             raise
  
-    
     @async_timed(repository="TimeseriesRepository", method="get_portfolio_timeseries_for_date")
     async def get_portfolio_timeseries_for_date(self, portfolio_id: str, a_date: date) -> Optional[PortfolioTimeseries]:
         stmt = select(PortfolioTimeseries).filter_by(portfolio_id=portfolio_id, date=a_date)
@@ -70,22 +69,38 @@ class TimeseriesRepository:
 
     @async_timed(repository="TimeseriesRepository", method="find_and_claim_eligible_jobs")
     async def find_and_claim_eligible_jobs(self, batch_size: int) -> List[PortfolioAggregationJob]:
+        """
+        Atomically claims eligible PENDING aggregation jobs. A job for date D is eligible if:
+        1. The portfolio has no prior timeseries records (i.e., this is the first ever job).
+        2. The portfolio timeseries record for date D-1 already exists.
+        """
         query = text("""
             UPDATE portfolio_aggregation_jobs
             SET status = 'PROCESSING', updated_at = now()
             WHERE id IN (
-                SELECT p1.id
-                FROM portfolio_aggregation_jobs p1
-                WHERE p1.status = 'PENDING'
-                AND NOT EXISTS (
-                    SELECT 1
-                    FROM portfolio_timeseries p_ts
-                    WHERE p_ts.portfolio_id = p1.portfolio_id
-                    AND p_ts.date = p1.aggregation_date - INTERVAL '1 day'
-                )
-                ORDER BY p1.portfolio_id, p1.aggregation_date
-                LIMIT :batch_size
-                FOR UPDATE SKIP LOCKED
+                SELECT id FROM (
+                    SELECT
+                        p1.id
+                    FROM portfolio_aggregation_jobs p1
+                    WHERE p1.status = 'PENDING' AND (
+                        -- Case 1: Prior day's timeseries exists
+                        EXISTS (
+                            SELECT 1
+                            FROM portfolio_timeseries pts
+                            WHERE pts.portfolio_id = p1.portfolio_id
+                            AND pts.date = p1.aggregation_date - INTERVAL '1 day'
+                        )
+                        -- Case 2: No timeseries exists at all for this portfolio (first job)
+                        OR NOT EXISTS (
+                            SELECT 1
+                            FROM portfolio_timeseries pts
+                            WHERE pts.portfolio_id = p1.portfolio_id
+                        )
+                    )
+                    ORDER BY p1.portfolio_id, p1.aggregation_date
+                    LIMIT :batch_size
+                    FOR UPDATE SKIP LOCKED
+                ) AS eligible_jobs
             )
             RETURNING *;
         """)
