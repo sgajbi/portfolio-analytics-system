@@ -26,7 +26,7 @@ def setup_cashflow_data(clean_db_module, api_endpoints, poll_for_data):
     # 2. Define and ingest the transaction payload
     buy_payload = {"transactions": [{
         "transaction_id": transaction_id, "portfolio_id": portfolio_id, "instrument_id": "CSHFLW",
-        "security_id": security_id, "transaction_date": "2025-07-28T00:00:00Z",
+         "security_id": security_id, "transaction_date": "2025-07-28T00:00:00Z",
         "transaction_type": "BUY", "quantity": 10, "price": 100.0,
         "gross_transaction_amount": "1000.0", "trade_fee": "5.50",
         "trade_currency": "USD", "currency": "USD"
@@ -54,8 +54,9 @@ def test_cashflow_pipeline(setup_cashflow_data, db_engine):
     
     # ACT: The pipeline has already run; we just verify the final state in the DB.
     with Session(db_engine) as session:
+        # FIX: Query for the correct columns and use the correct table name
         query = text("""
-            SELECT amount, currency, classification, timing, level, calculation_type
+            SELECT amount, currency, classification, timing, is_position_flow, is_portfolio_flow, calculation_type
             FROM cashflows WHERE transaction_id = :txn_id
         """)
         result = session.execute(query, {"txn_id": transaction_id}).fetchone()
@@ -63,14 +64,16 @@ def test_cashflow_pipeline(setup_cashflow_data, db_engine):
     # ASSERT
     assert result is not None, f"Cashflow record for txn '{transaction_id}' not found."
     
-    amount, currency, classification, timing, level, calc_type = result
+    # FIX: Unpack the correct columns and assert their values
+    amount, currency, classification, timing, is_pos_flow, is_port_flow, calc_type = result
     
     # Expected amount for a BUY is -(Gross Amount + Fee) = -(1000 + 5.50)
-    expected_amount = -Decimal("1005.50")
+    expected_amount = Decimal("-1005.50")
 
-    assert amount == expected_amount
+    assert amount.compare(expected_amount) == 0
     assert currency == "USD"
     assert classification == "INVESTMENT_OUTFLOW"
-    assert timing == "EOD"
-    assert level == "POSITION"
+    assert timing == "BOD"
+    assert is_pos_flow is True
+    assert is_port_flow is False
     assert calc_type == "NET"

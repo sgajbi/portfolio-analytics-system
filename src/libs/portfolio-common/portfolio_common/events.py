@@ -66,7 +66,8 @@ class InstrumentEvent(BaseModel):
     product_type: str = Field(..., alias="productType")
 
 class TransactionEvent(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+    # FIX: Add populate_by_name=True to correctly handle aliases on validation
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
     transaction_id: str
     portfolio_id: str
@@ -114,7 +115,7 @@ class CashflowCalculatedEvent(BaseModel):
     timing: str
     is_position_flow: bool
     is_portfolio_flow: bool
-    calculation_type: str = Field(..., alias="calculationType")
+    calculation_type: str
 
 class PositionTimeseriesGeneratedEvent(BaseModel):
     model_config = ConfigDict(from_attributes=True)
