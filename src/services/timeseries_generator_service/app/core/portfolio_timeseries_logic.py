@@ -50,7 +50,6 @@ class PortfolioTimeseriesLogic:
             total_bod_mv = Decimal(0)
 
         # 2. Aggregate Portfolio-Level Cashflows and Fees from Position Timeseries
-        # (Per user clarification, this logic remains unchanged)
         security_ids = [pt.security_id for pt in position_timeseries_list]
         instruments_list = await repo.get_instruments_by_ids(security_ids)
         instruments = {inst.security_id: inst for inst in instruments_list}
@@ -75,15 +74,15 @@ class PortfolioTimeseriesLogic:
             total_bod_cf += (pos_ts.bod_cashflow_portfolio or Decimal(0)) * rate
             total_eod_cf += (pos_ts.eod_cashflow_portfolio or Decimal(0)) * rate
             
-            if pos_ts.bod_cashflow_portfolio < 0:
+            # FIX: Handle None before comparison
+            if (pos_ts.bod_cashflow_portfolio or Decimal(0)) < 0:
                 total_fees += abs(pos_ts.bod_cashflow_portfolio * rate)
-            if pos_ts.eod_cashflow_portfolio < 0:
+            if (pos_ts.eod_cashflow_portfolio or Decimal(0)) < 0:
                 total_fees += abs(pos_ts.eod_cashflow_portfolio * rate)
         
         # 3. Calculate End of Day Market Value from definitive snapshot records
         all_snapshots_for_day = await repo.get_all_snapshots_for_date(portfolio.portfolio_id, a_date)
         for snapshot in all_snapshots_for_day:
-            # The market_value in the snapshot is already in the portfolio's base currency.
             total_eod_mv += (snapshot.market_value or Decimal(0))
 
         return PortfolioTimeseries(

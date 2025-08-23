@@ -4,14 +4,17 @@ from unittest.mock import MagicMock, patch, AsyncMock, ANY
 from datetime import date, timedelta
 from decimal import Decimal
 
+from sqlalchemy import update, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from portfolio_common.events import PortfolioAggregationRequiredEvent
 from portfolio_common.database_models import (
-    Portfolio, PositionTimeseries, Instrument
+    Portfolio, PositionTimeseries, Instrument, PortfolioAggregationJob
 )
 from services.timeseries_generator_service.app.consumers.portfolio_timeseries_consumer import PortfolioTimeseriesConsumer
 from src.services.timeseries_generator_service.app.repositories.timeseries_repository import TimeseriesRepository
 
+
+logger = logging.getLogger(__name__)
 pytestmark = pytest.mark.asyncio
 
 @pytest.fixture
@@ -79,20 +82,16 @@ async def test_process_message_success(
     mock_repo = mock_dependencies["repo"]
     
     mock_repo.get_portfolio.return_value = Portfolio(portfolio_id=mock_event.portfolio_id, base_currency="USD")
+    
+    # FIX: Add the missing mock for the repository method
     mock_repo.get_all_position_timeseries_for_date.return_value = [
         PositionTimeseries(
             security_id="SEC_USD", 
             date=mock_event.aggregation_date, 
-            eod_market_value=Decimal("1000"),
-            bod_cashflow_position=Decimal(0),
-            eod_cashflow_position=Decimal(0),
-            bod_cashflow_portfolio=Decimal(0),
-            eod_cashflow_portfolio=Decimal(0)
+            eod_market_value=Decimal("1000")
         )
     ]
-    mock_repo.get_instruments_by_ids.return_value = [Instrument(security_id="SEC_USD", currency="USD", product_type="Equity")]
-    mock_repo.get_last_portfolio_timeseries_before.return_value = None
-
+    
     with patch.object(consumer, '_update_job_status', new_callable=AsyncMock) as mock_update_status:
         # ACT
         await consumer.process_message(mock_kafka_message)
@@ -126,6 +125,5 @@ async def test_process_message_fails_if_portfolio_missing(
         # ASSERT
         mock_repo.get_portfolio.assert_called_once_with(mock_event.portfolio_id)
         mock_repo.upsert_portfolio_timeseries.assert_not_called()
-        # Crucially, assert the job was marked as FAILED
         mock_update_status.assert_called_once_with(mock_event.portfolio_id, mock_event.aggregation_date, 'FAILED')
         consumer._send_to_dlq_async.assert_not_called()
