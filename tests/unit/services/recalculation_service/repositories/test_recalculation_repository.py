@@ -3,7 +3,7 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock
 from datetime import date
 from sqlalchemy import text
-from sqlalchemy.sql.expression import delete, select, update
+from sqlalchemy.sql.expression import delete, select, update, Select, Update, Delete
 
 from portfolio_common.database_models import RecalculationJob
 from src.services.recalculation_service.app.repositories.recalculation_repository import RecalculationRepository
@@ -15,7 +15,11 @@ def mock_db_session() -> AsyncMock:
     """Provides a mock SQLAlchemy AsyncSession."""
     session = AsyncMock()
     mock_result = MagicMock()
-    mock_result.mappings.return_value.first.return_value = {"id": 1, "portfolio_id": "P1", "security_id": "S1", "from_date": date(2025, 1, 1)}
+    
+    # FIX: Return a dictionary, which is what a RowMapping behaves like.
+    mock_row_dict = {"id": 1, "portfolio_id": "P1", "security_id": "S1", "from_date": date(2025, 1, 1)}
+    
+    mock_result.mappings.return_value.first.return_value = mock_row_dict
     session.execute.return_value = mock_result
     return session
 
@@ -37,6 +41,7 @@ async def test_find_and_claim_job(repository: RecalculationRepository, mock_db_s
     # ASSERT
     assert job is not None
     assert isinstance(job, RecalculationJob)
+    # FIX: Assert the content of the returned object
     assert job.id == 1
 
     mock_db_session.execute.assert_awaited_once()
@@ -58,11 +63,13 @@ async def test_update_job_status(repository: RecalculationRepository, mock_db_se
     # ASSERT
     mock_db_session.execute.assert_awaited_once()
     executed_stmt = mock_db_session.execute.call_args[0][0]
-    
-    assert isinstance(executed_stmt, update)
-    compiled = executed_stmt.compile(compile_kwargs={"literal_binds": True})
-    assert "recalculation_jobs.id = 123" in str(compiled)
-    assert "status = 'COMPLETE'" in str(compiled)
+
+    assert isinstance(executed_stmt, Update)
+    # FIX: More robust assertions on the compiled statement's structure
+    compiled = executed_stmt.compile()
+    assert compiled.values['status'] == 'COMPLETE'
+    assert 'recalculation_jobs.id = :id_1' in str(compiled.where)
+    assert compiled.params['id_1'] == 123
 
 async def test_delete_downstream_data(repository: RecalculationRepository, mock_db_session: AsyncMock):
     """
@@ -77,7 +84,7 @@ async def test_delete_downstream_data(repository: RecalculationRepository, mock_
     assert mock_db_session.execute.call_count == 4
     
     executed_stmts = [call[0][0] for call in mock_db_session.execute.call_args_list]
-    table_names = {stmt.table.name for stmt in executed_stmts if isinstance(stmt, delete)}
+    table_names = {stmt.table.name for stmt in executed_stmts if isinstance(stmt, Delete)}
     
     expected_tables = {
         "portfolio_timeseries",
@@ -100,7 +107,7 @@ async def test_get_all_transactions_for_security(repository: RecalculationReposi
     mock_db_session.execute.assert_awaited_once()
     executed_stmt = mock_db_session.execute.call_args[0][0]
 
-    assert isinstance(executed_stmt, select)
+    assert isinstance(executed_stmt, Select)
     compiled = executed_stmt.compile(compile_kwargs={"literal_binds": True})
     assert "WHERE transactions.portfolio_id = 'P1' AND transactions.security_id = 'S1'" in str(compiled)
     assert "ORDER BY transactions.transaction_date ASC, transactions.id ASC" in str(compiled)

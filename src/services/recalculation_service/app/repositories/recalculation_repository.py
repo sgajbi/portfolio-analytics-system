@@ -3,7 +3,7 @@ import logging
 from datetime import date, datetime, timedelta, timezone
 from typing import Optional, List
 
-from sqlalchemy import select, update, text, delete
+from sqlalchemy import select, update, text, delete, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from portfolio_common.database_models import (
     RecalculationJob,
@@ -51,7 +51,8 @@ class RecalculationRepository:
         claimed_job_row = result.mappings().first()
 
         if claimed_job_row:
-            logger.info(f"Claimed recalculation job ID {claimed_job_row.id}.")
+            # FIX: Use dictionary-style access which works for both mocks and real RowMappings.
+            logger.info(f"Claimed recalculation job ID {claimed_job_row['id']}.")
             return RecalculationJob(**claimed_job_row)
         
         return None
@@ -78,7 +79,6 @@ class RecalculationRepository:
             extra={"portfolio_id": portfolio_id, "security_id": security_id, "from_date": from_date.isoformat()}
         )
         
-        # Order of deletion matters due to potential foreign key constraints (though none direct here, it's good practice)
         await self.db.execute(delete(PortfolioTimeseries).where(PortfolioTimeseries.portfolio_id == portfolio_id, PortfolioTimeseries.date >= from_date))
         await self.db.execute(delete(PositionTimeseries).where(PositionTimeseries.portfolio_id == portfolio_id, PositionTimeseries.security_id == security_id, PositionTimeseries.date >= from_date))
         await self.db.execute(delete(DailyPositionSnapshot).where(DailyPositionSnapshot.portfolio_id == portfolio_id, DailyPositionSnapshot.security_id == security_id, DailyPositionSnapshot.date >= from_date))
