@@ -11,7 +11,8 @@ from portfolio_common.database_models import (
     PositionHistory,
     DailyPositionSnapshot,
     PositionTimeseries,
-    PortfolioTimeseries
+    PortfolioTimeseries,
+    Cashflow
 )
 from portfolio_common.utils import async_timed
 
@@ -51,7 +52,6 @@ class RecalculationRepository:
         claimed_job_row = result.mappings().first()
 
         if claimed_job_row:
-            # FIX: Use dictionary-style access which works for both mocks and real RowMappings.
             logger.info(f"Claimed recalculation job ID {claimed_job_row['id']}.")
             return RecalculationJob(**claimed_job_row)
         
@@ -83,7 +83,8 @@ class RecalculationRepository:
         await self.db.execute(delete(PositionTimeseries).where(PositionTimeseries.portfolio_id == portfolio_id, PositionTimeseries.security_id == security_id, PositionTimeseries.date >= from_date))
         await self.db.execute(delete(DailyPositionSnapshot).where(DailyPositionSnapshot.portfolio_id == portfolio_id, DailyPositionSnapshot.security_id == security_id, DailyPositionSnapshot.date >= from_date))
         await self.db.execute(delete(PositionHistory).where(PositionHistory.portfolio_id == portfolio_id, PositionHistory.security_id == security_id, PositionHistory.position_date >= from_date))
-    
+        await self.db.execute(delete(Cashflow).where(Cashflow.portfolio_id == portfolio_id, Cashflow.security_id == security_id, Cashflow.cashflow_date >= from_date))
+
     @async_timed(repository="RecalculationRepository", method="get_all_transactions_for_security")
     async def get_all_transactions_for_security(self, portfolio_id: str, security_id: str) -> List[Transaction]:
         """
