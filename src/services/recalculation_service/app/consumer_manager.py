@@ -6,48 +6,49 @@ import uvicorn
 
 from portfolio_common.kafka_admin import ensure_topics_exist
 from .web import app as web_app
+from .consumers.recalculation_consumer import RecalculationJobConsumer
 
 logger = logging.getLogger(__name__)
 
 class ConsumerManager:
     """
-    Manages the lifecycle of Kafka consumers, schedulers, and the health probe web server
+    Manages the lifecycle of the recalculation job consumer and the health probe web server
     for the Recalculation Service.
     """
     def __init__(self):
-        self.consumers = []
         self.tasks = []
         self._shutdown_event = asyncio.Event()
 
-        # NOTE: We will add the RecalculationJobConsumer here in the next step.
+        # Instantiate our new polling consumer
+        self.recalculation_consumer = RecalculationJobConsumer()
 
-        logger.info(f"ConsumerManager initialized with {len(self.consumers)} consumer(s).")
+        logger.info("ConsumerManager initialized with 1 recalculation job consumer.")
 
     def _signal_handler(self, signum, frame):
         logger.info(f"Received shutdown signal: {signal.Signals(signum).name}. Initiating graceful shutdown...")
         self._shutdown_event.set()
 
     async def run(self):
-        # required_topics = [consumer.topic for consumer in self.consumers]
-        # ensure_topics_exist(required_topics) # Will be enabled when consumer is added
-
         signal.signal(signal.SIGINT, self._signal_handler)
         signal.signal(signal.SIGTERM, self._signal_handler)
 
         uvicorn_config = uvicorn.Config(web_app, host="0.0.0.0", port=8086, log_config=None)
         server = uvicorn.Server(uvicorn_config)
 
-        logger.info("Starting all consumer tasks and the web server...")
-        self.tasks = [asyncio.create_task(c.run()) for c in self.consumers]
+        logger.info("Starting recalculation consumer and the web server...")
+        
+        # Add both the consumer and the web server as managed asyncio tasks
+        self.tasks.append(asyncio.create_task(self.recalculation_consumer.run()))
         self.tasks.append(asyncio.create_task(server.serve()))
          
         logger.info("ConsumerManager is running. Press Ctrl+C to exit.")
         await self._shutdown_event.wait()
         
         logger.info("Shutdown event received. Stopping all tasks...")
-        for consumer in self.consumers:
-            consumer.shutdown()
         
+        # Signal the consumer to stop its loop
+        self.recalculation_consumer.stop()
+       
         server.should_exit = True
         
         await asyncio.gather(*self.tasks, return_exceptions=True)
