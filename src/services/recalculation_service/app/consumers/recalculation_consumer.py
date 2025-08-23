@@ -4,8 +4,9 @@ import asyncio
 from typing import List
 
 from portfolio_common.db import get_async_db_session
-from ..core.recalculation_logic import RecalculationLogic
-from ..repositories.recalculation_repository import RecalculationRepository
+# We will import these later as we build out the logic
+# from ..core.recalculation_logic import RecalculationLogic
+# from ..repositories.recalculation_repository import RecalculationRepository
 
 logger = logging.getLogger(__name__)
 
@@ -28,34 +29,14 @@ class RecalculationJobConsumer:
         logger.info(f"RecalculationJobConsumer started. Polling every {self._poll_interval} seconds.")
         while self._running:
             try:
-                async for db in get_async_db_session():
-                    repo = RecalculationRepository(db)
-                    
-                    async with db.begin():
-                        # Atomically find and lock the next available job
-                        job_to_process = await repo.find_and_claim_job()
-
-                    if job_to_process:
-                        logger.info(f"Claimed recalculation job {job_to_process.id} for {job_to_process.portfolio_id}/{job_to_process.security_id}")
-                        
-                        # Perform the full recalculation within a single, new transaction
-                        async with db.begin():
-                            await RecalculationLogic.execute(
-                                db_session=db,
-                                portfolio_id=job_to_process.portfolio_id,
-                                security_id=job_to_process.security_id,
-                                from_date=job_to_process.from_date
-                            )
-                            # Mark the job as complete only after the logic succeeds
-                            await repo.update_job_status(job_to_process.id, "COMPLETE")
-                        
-                        logger.info(f"Successfully completed and committed recalculation for job {job_to_process.id}.")
-                    else:
-                        logger.debug("No eligible recalculation jobs found in this poll cycle.")
-
+                # In future steps, we will add logic here to:
+                # 1. Get a DB session.
+                # 2. Atomically claim a job from the `recalculation_jobs` table.
+                # 3. If a job is claimed, execute the recalculation logic.
+                # 4. Mark the job as 'COMPLETE' or 'FAILED'.
+                logger.debug("Polling for recalculation jobs...")
             except Exception as e:
                 logger.error("Error in recalculation consumer polling loop.", exc_info=True)
-                # In case of error, the job remains in 'PROCESSING' and will be reset by the stale job logic.
 
             try:
                 await asyncio.sleep(self._poll_interval)
