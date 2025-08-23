@@ -1,6 +1,6 @@
 # tests/unit/services/calculators/position_calculator/consumers/test_position_calculator_consumer.py
 import pytest
-from unittest.mock import MagicMock, patch, AsyncMock
+from unittest.mock import MagicMock, patch, AsyncMock, ANY
 from datetime import datetime, date
 from decimal import Decimal
 from contextlib import asynccontextmanager
@@ -11,6 +11,7 @@ from portfolio_common.events import TransactionEvent
 from portfolio_common.idempotency_repository import IdempotencyRepository
 from portfolio_common.recalculation_job_repository import RecalculationJobRepository
 from src.services.calculators.position_calculator.app.repositories.position_repository import PositionRepository
+from portfolio_common.logging_utils import correlation_id_var
 
 pytestmark = pytest.mark.asyncio
 
@@ -59,7 +60,6 @@ def mock_dependencies():
     @asynccontextmanager
     async def mock_begin_transaction():
         yield
-    # FIX: The side_effect needs to be the context manager itself, not the function
     mock_db_session.begin.side_effect = mock_begin_transaction
 
     async def get_session_gen():
@@ -81,7 +81,8 @@ async def test_consumer_recalculates_positions(position_consumer: TransactionEve
     # ARRANGE
     mock_dependencies["idempotency_repo"].is_event_processed.return_value = False
     mock_dependencies["recalc_job_repo"].is_job_processing.return_value = False
-    mock_dependencies["position_repo"].get_latest_business_date.return_value = date(2025, 8, 7) # NOT backdated
+    # FIX: Set business date *before* transaction date to simulate a non-backdated event.
+    mock_dependencies["position_repo"].get_latest_business_date.return_value = date(2025, 8, 5) # NOT backdated
 
     # ACT
     await position_consumer.process_message(mock_kafka_message)
@@ -89,7 +90,6 @@ async def test_consumer_recalculates_positions(position_consumer: TransactionEve
     # ASSERT
     mock_dependencies["calculate_logic"].assert_awaited_once()
     mock_dependencies["idempotency_repo"].mark_event_processed.assert_called_once()
-    # FIX: This logic should NOT trigger a job for a non-backdated transaction
     mock_dependencies["recalc_job_repo"].upsert_job.assert_not_called()
 
 async def test_consumer_triggers_recalc_for_backdated_txn(position_consumer: TransactionEventConsumer, mock_kafka_message: MagicMock, mock_transaction_event: TransactionEvent, mock_dependencies: dict):
@@ -99,7 +99,12 @@ async def test_consumer_triggers_recalc_for_backdated_txn(position_consumer: Tra
     mock_dependencies["position_repo"].get_latest_business_date.return_value = date(2025, 8, 10) # IS backdated
 
     # ACT
-    await position_consumer.process_message(mock_kafka_message)
+    # FIX: Set the correlation ID in the context for the test
+    token = correlation_id_var.set('test-corr-id')
+    try:
+        await position_consumer.process_message(mock_kafka_message)
+    finally:
+        correlation_id_var.reset(token)
     
     # ASSERT
     mock_dependencies["recalc_job_repo"].upsert_job.assert_called_once_with(

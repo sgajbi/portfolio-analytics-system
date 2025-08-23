@@ -17,11 +17,18 @@ def current_snapshot() -> DailyPositionSnapshot:
     )
 
 @pytest.fixture
-def previous_day_timeseries() -> PositionTimeseries:
-    """A fixture for the previous day's time series record."""
-    return PositionTimeseries(eod_market_value=Decimal("11500"))
+def previous_day_snapshot() -> DailyPositionSnapshot:
+    """
+    A fixture for the previous day's snapshot record.
+    FIX: Returns a DailyPositionSnapshot instead of PositionTimeseries.
+    """
+    return DailyPositionSnapshot(
+        portfolio_id="P1", security_id="S1", date=date(2025, 7, 28),
+        quantity=Decimal("90"), cost_basis_local=Decimal("9000"),
+        market_value_local=Decimal("11500")
+    )
 
-def test_logic_with_portfolio_and_position_flows(current_snapshot, previous_day_timeseries):
+def test_logic_with_portfolio_and_position_flows(current_snapshot, previous_day_snapshot):
     """
     Tests that logic correctly segregates cashflows based on their boolean flags.
     """
@@ -34,9 +41,10 @@ def test_logic_with_portfolio_and_position_flows(current_snapshot, previous_day_
     ]
     
     # ACT
+    # FIX: Pass previous_snapshot keyword argument
     new_record = PositionTimeseriesLogic.calculate_daily_record(
         current_snapshot=current_snapshot,
-        previous_timeseries=previous_day_timeseries,
+        previous_snapshot=previous_day_snapshot,
         cashflows=cashflows
     )
 
@@ -48,16 +56,17 @@ def test_logic_with_portfolio_and_position_flows(current_snapshot, previous_day_
     assert new_record.eod_cashflow_position == Decimal("-50")
     assert new_record.eod_cashflow_portfolio == Decimal("-50")
 
-def test_logic_with_only_portfolio_flows(current_snapshot, previous_day_timeseries):
+def test_logic_with_only_portfolio_flows(current_snapshot, previous_day_snapshot):
     """
     Tests that a DEPOSIT (portfolio-only flow) is correctly assigned.
     """
     cashflows = [
         Cashflow(amount=Decimal(5000), timing='BOD', is_position_flow=True, is_portfolio_flow=True)
     ]
+    # FIX: Pass previous_snapshot keyword argument
     new_record = PositionTimeseriesLogic.calculate_daily_record(
         current_snapshot=current_snapshot,
-        previous_timeseries=previous_day_timeseries,
+        previous_snapshot=previous_day_snapshot,
         cashflows=cashflows
     )
     assert new_record.bod_cashflow_position == Decimal("5000")
