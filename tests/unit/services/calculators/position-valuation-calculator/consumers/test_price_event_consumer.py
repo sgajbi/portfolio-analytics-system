@@ -1,11 +1,11 @@
 # tests/unit/services/calculators/position-valuation-calculator/consumers/test_price_event_consumer.py
 import pytest
 from unittest.mock import MagicMock, patch, AsyncMock
-from datetime import date, timedelta
+from datetime import date
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from portfolio_common.events import MarketPricePersistedEvent
-from portfolio_common.valuation_job_repository import ValuationJobRepository
+from portfolio_common.recalculation_job_repository import RecalculationJobRepository
 from services.calculators.position_valuation_calculator.app.consumers.price_event_consumer import PriceEventConsumer
 from services.calculators.position_valuation_calculator.app.repositories.valuation_repository import ValuationRepository
 from portfolio_common.idempotency_repository import IdempotencyRepository
@@ -50,7 +50,7 @@ def mock_dependencies():
     """A fixture to patch all external dependencies for the consumer test."""
     mock_repo = AsyncMock(spec=ValuationRepository)
     mock_idempotency_repo = AsyncMock(spec=IdempotencyRepository)
-    mock_job_repo = AsyncMock(spec=ValuationJobRepository)
+    mock_recalc_job_repo = AsyncMock(spec=RecalculationJobRepository)
     
     mock_db_session = AsyncMock(spec=AsyncSession)
     mock_transaction = AsyncMock()
@@ -66,47 +66,51 @@ def mock_dependencies():
     ), patch(
         "services.calculators.position_valuation_calculator.app.consumers.price_event_consumer.IdempotencyRepository", return_value=mock_idempotency_repo
     ), patch(
-        "services.calculators.position_valuation_calculator.app.consumers.price_event_consumer.ValuationJobRepository", return_value=mock_job_repo
+        "services.calculators.position_valuation_calculator.app.consumers.price_event_consumer.RecalculationJobRepository", return_value=mock_recalc_job_repo
     ):
         yield {
             "repo": mock_repo,
             "idempotency_repo": mock_idempotency_repo,
-            "job_repo": mock_job_repo
+            "recalc_job_repo": mock_recalc_job_repo
         }
 
-async def test_creates_jobs_for_correct_date_range(
+async def test_creates_recalculation_job_for_affected_portfolios(
     consumer: PriceEventConsumer,
     mock_kafka_message: MagicMock,
     mock_event: MarketPricePersistedEvent,
     mock_dependencies: dict
 ):
     """
-    GIVEN a back-dated market price event
+    GIVEN a market price event
     WHEN the message is processed
-    THEN it should create valuation jobs for each day from the price date up to the next known price date.
+    THEN it should create one recalculation job for each portfolio holding the security.
     """
     # ARRANGE
     mock_repo = mock_dependencies["repo"]
-    mock_job_repo = mock_dependencies["job_repo"]
+    mock_recalc_job_repo = mock_dependencies["recalc_job_repo"]
     mock_idempotency_repo = mock_dependencies["idempotency_repo"]
 
     mock_idempotency_repo.is_event_processed.return_value = False
-    mock_repo.find_portfolios_holding_security_on_date.return_value = ["PORT_01"]
+    # Simulate finding two portfolios that hold this security
+    mock_repo.find_portfolios_holding_security_on_date.return_value = ["PORT_01", "PORT_02"]
     
-    # Simulate the position starting before the new price, and a next price existing 3 days later
-    mock_repo.get_first_transaction_date.return_value = date(2025, 8, 1)
-    mock_repo.get_next_price_date.return_value = date(2025, 8, 8)
-
     # ACT
     await consumer.process_message(mock_kafka_message)
 
     # ASSERT
-    # It should create jobs for 8/5, 8/6, and 8/7 (3 jobs)
-    assert mock_job_repo.upsert_job.call_count == 3
+    # Verify it checked for affected portfolios
+    mock_repo.find_portfolios_holding_security_on_date.assert_awaited_once_with(
+        security_id=mock_event.security_id,
+        a_date=mock_event.price_date
+    )
     
-    # Check the dates of the created jobs
-    call_dates = {call.kwargs['valuation_date'] for call in mock_job_repo.upsert_job.call_args_list}
-    expected_dates = {date(2025, 8, 5), date(2025, 8, 6), date(2025, 8, 7)}
-    assert call_dates == expected_dates
+    # Verify it created a job for each affected portfolio
+    assert mock_recalc_job_repo.upsert_job.call_count == 2
+    
+    # Check the details of the first call
+    first_call_args = mock_recalc_job_repo.upsert_job.call_args_list[0].kwargs
+    assert first_call_args['portfolio_id'] == "PORT_01"
+    assert first_call_args['security_id'] == mock_event.security_id
+    assert first_call_args['from_date'] == mock_event.price_date
 
     mock_idempotency_repo.mark_event_processed.assert_called_once()
