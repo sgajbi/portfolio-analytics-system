@@ -59,7 +59,7 @@ class TransactionEventConsumer(BaseConsumer):
                     repo = PositionRepository(db)
                     recalc_job_repo = RecalculationJobRepository(db)
 
-                    # --- NEW: Concurrency Lock Check ---
+                    # --- Concurrency Lock Check ---
                     if await recalc_job_repo.is_job_processing(event.portfolio_id, event.security_id):
                         raise RecalculationInProgressError(
                             f"Recalculation job is active for {event.portfolio_id}/{event.security_id}. Requeuing message."
@@ -67,7 +67,7 @@ class TransactionEventConsumer(BaseConsumer):
                     
                     new_positions = await PositionCalculator.calculate(event, db, repo=repo)
                     
-                    # --- NEW: Backdated Trigger Logic ---
+                    # --- Backdated Trigger Logic ---
                     latest_business_date = await repo.get_latest_business_date()
                     is_backdated = latest_business_date and event.transaction_date.date() < latest_business_date
 
