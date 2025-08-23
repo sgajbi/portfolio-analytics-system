@@ -6,9 +6,9 @@ from decimal import Decimal
 from contextlib import asynccontextmanager
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from services.calculators.position_valuation_calculator.app.consumers.valuation_consumer import ValuationConsumer
+from services.calculators.position_valuation_calculator.app.consumers.valuation_consumer import ValuationConsumer, DataNotFoundError
 from portfolio_common.events import PortfolioValuationRequiredEvent
-from portfolio_common.database_models import DailyPositionSnapshot, MarketPrice, Instrument, Portfolio, FxRate
+from portfolio_common.database_models import DailyPositionSnapshot, MarketPrice, Instrument, Portfolio, FxRate, PositionHistory
 from portfolio_common.logging_utils import correlation_id_var
 from portfolio_common.idempotency_repository import IdempotencyRepository
 from portfolio_common.outbox_repository import OutboxRepository
@@ -87,7 +87,7 @@ async def test_valuation_consumer_success(
     """
     GIVEN a valid valuation required event
     WHEN the consumer processes the message
-    THEN it should fetch all necessary data, perform valuation, and save the results.
+    THEN it should fetch position history, perform valuation, create a snapshot, and save the results.
     """
     # ARRANGE
     mock_idempotency_repo = mock_dependencies["idempotency_repo"]
@@ -96,16 +96,19 @@ async def test_valuation_consumer_success(
 
     mock_idempotency_repo.is_event_processed.return_value = False
     
-    mock_snapshot = DailyPositionSnapshot(
-        id=1, quantity=Decimal("100"), cost_basis=Decimal("10000"), cost_basis_local=Decimal("8000"),
-        security_id='SEC_VAL_01', portfolio_id='PORT_VAL_01', date=date(2025, 8, 1)
+    mock_position_history = PositionHistory(
+        quantity=Decimal("100"), cost_basis=Decimal("10000"), cost_basis_local=Decimal("8000")
     )
-    mock_valuation_repo.get_daily_snapshot.return_value = mock_snapshot
-    mock_valuation_repo.get_instrument.return_value = Instrument(currency="EUR")
-    mock_valuation_repo.get_portfolio.return_value = Portfolio(base_currency="USD")
-    mock_valuation_repo.get_latest_price_for_position.return_value = MarketPrice(price=Decimal("90"), currency="EUR")
+    mock_valuation_repo.get_last_position_history_before_date.return_value = mock_position_history
+    
+    mock_valuation_repo.get_instrument.return_value = Instrument(currency="EUR", security_id=mock_event.security_id)
+    mock_valuation_repo.get_portfolio.return_value = Portfolio(base_currency="USD", portfolio_id=mock_event.portfolio_id)
+    mock_valuation_repo.get_latest_price_for_position.return_value = MarketPrice(price=Decimal("90"), currency="EUR", price_date=mock_event.valuation_date)
     mock_valuation_repo.get_fx_rate.return_value = FxRate(rate=Decimal("1.1"))
-    mock_valuation_repo.upsert_daily_snapshot.return_value = mock_snapshot
+
+    # Simulate the repository returning the persisted snapshot object
+    persisted_snapshot = DailyPositionSnapshot(id=1, **mock_event.model_dump())
+    mock_valuation_repo.upsert_daily_snapshot.return_value = persisted_snapshot
 
     token = correlation_id_var.set('test-corr-id-123')
     try:
@@ -116,47 +119,47 @@ async def test_valuation_consumer_success(
 
     # ASSERT
     mock_idempotency_repo.is_event_processed.assert_called_once()
-    mock_valuation_repo.get_daily_snapshot.assert_called_once_with(mock_event.portfolio_id, mock_event.security_id, mock_event.valuation_date)
+    mock_valuation_repo.get_last_position_history_before_date.assert_called_once_with(mock_event.portfolio_id, mock_event.security_id, mock_event.valuation_date)
     mock_valuation_repo.upsert_daily_snapshot.assert_called_once()
+    
+    # Check that the status was set correctly to VALUED_CURRENT
+    saved_snapshot_arg = mock_valuation_repo.upsert_daily_snapshot.call_args[0][0]
+    assert saved_snapshot_arg.valuation_status == 'VALUED_CURRENT'
+
     mock_valuation_repo.update_job_status.assert_called_once_with(mock_event.portfolio_id, mock_event.security_id, mock_event.valuation_date, 'COMPLETE')
     mock_outbox_repo.create_outbox_event.assert_called_once()
     consumer._send_to_dlq_async.assert_not_called()
 
-async def test_valuation_consumer_failure_missing_fx_rate(
+async def test_valuation_consumer_creates_unvalued_snapshot_if_no_price(
     consumer: ValuationConsumer, 
     mock_kafka_message: MagicMock, 
     mock_event: PortfolioValuationRequiredEvent,
     mock_dependencies: dict
 ):
     """
-    GIVEN a cross-currency valuation event where the required FX rate is missing
+    GIVEN a valuation event where no market price can be found
     WHEN the consumer processes the message
-    THEN it should mark the job as FAILED and not create an outbox event.
+    THEN it should still create a snapshot but with a status of UNVALUED.
     """
     # ARRANGE
-    mock_idempotency_repo = mock_dependencies["idempotency_repo"]
-    mock_outbox_repo = mock_dependencies["outbox_repo"]
     mock_valuation_repo = mock_dependencies["valuation_repo"]
+    mock_idempotency_repo = mock_dependencies["idempotency_repo"]
 
     mock_idempotency_repo.is_event_processed.return_value = False
-    mock_snapshot = DailyPositionSnapshot(id=1, quantity=Decimal("100"), cost_basis=Decimal("10000"), cost_basis_local=Decimal("8000"), security_id='SEC_VAL_01', portfolio_id='PORT_VAL_01', date=date(2025, 8, 1))
-    mock_valuation_repo.get_daily_snapshot.return_value = mock_snapshot
-    mock_valuation_repo.get_instrument.return_value = Instrument(currency="EUR")
-    mock_valuation_repo.get_portfolio.return_value = Portfolio(base_currency="USD")
-    mock_valuation_repo.get_latest_price_for_position.return_value = MarketPrice(price=Decimal("90"), currency="EUR")
-    mock_valuation_repo.get_fx_rate.return_value = None
+    mock_position_history = PositionHistory(quantity=Decimal("100"), cost_basis=Decimal("10000"), cost_basis_local=Decimal("8000"))
+    mock_valuation_repo.get_last_position_history_before_date.return_value = mock_position_history
+    mock_valuation_repo.get_instrument.return_value = Instrument(currency="EUR", security_id=mock_event.security_id)
+    mock_valuation_repo.get_portfolio.return_value = Portfolio(base_currency="USD", portfolio_id=mock_event.portfolio_id)
+    mock_valuation_repo.get_latest_price_for_position.return_value = None # No price found
     
-    token = correlation_id_var.set('test-corr-id-failure')
-    try:
-        # ACT
-        await consumer.process_message(mock_kafka_message)
-    finally:
-        correlation_id_var.reset(token)
+    persisted_snapshot = DailyPositionSnapshot(id=1, **mock_event.model_dump())
+    mock_valuation_repo.upsert_daily_snapshot.return_value = persisted_snapshot
+
+    # ACT
+    await consumer.process_message(mock_kafka_message)
 
     # ASSERT
-    mock_idempotency_repo.is_event_processed.assert_called_once()
-    mock_valuation_repo.get_daily_snapshot.assert_called_once()
-    mock_valuation_repo.upsert_daily_snapshot.assert_not_called()
-    mock_outbox_repo.create_outbox_event.assert_not_called()
-    mock_valuation_repo.update_job_status.assert_called_once_with(mock_event.portfolio_id, mock_event.security_id, mock_event.valuation_date, 'FAILED')
-    consumer._send_to_dlq_async.assert_not_called()
+    mock_valuation_repo.upsert_daily_snapshot.assert_called_once()
+    saved_snapshot_arg = mock_valuation_repo.upsert_daily_snapshot.call_args[0][0]
+    assert saved_snapshot_arg.valuation_status == 'UNVALUED'
+    assert saved_snapshot_arg.market_price is None
