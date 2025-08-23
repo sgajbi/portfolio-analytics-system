@@ -22,20 +22,20 @@ logger = logging.getLogger(__name__)
 
 SERVICE_NAME = "position-valuation-calculator"
 
-class SnapshotNotFoundError(Exception):
-    """Raised when the expected DailyPositionSnapshot is not yet in the database."""
+class DataNotFoundError(Exception):
+    """Custom exception for retryable data fetching errors."""
     pass
 
 class ValuationConsumer(BaseConsumer):
     """
-    Consumes scheduled valuation jobs, calculates the market value for a position
-    on a specific date, and saves the result as a daily position snapshot.
+    Consumes scheduled valuation jobs, creates/updates the daily position snapshot,
+    calculates market value, and saves the result.
     """
     @retry(
         wait=wait_fixed(3),
         stop=stop_after_attempt(5),
         before=before_log(logger, logging.INFO),
-        retry=retry_if_exception_type((DBAPIError, OperationalError, SnapshotNotFoundError)),
+        retry=retry_if_exception_type((DBAPIError, OperationalError, DataNotFoundError)),
         reraise=True
     )
     async def process_message(self, msg: Message):
@@ -61,82 +61,75 @@ class ValuationConsumer(BaseConsumer):
                         logger.warning(f"Event {event_id} already processed. Skipping.")
                         return
 
-                    snapshot = await repo.get_daily_snapshot(event.portfolio_id, event.security_id, event.valuation_date)
-                    
-                    if not snapshot:
-                        # --- LOGIC RESTORED: Roll forward if snapshot is missing ---
-                        logger.warning(f"Snapshot for {event.valuation_date} not found. Attempting to roll forward.")
-                        previous_snapshot = await repo.get_last_snapshot_before_date(event.portfolio_id, event.security_id, event.valuation_date)
-                        
-                        if not previous_snapshot:
-                            raise SnapshotNotFoundError(f"No previous snapshot found for {event.security_id} before {event.valuation_date}. Cannot roll forward.")
+                    # 1. Get the state of the position for the valuation date
+                    position_state = await repo.get_last_position_history_before_date(event.portfolio_id, event.security_id, event.valuation_date)
+                    if not position_state:
+                        raise DataNotFoundError(f"Position history not found for {event.security_id} on or before {event.valuation_date}")
 
-                        snapshot = DailyPositionSnapshot(
-                            portfolio_id=previous_snapshot.portfolio_id,
-                            security_id=previous_snapshot.security_id,
-                            date=event.valuation_date,
-                            quantity=previous_snapshot.quantity,
-                            cost_basis=previous_snapshot.cost_basis,
-                            cost_basis_local=previous_snapshot.cost_basis_local
-                        )
-                        logger.info(f"Created new rolled-forward snapshot for {event.valuation_date} from {previous_snapshot.date}.")
-                        # --- END LOGIC RESTORED ---
-
-                    instrument = await repo.get_instrument(snapshot.security_id)
-                    portfolio = await repo.get_portfolio(snapshot.portfolio_id)
-                    price = await repo.get_latest_price_for_position(snapshot.security_id, snapshot.date)
+                    # 2. Fetch all necessary reference data
+                    instrument = await repo.get_instrument(event.security_id)
+                    portfolio = await repo.get_portfolio(event.portfolio_id)
+                    price = await repo.get_latest_price_for_position(event.security_id, event.valuation_date)
                     
-                    if not all([instrument, portfolio, price]):
-                        logger.error(f"Missing critical data for valuation (instrument, portfolio, or price). Job will be marked FAILED. Snapshot ID: {snapshot.id if snapshot.id else 'N/A'}")
+                    if not all([instrument, portfolio]):
+                        logger.error(f"Missing critical data (instrument or portfolio). Job will be marked FAILED.")
                         await repo.update_job_status(event.portfolio_id, event.security_id, event.valuation_date, 'FAILED')
                         return
 
-                    price_to_instrument_fx = await repo.get_fx_rate(price.currency, instrument.currency, snapshot.date)
-                    instrument_to_portfolio_fx = await repo.get_fx_rate(instrument.currency, portfolio.base_currency, snapshot.date)
-
-                    valuation_result = ValuationLogic.calculate_valuation(
-                        quantity=snapshot.quantity,
-                        market_price=price.price,
-                        cost_basis_base=snapshot.cost_basis,
-                        cost_basis_local=snapshot.cost_basis_local,
-                        price_currency=price.currency,
-                        instrument_currency=instrument.currency,
-                        portfolio_currency=portfolio.base_currency,
-                        price_to_instrument_fx_rate=price_to_instrument_fx.rate if price_to_instrument_fx else None,
-                        instrument_to_portfolio_fx_rate=instrument_to_portfolio_fx.rate if instrument_to_portfolio_fx else None
+                    # 3. Build the initial snapshot from the position state
+                    snapshot = DailyPositionSnapshot(
+                        portfolio_id=event.portfolio_id,
+                        security_id=event.security_id,
+                        date=event.valuation_date,
+                        quantity=position_state.quantity,
+                        cost_basis=position_state.cost_basis,
+                        cost_basis_local=position_state.cost_basis_local
                     )
 
-                    if valuation_result:
-                        mv_base, mv_local, pnl_base, pnl_local = valuation_result
-                        snapshot.market_price = price.price
-                        snapshot.market_value = mv_base
-                        snapshot.market_value_local = mv_local
-                        snapshot.unrealized_gain_loss = pnl_base
-                        snapshot.unrealized_gain_loss_local = pnl_local
-                        snapshot.valuation_status = 'VALUED'
-
-                        persisted_snapshot = await repo.upsert_daily_snapshot(snapshot)
-                        completion_event = DailyPositionSnapshotPersistedEvent.model_validate(persisted_snapshot)
-                        
-                        await outbox_repo.create_outbox_event(
-                            aggregate_type='DailyPositionSnapshot',
-                            aggregate_id=persisted_snapshot.portfolio_id,
-                            event_type='DailyPositionSnapshotPersisted',
-                            topic=KAFKA_DAILY_POSITION_SNAPSHOT_PERSISTED_TOPIC,
-                            payload=completion_event.model_dump(mode='json'),
-                            correlation_id=correlation_id
-                        )
-                        await repo.update_job_status(event.portfolio_id, event.security_id, event.valuation_date, 'COMPLETE')
+                    # 4. Perform valuation if price is available
+                    if price:
+                        fx_rate = await repo.get_fx_rate(instrument.currency, portfolio.base_currency, event.valuation_date)
+                        if instrument.currency != portfolio.base_currency and not fx_rate:
+                            snapshot.valuation_status = 'FAILED'
+                            logger.error(f"Missing required FX rate for valuation. Job will be marked FAILED.")
+                        else:
+                            valuation_result = ValuationLogic.calculate_valuation(
+                                quantity=snapshot.quantity, market_price=price.price,
+                                cost_basis_base=snapshot.cost_basis, cost_basis_local=snapshot.cost_basis_local,
+                                price_currency=price.currency, instrument_currency=instrument.currency,
+                                portfolio_currency=portfolio.base_currency,
+                                price_to_instrument_fx_rate=None, # Assuming price is in instrument currency for now
+                                instrument_to_portfolio_fx_rate=fx_rate.rate if fx_rate else None
+                            )
+                            if valuation_result:
+                                snapshot.market_price = price.price
+                                snapshot.market_value, snapshot.market_value_local, snapshot.unrealized_gain_loss, snapshot.unrealized_gain_loss_local = valuation_result
+                                snapshot.valuation_status = 'VALUED_CURRENT' if price.price_date == event.valuation_date else 'VALUED_STALE'
+                            else:
+                                snapshot.valuation_status = 'FAILED'
                     else:
-                        await repo.update_job_status(event.portfolio_id, event.security_id, event.valuation_date, 'FAILED')
+                        snapshot.valuation_status = 'UNVALUED'
 
+                    # 5. Persist the snapshot and create completion event
+                    persisted_snapshot = await repo.upsert_daily_snapshot(snapshot)
+                    completion_event = DailyPositionSnapshotPersistedEvent.model_validate(persisted_snapshot)
+                    
+                    await outbox_repo.create_outbox_event(
+                        aggregate_type='DailyPositionSnapshot',
+                        aggregate_id=persisted_snapshot.portfolio_id,
+                        event_type='DailyPositionSnapshotPersisted',
+                        topic=KAFKA_DAILY_POSITION_SNAPSHOT_PERSISTED_TOPIC,
+                        payload=completion_event.model_dump(mode='json'),
+                        correlation_id=correlation_id
+                    )
+                    await repo.update_job_status(event.portfolio_id, event.security_id, event.valuation_date, 'COMPLETE')
                     await idempotency_repo.mark_event_processed(event_id, event.portfolio_id, SERVICE_NAME, correlation_id)
 
         except (json.JSONDecodeError, ValidationError) as e:
             logger.error(f"Message validation failed for key '{key}'. Sending to DLQ.", exc_info=True)
             await self._send_to_dlq_async(msg, e)
-        except (DBAPIError, OperationalError, SnapshotNotFoundError) as e:
-            logger.warning(f"Database or data availability error for event {event_id}: {e}. Retrying...", exc_info=False)
+        except (DBAPIError, OperationalError, DataNotFoundError) as e:
+            logger.warning(f"DB or data availability error for event {event_id}: {e}. Retrying...", exc_info=False)
             raise
         except Exception as e:
             logger.error(f"Unexpected error processing message with key '{key}'. Sending to DLQ.", exc_info=True)

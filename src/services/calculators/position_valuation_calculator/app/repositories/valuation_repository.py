@@ -22,6 +22,25 @@ class ValuationRepository:
     def __init__(self, db: AsyncSession):
         self.db = db
 
+    @async_timed(repository="ValuationRepository", method="get_last_position_history_before_date")
+    async def get_last_position_history_before_date(self, portfolio_id: str, security_id: str, a_date: date) -> Optional[PositionHistory]:
+        """
+        Fetches the most recent position history record on or before a given date.
+        This is used to find the definitive state of a position for a snapshot.
+        """
+        stmt = (
+            select(PositionHistory)
+            .filter(
+                PositionHistory.portfolio_id == portfolio_id,
+                PositionHistory.security_id == security_id,
+                PositionHistory.position_date <= a_date,
+            )
+            .order_by(PositionHistory.position_date.desc(), PositionHistory.id.desc())
+            .limit(1)
+        )
+        result = await self.db.execute(stmt)
+        return result.scalars().first()
+
     @async_timed(repository="ValuationRepository", method="get_next_price_date")
     async def get_next_price_date(self, security_id: str, after_date: date) -> Optional[date]:
         """
