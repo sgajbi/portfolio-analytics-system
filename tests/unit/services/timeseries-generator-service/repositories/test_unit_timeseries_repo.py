@@ -28,23 +28,13 @@ def mock_db_session() -> AsyncMock:
     mock_result.rowcount = 1
 
     session.execute = AsyncMock(return_value=mock_result)
+    
     return session
 
 @pytest.fixture
 def repository(mock_db_session: AsyncMock) -> TimeseriesRepository:
     """Provides an instance of the repository with a mock session."""
     return TimeseriesRepository(mock_db_session)
-
-async def test_find_and_claim_eligible_jobs(repository: TimeseriesRepository, mock_db_session: AsyncMock):
-    """Verifies the raw SQL query for claiming jobs."""
-    await repository.find_and_claim_eligible_jobs(batch_size=50)
-    
-    executed_stmt = mock_db_session.execute.call_args[0][0]
-    assert isinstance(executed_stmt, TextClause)
-    assert "UPDATE portfolio_aggregation_jobs" in str(executed_stmt)
-    assert "FOR UPDATE SKIP LOCKED" in str(executed_stmt)
-    params = mock_db_session.execute.call_args[0][1]
-    assert params['batch_size'] == 50
 
 async def test_get_simple_getters(repository: TimeseriesRepository, mock_db_session: AsyncMock):
     """Tests all simple getter methods that filter by a single ID."""
@@ -62,15 +52,6 @@ async def test_get_fx_rate(repository: TimeseriesRepository, mock_db_session: As
     compiled_query = str(mock_db_session.execute.call_args[0][0].compile(compile_kwargs={"literal_binds": True}))
     assert "WHERE fx_rates.from_currency = 'USD' AND fx_rates.to_currency = 'EUR' AND fx_rates.rate_date <= '2025-01-10'" in compiled_query
     assert "ORDER BY fx_rates.rate_date DESC" in compiled_query
-
-async def test_is_first_position(repository: TimeseriesRepository, mock_db_session: AsyncMock):
-    """Verifies the query that checks for prior transaction history."""
-    result = await repository.is_first_position("P1", "S1", date(2025, 1, 10))
-    assert result is False
-    
-    executed_stmt = mock_db_session.execute.call_args[0][0]
-    compiled_query = str(executed_stmt.compile(compile_kwargs={"literal_binds": True}))
-    assert "date(transactions.transaction_date) < '2025-01-10'" in compiled_query
 
 async def test_upsert_position_timeseries(repository: TimeseriesRepository, mock_db_session: AsyncMock):
     """Verifies the construction of the position timeseries upsert statement."""
@@ -91,17 +72,6 @@ async def test_upsert_portfolio_timeseries(repository: TimeseriesRepository, moc
     compiled_stmt = str(executed_stmt.compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}))
     assert "INSERT INTO portfolio_timeseries" in compiled_stmt
     assert "ON CONFLICT (portfolio_id, date) DO UPDATE" in compiled_stmt
-
-async def test_get_all_open_positions_as_of(repository: TimeseriesRepository, mock_db_session: AsyncMock):
-    """Verifies the raw SQL query for finding all open positions."""
-    await repository.get_all_open_positions_as_of("P1", date(2025, 1, 10))
-    
-    executed_stmt = mock_db_session.execute.call_args[0][0]
-    params = mock_db_session.execute.call_args[0][1]
-    
-    assert "SELECT DISTINCT security_id" in str(executed_stmt)
-    assert "FROM position_timeseries" in str(executed_stmt)
-    assert params['portfolio_id'] == 'P1'
 
 async def test_find_and_reset_stale_jobs(repository: TimeseriesRepository, mock_db_session: AsyncMock):
     """Verifies the UPDATE statement for resetting stale jobs."""

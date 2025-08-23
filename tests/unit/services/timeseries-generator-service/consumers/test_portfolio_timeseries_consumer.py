@@ -3,6 +3,7 @@ import pytest
 from unittest.mock import MagicMock, patch, AsyncMock, ANY
 from datetime import date, timedelta
 from decimal import Decimal
+import logging
 
 from sqlalchemy import update, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -83,7 +84,6 @@ async def test_process_message_success(
     
     mock_repo.get_portfolio.return_value = Portfolio(portfolio_id=mock_event.portfolio_id, base_currency="USD")
     
-    # FIX: Add the missing mock for the repository method
     mock_repo.get_all_position_timeseries_for_date.return_value = [
         PositionTimeseries(
             security_id="SEC_USD", 

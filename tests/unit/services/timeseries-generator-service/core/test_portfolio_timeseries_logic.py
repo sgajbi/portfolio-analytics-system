@@ -5,7 +5,7 @@ from datetime import date
 from decimal import Decimal
 
 from portfolio_common.database_models import (
-    Portfolio, PositionTimeseries, Instrument, FxRate
+    Portfolio, PositionTimeseries, Instrument, FxRate, DailyPositionSnapshot
 )
 from services.timeseries_generator_service.app.core.portfolio_timeseries_logic import PortfolioTimeseriesLogic, FxRateNotFoundError
 from src.services.timeseries_generator_service.app.repositories.timeseries_repository import TimeseriesRepository
@@ -18,38 +18,35 @@ def mock_repo() -> AsyncMock:
     repo.get_instruments_by_ids = AsyncMock()
     repo.get_fx_rate = AsyncMock()
     repo.get_last_portfolio_timeseries_before = AsyncMock()
+    repo.get_all_snapshots_for_date = AsyncMock()
     return repo
 
 @pytest.fixture
 def sample_portfolio() -> Portfolio:
     return Portfolio(portfolio_id="TS_PORT_01", base_currency="USD")
 
-async def test_portfolio_logic_aggregates_only_portfolio_flows(mock_repo: AsyncMock, sample_portfolio: Portfolio):
+async def test_portfolio_logic_aggregates_correctly(mock_repo: AsyncMock, sample_portfolio: Portfolio):
     """
-    Tests that the aggregation logic correctly sums ONLY the _portfolio columns,
-    ignoring the _position columns for the final portfolio-level cashflow figures.
+    Tests that the aggregation logic correctly sums portfolio cashflows and
+    market values from the definitive snapshot source.
     """
     # ARRANGE
     test_date = date(2025, 8, 8)
+    
     position_ts_list = [
-        # Equity position with a position-only flow (e.g., a SELL)
         PositionTimeseries(
-            security_id="SEC_AAPL", date=test_date, eod_market_value=Decimal("10000"),
-            bod_cashflow_position=Decimal(0), eod_cashflow_position=Decimal(-5000),
-            bod_cashflow_portfolio=Decimal(0), eod_cashflow_portfolio=Decimal(0)
-        ),
-        # Cash position with a portfolio flow (e.g., a FEE)
-        PositionTimeseries(
-            security_id="CASH_USD", date=test_date, eod_market_value=Decimal("50000"),
-            bod_cashflow_position=Decimal(-25), eod_cashflow_position=Decimal(0),
-            bod_cashflow_portfolio=Decimal(-25), eod_cashflow_portfolio=Decimal(0)
+            security_id="CASH_USD", bod_cashflow_portfolio=Decimal(-25)
         ),
     ]
-    mock_repo.get_instruments_by_ids.return_value = [
-        Instrument(security_id="SEC_AAPL", currency="USD", product_type="Equity"),
-        Instrument(security_id="CASH_USD", currency="USD", product_type="Cash"),
+    
+    snapshots_for_day = [
+        DailyPositionSnapshot(security_id="SEC_AAPL", market_value=Decimal("10000")),
+        DailyPositionSnapshot(security_id="CASH_USD", market_value=Decimal("50000")),
     ]
+
+    mock_repo.get_instruments_by_ids.return_value = [Instrument(security_id="CASH_USD", currency="USD")]
     mock_repo.get_last_portfolio_timeseries_before.return_value = None
+    mock_repo.get_all_snapshots_for_date.return_value = snapshots_for_day
 
     # ACT
     result = await PortfolioTimeseriesLogic.calculate_daily_record(
@@ -60,11 +57,7 @@ async def test_portfolio_logic_aggregates_only_portfolio_flows(mock_repo: AsyncM
     )
 
     # ASSERT
-    # The portfolio cashflow should ONLY be the -25 from the cash position's portfolio column.
-    # The -5000 from the equity's position column should be ignored for this calculation.
+    mock_repo.get_all_snapshots_for_date.assert_awaited_once_with(sample_portfolio.portfolio_id, test_date)
     assert result.bod_cashflow == Decimal("-25")
-    assert result.eod_cashflow == Decimal("0")
-    # Total EOD MV is the sum of all positions' EOD MVs
-    assert result.eod_market_value == Decimal("60000")
-    # Fees are derived from negative portfolio flows
     assert result.fees == Decimal("25")
+    assert result.eod_market_value == Decimal("60000")

@@ -146,18 +146,6 @@ class TimeseriesRepository:
         result = await self.db.execute(stmt)
         return result.scalars().first()
     
-    @async_timed(repository="TimeseriesRepository", method="get_last_position_timeseries_before")
-    async def get_last_position_timeseries_before(
-        self, portfolio_id: str, security_id: str, a_date: date
-    ) -> Optional[PositionTimeseries]:
-        stmt = select(PositionTimeseries).filter(
-            PositionTimeseries.portfolio_id == portfolio_id,
-            PositionTimeseries.security_id == security_id,
-            PositionTimeseries.date < a_date
-        ).order_by(PositionTimeseries.date.desc())
-        result = await self.db.execute(stmt)
-        return result.scalars().first()
-
     @async_timed(repository="TimeseriesRepository", method="get_all_position_timeseries_for_date")
     async def get_all_position_timeseries_for_date(
         self, portfolio_id: str, a_date: date
@@ -165,6 +153,18 @@ class TimeseriesRepository:
         stmt = select(PositionTimeseries).filter_by(
             portfolio_id=portfolio_id,
             date=a_date
+        )
+        result = await self.db.execute(stmt)
+        return result.scalars().all()
+
+    @async_timed(repository="TimeseriesRepository", method="get_all_cashflows_for_security_date")
+    async def get_all_cashflows_for_security_date(
+        self, portfolio_id: str, security_id: str, a_date: date
+    ) -> List[Cashflow]:
+        stmt = select(Cashflow).filter_by(
+            portfolio_id=portfolio_id,
+            security_id=security_id,
+            cashflow_date=a_date
         )
         result = await self.db.execute(stmt)
         return result.scalars().all()
