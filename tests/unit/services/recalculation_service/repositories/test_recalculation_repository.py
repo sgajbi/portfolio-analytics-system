@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 from datetime import date
 from sqlalchemy import text
 from sqlalchemy.sql.expression import delete, select, update, Select, Update, Delete, TextClause
+from sqlalchemy.dialects import postgresql
 
 from portfolio_common.database_models import RecalculationJob
 from src.services.recalculation_service.app.repositories.recalculation_repository import RecalculationRepository
@@ -44,7 +45,6 @@ async def test_find_and_claim_job(repository: RecalculationRepository, mock_db_s
 
     mock_db_session.execute.assert_awaited_once()
     executed_stmt = mock_db_session.execute.call_args[0][0]
-    # FIX: Check against the correct imported class 'TextClause'
     assert isinstance(executed_stmt, TextClause)
     assert "UPDATE recalculation_jobs" in str(executed_stmt)
     assert "FOR UPDATE SKIP LOCKED" in str(executed_stmt)
@@ -64,11 +64,16 @@ async def test_update_job_status(repository: RecalculationRepository, mock_db_se
     executed_stmt = mock_db_session.execute.call_args[0][0]
 
     assert isinstance(executed_stmt, Update)
-    # FIX: Inspect the .values attribute on the statement object, not the compiled object.
-    assert executed_stmt.values['status'] == 'COMPLETE'
     
-    compiled = executed_stmt.compile(compile_kwargs={"literal_binds": True})
-    assert "recalculation_jobs.id = 123" in str(compiled.where)
+    # FIX: Compile with a dialect and check the public `params` attribute.
+    compiled = executed_stmt.compile(dialect=postgresql.dialect())
+    assert compiled.params['status'] == 'COMPLETE'
+    assert 'updated_at' in compiled.params
+    
+    # Check the WHERE clause separately for clarity
+    compiled_where = str(executed_stmt.whereclause.compile(dialect=postgresql.dialect()))
+    assert "recalculation_jobs.id = %(id_1)s" in compiled_where
+    assert compiled.params['id_1'] == 123
 
 
 async def test_delete_downstream_data(repository: RecalculationRepository, mock_db_session: AsyncMock):
