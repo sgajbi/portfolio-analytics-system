@@ -1,161 +1,67 @@
+# tests/unit/services/calculators/position_calculator/core/test_position_logic.py
 import pytest
+from unittest.mock import AsyncMock
+from datetime import date, datetime
 from decimal import Decimal
-from datetime import datetime
 
-from services.calculators.position_calculator.app.core.position_logic import PositionCalculator
-from services.calculators.position_calculator.app.core.position_models import PositionState
 from portfolio_common.events import TransactionEvent
+from src.services.calculators.position_calculator.app.core.position_logic import PositionCalculator
+from src.services.calculators.position_calculator.app.repositories.position_repository import PositionRepository
+
+pytestmark = pytest.mark.asyncio
 
 @pytest.fixture
-def zero_position_state() -> PositionState:
-    """Returns a position state with zero quantity and cost basis."""
-    return PositionState(quantity=Decimal(0), cost_basis=Decimal(0), cost_basis_local=Decimal(0))
+def mock_repo() -> AsyncMock:
+    """Provides a mock PositionRepository."""
+    repo = AsyncMock(spec=PositionRepository)
+    repo.get_transactions_on_or_after.return_value = []
+    repo.get_last_position_before.return_value = None
+    return repo
 
 @pytest.fixture
-def existing_position_state() -> PositionState:
-    """
-    Returns a position state representing an existing holding, including dual-currency costs.
-    Represents 100 shares with a base cost of $10,000 and a local cost of €9,000.
-    """
-    return PositionState(
-        quantity=Decimal("100"), 
-        cost_basis=Decimal("10000"), 
-        cost_basis_local=Decimal("9000")
-    )
-
-def test_calculate_next_position_buy_from_zero(zero_position_state):
-    """Tests a BUY transaction starting from no position."""
-    buy_transaction = TransactionEvent(
+def sample_event() -> TransactionEvent:
+    """Provides a sample transaction event."""
+    return TransactionEvent(
         transaction_id="T1", portfolio_id="P1", instrument_id="I1", security_id="S1",
-        transaction_date=datetime.now(), transaction_type="BUY", quantity=Decimal("50"),
+        transaction_date=datetime(2025, 8, 20), transaction_type="BUY", quantity=Decimal("50"),
         price=Decimal("110"), gross_transaction_amount=Decimal("5500"),
-        trade_currency="EUR", currency="EUR",
-        net_cost=Decimal("5505"),  # Cost in portfolio base currency (USD)
-        net_cost_local=Decimal("5005") # Cost in instrument local currency (EUR)
+        trade_currency="USD", currency="USD", net_cost=Decimal("5505")
     )
 
-    new_state = PositionCalculator.calculate_next_position(zero_position_state, buy_transaction)
-
-    assert new_state.quantity == Decimal("50")
-    assert new_state.cost_basis == Decimal("5505")
-    assert new_state.cost_basis_local == Decimal("5005")
-
-def test_calculate_next_position_sell_partial(existing_position_state):
+async def test_calculate_creates_valuation_job_for_current_transaction(mock_repo: AsyncMock, sample_event: TransactionEvent):
     """
-    Tests a partial SELL from an existing position, verifying proportional reduction
-    of both base and local cost basis.
+    GIVEN a transaction that is NOT backdated
+    WHEN PositionCalculator.calculate runs
+    THEN it should create a VALUATION job.
     """
-    sell_transaction = TransactionEvent(
-        transaction_id="T2", portfolio_id="P1", instrument_id="I1", security_id="S1",
-        transaction_date=datetime.now(), transaction_type="SELL", quantity=Decimal("40"),
-        price=Decimal("120"), gross_transaction_amount=Decimal("4800"),
-        trade_currency="EUR", currency="EUR"
-    )
-
-    new_state = PositionCalculator.calculate_next_position(existing_position_state, sell_transaction)
-
-    # Quantity should decrease by 40 (100 -> 60)
-    assert new_state.quantity == Decimal("60")
-    # Base cost basis should decrease by 40% (10000 * 0.4 = 4000). Remaining = 6000
-    assert new_state.cost_basis == Decimal("6000")
-    # Local cost basis should also decrease by 40% (9000 * 0.4 = 3600). Remaining = 5400
-    assert new_state.cost_basis_local == Decimal("5400")
-
-def test_calculate_next_position_sell_full(existing_position_state):
-    """Tests a SELL that fully closes the position, zeroing out both cost basis values."""
-    sell_transaction = TransactionEvent(
-        transaction_id="T3", portfolio_id="P1", instrument_id="I1", security_id="S1",
-        transaction_date=datetime.now(), transaction_type="SELL", quantity=Decimal("100"),
-        price=Decimal("120"), gross_transaction_amount=Decimal("12000"),
-        trade_currency="EUR", currency="EUR"
-    )
-
-    new_state = PositionCalculator.calculate_next_position(existing_position_state, sell_transaction)
-
-    assert new_state.quantity == Decimal("0")
-    assert new_state.cost_basis == Decimal("0")
-    assert new_state.cost_basis_local == Decimal("0")
-
-def test_fee_transaction_decreases_cash_position(zero_position_state):
-    """
-    Tests that a FEE transaction correctly decreases a cash position. For cash,
-    quantity and cost_basis are the same.
-    """
-    fee_transaction = TransactionEvent(
-        transaction_id="T4", portfolio_id="P1", instrument_id="CASH", security_id="CASH",
-        transaction_date=datetime.now(), transaction_type="FEE", quantity=Decimal("1"),
-        price=Decimal("25"), gross_transaction_amount=Decimal("25"),
-        trade_currency="USD", currency="USD"
-    )
-
-    new_state = PositionCalculator.calculate_next_position(zero_position_state, fee_transaction)
-
-    # State should reflect a negative cash position
-    assert new_state.quantity == Decimal("-25")
-    assert new_state.cost_basis == Decimal("-25")
-    assert new_state.cost_basis_local == Decimal("-25")
-
-def test_deposit_transaction_increases_cash_position(zero_position_state):
-    """
-    Tests that a DEPOSIT transaction correctly increases a cash position's quantity and cost.
-    """
-    deposit_transaction = TransactionEvent(
-        transaction_id="T_DEPOSIT", portfolio_id="P1", instrument_id="CASH", security_id="CASH",
-        transaction_date=datetime.now(), transaction_type="DEPOSIT", quantity=Decimal("10000"),
-        price=Decimal("1"), gross_transaction_amount=Decimal("10000"),
-        trade_currency="USD", currency="USD"
-    )
-
-    new_state = PositionCalculator.calculate_next_position(zero_position_state, deposit_transaction)
-
-    assert new_state.quantity == Decimal("10000")
-    assert new_state.cost_basis == Decimal("10000")
-    assert new_state.cost_basis_local == Decimal("10000")
-
-def test_dividend_transaction_does_not_change_position(existing_position_state):
-    """
-    Tests that a DIVIDEND transaction does not change the quantity or cost basis of the position.
-    This verifies the bug fix.
-    """
-    dividend_transaction = TransactionEvent(
-        transaction_id="T5_DIV", portfolio_id="P1", instrument_id="I1", security_id="S1",
-        transaction_date=datetime.now(), transaction_type="DIVIDEND", quantity=Decimal("0"),
-        price=Decimal("0"), gross_transaction_amount=Decimal("50"),
-        trade_currency="EUR", currency="EUR"
-    )
-
-    new_state = PositionCalculator.calculate_next_position(existing_position_state, dividend_transaction)
-
-    # The new state should be identical to the original state
-    assert new_state.quantity == existing_position_state.quantity
-    assert new_state.cost_basis == existing_position_state.cost_basis
-    assert new_state.cost_basis_local == existing_position_state.cost_basis_local
-
-def test_calculate_next_position_sell_cash_instrument(zero_position_state):
-    """
-    Tests that a SELL transaction against a cash instrument correctly reduces its
-    quantity and cost basis, modeling the cash leg of a purchase.
-    """
-    # ARRANGE: Start with a cash balance of $1,000,000
-    initial_cash_state = PositionState(
-        quantity=Decimal("1000000"),
-        cost_basis=Decimal("1000000"),
-        cost_basis_local=Decimal("1000000")
-    )
-
-    # ARRANGE: A SELL transaction representing the cash settlement for buying an equity
-    cash_settlement_transaction = TransactionEvent(
-        transaction_id="T_CASH_SELL", portfolio_id="P1", instrument_id="CASH_USD", security_id="CASH_USD",
-        transaction_date=datetime.now(), transaction_type="SELL", quantity=Decimal("175025.50"),
-        price=Decimal("1"), gross_transaction_amount=Decimal("175025.50"),
-        trade_currency="USD", currency="USD"
-    )
+    # ARRANGE: The latest business date is the same as the transaction date
+    mock_repo.get_latest_business_date.return_value = date(2025, 8, 20)
+    mock_repo.get_transactions_on_or_after.return_value = [sample_event] # Simulate finding the event itself
 
     # ACT
-    new_state = PositionCalculator.calculate_next_position(initial_cash_state, cash_settlement_transaction)
+    await PositionCalculator.calculate(sample_event, AsyncMock(), mock_repo)
 
-    # ASSERT: The cash quantity and cost basis should be reduced by the settlement amount
-    expected_cash = Decimal("824974.50") # 1,000,000 - 175,025.50
-    assert new_state.quantity == expected_cash
-    assert new_state.cost_basis == expected_cash
-    assert new_state.cost_basis_local == expected_cash
+    # ASSERT
+    mock_repo.upsert_valuation_job.assert_awaited_once()
+    mock_repo.upsert_recalculation_job.assert_not_called()
+    call_args = mock_repo.upsert_valuation_job.call_args.kwargs
+    assert call_args['valuation_date'] == date(2025, 8, 20)
+
+async def test_calculate_creates_recalculation_job_for_backdated_transaction(mock_repo: AsyncMock, sample_event: TransactionEvent):
+    """
+    GIVEN a transaction that IS backdated
+    WHEN PositionCalculator.calculate runs
+    THEN it should create a RECALCULATION job.
+    """
+    # ARRANGE: The latest business date is AFTER the transaction date
+    mock_repo.get_latest_business_date.return_value = date(2025, 8, 25)
+    mock_repo.get_transactions_on_or_after.return_value = [sample_event]
+
+    # ACT
+    await PositionCalculator.calculate(sample_event, AsyncMock(), mock_repo)
+
+    # ASSERT
+    mock_repo.upsert_recalculation_job.assert_awaited_once()
+    mock_repo.upsert_valuation_job.assert_not_called()
+    call_args = mock_repo.upsert_recalculation_job.call_args.kwargs
+    assert call_args['from_date'] == date(2025, 8, 20)

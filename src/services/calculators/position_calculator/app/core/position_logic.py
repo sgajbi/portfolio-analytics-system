@@ -5,7 +5,7 @@ from decimal import Decimal
 from typing import List
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from portfolio_common.database_models import PositionHistory, Transaction as DBTransaction, DailyPositionSnapshot
+from portfolio_common.database_models import PositionHistory, Transaction as DBTransaction
 from ..core.position_models import PositionState
 from portfolio_common.events import TransactionEvent
 from ..repositories.position_repository import PositionRepository
@@ -17,18 +17,14 @@ logger = logging.getLogger(__name__)
 class PositionCalculator:
     """
     Position Calculator:
-    Responsible for recalculating positions when transactions occur,
-    including handling back-dated transactions and ensuring correct
-    portfolio state with dual-currency cost basis.
+    Responsible for recalculating positions and routing to the correct
+    downstream process (Valuation or Recalculation) based on the transaction date.
     """
 
     @classmethod
     async def calculate(cls, event: TransactionEvent, db_session: AsyncSession, repo: PositionRepository) -> List[PositionHistory]:
         """
-        Orchestrates recalculation logic for a single transaction event.
-        - Fetches the last known position before the event.
-        - Replays all transactions from that point forward.
-        - Creates a valuation job to trigger snapshot creation downstream.
+        Orchestrates recalculation and job routing for a single transaction event.
         """
         portfolio_id = event.portfolio_id
         security_id = event.security_id
@@ -40,24 +36,32 @@ class PositionCalculator:
         transactions_to_replay = await repo.get_transactions_on_or_after(portfolio_id, security_id, transaction_date)
         
         events_to_replay = [TransactionEvent.model_validate(t) for t in transactions_to_replay]
-
         new_positions = cls._calculate_new_positions(anchor_position, events_to_replay)
 
         if new_positions:
             await repo.save_positions(new_positions)
-            
-            # The final state is the last record in the calculated history
             final_position_state = new_positions[-1]
 
-            # Create a job for the valuation service to create the snapshot
-            await repo.upsert_valuation_job(
-                portfolio_id=final_position_state.portfolio_id,
-                security_id=final_position_state.security_id,
-                valuation_date=final_position_state.position_date,
-                correlation_id=correlation_id
-            )
+            # ROUTING LOGIC: Decide which job to create
+            latest_business_date = await repo.get_latest_business_date()
+            is_backdated = latest_business_date and final_position_state.position_date < latest_business_date
 
-        logger.info(f"[Calculate] Staged {len(new_positions)} position records and 1 valuation job for Portfolio={portfolio_id}, Security={security_id}")
+            if is_backdated:
+                await repo.upsert_recalculation_job(
+                    portfolio_id=final_position_state.portfolio_id,
+                    security_id=final_position_state.security_id,
+                    from_date=final_position_state.position_date,
+                    correlation_id=correlation_id
+                )
+            else:
+                await repo.upsert_valuation_job(
+                    portfolio_id=final_position_state.portfolio_id,
+                    security_id=final_position_state.security_id,
+                    valuation_date=final_position_state.position_date,
+                    correlation_id=correlation_id
+                )
+
+        logger.info(f"[Calculate] Staged {len(new_positions)} position records for Portfolio={portfolio_id}, Security={security_id}")
         return new_positions
 
     @staticmethod
@@ -65,10 +69,6 @@ class PositionCalculator:
         anchor_position: PositionHistory | None,
         transactions: List[TransactionEvent]
     ) -> List[PositionHistory]:
-        """
-        Takes a starting position (the anchor) and a chronological list of transactions,
-        and calculates the resulting position history records.
-        """
         if not transactions:
             return []
 
@@ -100,15 +100,10 @@ class PositionCalculator:
 
     @staticmethod
     def calculate_next_position(current_state: PositionState, transaction: TransactionEvent) -> PositionState:
-        """
-        Handles single transaction logic (BUY, SELL, etc.) for position changes in both currencies.
-        """
         quantity = current_state.quantity
         cost_basis = current_state.cost_basis
         cost_basis_local = current_state.cost_basis_local
-
         txn_type = transaction.transaction_type.upper()
-        
         net_cost = transaction.net_cost if transaction.net_cost is not None else Decimal(0)
         net_cost_local = transaction.net_cost_local if transaction.net_cost_local is not None else Decimal(0)
 
@@ -125,16 +120,13 @@ class PositionCalculator:
                 proportion_sold = transaction.quantity / quantity
                 cogs_base = cost_basis * proportion_sold
                 cogs_local = cost_basis_local * proportion_sold
-                
                 cost_basis -= cogs_base
                 cost_basis_local -= cogs_local
             quantity -= transaction.quantity
-        
         elif txn_type in ["FEE", "TAX", "TRANSFER_OUT", "WITHDRAWAL"]:
             quantity -= transaction.gross_transaction_amount
             cost_basis -= transaction.gross_transaction_amount
             cost_basis_local -= transaction.gross_transaction_amount
-        
         else:
             logger.debug(f"[CalculateNext] Txn type {txn_type} does not affect position quantity/cost.")
 

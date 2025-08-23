@@ -1,11 +1,11 @@
-# tests/integration/services/calculators/position_calculator/test_position_repository.py
+# tests/integration/services/calculators/position_calculator/test_int_position_calc_repo.py
 import pytest
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 from sqlalchemy.orm import Session
 from sqlalchemy.ext.asyncio import AsyncSession
-from portfolio_common.database_models import Portfolio, DailyPositionSnapshot
+from portfolio_common.database_models import Portfolio, DailyPositionSnapshot, BusinessDate
 
 # This now correctly imports the repository we want to test
 from src.services.calculators.position_calculator.app.repositories.position_repository import PositionRepository
@@ -53,3 +53,26 @@ async def test_find_open_security_ids_as_of(clean_db, setup_open_positions_data,
     assert "S1_OPEN" in open_security_ids
     assert "S3_OPEN_OLD" in open_security_ids
     assert "S2_CLOSED" not in open_security_ids
+
+async def test_get_latest_business_date(clean_db, db_engine, async_db_session: AsyncSession):
+    """
+    GIVEN several business dates in the database
+    WHEN get_latest_business_date is called
+    THEN it should return the most recent date.
+    """
+    # ARRANGE
+    repo = PositionRepository(async_db_session)
+    latest_date = date(2025, 8, 20)
+    with Session(db_engine) as session:
+        session.add_all([
+            BusinessDate(date=date(2025, 8, 18)),
+            BusinessDate(date=latest_date),
+            BusinessDate(date=date(2025, 8, 19)),
+        ])
+        session.commit()
+
+    # ACT
+    result = await repo.get_latest_business_date()
+
+    # ASSERT
+    assert result == latest_date
