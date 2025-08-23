@@ -71,8 +71,8 @@ class TimeseriesRepository:
     async def find_and_claim_eligible_jobs(self, batch_size: int) -> List[PortfolioAggregationJob]:
         """
         Atomically claims eligible PENDING aggregation jobs. A job for date D is eligible if:
-        1. The portfolio has no prior timeseries records (i.e., this is the first ever job).
-        2. The portfolio timeseries record for date D-1 already exists.
+        1. The portfolio timeseries record for date D-1 already exists.
+        2. OR this job is for the earliest date for a portfolio that has no timeseries records yet.
         """
         query = text("""
             UPDATE portfolio_aggregation_jobs
@@ -83,18 +83,21 @@ class TimeseriesRepository:
                         p1.id
                     FROM portfolio_aggregation_jobs p1
                     WHERE p1.status = 'PENDING' AND (
-                        -- Case 1: Prior day's timeseries exists
+                        -- Case 1: Prior day's timeseries exists, enabling sequential processing.
                         EXISTS (
-                            SELECT 1
-                            FROM portfolio_timeseries pts
+                            SELECT 1 FROM portfolio_timeseries pts
                             WHERE pts.portfolio_id = p1.portfolio_id
                             AND pts.date = p1.aggregation_date - INTERVAL '1 day'
                         )
-                        -- Case 2: No timeseries exists at all for this portfolio (first job)
-                        OR NOT EXISTS (
-                            SELECT 1
-                            FROM portfolio_timeseries pts
-                            WHERE pts.portfolio_id = p1.portfolio_id
+                        -- Case 2: This is the very first job for this portfolio.
+                        OR p1.aggregation_date = (
+                            SELECT MIN(p2.aggregation_date)
+                            FROM portfolio_aggregation_jobs p2
+                            WHERE p2.portfolio_id = p1.portfolio_id
+                            AND NOT EXISTS (
+                                SELECT 1 FROM portfolio_timeseries pts
+                                WHERE pts.portfolio_id = p1.portfolio_id
+                            )
                         )
                     )
                     ORDER BY p1.portfolio_id, p1.aggregation_date
