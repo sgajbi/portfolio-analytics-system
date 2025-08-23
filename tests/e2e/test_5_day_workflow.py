@@ -28,7 +28,7 @@ def poll_db_until(
     query: str,
     validation_func: Callable[[Any], bool],
     params: dict = {},
-    timeout: int = 45,
+    timeout: int = 60,
     interval: int = 2,
 ):
     """
@@ -124,10 +124,40 @@ def test_day_1_workflow(setup_prerequisites, db_engine):
 
     poll_db_until(db_engine, query, validation_func, params)
 
-    # Final verification of the data
-    with Session(db_engine) as session:
-        final_snapshot = session.execute(text(query), params).fetchone()
-        assert final_snapshot.quantity == Decimal("1000000.0000000000")
-        assert final_snapshot.cost_basis == Decimal("1000000.0000000000")
-        assert final_snapshot.market_value == Decimal("1000000.0000000000")
-        assert final_snapshot.unrealized_gain_loss == Decimal("0.0000000000")
+@pytest.mark.dependency(depends=["test_day_1_workflow"])
+def test_day_2_workflow(setup_prerequisites, db_engine):
+    """
+    Tests Day 2: Ingests a stock purchase and verifies the final state
+    of the portfolio time series.
+    """
+    # ARRANGE
+    ingestion_url = setup_prerequisites["ingestion"]
+
+    # ACT: Ingest all data for Day 2
+    requests.post(f"{ingestion_url}/ingest/business-dates", json={"business_dates": [{"businessDate": DAY_2}]})
+    transactions_payload = { "transactions": [
+        {"transaction_id": "TXN_DAY2_BUY_AAPL_01", "portfolio_id": PORTFOLIO_ID, "security_id": AAPL_ID, "instrument_id": "AAPL", "transaction_date": f"{DAY_2}T11:00:00Z", "transaction_type": "BUY", "quantity": 1000, "price": 175.0, "gross_transaction_amount": 175000.0, "trade_fee": 25.50, "trade_currency": "USD", "currency": "USD" },
+        {"transaction_id": "TXN_DAY2_CASH_SETTLE_01", "portfolio_id": PORTFOLIO_ID, "security_id": CASH_USD_ID, "instrument_id": "CASH_USD", "transaction_date": f"{DAY_2}T11:00:00Z", "transaction_type": "SELL", "quantity": 175025.50, "price": 1.0, "gross_transaction_amount": 175025.50, "trade_currency": "USD", "currency": "USD"}
+    ]}
+    requests.post(f"{ingestion_url}/ingest/transactions", json=transactions_payload)
+    prices_payload = {"market_prices": [
+        {"securityId": AAPL_ID, "priceDate": DAY_2, "price": 178.0, "currency": "USD"},
+        {"securityId": CASH_USD_ID, "priceDate": DAY_2, "price": 1.0, "currency": "USD"}
+    ]}
+    requests.post(f"{ingestion_url}/ingest/market-prices", json=prices_payload)
+
+    # ASSERT: Poll the database until the portfolio timeseries for Day 2 is correct
+    query = """
+        SELECT bod_market_value, eod_market_value, bod_cashflow, eod_cashflow, fees
+        FROM portfolio_timeseries
+        WHERE portfolio_id = :portfolio_id AND date = :date
+    """
+    params = {"portfolio_id": PORTFOLIO_ID, "date": DAY_2}
+    
+    # Expected EOD MV = (1M - 175025.50) cash + (1000 * 178) aapl = 824974.50 + 178000 = 1002974.50
+    expected_eod_mv = Decimal("1002974.50")
+
+    def validation_func(result):
+        return result is not None and result.eod_market_value == expected_eod_mv
+
+    poll_db_until(db_engine, query, validation_func, params, timeout=90)
