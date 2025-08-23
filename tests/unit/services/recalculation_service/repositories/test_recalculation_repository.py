@@ -3,7 +3,7 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock
 from datetime import date
 from sqlalchemy import text
-from sqlalchemy.sql.expression import delete, select, update, Select, Update, Delete
+from sqlalchemy.sql.expression import delete, select, update, Select, Update, Delete, TextClause
 
 from portfolio_common.database_models import RecalculationJob
 from src.services.recalculation_service.app.repositories.recalculation_repository import RecalculationRepository
@@ -16,7 +16,6 @@ def mock_db_session() -> AsyncMock:
     session = AsyncMock()
     mock_result = MagicMock()
     
-    # FIX: Return a dictionary, which is what a RowMapping behaves like.
     mock_row_dict = {"id": 1, "portfolio_id": "P1", "security_id": "S1", "from_date": date(2025, 1, 1)}
     
     mock_result.mappings.return_value.first.return_value = mock_row_dict
@@ -41,12 +40,12 @@ async def test_find_and_claim_job(repository: RecalculationRepository, mock_db_s
     # ASSERT
     assert job is not None
     assert isinstance(job, RecalculationJob)
-    # FIX: Assert the content of the returned object
     assert job.id == 1
 
     mock_db_session.execute.assert_awaited_once()
     executed_stmt = mock_db_session.execute.call_args[0][0]
-    assert isinstance(executed_stmt, text)
+    # FIX: Check against the correct imported class 'TextClause'
+    assert isinstance(executed_stmt, TextClause)
     assert "UPDATE recalculation_jobs" in str(executed_stmt)
     assert "FOR UPDATE SKIP LOCKED" in str(executed_stmt)
     assert "RETURNING *" in str(executed_stmt)
@@ -65,11 +64,12 @@ async def test_update_job_status(repository: RecalculationRepository, mock_db_se
     executed_stmt = mock_db_session.execute.call_args[0][0]
 
     assert isinstance(executed_stmt, Update)
-    # FIX: More robust assertions on the compiled statement's structure
-    compiled = executed_stmt.compile()
-    assert compiled.values['status'] == 'COMPLETE'
-    assert 'recalculation_jobs.id = :id_1' in str(compiled.where)
-    assert compiled.params['id_1'] == 123
+    # FIX: Inspect the .values attribute on the statement object, not the compiled object.
+    assert executed_stmt.values['status'] == 'COMPLETE'
+    
+    compiled = executed_stmt.compile(compile_kwargs={"literal_binds": True})
+    assert "recalculation_jobs.id = 123" in str(compiled.where)
+
 
 async def test_delete_downstream_data(repository: RecalculationRepository, mock_db_session: AsyncMock):
     """
