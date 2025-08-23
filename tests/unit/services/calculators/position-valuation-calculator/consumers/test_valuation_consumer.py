@@ -106,8 +106,13 @@ async def test_valuation_consumer_success(
     mock_valuation_repo.get_latest_price_for_position.return_value = MarketPrice(price=Decimal("90"), currency="EUR", price_date=mock_event.valuation_date)
     mock_valuation_repo.get_fx_rate.return_value = FxRate(rate=Decimal("1.1"))
 
-    # Simulate the repository returning the persisted snapshot object
-    persisted_snapshot = DailyPositionSnapshot(id=1, **mock_event.model_dump())
+    # FIX: Correctly construct the mock persisted snapshot by mapping field names
+    persisted_snapshot = DailyPositionSnapshot(
+        id=1,
+        portfolio_id=mock_event.portfolio_id,
+        security_id=mock_event.security_id,
+        date=mock_event.valuation_date
+    )
     mock_valuation_repo.upsert_daily_snapshot.return_value = persisted_snapshot
 
     token = correlation_id_var.set('test-corr-id-123')
@@ -122,7 +127,6 @@ async def test_valuation_consumer_success(
     mock_valuation_repo.get_last_position_history_before_date.assert_called_once_with(mock_event.portfolio_id, mock_event.security_id, mock_event.valuation_date)
     mock_valuation_repo.upsert_daily_snapshot.assert_called_once()
     
-    # Check that the status was set correctly to VALUED_CURRENT
     saved_snapshot_arg = mock_valuation_repo.upsert_daily_snapshot.call_args[0][0]
     assert saved_snapshot_arg.valuation_status == 'VALUED_CURRENT'
 
@@ -152,7 +156,13 @@ async def test_valuation_consumer_creates_unvalued_snapshot_if_no_price(
     mock_valuation_repo.get_portfolio.return_value = Portfolio(base_currency="USD", portfolio_id=mock_event.portfolio_id)
     mock_valuation_repo.get_latest_price_for_position.return_value = None # No price found
     
-    persisted_snapshot = DailyPositionSnapshot(id=1, **mock_event.model_dump())
+    # FIX: Correctly construct the mock persisted snapshot by mapping field names
+    persisted_snapshot = DailyPositionSnapshot(
+        id=1,
+        portfolio_id=mock_event.portfolio_id,
+        security_id=mock_event.security_id,
+        date=mock_event.valuation_date
+    )
     mock_valuation_repo.upsert_daily_snapshot.return_value = persisted_snapshot
 
     # ACT
