@@ -6,6 +6,7 @@ from decimal import Decimal
 
 class BusinessDateEvent(BaseModel):
     """Event model for a raw business date."""
+    # FIX: Add populate_by_name=True to correctly handle the 'businessDate' alias
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
     business_date: date = Field(..., alias="businessDate")
 
@@ -101,7 +102,6 @@ class DailyPositionSnapshotPersistedEvent(BaseModel):
     date: date
 
 class CashflowCalculatedEvent(BaseModel):
-    # FIX: Add populate_by_name=True to correctly handle aliases on validation
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
     cashflow_id: int = Field(..., alias="id")
