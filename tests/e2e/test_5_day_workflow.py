@@ -103,26 +103,15 @@ def test_day_1_workflow(setup_prerequisites, db_engine):
     Tests Day 1: Ingests a business date, a deposit, and a cash price,
     then verifies the final state of the daily snapshot.
     """
-    # ARRANGE
     ingestion_url = setup_prerequisites["ingestion"]
 
-    # ACT: Ingest all data for Day 1
     requests.post(f"{ingestion_url}/ingest/business-dates", json={"business_dates": [{"businessDate": DAY_1}]})
     requests.post(f"{ingestion_url}/ingest/transactions", json={"transactions": [{"transaction_id": "TXN_DAY1_DEPOSIT_01", "portfolio_id": PORTFOLIO_ID, "security_id": CASH_USD_ID, "instrument_id": "CASH_USD", "transaction_date": f"{DAY_1}T10:00:00Z", "transaction_type": "DEPOSIT", "quantity": 1000000, "price": 1.0, "gross_transaction_amount": 1000000.0, "trade_currency": "USD", "currency": "USD"}]})
     requests.post(f"{ingestion_url}/ingest/market-prices", json={"market_prices": [{"securityId": CASH_USD_ID, "priceDate": DAY_1, "price": 1.0, "currency": "USD"}]})
     
-    # ASSERT: Poll the database until the snapshot is fully valued
-    query = """
-        SELECT quantity, cost_basis, market_value, unrealized_gain_loss, valuation_status
-        FROM daily_position_snapshots
-        WHERE portfolio_id = :portfolio_id AND security_id = :security_id AND date = :date
-    """
-    params = {"portfolio_id": PORTFOLIO_ID, "security_id": CASH_USD_ID, "date": DAY_1}
-    
-    def validation_func(result):
-        return result is not None and result.valuation_status == 'VALUED_CURRENT'
-
-    poll_db_until(db_engine, query, validation_func, params)
+    query = "SELECT valuation_status FROM daily_position_snapshots WHERE portfolio_id = :pid AND security_id = :sid AND date = :date"
+    params = {"pid": PORTFOLIO_ID, "sid": CASH_USD_ID, "date": DAY_1}
+    poll_db_until(db_engine, query, lambda r: r is not None and r.valuation_status == 'VALUED_CURRENT', params)
 
 @pytest.mark.dependency(depends=["test_day_1_workflow"])
 def test_day_2_workflow(setup_prerequisites, db_engine):
@@ -130,10 +119,8 @@ def test_day_2_workflow(setup_prerequisites, db_engine):
     Tests Day 2: Ingests a stock purchase and verifies the final state
     of the portfolio time series.
     """
-    # ARRANGE
     ingestion_url = setup_prerequisites["ingestion"]
 
-    # ACT: Ingest all data for Day 2
     requests.post(f"{ingestion_url}/ingest/business-dates", json={"business_dates": [{"businessDate": DAY_2}]})
     transactions_payload = { "transactions": [
         {"transaction_id": "TXN_DAY2_BUY_AAPL_01", "portfolio_id": PORTFOLIO_ID, "security_id": AAPL_ID, "instrument_id": "AAPL", "transaction_date": f"{DAY_2}T11:00:00Z", "transaction_type": "BUY", "quantity": 1000, "price": 175.0, "gross_transaction_amount": 175000.0, "trade_fee": 25.50, "trade_currency": "USD", "currency": "USD" },
@@ -146,18 +133,33 @@ def test_day_2_workflow(setup_prerequisites, db_engine):
     ]}
     requests.post(f"{ingestion_url}/ingest/market-prices", json=prices_payload)
 
-    # ASSERT: Poll the database until the portfolio timeseries for Day 2 is correct
-    query = """
-        SELECT bod_market_value, eod_market_value, bod_cashflow, eod_cashflow, fees
-        FROM portfolio_timeseries
-        WHERE portfolio_id = :portfolio_id AND date = :date
-    """
-    params = {"portfolio_id": PORTFOLIO_ID, "date": DAY_2}
-    
-    # Expected EOD MV = (1M - 175025.50) cash + (1000 * 178) aapl = 824974.50 + 178000 = 1002974.50
+    query = "SELECT eod_market_value FROM portfolio_timeseries WHERE portfolio_id = :pid AND date = :date"
+    params = {"pid": PORTFOLIO_ID, "date": DAY_2}
     expected_eod_mv = Decimal("1002974.50")
+    poll_db_until(db_engine, query, lambda r: r is not None and r.eod_market_value == expected_eod_mv, params)
 
-    def validation_func(result):
-        return result is not None and result.eod_market_value == expected_eod_mv
+@pytest.mark.dependency(depends=["test_day_2_workflow"])
+def test_day_3_workflow(setup_prerequisites, db_engine):
+    """
+    Tests Day 3: Ingests another stock purchase and verifies the final state
+    of the portfolio time series.
+    """
+    ingestion_url = setup_prerequisites["ingestion"]
 
-    poll_db_until(db_engine, query, validation_func, params, timeout=90)
+    requests.post(f"{ingestion_url}/ingest/business-dates", json={"business_dates": [{"businessDate": DAY_3}]})
+    transactions_payload = {"transactions": [
+        {"transaction_id": "TXN_DAY3_BUY_IBM_01", "portfolio_id": PORTFOLIO_ID, "security_id": IBM_ID, "instrument_id": "IBM", "transaction_date": f"{DAY_3}T12:00:00Z", "transaction_type": "BUY", "quantity": 500, "price": 140.0, "gross_transaction_amount": 70000.0, "trade_fee": 15.00, "trade_currency": "USD", "currency": "USD"},
+        {"transaction_id": "TXN_DAY3_CASH_SETTLE_02", "portfolio_id": PORTFOLIO_ID, "security_id": CASH_USD_ID, "instrument_id": "CASH_USD", "transaction_date": f"{DAY_3}T12:00:00Z", "transaction_type": "SELL", "quantity": 70015.00, "price": 1.0, "gross_transaction_amount": 70015.00, "trade_currency": "USD", "currency": "USD"}
+    ]}
+    requests.post(f"{ingestion_url}/ingest/transactions", json=transactions_payload)
+    prices_payload = {"market_prices": [
+        {"securityId": AAPL_ID, "priceDate": DAY_3, "price": 180.0, "currency": "USD"},
+        {"securityId": IBM_ID, "priceDate": DAY_3, "price": 142.0, "currency": "USD"},
+        {"securityId": CASH_USD_ID, "priceDate": DAY_3, "price": 1.0, "currency": "USD"}
+    ]}
+    requests.post(f"{ingestion_url}/ingest/market-prices", json=prices_payload)
+    
+    query = "SELECT eod_market_value FROM portfolio_timeseries WHERE portfolio_id = :pid AND date = :date"
+    params = {"pid": PORTFOLIO_ID, "date": DAY_3}
+    expected_eod_mv = Decimal("1005959.50")
+    poll_db_until(db_engine, query, lambda r: r is not None and r.eod_market_value == expected_eod_mv, params)
