@@ -6,7 +6,7 @@ from typing import List, Optional
 from sqlalchemy import select, func, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import insert as pg_insert
-from portfolio_common.database_models import PositionHistory, Transaction, DailyPositionSnapshot
+from portfolio_common.database_models import PositionHistory, Transaction, DailyPositionSnapshot, BusinessDate
 from portfolio_common.utils import async_timed
 
 logger = logging.getLogger(__name__)
@@ -18,10 +18,22 @@ class PositionRepository:
     def __init__(self, db: AsyncSession):
         self.db = db
 
+    @async_timed(repository="PositionRepository", method="get_latest_business_date")
+    async def get_latest_business_date(self) -> Optional[date]:
+        """
+        Finds the most recent date present in the dedicated business_dates table.
+        """
+        stmt = select(func.max(BusinessDate.date))
+        result = await self.db.execute(stmt)
+        latest_date = result.scalar_one_or_none()
+        return latest_date
+
     @async_timed(repository="PositionRepository", method="upsert_daily_snapshot")
     async def upsert_daily_snapshot(self, snapshot: DailyPositionSnapshot):
         """
         Idempotently creates or updates a daily position snapshot.
+        If a snapshot already exists, it updates the core position data
+        and resets the valuation status to trigger re-valuation.
         """
         try:
             insert_values = {
@@ -31,7 +43,7 @@ class PositionRepository:
                 "quantity": snapshot.quantity,
                 "cost_basis": snapshot.cost_basis,
                 "cost_basis_local": snapshot.cost_basis_local,
-                "valuation_status": snapshot.valuation_status
+                "valuation_status": "UNVALUED"
             }
             
             stmt = pg_insert(DailyPositionSnapshot).values(**insert_values)
@@ -40,7 +52,7 @@ class PositionRepository:
                 "quantity": stmt.excluded.quantity,
                 "cost_basis": stmt.excluded.cost_basis,
                 "cost_basis_local": stmt.excluded.cost_basis_local,
-                "valuation_status": 'UNVALUED',
+                "valuation_status": 'UNVALUED', # Reset status on update
                 "updated_at": func.now()
             }
 

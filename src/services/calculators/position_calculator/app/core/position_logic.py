@@ -5,7 +5,7 @@ from decimal import Decimal
 from typing import List
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from portfolio_common.database_models import PositionHistory, Transaction as DBTransaction
+from portfolio_common.database_models import PositionHistory, Transaction as DBTransaction, DailyPositionSnapshot
 from ..core.position_models import PositionState
 from portfolio_common.events import TransactionEvent
 from ..repositories.position_repository import PositionRepository
@@ -25,8 +25,8 @@ class PositionCalculator:
     async def calculate(cls, event: TransactionEvent, db_session: AsyncSession, repo: PositionRepository) -> List[PositionHistory]:
         """
         Orchestrates recalculation logic for a single transaction event.
-        Fetches the last known position before the event and replays all
-        transactions from that point forward to ensure correctness.
+        Fetches the last known position before the event, replays all
+        transactions from that point forward, and creates a daily snapshot.
         """
         portfolio_id = event.portfolio_id
         security_id = event.security_id
@@ -49,6 +49,20 @@ class PositionCalculator:
 
         if new_positions:
             await repo.save_positions(new_positions)
+            
+            # Get the final state from the last record in the history
+            final_position_state = new_positions[-1]
+
+            # Create the initial, unvalued snapshot
+            snapshot = DailyPositionSnapshot(
+                portfolio_id=final_position_state.portfolio_id,
+                security_id=final_position_state.security_id,
+                date=final_position_state.position_date,
+                quantity=final_position_state.quantity,
+                cost_basis=final_position_state.cost_basis,
+                cost_basis_local=final_position_state.cost_basis_local,
+            )
+            await repo.upsert_daily_snapshot(snapshot)
 
         logger.info(f"[Calculate] Staged {len(new_positions)} new/updated position record(s) for Portfolio={portfolio_id}, Security={security_id}")
         return new_positions
