@@ -102,6 +102,39 @@ class PositionRepository:
             logger.error(f"Failed to stage upsert for recalculation job: {e}", exc_info=True)
             raise
 
+    @async_timed(repository="PositionRepository", method="find_open_security_ids_as_of")
+    async def find_open_security_ids_as_of(self, portfolio_id: str, a_date: date) -> List[str]:
+        """
+        Finds all security_ids in a portfolio that had a non-zero quantity
+        based on the last known snapshot on or before the given date.
+        """
+        latest_snapshot_subq = (
+            select(
+                DailyPositionSnapshot.security_id,
+                DailyPositionSnapshot.quantity,
+                func.row_number().over(
+                    partition_by=DailyPositionSnapshot.security_id,
+                    order_by=DailyPositionSnapshot.date.desc()
+                ).label("rn")
+            )
+            .where(
+                DailyPositionSnapshot.portfolio_id == portfolio_id,
+                DailyPositionSnapshot.date <= a_date
+            )
+            .subquery('latest_snapshot')
+        )
+
+        stmt = (
+            select(latest_snapshot_subq.c.security_id)
+            .where(
+                latest_snapshot_subq.c.rn == 1,
+                latest_snapshot_subq.c.quantity != 0
+            )
+        )
+
+        result = await self.db.execute(stmt)
+        return result.scalars().all()
+
     @async_timed(repository="PositionRepository", method="get_last_position_before")
     async def get_last_position_before(
         self, portfolio_id: str, security_id: str, a_date: date
