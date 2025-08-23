@@ -1,11 +1,18 @@
 # src/services/recalculation_service/app/repositories/recalculation_repository.py
 import logging
-from datetime import datetime, timedelta, timezone
-from typing import Optional
+from datetime import date, datetime, timedelta, timezone
+from typing import Optional, List
 
-from sqlalchemy import select, update, text
+from sqlalchemy import select, update, text, delete
 from sqlalchemy.ext.asyncio import AsyncSession
-from portfolio_common.database_models import RecalculationJob
+from portfolio_common.database_models import (
+    RecalculationJob,
+    Transaction,
+    PositionHistory,
+    DailyPositionSnapshot,
+    PositionTimeseries,
+    PortfolioTimeseries
+)
 from portfolio_common.utils import async_timed
 
 logger = logging.getLogger(__name__)
@@ -14,7 +21,7 @@ logger = logging.getLogger(__name__)
 class RecalculationRepository:
     """
     Handles database operations for the RecalculationJob model, including
-    atomically claiming jobs for processing.
+    atomically claiming jobs for processing and orchestrating data cleanup.
     """
     def __init__(self, db: AsyncSession):
         self.db = db
@@ -26,9 +33,6 @@ class RecalculationRepository:
         to 'PROCESSING', and returns the claimed job object. This prevents race
         conditions between multiple service instances.
         """
-        # This raw SQL query uses 'FOR UPDATE SKIP LOCKED' which is a PostgreSQL-specific
-        # feature for implementing a work queue. It finds the first available (unlocked)
-        # row, locks it, and updates it, all within a single atomic transaction.
         query = text("""
             UPDATE recalculation_jobs
             SET status = 'PROCESSING', updated_at = now()
@@ -58,32 +62,38 @@ class RecalculationRepository:
         stmt = (
             update(RecalculationJob)
             .where(RecalculationJob.id == job_id)
-            .values(status=status, updated_at=func.now())
+            .values(status=status, updated_at=datetime.now(timezone.utc))
         )
         await self.db.execute(stmt)
         logger.info(f"Updated status for job ID {job_id} to '{status}'.")
 
-    @async_timed(repository="RecalculationRepository", method="find_and_reset_stale_jobs")
-    async def find_and_reset_stale_jobs(self, timeout_minutes: int = 30) -> int:
+    @async_timed(repository="RecalculationRepository", method="delete_downstream_data")
+    async def delete_downstream_data(self, portfolio_id: str, security_id: str, from_date: date) -> None:
         """
-        Finds jobs stuck in 'PROCESSING' state for longer than the timeout
-        and resets them to 'PENDING' for reprocessing.
+        Deletes all calculated data for a specific security in a portfolio from a given
+        date onwards. This prepares the system for a clean recalculation.
         """
-        stale_threshold = datetime.now(timezone.utc) - timedelta(minutes=timeout_minutes)
-        
-        stmt = (
-            update(RecalculationJob)
-            .where(
-                RecalculationJob.status == 'PROCESSING',
-                RecalculationJob.updated_at < stale_threshold
-            )
-            .values(status='PENDING')
+        logger.info(
+            "Deleting downstream data for recalculation",
+            extra={"portfolio_id": portfolio_id, "security_id": security_id, "from_date": from_date.isoformat()}
         )
         
+        # Order of deletion matters due to potential foreign key constraints (though none direct here, it's good practice)
+        await self.db.execute(delete(PortfolioTimeseries).where(PortfolioTimeseries.portfolio_id == portfolio_id, PortfolioTimeseries.date >= from_date))
+        await self.db.execute(delete(PositionTimeseries).where(PositionTimeseries.portfolio_id == portfolio_id, PositionTimeseries.security_id == security_id, PositionTimeseries.date >= from_date))
+        await self.db.execute(delete(DailyPositionSnapshot).where(DailyPositionSnapshot.portfolio_id == portfolio_id, DailyPositionSnapshot.security_id == security_id, DailyPositionSnapshot.date >= from_date))
+        await self.db.execute(delete(PositionHistory).where(PositionHistory.portfolio_id == portfolio_id, PositionHistory.security_id == security_id, PositionHistory.position_date >= from_date))
+    
+    @async_timed(repository="RecalculationRepository", method="get_all_transactions_for_security")
+    async def get_all_transactions_for_security(self, portfolio_id: str, security_id: str) -> List[Transaction]:
+        """
+        Fetches all transactions for a specific security within a portfolio, ordered chronologically.
+        This is required to replay the entire history accurately.
+        """
+        stmt = (
+            select(Transaction)
+            .where(Transaction.portfolio_id == portfolio_id, Transaction.security_id == security_id)
+            .order_by(Transaction.transaction_date.asc(), Transaction.id.asc())
+        )
         result = await self.db.execute(stmt)
-        reset_count = result.rowcount or 0
-        
-        if reset_count > 0:
-            logger.warning(f"Reset {reset_count} stale recalculation jobs from 'PROCESSING' to 'PENDING'.")
-            
-        return reset_count
+        return result.scalars().all()
