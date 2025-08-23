@@ -163,3 +163,34 @@ def test_day_3_workflow(setup_prerequisites, db_engine):
     params = {"pid": PORTFOLIO_ID, "date": DAY_3}
     expected_eod_mv = Decimal("1005959.50")
     poll_db_until(db_engine, query, lambda r: r is not None and r.eod_market_value == expected_eod_mv, params)
+
+@pytest.mark.dependency(depends=["test_day_3_workflow"])
+def test_day_4_workflow(setup_prerequisites, db_engine):
+    """
+    Tests Day 4: Ingests a stock sale and verifies the calculated
+    realized gain/loss is correct.
+    """
+    ingestion_url = setup_prerequisites["ingestion"]
+
+    requests.post(f"{ingestion_url}/ingest/business-dates", json={"business_dates": [{"businessDate": DAY_4}]})
+    transactions_payload = {"transactions": [
+        {"transaction_id": "TXN_DAY4_SELL_AAPL_01", "portfolio_id": PORTFOLIO_ID, "security_id": AAPL_ID, "instrument_id": "AAPL", "transaction_date": f"{DAY_4}T13:00:00Z", "transaction_type": "SELL", "quantity": 200, "price": 182.0, "gross_transaction_amount": 36400.0, "trade_fee": 5.00, "trade_currency": "USD", "currency": "USD"},
+        {"transaction_id": "TXN_DAY4_CASH_SETTLE_03", "portfolio_id": PORTFOLIO_ID, "security_id": CASH_USD_ID, "instrument_id": "CASH_USD", "transaction_date": f"{DAY_4}T13:00:00Z", "transaction_type": "BUY", "quantity": 36395.00, "price": 1.0, "gross_transaction_amount": 36395.00, "trade_currency": "USD", "currency": "USD"}
+    ]}
+    requests.post(f"{ingestion_url}/ingest/transactions", json=transactions_payload)
+    prices_payload = {"market_prices": [
+        {"securityId": AAPL_ID, "priceDate": DAY_4, "price": 181.0, "currency": "USD"},
+        {"securityId": IBM_ID, "priceDate": DAY_4, "price": 141.0, "currency": "USD"},
+        {"securityId": CASH_USD_ID, "priceDate": DAY_4, "price": 1.0, "currency": "USD"}
+    ]}
+    requests.post(f"{ingestion_url}/ingest/market-prices", json=prices_payload)
+
+    query = "SELECT realized_gain_loss FROM transactions WHERE transaction_id = :txn_id"
+    params = {"txn_id": "TXN_DAY4_SELL_AAPL_01"}
+    expected_pnl = Decimal("1389.90")
+    
+    def validation_func(result):
+        # The value can be None initially, so we must handle that
+        return result is not None and result.realized_gain_loss is not None and result.realized_gain_loss == expected_pnl
+
+    poll_db_until(db_engine, query, validation_func, params)
