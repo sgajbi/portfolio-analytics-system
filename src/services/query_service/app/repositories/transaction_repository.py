@@ -5,14 +5,13 @@ from typing import List, Optional
 
 from sqlalchemy import select, func, desc, asc
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import joinedload
 from portfolio_common.database_models import Transaction, Cashflow
 from portfolio_common.utils import async_timed
 
 logger = logging.getLogger(__name__)
 
 # Whitelist of columns that clients are allowed to sort by.
-# This prevents sorting on unindexed or sensitive columns.
 ALLOWED_SORT_FIELDS = {
     "transaction_date",
     "quantity",
@@ -37,7 +36,8 @@ class TransactionRepository:
         """
         Constructs a base query with all the common filters.
         """
-        stmt = select(Transaction).options(selectinload(Transaction.cashflow)).filter_by(portfolio_id=portfolio_id)
+        # FIX: Change from selectinload to joinedload for reliable eager loading
+        stmt = select(Transaction).options(joinedload(Transaction.cashflow)).filter_by(portfolio_id=portfolio_id)
 
         if security_id:
             stmt = stmt.filter_by(security_id=security_id)
@@ -64,8 +64,7 @@ class TransactionRepository:
         """
         stmt = self._get_base_query(portfolio_id, security_id, start_date, end_date)
 
-        # --- NEW: DYNAMIC SORTING LOGIC ---
-        sort_field = "transaction_date" # Default sort field
+        sort_field = "transaction_date"
         if sort_by and sort_by in ALLOWED_SORT_FIELDS:
             sort_field = sort_by
 
@@ -73,10 +72,9 @@ class TransactionRepository:
         order_clause = sort_direction(getattr(Transaction, sort_field))
 
         stmt = stmt.order_by(order_clause)
-        # --- END DYNAMIC SORTING LOGIC ---
-
+        
         results = await self.db.execute(stmt.offset(skip).limit(limit))
-        transactions = results.scalars().all()
+        transactions = results.scalars().unique().all()
         logger.info(f"Found {len(transactions)} transactions for portfolio '{portfolio_id}' with given filters.")
         return transactions
 
@@ -99,5 +97,5 @@ class TransactionRepository:
         if end_date:
             stmt = stmt.filter(func.date(Transaction.transaction_date) <= end_date)
 
-        count = (await self.db.execute(stmt)).scalar()
+        count = (await self.db.execute(stmt)).scalar() or 0
         return count
