@@ -66,7 +66,6 @@ class InstrumentEvent(BaseModel):
     product_type: str = Field(..., alias="productType")
 
 class TransactionEvent(BaseModel):
-    # FIX: Add populate_by_name=True to correctly handle aliases on validation
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
     transaction_id: str
@@ -102,7 +101,8 @@ class DailyPositionSnapshotPersistedEvent(BaseModel):
     date: date
 
 class CashflowCalculatedEvent(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+    # FIX: Add populate_by_name=True to correctly handle aliases on validation
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
     cashflow_id: int = Field(..., alias="id")
     transaction_id: str
@@ -115,7 +115,7 @@ class CashflowCalculatedEvent(BaseModel):
     timing: str
     is_position_flow: bool
     is_portfolio_flow: bool
-    calculation_type: str
+    calculation_type: str = Field(..., alias="calculationType")
 
 class PositionTimeseriesGeneratedEvent(BaseModel):
     model_config = ConfigDict(from_attributes=True)
