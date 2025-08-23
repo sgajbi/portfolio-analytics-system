@@ -74,7 +74,7 @@ class PortfolioTimeseriesConsumer(BaseConsumer):
                     
                     await self._update_job_status(portfolio_id, a_date, 'COMPLETE', db_session=db)
 
-                    logger.info(f"Aggregation job for ({portfolio_id}, {a_date}) transactionally completed.")
+            logger.info(f"Aggregation job for ({portfolio_id}, {a_date}) transactionally completed.")
 
         except Exception:
             logger.error(f"Aggregation failed for ({portfolio_id}, {a_date}). Marking job as FAILED.", exc_info=True)
@@ -85,7 +85,7 @@ class PortfolioTimeseriesConsumer(BaseConsumer):
         update_stmt = update(PortfolioAggregationJob).where(
             PortfolioAggregationJob.portfolio_id == portfolio_id,
             PortfolioAggregationJob.aggregation_date == a_date
-        ).values(status=status)
+        ).values(status=status, updated_at=func.now())
 
         if db_session:
             await db_session.execute(update_stmt)

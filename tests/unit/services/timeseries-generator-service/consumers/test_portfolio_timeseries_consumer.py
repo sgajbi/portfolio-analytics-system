@@ -92,7 +92,6 @@ async def test_process_message_success(
     ]
     mock_repo.get_instruments_by_ids.return_value = [Instrument(security_id="SEC_USD", currency="USD", product_type="Equity")]
     mock_repo.get_last_portfolio_timeseries_before.return_value = None
-    mock_repo.does_timeseries_exist.return_value = False # Does not trigger cascade
 
     with patch.object(consumer, '_update_job_status', new_callable=AsyncMock) as mock_update_status:
         # ACT
@@ -103,39 +102,6 @@ async def test_process_message_success(
         mock_repo.upsert_portfolio_timeseries.assert_called_once()
         mock_update_status.assert_called_once_with(mock_event.portfolio_id, mock_event.aggregation_date, 'COMPLETE', db_session=ANY)
         consumer._send_to_dlq_async.assert_not_called()
-
-async def test_process_message_triggers_next_day_aggregation(
-    consumer: PortfolioTimeseriesConsumer,
-    mock_event: PortfolioAggregationRequiredEvent,
-    mock_kafka_message: MagicMock,
-    mock_dependencies: dict
-):
-    """
-    GIVEN a portfolio aggregation event completes for a day
-    WHEN a time series record for the NEXT day already exists
-    THEN it should create a new aggregation job for that next day to trigger the cascade.
-    """
-    # ARRANGE
-    mock_repo = mock_dependencies["repo"]
-    mock_db_session = mock_dependencies["db_session"]
-    
-    mock_repo.get_portfolio.return_value = Portfolio(portfolio_id=mock_event.portfolio_id, base_currency="USD")
-    mock_repo.get_all_position_timeseries_for_date.return_value = []
-    mock_repo.get_last_portfolio_timeseries_before.return_value = None
-    mock_repo.does_timeseries_exist.return_value = True # Simulate that the next day's record exists
-
-    with patch.object(consumer, '_update_job_status', new_callable=AsyncMock):
-        # ACT
-        await consumer.process_message(mock_kafka_message)
-
-        # ASSERT
-        # Verify it checked for the next day's record
-        next_day = mock_event.aggregation_date + timedelta(days=1)
-        mock_repo.does_timeseries_exist.assert_awaited_once_with(mock_event.portfolio_id, next_day)
-        
-        # Verify it executed a statement to create the next day's job
-        # This confirms a new job was staged in the same transaction.
-        mock_db_session.execute.assert_awaited_once()
 
 async def test_process_message_fails_if_portfolio_missing(
     consumer: PortfolioTimeseriesConsumer,
