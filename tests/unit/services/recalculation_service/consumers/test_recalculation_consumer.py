@@ -51,12 +51,12 @@ async def test_consumer_claims_and_executes_job(mock_dependencies):
     mock_logic_execute = mock_dependencies["logic_execute"]
     
     job_to_process = RecalculationJob(
-        id=1, portfolio_id="P1", security_id="S1", from_date=date(2025, 1, 1), status="PENDING"
+        id=1, portfolio_id="P1", security_id="S1", from_date=date(2025, 1, 1), status="PENDING", correlation_id=None
     )
     
     consumer = RecalculationJobConsumer(poll_interval=0.01)
 
-    # FIX: Use a side effect to control the loop and stop it after one iteration
+    # Use a side effect to control the loop and stop it after one iteration
     async def find_and_stop(*args, **kwargs):
         consumer.stop()
         return job_to_process
@@ -69,9 +69,11 @@ async def test_consumer_claims_and_executes_job(mock_dependencies):
     mock_repo.find_and_claim_job.assert_awaited_once()
     mock_logic_execute.assert_awaited_once_with(
         db_session=ANY,
+        job_id=1,
         portfolio_id="P1",
         security_id="S1",
-        from_date=date(2025, 1, 1)
+        from_date=date(2025, 1, 1),
+        correlation_id=None
     )
     mock_repo.update_job_status.assert_awaited_once_with(1, "COMPLETE")
 

@@ -1,15 +1,38 @@
 # tests/unit/services/recalculation_service/repositories/test_recalculation_repository.py
 import pytest
 from unittest.mock import AsyncMock, MagicMock
-from datetime import date
+from datetime import date, datetime, timezone
+from decimal import Decimal
 from sqlalchemy import text
+from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.expression import delete, select, update, Select, Update, Delete, TextClause
 from sqlalchemy.dialects import postgresql
 
-from portfolio_common.database_models import RecalculationJob
+from portfolio_common.database_models import (
+    RecalculationJob,
+    Transaction,
+    PositionHistory,
+    DailyPositionSnapshot,
+    PositionTimeseries,
+    PortfolioTimeseries,
+    Cashflow
+)
 from src.services.recalculation_service.app.repositories.recalculation_repository import RecalculationRepository
 
 pytestmark = pytest.mark.asyncio
+
+@pytest.fixture(scope="function")
+def setup_recalc_job_data(db_engine, clean_db):
+    """
+    Sets up a PENDING and a PROCESSING job for testing the claim logic.
+    """
+    with Session(db_engine) as session:
+        session.add_all([
+            RecalculationJob(portfolio_id="P1", security_id="S1", from_date=date(2025, 8, 1), status="PENDING"),
+            RecalculationJob(portfolio_id="P2", security_id="S2", from_date=date(2025, 8, 1), status="PROCESSING"),
+        ])
+        session.commit()
 
 @pytest.fixture
 def mock_db_session() -> AsyncMock:
@@ -20,7 +43,7 @@ def mock_db_session() -> AsyncMock:
     mock_row_dict = {"id": 1, "portfolio_id": "P1", "security_id": "S1", "from_date": date(2025, 1, 1)}
     
     mock_result.mappings.return_value.first.return_value = mock_row_dict
-    session.execute.return_value = mock_result
+    session.execute = AsyncMock(return_value=mock_result)
     return session
 
 @pytest.fixture
@@ -65,12 +88,10 @@ async def test_update_job_status(repository: RecalculationRepository, mock_db_se
 
     assert isinstance(executed_stmt, Update)
     
-    # FIX: Compile with a dialect and check the public `params` attribute.
     compiled = executed_stmt.compile(dialect=postgresql.dialect())
     assert compiled.params['status'] == 'COMPLETE'
     assert 'updated_at' in compiled.params
     
-    # Check the WHERE clause separately for clarity
     compiled_where = str(executed_stmt.whereclause.compile(dialect=postgresql.dialect()))
     assert "recalculation_jobs.id = %(id_1)s" in compiled_where
     assert compiled.params['id_1'] == 123
@@ -80,13 +101,13 @@ async def test_delete_downstream_data(repository: RecalculationRepository, mock_
     """
     GIVEN a portfolio, security, and date
     WHEN delete_downstream_data is called
-    THEN it should execute DELETE statements for all four downstream tables.
+    THEN it should execute DELETE statements for all five downstream tables.
     """
     # ACT
     await repository.delete_downstream_data("P1", "S1", date(2025, 1, 1))
 
     # ASSERT
-    assert mock_db_session.execute.call_count == 4
+    assert mock_db_session.execute.call_count == 5
     
     executed_stmts = [call[0][0] for call in mock_db_session.execute.call_args_list]
     table_names = {stmt.table.name for stmt in executed_stmts if isinstance(stmt, Delete)}
@@ -95,7 +116,8 @@ async def test_delete_downstream_data(repository: RecalculationRepository, mock_
         "portfolio_timeseries",
         "position_timeseries",
         "daily_position_snapshots",
-        "position_history"
+        "position_history",
+        "cashflows"
     }
     assert table_names == expected_tables
 
