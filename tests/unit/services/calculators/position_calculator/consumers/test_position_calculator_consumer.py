@@ -117,10 +117,9 @@ async def test_consumer_triggers_recalc_for_backdated_txn(position_consumer: Tra
     # ARRANGE
     mock_dependencies["idempotency_repo"].is_event_processed.return_value = False
     mock_dependencies["recalc_job_repo"].is_job_processing.return_value = False
-    mock_dependencies["calculate_logic"].side_effect = mock_dependencies["position_repo"].upsert_recalculation_job
+    mock_dependencies["calculate_logic"].side_effect = mock_dependencies["position_repo"].create_recalculation_job
 
     # ACT
-    # FIX: Set the correlation ID in the context for the test
     token = correlation_id_var.set('test-corr-id')
     try:
         await position_consumer.process_message(mock_kafka_message)
@@ -128,7 +127,6 @@ async def test_consumer_triggers_recalc_for_backdated_txn(position_consumer: Tra
         correlation_id_var.reset(token)
     
     # ASSERT
-    # We now assert on the mock that is called by the logic, not the logic itself
     mock_dependencies["calculate_logic"].assert_awaited_once()
 
 
