@@ -6,6 +6,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from portfolio_common.db import get_async_db_session
 from ..dtos.performance_dto import PerformanceRequest, PerformanceResponse
 from ..services.performance_service import PerformanceService
+from ..dtos.mwr_dto import MWRRequest, MWRResponse
+from ..services.mwr_service import MWRService
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +21,7 @@ router = APIRouter(
     "/{portfolio_id}/performance",
     response_model=PerformanceResponse,
     response_model_exclude_none=True,
-    summary="Calculate On-the-Fly Portfolio Performance",
+    summary="Calculate On-the-Fly Portfolio Performance (TWR)",
     description="Calculates time-weighted return (TWR) for a portfolio over one or more specified periods, with support for various period types, breakdowns, and currency conversion."
 )
 async def calculate_performance(
@@ -44,6 +46,36 @@ async def calculate_performance(
     except Exception as e:
         # Catch-all for any unexpected errors during calculation
         logger.exception("An unexpected error occurred during performance calculation.")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An unexpected server error occurred."
+        )
+
+@router.post(
+    "/{portfolio_id}/performance/mwr",
+    response_model=MWRResponse,
+    response_model_exclude_none=True,
+    summary="Calculate Money-Weighted Return (MWR / IRR) for a Portfolio"
+)
+async def calculate_mwr(
+    portfolio_id: str,
+    request: MWRRequest,
+    db: AsyncSession = Depends(get_async_db_session)
+):
+    """
+    Calculates money-weighted return (MWR/IRR) for a portfolio over one or more
+    specified periods.
+
+    - **portfolio_id**: The unique identifier for the portfolio.
+    - **Request Body**: A JSON object specifying the scope and periods for the MWR calculation.
+    """
+    try:
+        service = MWRService(db)
+        return await service.calculate_mwr(portfolio_id, request)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except Exception as e:
+        logger.exception("An unexpected error occurred during MWR calculation.")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"An unexpected server error occurred."
