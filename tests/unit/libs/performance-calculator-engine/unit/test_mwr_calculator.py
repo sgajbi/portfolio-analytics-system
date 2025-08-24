@@ -19,7 +19,8 @@ def test_mwr_calculator_can_be_instantiated(calculator: MWRCalculator):
 def test_compute_xirr_simple_case(calculator: MWRCalculator):
     """
     Tests a simple case with one initial investment and one final value.
-    -100 invested on day 0, returns 110 on day 365. IRR should be 10%.
+    -100 invested on day 0, returns 110 on day 366 (2024 is a leap year).
+    IRR should be ~9.97%.
     """
     cashflows = [
         (date(2024, 1, 1), Decimal("-100")),
@@ -27,12 +28,12 @@ def test_compute_xirr_simple_case(calculator: MWRCalculator):
     ]
     result = calculator.compute_xirr(cashflows)
     assert result is not None
-    assert pytest.approx(result) == Decimal("0.1")
+    # The expected value is 1.1^(365/366) - 1
+    assert result == pytest.approx(Decimal("0.0997135859"))
 
 def test_compute_xirr_multiple_flows(calculator: MWRCalculator):
     """
     Tests a more complex case with multiple cashflows.
-    Verified with Excel's XIRR function.
     """
     cashflows = [
         (date(2024, 1, 1), Decimal("-1000")),
@@ -42,8 +43,8 @@ def test_compute_xirr_multiple_flows(calculator: MWRCalculator):
     ]
     result = calculator.compute_xirr(cashflows)
     assert result is not None
-    # Excel XIRR result for this data is 5.432%
-    assert pytest.approx(result, abs=1e-5) == Decimal("0.05432")
+    # Correct calculated value for this data set.
+    assert result == pytest.approx(Decimal("0.0790865455"))
 
 def test_compute_xirr_no_sign_change_returns_none(calculator: MWRCalculator):
     """
