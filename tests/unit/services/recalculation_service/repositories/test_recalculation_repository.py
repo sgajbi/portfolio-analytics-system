@@ -3,10 +3,10 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
-from sqlalchemy import text, select
+from sqlalchemy import text, select, update, delete
 from sqlalchemy.orm import Session
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.sql.expression import delete, update, Select, Update, Delete, TextClause
+from sqlalchemy.sql.expression import Select, Update, Delete, TextClause
 from sqlalchemy.dialects import postgresql
 
 from portfolio_common.database_models import (
@@ -26,15 +26,18 @@ pytestmark = pytest.mark.asyncio
 def setup_coalescing_jobs(db_engine, clean_db):
     """
     Sets up a set of jobs to test coalescing logic:
-    - Two PENDING jobs for (P1, S1) with different dates.
-    - One PENDING job for (P2, S2) which should not be picked.
+    - Two PENDING jobs for (P1, S1) with different dates. One of these is the oldest.
+    - One PENDING job for (P2, S2) which is newer and should not be picked.
     - One PROCESSING job for (P1, S1) which should be ignored (skip locked).
     """
     with Session(db_engine) as session:
         session.add_all([
             RecalculationJob(portfolio_id="P1", security_id="S1", from_date=date(2025, 8, 10), status="PENDING", created_at=datetime(2025, 8, 11)),
+            # This is now the oldest PENDING job
             RecalculationJob(portfolio_id="P1", security_id="S1", from_date=date(2025, 8, 5), status="PENDING", created_at=datetime(2025, 8, 10)),
-            RecalculationJob(portfolio_id="P2", security_id="S2", from_date=date(2025, 8, 1), status="PENDING"),
+            # This job is for a different security and is newer
+            RecalculationJob(portfolio_id="P2", security_id="S2", from_date=date(2025, 8, 20), status="PENDING"),
+            # This job for P1/S1 is already processing and should be ignored
             RecalculationJob(portfolio_id="P1", security_id="S1", from_date=date(2025, 8, 1), status="PROCESSING"),
         ])
         session.commit()
@@ -76,7 +79,8 @@ async def test_update_job_status_multiple_ids(db_engine, clean_db, setup_coalesc
     """
     # ARRANGE
     repo = RecalculationRepository(async_db_session)
-    job_ids_to_update = [1, 2] # Corresponds to the two PENDING jobs for P1, S1
+    # The IDs of the two PENDING jobs for P1,S1 created in the fixture
+    job_ids_to_update = [1, 2] 
 
     # ACT
     await repo.update_job_status(job_ids=job_ids_to_update, status="COMPLETE")
