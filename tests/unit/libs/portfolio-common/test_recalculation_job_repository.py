@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, patch, ANY, MagicMock
 from datetime import date
 
 from portfolio_common.recalculation_job_repository import RecalculationJobRepository
+from portfolio_common.database_models import RecalculationJob
 
 pytestmark = pytest.mark.asyncio
 
@@ -12,6 +13,7 @@ def mock_db_session() -> AsyncMock:
     """Provides a mock SQLAlchemy AsyncSession."""
     session = AsyncMock()
     session.execute = AsyncMock()
+    session.add = MagicMock()
     return session
 
 @pytest.fixture
@@ -19,18 +21,14 @@ def repository(mock_db_session: AsyncMock) -> RecalculationJobRepository:
     """Provides an instance of the repository with a mock session."""
     return RecalculationJobRepository(mock_db_session)
 
-@patch('portfolio_common.recalculation_job_repository.pg_insert')
-async def test_upsert_job_builds_correct_statement(mock_pg_insert, repository: RecalculationJobRepository, mock_db_session: AsyncMock):
+
+async def test_create_job_adds_to_session(repository: RecalculationJobRepository, mock_db_session: AsyncMock):
     """
     GIVEN recalculation job details
-    WHEN upsert_job is called
-    THEN it should construct an insert statement with the correct values and on_conflict_do_update clause,
-    including the LEAST function to ensure the earliest date is used.
+    WHEN create_job is called
+    THEN it should add a correctly formed RecalculationJob object to the session and flush.
     """
     # ARRANGE
-    mock_final_statement = MagicMock()
-    mock_pg_insert.return_value.values.return_value.on_conflict_do_update.return_value = mock_final_statement
-
     job_details = {
         "portfolio_id": "PORT_RECALC_01",
         "security_id": "SEC_RECALC_01",
@@ -39,19 +37,20 @@ async def test_upsert_job_builds_correct_statement(mock_pg_insert, repository: R
     }
 
     # ACT
-    await repository.upsert_job(**job_details)
+    await repository.create_job(**job_details)
 
     # ASSERT
-    mock_pg_insert.assert_called_once()
-    assert mock_pg_insert.call_args[0][0].__tablename__ == 'recalculation_jobs'
-    called_values = mock_pg_insert.return_value.values.call_args.kwargs
-    assert called_values['portfolio_id'] == job_details['portfolio_id']
-    assert called_values['status'] == 'PENDING'
-    on_conflict_args = mock_pg_insert.return_value.values.return_value.on_conflict_do_update.call_args
-    assert on_conflict_args.kwargs['index_elements'] == ['portfolio_id', 'security_id']
-    update_dict = on_conflict_args.kwargs['set_']
-    assert "least(recalculation_jobs.from_date" in str(update_dict['from_date'].compile())
-    mock_db_session.execute.assert_awaited_once_with(mock_final_statement)
+    mock_db_session.add.assert_called_once()
+    mock_db_session.flush.assert_awaited_once()
+
+    added_object = mock_db_session.add.call_args[0][0]
+    assert isinstance(added_object, RecalculationJob)
+    assert added_object.portfolio_id == job_details['portfolio_id']
+    assert added_object.security_id == job_details['security_id']
+    assert added_object.from_date == job_details['from_date']
+    assert added_object.status == 'PENDING'
+    assert added_object.correlation_id == job_details['correlation_id']
+
 
 async def test_is_job_processing(repository: RecalculationJobRepository, mock_db_session: AsyncMock):
     """
