@@ -10,6 +10,8 @@ import sys
 from sqlalchemy import create_engine, text
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+from sqlalchemy.orm import Session
+from typing import Callable, Any
 
 
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
@@ -62,7 +64,8 @@ def db_engine(docker_services: DockerCompose):
 
 # List of all tables to be cleaned. Centralized here.
 TABLES_TO_TRUNCATE = [
-    "business_dates", # <-- ADDED
+    "recalculation_jobs", # <-- ADDED
+    "business_dates",
     "portfolio_valuation_jobs", "portfolio_aggregation_jobs", "transaction_costs", "cashflows", "position_history", "daily_position_snapshots",
     "position_timeseries", "portfolio_timeseries", "transactions", "market_prices",
     "instruments", "fx_rates", "portfolios", "processed_events", "outbox_events"
@@ -94,6 +97,7 @@ def clean_db_module(db_engine):
         "position_calculator_service",
         "position_valuation_calculator",
         "timeseries_generator_service",
+        "recalculation_service" # <-- ADDED
     ]
 
     print("\n--- Stopping services for module cleanup ---")
@@ -166,7 +170,7 @@ def poll_for_data():
     Returns:
         A callable polling function.
     """
-    def _poll(url: str, validation_func, timeout: int = 45):
+    def _poll(url: str, validation_func, timeout: int = 45, fail_message: str = "Polling timed out"):
         start_time = time.time()
         last_response_data = None
         while time.time() - start_time < timeout:
@@ -182,7 +186,34 @@ def poll_for_data():
             time.sleep(1)
         
         pytest.fail(
-            f"Polling timed out after {timeout} seconds for URL {url}. "
+            f"{fail_message} after {timeout} seconds for URL {url}. "
             f"Last response: {last_response_data}"
+        )
+    return _poll
+
+@pytest.fixture(scope="module")
+def poll_db_until(db_engine):
+    """
+    Provides a generic polling utility to query the database until a condition is met.
+    """
+    def _poll(
+        query: str,
+        validation_func: Callable[[Any], bool],
+        params: dict = {},
+        timeout: int = 60,
+        interval: int = 2,
+    ):
+        start_time = time.time()
+        last_result = None
+        while time.time() - start_time < timeout:
+            with Session(db_engine) as session:
+                result = session.execute(text(query), params).fetchone()
+                last_result = result
+                if validation_func(result):
+                    return
+            time.sleep(interval)
+        
+        pytest.fail(
+            f"DB Polling timed out after {timeout} seconds. Last result: {last_result}"
         )
     return _poll

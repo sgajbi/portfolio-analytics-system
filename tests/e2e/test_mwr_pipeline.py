@@ -7,11 +7,8 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 from datetime import date
 
-# This helper is defined in the root conftest.py
-from tests.conftest import poll_db_until
-
 @pytest.fixture(scope="module")
-def setup_mwr_data(clean_db_module, db_engine, api_endpoints):
+def setup_mwr_data(clean_db_module, db_engine, api_endpoints, poll_db_until):
     """
     A module-scoped fixture to ingest data for an MWR scenario and wait for the
     backend pipeline to generate the necessary time-series data.
@@ -38,7 +35,6 @@ def setup_mwr_data(clean_db_module, db_engine, api_endpoints):
     
     # Poll until the timeseries for the last day is fully generated.
     poll_db_until(
-        db_engine=db_engine,
         query="SELECT 1 FROM portfolio_timeseries WHERE portfolio_id = :pid AND date = :date",
         params={"pid": portfolio_id, "date": "2025-01-31"},
         validation_func=lambda r: r is not None,

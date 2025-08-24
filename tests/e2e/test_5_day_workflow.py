@@ -23,32 +23,6 @@ DAY_5 = "2025-08-23"
 # Mark all tests in this file as being part of the 'dependency' group for ordering
 pytestmark = pytest.mark.dependency()
 
-def poll_db_until(
-    db_engine: Engine,
-    query: str,
-    validation_func: Callable[[Any], bool],
-    params: dict = {},
-    timeout: int = 60,
-    interval: int = 2,
-):
-    """
-    Polls the database by executing a query until a validation function returns True.
-    """
-    start_time = time.time()
-    last_result = None
-    while time.time() - start_time < timeout:
-        with Session(db_engine) as session:
-            result = session.execute(text(query), params).fetchone()
-            last_result = result
-            if validation_func(result):
-                return
-        time.sleep(interval)
-    
-    pytest.fail(
-        f"Polling timed out after {timeout} seconds. Last result: {last_result}"
-    )
-
-
 @pytest.fixture(scope="module")
 def setup_prerequisites(clean_db_module, api_endpoints):
     """
@@ -98,7 +72,7 @@ def test_prerequisites_are_loaded(setup_prerequisites, db_engine):
         assert instrument_count == 4, "Not all instruments were created."
 
 @pytest.mark.dependency(depends=["test_prerequisites_are_loaded"])
-def test_day_1_workflow(setup_prerequisites, db_engine):
+def test_day_1_workflow(setup_prerequisites, db_engine, poll_db_until):
     """
     Tests Day 1: Ingests a business date, a deposit, and a cash price,
     then verifies the final state of the daily snapshot.
@@ -111,10 +85,10 @@ def test_day_1_workflow(setup_prerequisites, db_engine):
     
     query = "SELECT valuation_status FROM daily_position_snapshots WHERE portfolio_id = :pid AND security_id = :sid AND date = :date"
     params = {"pid": PORTFOLIO_ID, "sid": CASH_USD_ID, "date": DAY_1}
-    poll_db_until(db_engine, query, lambda r: r is not None and r.valuation_status == 'VALUED_CURRENT', params)
+    poll_db_until(query, lambda r: r is not None and r.valuation_status == 'VALUED_CURRENT', params)
 
 @pytest.mark.dependency(depends=["test_day_1_workflow"])
-def test_day_2_workflow(setup_prerequisites, db_engine):
+def test_day_2_workflow(setup_prerequisites, db_engine, poll_db_until):
     """
     Tests Day 2: Ingests a stock purchase and verifies the final state
     of the portfolio time series.
@@ -136,10 +110,10 @@ def test_day_2_workflow(setup_prerequisites, db_engine):
     query = "SELECT eod_market_value FROM portfolio_timeseries WHERE portfolio_id = :pid AND date = :date"
     params = {"pid": PORTFOLIO_ID, "date": DAY_2}
     expected_eod_mv = Decimal("1002974.50")
-    poll_db_until(db_engine, query, lambda r: r is not None and r.eod_market_value == expected_eod_mv, params)
+    poll_db_until(query, lambda r: r is not None and r.eod_market_value == expected_eod_mv, params)
 
 @pytest.mark.dependency(depends=["test_day_2_workflow"])
-def test_day_3_workflow(setup_prerequisites, db_engine):
+def test_day_3_workflow(setup_prerequisites, db_engine, poll_db_until):
     """
     Tests Day 3: Ingests another stock purchase and verifies the final state
     of the portfolio time series.
@@ -162,10 +136,10 @@ def test_day_3_workflow(setup_prerequisites, db_engine):
     query = "SELECT eod_market_value FROM portfolio_timeseries WHERE portfolio_id = :pid AND date = :date"
     params = {"pid": PORTFOLIO_ID, "date": DAY_3}
     expected_eod_mv = Decimal("1005959.50")
-    poll_db_until(db_engine, query, lambda r: r is not None and r.eod_market_value == expected_eod_mv, params)
+    poll_db_until(query, lambda r: r is not None and r.eod_market_value == expected_eod_mv, params)
 
 @pytest.mark.dependency(depends=["test_day_3_workflow"])
-def test_day_4_workflow(setup_prerequisites, db_engine):
+def test_day_4_workflow(setup_prerequisites, db_engine, poll_db_until):
     """
     Tests Day 4: Ingests a stock sale and verifies the calculated
     realized gain/loss is correct.
@@ -192,10 +166,10 @@ def test_day_4_workflow(setup_prerequisites, db_engine):
     def validation_func(result):
         return result is not None and result.realized_gain_loss is not None and result.realized_gain_loss == expected_pnl
 
-    poll_db_until(db_engine, query, validation_func, params)
+    poll_db_until(query, validation_func, params)
 
 @pytest.mark.dependency(depends=["test_day_4_workflow"])
-def test_day_5_workflow(setup_prerequisites, db_engine):
+def test_day_5_workflow(setup_prerequisites, db_engine, poll_db_until):
     """
     Tests Day 5: Ingests a dividend and verifies the final portfolio value.
     """
@@ -217,4 +191,4 @@ def test_day_5_workflow(setup_prerequisites, db_engine):
     query = "SELECT eod_market_value FROM portfolio_timeseries WHERE portfolio_id = :pid AND date = :date"
     params = {"pid": PORTFOLIO_ID, "date": DAY_5}
     expected_eod_mv = Decimal("1010104.50")
-    poll_db_until(db_engine, query, lambda r: r is not None and r.eod_market_value == expected_eod_mv, params)
+    poll_db_until(query, lambda r: r is not None and r.eod_market_value == expected_eod_mv, params)
