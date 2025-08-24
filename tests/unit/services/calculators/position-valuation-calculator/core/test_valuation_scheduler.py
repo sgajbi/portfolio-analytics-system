@@ -72,6 +72,7 @@ async def test_scheduler_creates_roll_forward_jobs(scheduler: ValuationScheduler
         {'portfolio_id': 'P1', 'security_id': 'S1'}
     ]
     mock_repo.get_last_snapshot_date.return_value = last_snapshot_date
+    mock_repo.are_recalculations_processing.return_value = [] # No locks
 
     # ACT
     # We call the internal method directly to test its logic in isolation
@@ -85,6 +86,40 @@ async def test_scheduler_creates_roll_forward_jobs(scheduler: ValuationScheduler
     expected_dates = {date(2025, 8, 11), date(2025, 8, 12)}
     assert call_dates == expected_dates
 
+async def test_scheduler_skips_locked_positions(scheduler: ValuationScheduler, mock_dependencies: dict):
+    """
+    GIVEN two open positions, one of which is locked by a recalculation job
+    WHEN the scheduler's roll-forward logic runs
+    THEN it should only create jobs for the unlocked position.
+    """
+    # ARRANGE
+    mock_repo = mock_dependencies["repo"]
+    mock_job_repo = mock_dependencies["job_repo"]
+
+    mock_repo.get_latest_business_date.return_value = date(2025, 8, 12)
+    mock_repo.get_all_open_positions.return_value = [
+        {'portfolio_id': 'P1_LOCKED', 'security_id': 'S1_LOCKED'},
+        {'portfolio_id': 'P2_UNLOCKED', 'security_id': 'S2_UNLOCKED'}
+    ]
+    # Simulate that P1/S1 is locked
+    mock_repo.are_recalculations_processing.return_value = [("P1_LOCKED", "S1_LOCKED")]
+    # Simulate both positions needing a roll-forward
+    mock_repo.get_last_snapshot_date.return_value = date(2025, 8, 11)
+
+    # ACT
+    await scheduler._create_daily_roll_forward_jobs(AsyncMock())
+
+    # ASSERT
+    mock_repo.are_recalculations_processing.assert_awaited_once()
+    
+    # Assert that upsert_job was called only once, for the unlocked position
+    mock_job_repo.upsert_job.assert_called_once()
+    call_args = mock_job_repo.upsert_job.call_args.kwargs
+    assert call_args['portfolio_id'] == 'P2_UNLOCKED'
+    assert call_args['security_id'] == 'S2_UNLOCKED'
+    assert call_args['valuation_date'] == date(2025, 8, 12)
+
+
 async def test_scheduler_dispatches_eligible_jobs(scheduler: ValuationScheduler, mock_kafka_producer: MagicMock):
     """
     GIVEN a set of pending valuation jobs in the database
@@ -94,14 +129,15 @@ async def test_scheduler_dispatches_eligible_jobs(scheduler: ValuationScheduler,
     # ARRANGE
     mock_db_session = AsyncMock()
     mock_db_session.begin.return_value = AsyncMock()
+    
     async def get_db_session_gen():
         yield mock_db_session
         
     mock_repo = AsyncMock(spec=ValuationRepository)
     
     claimed_jobs = [
-        PortfolioValuationJob(id=1, portfolio_id="PORT_01", security_id="SEC_01", valuation_date=date(2025, 8, 10)),
-        PortfolioValuationJob(id=2, portfolio_id="PORT_02", security_id="SEC_02", valuation_date=date(2025, 8, 11)),
+        PortfolioValuationJob(id=1, portfolio_id="PORT_01", security_id="SEC_01", valuation_date=date(2025, 8, 10), correlation_id="corr-1"),
+        PortfolioValuationJob(id=2, portfolio_id="PORT_02", security_id="SEC_02", valuation_date=date(2025, 8, 11), correlation_id="corr-2"),
     ]
     mock_repo.find_and_claim_eligible_jobs.return_value = claimed_jobs
 
