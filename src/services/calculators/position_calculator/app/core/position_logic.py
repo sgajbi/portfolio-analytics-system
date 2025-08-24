@@ -1,4 +1,4 @@
-# services/calculators/position_calculator/app/core/position_logic.py
+# src/services/calculators/position_calculator/app/core/position_logic.py
 import logging
 from datetime import date
 from decimal import Decimal
@@ -22,7 +22,13 @@ class PositionCalculator:
     """
 
     @classmethod
-    async def calculate(cls, event: TransactionEvent, db_session: AsyncSession, repo: PositionRepository) -> List[PositionHistory]:
+    async def calculate(
+        cls,
+        event: TransactionEvent,
+        db_session: AsyncSession,
+        repo: PositionRepository,
+        is_recalculation_event: bool = False
+    ) -> List[PositionHistory]:
         """
         Orchestrates recalculation and job routing for a single transaction event.
         """
@@ -46,7 +52,8 @@ class PositionCalculator:
             latest_business_date = await repo.get_latest_business_date()
             is_backdated = latest_business_date and final_position_state.position_date < latest_business_date
 
-            if is_backdated:
+            if is_backdated and not is_recalculation_event:
+                logger.info(f"Backdated transaction {event.transaction_id} detected. Staging recalculation job.")
                 await repo.upsert_recalculation_job(
                     portfolio_id=final_position_state.portfolio_id,
                     security_id=final_position_state.security_id,

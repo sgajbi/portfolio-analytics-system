@@ -44,6 +44,13 @@ class TransactionEventConsumer(BaseConsumer):
         event_id = f"{msg.topic()}-{msg.partition()}-{msg.offset()}"
         correlation_id = correlation_id_var.get()
 
+        is_recalculation_event = False
+        if msg.headers():
+            for header_key, _ in msg.headers():
+                if header_key == 'recalculation_id':
+                    is_recalculation_event = True
+                    break
+
         try:
             data = json.loads(value)
             event = TransactionEvent.model_validate(data)
@@ -65,21 +72,13 @@ class TransactionEventConsumer(BaseConsumer):
                             f"Recalculation job is active for {event.portfolio_id}/{event.security_id}. Requeuing message."
                         )
                     
-                    new_positions = await PositionCalculator.calculate(event, db, repo=repo)
+                    await PositionCalculator.calculate(
+                        event,
+                        db,
+                        repo=repo,
+                        is_recalculation_event=is_recalculation_event
+                    )
                     
-                    # --- Backdated Trigger Logic ---
-                    latest_business_date = await repo.get_latest_business_date()
-                    is_backdated = latest_business_date and event.transaction_date.date() < latest_business_date
-
-                    if is_backdated:
-                        logger.info(f"Backdated transaction {event.transaction_id} detected. Staging recalculation job.")
-                        await recalc_job_repo.upsert_job(
-                            portfolio_id=event.portfolio_id,
-                            security_id=event.security_id,
-                            from_date=event.transaction_date.date(),
-                            correlation_id=correlation_id
-                        )
-
                     await idempotency_repo.mark_event_processed(
                         event_id, event.portfolio_id, SERVICE_NAME, correlation_id
                     )
