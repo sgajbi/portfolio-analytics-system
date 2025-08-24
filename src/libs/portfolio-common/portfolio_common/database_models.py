@@ -308,7 +308,3 @@ class RecalculationJob(Base):
     correlation_id = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
-
-    __table_args__ = (
-        UniqueConstraint('portfolio_id', 'security_id', name='_portfolio_security_recalc_uc'),
-    )
