@@ -41,43 +41,39 @@ class RecalculationRepository:
     async def find_and_claim_coalesced_job(self) -> Optional[CoalescedRecalculationJob]:
         """
         Atomically finds the oldest pending job, then finds and claims all other
-        pending jobs for the same (portfolio_id, security_id) pair.
+        pending jobs for the same (portfolio_id, security_id) pair using a single query.
         Coalesces them into a single unit of work.
         """
-        # Phase 1: Discover the next item of work without locking.
-        oldest_job_identity_stmt = (
-            select(RecalculationJob.portfolio_id, RecalculationJob.security_id)
+        # CTE to find the identity of the single oldest job to process.
+        oldest_job_cte = (
+            select(
+                RecalculationJob.portfolio_id,
+                RecalculationJob.security_id
+            )
             .where(RecalculationJob.status == 'PENDING')
             .order_by(RecalculationJob.from_date.asc(), RecalculationJob.created_at.asc())
             .limit(1)
+            .cte('oldest_job')
         )
-        result = await self.db.execute(oldest_job_identity_stmt)
-        job_identity = result.first()
 
-        if not job_identity:
-            return None # No pending jobs found
-
-        portfolio_id, security_id = job_identity
-
-        # Phase 2: Find and lock all PENDING jobs for this specific security.
+        # Main query to select and lock all related pending jobs based on the CTE's result.
         all_related_jobs_stmt = (
             select(RecalculationJob)
             .where(
-                RecalculationJob.portfolio_id == portfolio_id,
-                RecalculationJob.security_id == security_id,
-                RecalculationJob.status == 'PENDING'
+                RecalculationJob.status == 'PENDING',
+                RecalculationJob.portfolio_id == select(oldest_job_cte.c.portfolio_id).scalar_subquery(),
+                RecalculationJob.security_id == select(oldest_job_cte.c.security_id).scalar_subquery()
             )
             .with_for_update(skip_locked=True)
         )
+
         result = await self.db.execute(all_related_jobs_stmt)
         all_related_jobs = result.scalars().all()
 
         if not all_related_jobs:
-            # This can happen in a race condition where another worker just processed these jobs
-            # between our first and second query. This is a valid, safe outcome.
             return None
 
-        # Step 3: Coalesce, Update status to PROCESSING for all claimed jobs
+        # Coalesce, Update status to PROCESSING for all claimed jobs
         job_ids_to_claim = [job.id for job in all_related_jobs]
         earliest_from_date = min(job.from_date for job in all_related_jobs)
 
@@ -88,9 +84,9 @@ class RecalculationRepository:
         )
         await self.db.execute(update_stmt)
 
-        logger.info(f"Claimed {len(all_related_jobs)} recalculation jobs for ({portfolio_id}, {security_id}).")
+        logger.info(f"Claimed {len(all_related_jobs)} recalculation jobs for ({all_related_jobs[0].portfolio_id}, {all_related_jobs[0].security_id}).")
 
-        # Step 4: Return the coalesced job details
+        # Return the coalesced job details
         return CoalescedRecalculationJob(
             earliest_from_date=earliest_from_date,
             claimed_jobs=all_related_jobs
