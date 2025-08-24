@@ -2,6 +2,7 @@
 import logging
 from datetime import date, datetime, timedelta, timezone
 from typing import Optional, List
+from pydantic import BaseModel
 
 from sqlalchemy import select, update, text, delete, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,6 +20,15 @@ from portfolio_common.utils import async_timed
 logger = logging.getLogger(__name__)
 
 
+class CoalescedRecalculationJob(BaseModel):
+    """A data structure to hold a group of claimed jobs that have been coalesced."""
+    earliest_from_date: date
+    claimed_jobs: List[RecalculationJob]
+
+    class Config:
+        arbitrary_types_allowed = True
+
+
 class RecalculationRepository:
     """
     Handles database operations for the RecalculationJob model, including
@@ -27,46 +37,78 @@ class RecalculationRepository:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    @async_timed(repository="RecalculationRepository", method="find_and_claim_job")
-    async def find_and_claim_job(self) -> Optional[RecalculationJob]:
+    @async_timed(repository="RecalculationRepository", method="find_and_claim_coalesced_job")
+    async def find_and_claim_coalesced_job(self) -> Optional[CoalescedRecalculationJob]:
         """
-        Finds the oldest PENDING recalculation job, atomically updates its status
-        to 'PROCESSING', and returns the claimed job object. This prevents race
-        conditions between multiple service instances.
+        Atomically finds the oldest pending job, then finds and claims all other
+        pending jobs for the same (portfolio_id, security_id) pair.
+        Coalesces them into a single unit of work.
         """
-        query = text("""
-            UPDATE recalculation_jobs
-            SET status = 'PROCESSING', updated_at = now()
-            WHERE id = (
-                SELECT id
-                FROM recalculation_jobs
-                WHERE status = 'PENDING'
-                ORDER BY from_date ASC, created_at ASC
-                FOR UPDATE SKIP LOCKED
-                LIMIT 1
-            )
-            RETURNING *;
-        """)
-        
-        result = await self.db.execute(query)
-        claimed_job_row = result.mappings().first()
+        # Step 1: Find and lock the single oldest PENDING job to determine the work item.
+        oldest_job_stmt = (
+            select(RecalculationJob)
+            .where(RecalculationJob.status == 'PENDING')
+            .order_by(RecalculationJob.from_date.asc(), RecalculationJob.created_at.asc())
+            .limit(1)
+            .with_for_update(skip_locked=True)
+        )
+        result = await self.db.execute(oldest_job_stmt)
+        oldest_job = result.scalars().first()
 
-        if claimed_job_row:
-            logger.info(f"Claimed recalculation job ID {claimed_job_row['id']}.")
-            return RecalculationJob(**claimed_job_row)
+        if not oldest_job:
+            return None # No pending jobs found
+
+        # Step 2: Find all other PENDING jobs for the same security, also locking them.
+        portfolio_id = oldest_job.portfolio_id
+        security_id = oldest_job.security_id
         
-        return None
+        all_related_jobs_stmt = (
+            select(RecalculationJob)
+            .where(
+                RecalculationJob.portfolio_id == portfolio_id,
+                RecalculationJob.security_id == security_id,
+                RecalculationJob.status == 'PENDING'
+            )
+            .with_for_update(skip_locked=True)
+        )
+        result = await self.db.execute(all_related_jobs_stmt)
+        all_related_jobs = result.scalars().all()
+
+        if not all_related_jobs: # Should not happen if oldest_job was found, but defensive check
+            return None
+
+        # Step 3: Coalesce, Update status to PROCESSING for all claimed jobs
+        job_ids_to_claim = [job.id for job in all_related_jobs]
+        earliest_from_date = min(job.from_date for job in all_related_jobs)
+
+        update_stmt = (
+            update(RecalculationJob)
+            .where(RecalculationJob.id.in_(job_ids_to_claim))
+            .values(status='PROCESSING', updated_at=func.now())
+        )
+        await self.db.execute(update_stmt)
+
+        logger.info(f"Claimed {len(all_related_jobs)} recalculation jobs for ({portfolio_id}, {security_id}).")
+
+        # Step 4: Return the coalesced job details
+        return CoalescedRecalculationJob(
+            earliest_from_date=earliest_from_date,
+            claimed_jobs=all_related_jobs
+        )
 
     @async_timed(repository="RecalculationRepository", method="update_job_status")
-    async def update_job_status(self, job_id: int, status: str) -> None:
-        """Updates the status of a specific job by its primary key."""
+    async def update_job_status(self, job_ids: List[int], status: str) -> None:
+        """Updates the status of a list of jobs by their primary keys."""
+        if not job_ids:
+            return
+            
         stmt = (
             update(RecalculationJob)
-            .where(RecalculationJob.id == job_id)
+            .where(RecalculationJob.id.in_(job_ids))
             .values(status=status, updated_at=datetime.now(timezone.utc))
         )
         await self.db.execute(stmt)
-        logger.info(f"Updated status for job ID {job_id} to '{status}'.")
+        logger.info(f"Updated status for {len(job_ids)} job IDs to '{status}'.")
 
     @async_timed(repository="RecalculationRepository", method="delete_downstream_data")
     async def delete_downstream_data(self, portfolio_id: str, security_id: str, from_date: date) -> None:
