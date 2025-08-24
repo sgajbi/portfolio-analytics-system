@@ -46,9 +46,11 @@ class RecalculationJobConsumer:
                         async with db.begin():
                             await RecalculationLogic.execute(
                                 db_session=db,
+                                job_id=job_to_process.id,
                                 portfolio_id=job_to_process.portfolio_id,
                                 security_id=job_to_process.security_id,
-                                from_date=job_to_process.from_date
+                                from_date=job_to_process.from_date,
+                                correlation_id=job_to_process.correlation_id
                             )
                             # Mark the job as complete only after the logic succeeds
                             await repo.update_job_status(job_to_process.id, "COMPLETE")
@@ -67,7 +69,7 @@ class RecalculationJobConsumer:
                 if job_to_process:
                     try:
                         async for db in get_async_db_session():
-                             async with db.begin():
+                            async with db.begin():
                                 repo = RecalculationRepository(db)
                                 await repo.update_job_status(job_to_process.id, "FAILED")
                     except Exception as repo_exc:
