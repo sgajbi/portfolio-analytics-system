@@ -78,12 +78,50 @@ class MWRCalculator:
         end_mv: Decimal,
         external_flows_portfolio_sign: List[Tuple[date, Decimal]],
         annualize: bool = True
-    ) -> dict:
+    ) -> Optional[dict]:
         """
         Builds investor-sign timeline:
         CF(t0) = -begin_mv, CF(flows) = -flow_amount, CF(tN) = +end_mv,
-        solves XIRR with actual day-count exponents, returns:
-        { "mwr": Decimal, "mwr_annualized": Decimal|None, "count": int }
+        solves XIRR with actual day-count exponents, and returns the results.
         """
-        # To be implemented
-        return {}
+        # 1. Build the cashflow timeline in "investor sign" convention
+        timeline = []
+        
+        # Initial investment (outflow from investor's perspective)
+        if begin_mv > 0:
+            timeline.append((start_date, -begin_mv))
+            
+        # Intermediate flows (portfolio inflow is investor outflow, hence negate)
+        for flow_date, flow_amount in external_flows_portfolio_sign:
+            timeline.append((flow_date, -flow_amount))
+            
+        # Final value (inflow to investor's perspective)
+        if end_mv > 0:
+            timeline.append((end_date, end_mv))
+
+        # Coalesce flows on the same day
+        coalesced_timeline_dict = {}
+        for d, cf in timeline:
+            coalesced_timeline_dict[d] = coalesced_timeline_dict.get(d, Decimal(0)) + cf
+        
+        coalesced_timeline = list(coalesced_timeline_dict.items())
+
+        # 2. Solve for XIRR
+        mwr = self.compute_xirr(coalesced_timeline)
+
+        if mwr is None:
+            return None
+
+        # 3. Handle annualization
+        mwr_annualized = None
+        period_days = (end_date - start_date).days
+        if annualize:
+             # XIRR is already annualized due to the (days/365) exponent.
+             # Conventionally, we don't show an annualized figure for periods under a year.
+            if period_days >= 365:
+                mwr_annualized = mwr
+
+        return {
+            "mwr": mwr,
+            "mwr_annualized": mwr_annualized,
+        }
