@@ -54,7 +54,7 @@ class PositionCalculator:
 
             if is_backdated and not is_recalculation_event:
                 logger.info(f"Backdated transaction {event.transaction_id} detected. Staging recalculation job.")
-                await repo.upsert_recalculation_job(
+                await repo.create_recalculation_job(
                     portfolio_id=final_position_state.portfolio_id,
                     security_id=final_position_state.security_id,
                     from_date=final_position_state.position_date,

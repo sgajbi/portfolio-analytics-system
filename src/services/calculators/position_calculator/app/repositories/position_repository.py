@@ -11,6 +11,8 @@ from portfolio_common.database_models import (
     RecalculationJob
 )
 from portfolio_common.utils import async_timed
+from portfolio_common.recalculation_job_repository import RecalculationJobRepository
+from portfolio_common.valuation_job_repository import ValuationJobRepository
 
 logger = logging.getLogger(__name__)
 
@@ -40,34 +42,19 @@ class PositionRepository:
         correlation_id: Optional[str] = None
     ) -> None:
         """
-        Idempotently creates or updates a valuation job, setting its status to 'PENDING'.
+        Idempotently creates or updates a valuation job by delegating to the common repository.
         """
-        try:
-            job_data = {
-                "portfolio_id": portfolio_id,
-                "security_id": security_id,
-                "valuation_date": valuation_date,
-                "status": "PENDING",
-                "correlation_id": correlation_id,
-            }
-            stmt = pg_insert(PortfolioValuationJob).values(**job_data)
-            update_dict = {
-                "status": "PENDING",
-                "correlation_id": stmt.excluded.correlation_id,
-                "updated_at": func.now(),
-            }
-            final_stmt = stmt.on_conflict_do_update(
-                index_elements=['portfolio_id', 'security_id', 'valuation_date'],
-                set_=update_dict
-            )
-            await self.db.execute(final_stmt)
-            logger.info(f"Staged upsert for VALUATION job for {security_id} on {valuation_date}")
-        except Exception as e:
-            logger.error(f"Failed to stage upsert for valuation job: {e}", exc_info=True)
-            raise
+        repo = ValuationJobRepository(self.db)
+        await repo.upsert_job(
+            portfolio_id=portfolio_id,
+            security_id=security_id,
+            valuation_date=valuation_date,
+            correlation_id=correlation_id
+        )
+        logger.info(f"Staged upsert for VALUATION job for {security_id} on {valuation_date}")
 
-    @async_timed(repository="PositionRepository", method="upsert_recalculation_job")
-    async def upsert_recalculation_job(
+    @async_timed(repository="PositionRepository", method="create_recalculation_job")
+    async def create_recalculation_job(
         self,
         portfolio_id: str,
         security_id: str,
@@ -75,32 +62,16 @@ class PositionRepository:
         correlation_id: Optional[str] = None,
     ) -> None:
         """
-        Idempotently creates or updates a recalculation job.
+        Creates a new recalculation job by delegating to the common repository.
         """
-        try:
-            job_data = {
-                "portfolio_id": portfolio_id,
-                "security_id": security_id,
-                "from_date": from_date,
-                "status": "PENDING",
-                "correlation_id": correlation_id,
-            }
-            stmt = pg_insert(RecalculationJob).values(**job_data)
-            update_dict = {
-                "status": "PENDING",
-                "from_date": func.least(RecalculationJob.from_date, stmt.excluded.from_date),
-                "correlation_id": stmt.excluded.correlation_id,
-                "updated_at": func.now(),
-            }
-            final_stmt = stmt.on_conflict_do_update(
-                index_elements=['portfolio_id', 'security_id'],
-                set_=update_dict
-            )
-            await self.db.execute(final_stmt)
-            logger.info(f"Staged upsert for RECALCULATION job for {security_id} from {from_date}")
-        except Exception as e:
-            logger.error(f"Failed to stage upsert for recalculation job: {e}", exc_info=True)
-            raise
+        repo = RecalculationJobRepository(self.db)
+        await repo.create_job(
+            portfolio_id=portfolio_id,
+            security_id=security_id,
+            from_date=from_date,
+            correlation_id=correlation_id,
+        )
+        logger.info(f"Staged new RECALCULATION job for {security_id} from {from_date}")
 
     @async_timed(repository="PositionRepository", method="find_open_security_ids_as_of")
     async def find_open_security_ids_as_of(self, portfolio_id: str, a_date: date) -> List[str]:

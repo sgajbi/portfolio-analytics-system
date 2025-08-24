@@ -73,7 +73,7 @@ class PriceEventConsumer(BaseConsumer):
                         
                         for portfolio_id in affected_portfolios:
                             if is_backdated:
-                                await recalc_job_repo.upsert_job(
+                                await recalc_job_repo.create_job(
                                     portfolio_id=portfolio_id,
                                     security_id=event.security_id,
                                     from_date=event.price_date,

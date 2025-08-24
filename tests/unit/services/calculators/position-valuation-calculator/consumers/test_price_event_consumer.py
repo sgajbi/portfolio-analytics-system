@@ -105,9 +105,9 @@ async def test_creates_recalculation_job_for_backdated_price(
     await consumer.process_message(mock_kafka_message)
 
     # ASSERT
-    mock_recalc_job_repo.upsert_job.assert_awaited_once()
+    mock_recalc_job_repo.create_job.assert_awaited_once()
     mock_valuation_job_repo.upsert_job.assert_not_called()
-    call_args = mock_recalc_job_repo.upsert_job.call_args.kwargs
+    call_args = mock_recalc_job_repo.create_job.call_args.kwargs
     assert call_args['from_date'] == mock_event.price_date
 
 async def test_creates_valuation_job_for_current_price(
@@ -137,6 +137,6 @@ async def test_creates_valuation_job_for_current_price(
 
     # ASSERT
     mock_valuation_job_repo.upsert_job.assert_awaited_once()
-    mock_recalc_job_repo.upsert_job.assert_not_called()
+    mock_recalc_job_repo.create_job.assert_not_called()
     call_args = mock_valuation_job_repo.upsert_job.call_args.kwargs
     assert call_args['valuation_date'] == mock_event.price_date

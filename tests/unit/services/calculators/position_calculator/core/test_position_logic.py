@@ -43,7 +43,7 @@ async def test_calculate_creates_valuation_job_for_current_transaction(mock_repo
 
     # ASSERT
     mock_repo.upsert_valuation_job.assert_awaited_once()
-    mock_repo.upsert_recalculation_job.assert_not_called()
+    mock_repo.create_recalculation_job.assert_not_called()
     call_args = mock_repo.upsert_valuation_job.call_args.kwargs
     assert call_args['valuation_date'] == date(2025, 8, 20)
 
@@ -61,9 +61,9 @@ async def test_calculate_creates_recalculation_job_for_backdated_transaction(moc
     await PositionCalculator.calculate(sample_event, AsyncMock(), mock_repo)
 
     # ASSERT
-    mock_repo.upsert_recalculation_job.assert_awaited_once()
+    mock_repo.create_recalculation_job.assert_awaited_once()
     mock_repo.upsert_valuation_job.assert_not_called()
-    call_args = mock_repo.upsert_recalculation_job.call_args.kwargs
+    call_args = mock_repo.create_recalculation_job.call_args.kwargs
     assert call_args['from_date'] == date(2025, 8, 20)
 
 
@@ -84,4 +84,4 @@ async def test_calculate_creates_valuation_job_for_backdated_recalc_event(mock_r
 
     # ASSERT: It should create a VALUATION job, not a recalculation job.
     mock_repo.upsert_valuation_job.assert_awaited_once()
-    mock_repo.upsert_recalculation_job.assert_not_called()
+    mock_repo.create_recalculation_job.assert_not_called()
