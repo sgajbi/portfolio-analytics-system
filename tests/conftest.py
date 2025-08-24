@@ -64,7 +64,7 @@ def db_engine(docker_services: DockerCompose):
 
 # List of all tables to be cleaned. Centralized here.
 TABLES_TO_TRUNCATE = [
-    "recalculation_jobs", # <-- ADDED
+    "recalculation_jobs",
     "business_dates",
     "portfolio_valuation_jobs", "portfolio_aggregation_jobs", "transaction_costs", "cashflows", "position_history", "daily_position_snapshots",
     "position_timeseries", "portfolio_timeseries", "transactions", "market_prices",
@@ -97,7 +97,7 @@ def clean_db_module(db_engine):
         "position_calculator_service",
         "position_valuation_calculator",
         "timeseries_generator_service",
-        "recalculation_service" # <-- ADDED
+        "recalculation_service"
     ]
 
     print("\n--- Stopping services for module cleanup ---")
@@ -162,13 +162,6 @@ def api_endpoints(docker_services):
 def poll_for_data():
     """
     Provides a generic polling utility to query an endpoint until a condition is met.
-    
-    Args:
-        url (str): The API endpoint to poll.
-        validation_func (callable): A function that takes the response JSON and returns True if valid.
-        timeout (int): The maximum time to wait in seconds.
-    Returns:
-        A callable polling function.
     """
     def _poll(url: str, validation_func, timeout: int = 45, fail_message: str = "Polling timed out"):
         start_time = time.time()
@@ -181,7 +174,6 @@ def poll_for_data():
                     if validation_func(last_response_data):
                         return last_response_data
             except requests.ConnectionError:
-                # Service may not be ready, just continue polling
                 pass 
             time.sleep(1)
         
@@ -202,6 +194,7 @@ def poll_db_until(db_engine):
         params: dict = {},
         timeout: int = 60,
         interval: int = 2,
+        fail_message: str = "DB Polling timed out."
     ):
         start_time = time.time()
         last_result = None
@@ -214,6 +207,6 @@ def poll_db_until(db_engine):
             time.sleep(interval)
         
         pytest.fail(
-            f"DB Polling timed out after {timeout} seconds. Last result: {last_result}"
+            f"{fail_message} after {timeout} seconds. Last result: {last_result}"
         )
     return _poll
