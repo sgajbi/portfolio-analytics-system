@@ -1,15 +1,16 @@
 # services/calculators/position-valuation-calculator/app/repositories/valuation_repository.py
 import logging
 from datetime import date, datetime, timedelta, timezone
-from typing import List, Optional, Dict
-from sqlalchemy import select, func, distinct, exists, text, update, delete
+from typing import List, Optional, Dict, Tuple
+from sqlalchemy import select, func, distinct, exists, text, update, delete, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import aliased
 
 from portfolio_common.database_models import (
     PositionHistory, MarketPrice, DailyPositionSnapshot, FxRate, Instrument, Portfolio,
-    PortfolioValuationJob, Transaction, BusinessDate, PortfolioTimeseries, PositionTimeseries
+    PortfolioValuationJob, Transaction, BusinessDate, PortfolioTimeseries, PositionTimeseries,
+    RecalculationJob
 )
 from portfolio_common.utils import async_timed
 
@@ -21,6 +22,32 @@ class ValuationRepository:
     """
     def __init__(self, db: AsyncSession):
         self.db = db
+
+    @async_timed(repository="ValuationRepository", method="are_recalculations_processing")
+    async def are_recalculations_processing(self, portfolio_security_pairs: List[Tuple[str, str]]) -> List[Tuple[str, str]]:
+        """
+        Checks which of the given (portfolio_id, security_id) pairs have an active
+        recalculation job in the 'PROCESSING' state.
+
+        Args:
+            portfolio_security_pairs: A list of tuples, where each tuple is (portfolio_id, security_id).
+
+        Returns:
+            A list of (portfolio_id, security_id) tuples for which an active recalculation job exists.
+        """
+        if not portfolio_security_pairs:
+            return []
+
+        # Create a condition to check for multiple pairs using tuple comparison
+        stmt = (
+            select(RecalculationJob.portfolio_id, RecalculationJob.security_id)
+            .where(
+                tuple_(RecalculationJob.portfolio_id, RecalculationJob.security_id).in_(portfolio_security_pairs),
+                RecalculationJob.status == 'PROCESSING'
+            )
+        )
+        result = await self.db.execute(stmt)
+        return result.all()
 
     @async_timed(repository="ValuationRepository", method="delete_downstream_valuation_data")
     async def delete_downstream_valuation_data(self, portfolio_id: str, security_id: str, from_date: date) -> None:
@@ -34,22 +61,17 @@ class ValuationRepository:
             extra={"portfolio_id": portfolio_id, "security_id": security_id, "from_date": from_date.isoformat()}
         )
         
-        # The portfolio-level timeseries aggregates from many positions, so we must be careful.
-        # We only delete records from the date forward for the specific portfolio.
-        # The portfolio timeseries consumer will correctly rebuild it using the updated position data.
         await self.db.execute(delete(PortfolioTimeseries).where(
             PortfolioTimeseries.portfolio_id == portfolio_id,
             PortfolioTimeseries.date >= from_date
         ))
         
-        # Then delete the position-specific timeseries
         await self.db.execute(delete(PositionTimeseries).where(
             PositionTimeseries.portfolio_id == portfolio_id,
             PositionTimeseries.security_id == security_id,
             PositionTimeseries.date >= from_date
         ))
         
-        # Finally, delete the daily snapshots that drive the timeseries generation
         await self.db.execute(delete(DailyPositionSnapshot).where(
             DailyPositionSnapshot.portfolio_id == portfolio_id,
             DailyPositionSnapshot.security_id == security_id,
