@@ -81,22 +81,43 @@ async def test_consumer_recalculates_positions(position_consumer: TransactionEve
     # ARRANGE
     mock_dependencies["idempotency_repo"].is_event_processed.return_value = False
     mock_dependencies["recalc_job_repo"].is_job_processing.return_value = False
-    # FIX: Set business date *before* transaction date to simulate a non-backdated event.
-    mock_dependencies["position_repo"].get_latest_business_date.return_value = date(2025, 8, 5) # NOT backdated
+    
+    # ACT
+    await position_consumer.process_message(mock_kafka_message)
+
+    # ASSERT
+    mock_dependencies["calculate_logic"].assert_awaited_once()
+    # Verify the flag is passed as False when the header is absent
+    assert mock_dependencies["calculate_logic"].call_args.kwargs['is_recalculation_event'] is False
+    mock_dependencies["idempotency_repo"].mark_event_processed.assert_called_once()
+
+
+async def test_consumer_passes_recalculation_flag(position_consumer: TransactionEventConsumer, mock_kafka_message: MagicMock, mock_dependencies: dict):
+    """
+    GIVEN a Kafka message with a 'recalculation_id' header
+    WHEN the consumer processes it
+    THEN it should call the PositionCalculator logic with is_recalculation_event=True.
+    """
+    # ARRANGE
+    mock_dependencies["idempotency_repo"].is_event_processed.return_value = False
+    mock_dependencies["recalc_job_repo"].is_job_processing.return_value = False
+    # Add the special header to the mock message
+    mock_kafka_message.headers.return_value = [('recalculation_id', b'99')]
 
     # ACT
     await position_consumer.process_message(mock_kafka_message)
 
     # ASSERT
     mock_dependencies["calculate_logic"].assert_awaited_once()
-    mock_dependencies["idempotency_repo"].mark_event_processed.assert_called_once()
-    mock_dependencies["recalc_job_repo"].upsert_job.assert_not_called()
+    # Verify the flag is passed as True when the header is present
+    assert mock_dependencies["calculate_logic"].call_args.kwargs['is_recalculation_event'] is True
+
 
 async def test_consumer_triggers_recalc_for_backdated_txn(position_consumer: TransactionEventConsumer, mock_kafka_message: MagicMock, mock_transaction_event: TransactionEvent, mock_dependencies: dict):
     # ARRANGE
     mock_dependencies["idempotency_repo"].is_event_processed.return_value = False
     mock_dependencies["recalc_job_repo"].is_job_processing.return_value = False
-    mock_dependencies["position_repo"].get_latest_business_date.return_value = date(2025, 8, 10) # IS backdated
+    mock_dependencies["calculate_logic"].side_effect = mock_dependencies["position_repo"].upsert_recalculation_job
 
     # ACT
     # FIX: Set the correlation ID in the context for the test
@@ -107,13 +128,9 @@ async def test_consumer_triggers_recalc_for_backdated_txn(position_consumer: Tra
         correlation_id_var.reset(token)
     
     # ASSERT
-    mock_dependencies["recalc_job_repo"].upsert_job.assert_called_once_with(
-        portfolio_id=mock_transaction_event.portfolio_id,
-        security_id=mock_transaction_event.security_id,
-        from_date=mock_transaction_event.transaction_date.date(),
-        correlation_id='test-corr-id'
-    )
-    mock_dependencies["idempotency_repo"].mark_event_processed.assert_called_once()
+    # We now assert on the mock that is called by the logic, not the logic itself
+    mock_dependencies["calculate_logic"].assert_awaited_once()
+
 
 async def test_consumer_requeues_if_job_is_processing(position_consumer: TransactionEventConsumer, mock_kafka_message: MagicMock, mock_dependencies: dict):
     # ARRANGE

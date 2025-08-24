@@ -65,3 +65,23 @@ async def test_calculate_creates_recalculation_job_for_backdated_transaction(moc
     mock_repo.upsert_valuation_job.assert_not_called()
     call_args = mock_repo.upsert_recalculation_job.call_args.kwargs
     assert call_args['from_date'] == date(2025, 8, 20)
+
+
+async def test_calculate_creates_valuation_job_for_backdated_recalc_event(mock_repo: AsyncMock, sample_event: TransactionEvent):
+    """
+    GIVEN a transaction that IS backdated but is also part of a recalculation flow
+    WHEN PositionCalculator.calculate runs
+    THEN it should create a VALUATION job, breaking the infinite loop.
+    """
+    # ARRANGE
+    mock_repo.get_latest_business_date.return_value = date(2025, 8, 25) # Backdated
+    mock_repo.get_transactions_on_or_after.return_value = [sample_event]
+
+    # ACT: Call with the is_recalculation_event flag set to True
+    await PositionCalculator.calculate(
+        sample_event, AsyncMock(), mock_repo, is_recalculation_event=True
+    )
+
+    # ASSERT: It should create a VALUATION job, not a recalculation job.
+    mock_repo.upsert_valuation_job.assert_awaited_once()
+    mock_repo.upsert_recalculation_job.assert_not_called()
