@@ -44,24 +44,22 @@ class RecalculationRepository:
         pending jobs for the same (portfolio_id, security_id) pair.
         Coalesces them into a single unit of work.
         """
-        # Step 1: Find and lock the single oldest PENDING job to determine the work item.
-        oldest_job_stmt = (
-            select(RecalculationJob)
+        # Phase 1: Discover the next item of work without locking.
+        oldest_job_identity_stmt = (
+            select(RecalculationJob.portfolio_id, RecalculationJob.security_id)
             .where(RecalculationJob.status == 'PENDING')
             .order_by(RecalculationJob.from_date.asc(), RecalculationJob.created_at.asc())
             .limit(1)
-            .with_for_update(skip_locked=True)
         )
-        result = await self.db.execute(oldest_job_stmt)
-        oldest_job = result.scalars().first()
+        result = await self.db.execute(oldest_job_identity_stmt)
+        job_identity = result.first()
 
-        if not oldest_job:
+        if not job_identity:
             return None # No pending jobs found
 
-        # Step 2: Find all other PENDING jobs for the same security, also locking them.
-        portfolio_id = oldest_job.portfolio_id
-        security_id = oldest_job.security_id
-        
+        portfolio_id, security_id = job_identity
+
+        # Phase 2: Find and lock all PENDING jobs for this specific security.
         all_related_jobs_stmt = (
             select(RecalculationJob)
             .where(
@@ -74,7 +72,9 @@ class RecalculationRepository:
         result = await self.db.execute(all_related_jobs_stmt)
         all_related_jobs = result.scalars().all()
 
-        if not all_related_jobs: # Should not happen if oldest_job was found, but defensive check
+        if not all_related_jobs:
+            # This can happen in a race condition where another worker just processed these jobs
+            # between our first and second query. This is a valid, safe outcome.
             return None
 
         # Step 3: Coalesce, Update status to PROCESSING for all claimed jobs
