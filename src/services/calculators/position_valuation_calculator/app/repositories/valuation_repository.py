@@ -2,14 +2,14 @@
 import logging
 from datetime import date, datetime, timedelta, timezone
 from typing import List, Optional, Dict
-from sqlalchemy import select, func, distinct, exists, text, update
+from sqlalchemy import select, func, distinct, exists, text, update, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import aliased
 
 from portfolio_common.database_models import (
     PositionHistory, MarketPrice, DailyPositionSnapshot, FxRate, Instrument, Portfolio,
-    PortfolioValuationJob, Transaction, BusinessDate
+    PortfolioValuationJob, Transaction, BusinessDate, PortfolioTimeseries, PositionTimeseries
 )
 from portfolio_common.utils import async_timed
 
@@ -21,6 +21,40 @@ class ValuationRepository:
     """
     def __init__(self, db: AsyncSession):
         self.db = db
+
+    @async_timed(repository="ValuationRepository", method="delete_downstream_valuation_data")
+    async def delete_downstream_valuation_data(self, portfolio_id: str, security_id: str, from_date: date) -> None:
+        """
+        Deletes downstream data related to valuation and time series for a specific
+        security in a portfolio from a given date onwards. This is used when a
+        backdated price arrives, which does not affect transaction-level calculations.
+        """
+        logger.info(
+            "Deleting downstream valuation/timeseries data for backdated price update",
+            extra={"portfolio_id": portfolio_id, "security_id": security_id, "from_date": from_date.isoformat()}
+        )
+        
+        # The portfolio-level timeseries aggregates from many positions, so we must be careful.
+        # We only delete records from the date forward for the specific portfolio.
+        # The portfolio timeseries consumer will correctly rebuild it using the updated position data.
+        await self.db.execute(delete(PortfolioTimeseries).where(
+            PortfolioTimeseries.portfolio_id == portfolio_id,
+            PortfolioTimeseries.date >= from_date
+        ))
+        
+        # Then delete the position-specific timeseries
+        await self.db.execute(delete(PositionTimeseries).where(
+            PositionTimeseries.portfolio_id == portfolio_id,
+            PositionTimeseries.security_id == security_id,
+            PositionTimeseries.date >= from_date
+        ))
+        
+        # Finally, delete the daily snapshots that drive the timeseries generation
+        await self.db.execute(delete(DailyPositionSnapshot).where(
+            DailyPositionSnapshot.portfolio_id == portfolio_id,
+            DailyPositionSnapshot.security_id == security_id,
+            DailyPositionSnapshot.date >= from_date
+        ))
 
     @async_timed(repository="ValuationRepository", method="get_last_position_history_before_date")
     async def get_last_position_history_before_date(self, portfolio_id: str, security_id: str, a_date: date) -> Optional[PositionHistory]:
@@ -64,6 +98,7 @@ class ValuationRepository:
         last known snapshot on or before a given date. This is used to find all
         portfolios affected by a new market price.
         """
+        
         latest_snapshot_subq = (
             select(
                 DailyPositionSnapshot.portfolio_id,
@@ -93,6 +128,7 @@ class ValuationRepository:
         logger.info(f"Found {len(portfolio_ids)} portfolios holding '{security_id}' on or before {a_date}.")
         return portfolio_ids
 
+    
     @async_timed(repository="ValuationRepository", method="get_all_open_positions")
     async def get_all_open_positions(self) -> List[Dict[str, any]]:
         """
