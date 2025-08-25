@@ -94,7 +94,7 @@ class ValuationRepository:
                 COALESCE(
                     fg.first_gap_date - interval '1 day',
                     ls.latest_snapshot_date
-                ) AS contiguous_date
+                )::date AS contiguous_date
             FROM
                 latest_snapshot ls
             LEFT JOIN
@@ -104,7 +104,7 @@ class ValuationRepository:
                 AND ls.security_id = fg.security_id
         """).bindparams(keys=keys_tuple)
         # --- END FIX ---
-        
+
         result = await self.db.execute(stmt)
         return {(row.portfolio_id, row.security_id): row.contiguous_date for row in result.mappings()}
 
