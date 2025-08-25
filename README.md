@@ -95,7 +95,7 @@ graph TD
 
   - **`ingestion_service`**: A write-only FastAPI application serving as the single entry point for all incoming data (portfolios, instruments, transactions, etc.). It validates data and publishes raw events to Kafka.
   - **`persistence-service`**: A generic consumer responsible for persisting raw data from Kafka to the PostgreSQL database. On successful persistence, it publishes a `_completed` event to an outbox for reliable downstream processing.
-  - **`query-service`**: A read-only FastAPI application providing a comprehensive set of endpoints to access all processed data. It handles on-the-fly calculations for complex queries like Time-Weighted Return (TWR) and Money-Weighted Return (MWR).
+  - **`query-service`**: A read-only FastAPI application providing a comprehensive set of endpoints to access all processed data. It handles on-the-fly calculations for complex queries like Time-Weighted Return (TWR) performance.
   - **Calculator Services (`services/calculators/`)**: A suite of specialized, idempotent consumers that perform core business logic:
       - **`cost-calculator-service`**: Calculates cost basis and realized gains/losses for transactions, with full support for dual-currency trades.
       - **`cashflow-calculator-service`**: Generates cashflow records from transactions based on configurable business rules.
@@ -140,21 +140,18 @@ The system relies on a well-defined sequence of events published to Kafka topics
   - `GET /portfolios/{portfolio_id}/positions`: Retrieves the latest position for each security in a portfolio, including dual-currency valuation.
   - `GET /portfolios/{portfolio_id}/position-history`: Retrieves the historical time series of positions for a specific security within a portfolio.
   - `GET /portfolios/{portfolio_id}/transactions`: Retrieves a paginated list of transactions for a portfolio, including dual-currency costs and P\&L. Supports sorting and filtering.
-  - `POST /portfolios/{portfolio_id}/performance`: Calculates **Time-Weighted Return (TWR)** for a portfolio over one or more specified periods.
-  - `POST /portfolios/{portfolio_id}/performance/mwr`: Calculates **Money-Weighted Return (MWR / IRR)** for a portfolio over one or more specified periods.
+  - `POST /portfolios/{portfolio_id}/performance`: Calculates Time-Weighted Return (TWR) for a portfolio over one or more specified periods. Supports multiple period types (MTD, YTD, SI, etc.), Net/Gross calculations, and currency overrides in a single request.
   - `GET /instruments/`: Retrieves a paginated list of all financial instruments.
   - `GET /prices/`: Retrieves historical market prices for a security.
   - `GET /fx-rates/`: Retrieves historical FX rates for a currency pair.
   - `GET /health/live`: Liveness probe for the service.
   - `GET /health/ready`: Readiness probe (checks database connection).
 
-### 4.1 Performance API Examples
+### 4.1 Performance API Example
 
-The performance endpoints are highly flexible. You can request multiple, named periods in a single call.
+The performance endpoint is highly flexible. You can request multiple, named periods in a single call.
 
-#### Time-Weighted Return (TWR) Example
-
-**Request:** `POST http://localhost:8001/portfolios/E2E_ADV_PERF_01/performance`
+**Example Request:** `POST http://localhost:8001/portfolios/E2E_ADV_PERF_01/performance`
 
 ```json
 {
@@ -175,44 +172,42 @@ The performance endpoints are highly flexible. You can request multiple, named p
 }
 ```
 
-#### Money-Weighted Return (MWR) Example
-
-**Request:** `POST http://localhost:8001/portfolios/E2E_MWR_PERF_01/performance/mwr`
+**Example Response:**
 
 ```json
 {
-    "scope": { 
-        "as_of_date": "2025-01-31" 
+    "scope": {
+        "as_of_date": "2025-03-11",
+        "reporting_currency": null,
+        "net_or_gross": "NET"
     },
-    "periods": [
-        { "type": "EXPLICIT", "name": "TestPeriod", "from": "2025-01-01", "to": "2025-01-31" }
-    ],
-    "options": { "annualize": true }
-}
-```
-
-**Response:**
-
-```json
-{
-  "scope": {
-    "as_of_date": "2025-01-31"
-  },
-  "summary": {
-    "TestPeriod": {
-      "start_date": "2025-01-01",
-      "end_date": "2025-01-31",
-      "mwr": 0.7128637691,
-      "mwr_annualized": null,
-      "attributes": {
-        "begin_market_value": "0.0000000000",
-        "end_market_value": "1250.0000040000",
-        "external_contributions": "1200.0000000000",
-        "external_withdrawals": "0.0000000000",
-        "cashflow_count": 2
-      }
-    }
-  }
+    "summary": {
+        "Month To Date": {
+            "start_date": "2025-03-01",
+            "end_date": "2025-03-11",
+            "cumulative_return": 5.000000000000004,
+            "annualized_return": null,
+            "attributes": {
+                "begin_market_value": "0.0000000000",
+                "end_market_value": "10500.0000000000",
+                "total_cashflow": "10000.0000000000",
+                "fees": "0.0000000000"
+            }
+        },
+        "SpecificRange": {
+            "start_date": "2025-03-10",
+            "end_date": "2025-03-11",
+            "cumulative_return": 5.000000000000004,
+            "annualized_return": null,
+            "attributes": {
+                "begin_market_value": "0.0000000000",
+                "end_market_value": "10500.0000000000",
+                "total_cashflow": "10000.0000000000",
+                "fees": "0.0000000000"
+            }
+        }
+    },
+    "breakdowns": null
 }
 ```
 
@@ -427,5 +422,5 @@ This example demonstrates the full flow from ingesting a cross-currency trade to
     The script will print the final `positions` and `transactions` JSON responses to the console, which should match the expected output shown in the previous version of this README.
 
 <!-- end list -->
-
+ 
  
