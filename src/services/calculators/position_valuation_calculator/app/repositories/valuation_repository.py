@@ -1,4 +1,4 @@
-# services/calculators/position-valuation-calculator/app/repositories/valuation_repository.py
+# src/services/calculators/position-valuation-calculator/app/repositories/valuation_repository.py
 import logging
 from datetime import date, datetime, timedelta, timezone
 from typing import List, Optional, Dict, Tuple
@@ -54,12 +54,25 @@ class ValuationRepository:
         # If no gaps are found, it returns the latest snapshot date for that key.
         
         # 1. Subquery to find the first gap date for each key
-        date_series = text("""
-            SELECT s.portfolio_id, s.security_id, s.epoch, d.dt as expected_date
-            FROM position_state s
-            JOIN LATERAL GENERATE_SERIES(s.watermark_date + 1, (SELECT MAX(date) FROM business_dates), '1 day'::interval) d(dt) ON TRUE
-            WHERE tuple(s.portfolio_id, s.security_id) IN :keys
-        """).bindparams(keys=keys_tuple).cte('date_series')
+        s = aliased(PositionState)
+        d = func.generate_series(
+            s.watermark_date + timedelta(days=1),
+            select(func.max(BusinessDate.date)).scalar_subquery(),
+            timedelta(days=1)
+        ).alias('d')
+        
+        date_series = (
+            select(
+                s.portfolio_id,
+                s.security_id,
+                s.epoch,
+                d.column_0.label("expected_date")
+            )
+            .select_from(s)
+            .join(d, text("true")) # Lateral join equivalent
+            .where(tuple_(s.portfolio_id, s.security_id).in_(keys_tuple))
+            .cte('date_series')
+        )
 
         snapshots_alias = aliased(DailyPositionSnapshot)
         
