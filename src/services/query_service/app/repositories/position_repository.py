@@ -62,20 +62,12 @@ class PositionRepository:
         Retrieves the single latest daily snapshot for each security in a given portfolio,
         ensuring that the snapshot belongs to the current epoch for that security.
         """
-        # Subquery to get the latest epoch for each security in the portfolio
-        latest_epoch_subq = (
-            select(
-                PositionState.security_id,
-                func.max(PositionState.epoch).label("max_epoch")
-            )
-            .where(PositionState.portfolio_id == portfolio_id)
-            .group_by(PositionState.security_id)
-            .subquery('latest_epoch')
-        )
-
-        # Subquery to rank snapshots within each security's latest epoch
+        # --- UPDATED QUERY LOGIC ---
+        # Subquery to rank snapshots within each security, but only for snapshots
+        # that match the current epoch defined in the position_state table.
         ranked_snapshots_subq = select(
             DailyPositionSnapshot,
+            Instrument.name.label("instrument_name"),
             func.row_number().over(
                 partition_by=DailyPositionSnapshot.security_id,
                 order_by=[
@@ -84,26 +76,28 @@ class PositionRepository:
                 ]
             ).label('rn')
         ).join(
-            latest_epoch_subq,
-            (DailyPositionSnapshot.security_id == latest_epoch_subq.c.security_id) &
-            (DailyPositionSnapshot.epoch == latest_epoch_subq.c.max_epoch)
+            PositionState,
+            (DailyPositionSnapshot.portfolio_id == PositionState.portfolio_id) &
+            (DailyPositionSnapshot.security_id == PositionState.security_id) &
+            (DailyPositionSnapshot.epoch == PositionState.epoch)
+        ).join(
+            Instrument, Instrument.security_id == DailyPositionSnapshot.security_id, isouter=True
         ).filter(
             DailyPositionSnapshot.portfolio_id == portfolio_id
         ).subquery('ranked_snapshots')
 
         ranked_alias = aliased(DailyPositionSnapshot, ranked_snapshots_subq)
 
-        # Final query to select the top-ranked snapshot for each security
+        # Final query to select the top-ranked snapshot (rn=1) for each security
+        # and filter out any closed positions (quantity > 0).
         stmt = select(
             ranked_alias,
-            Instrument.name.label('instrument_name')
-        ).join(
-            Instrument, Instrument.security_id == ranked_alias.security_id, isouter=True
+            ranked_snapshots_subq.c.instrument_name
         ).filter(
             ranked_snapshots_subq.c.rn == 1,
             ranked_alias.quantity > 0
         )
-
+        
         results = await self.db.execute(stmt)
         positions = results.all()
         logger.info(f"Found {len(positions)} latest positions for portfolio '{portfolio_id}'.")
