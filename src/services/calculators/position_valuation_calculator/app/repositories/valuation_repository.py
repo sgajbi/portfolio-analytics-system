@@ -345,3 +345,42 @@ class ValuationRepository:
             logger.warning(f"Reset {reset_count} stale valuation jobs from 'PROCESSING' to 'PENDING'.")
             
         return reset_count
+
+    # --- NEW METHOD ---
+    @async_timed(repository="ValuationRepository", method="get_all_open_positions")
+    async def get_all_open_positions(self) -> List[dict]:
+        """
+        Finds all unique (portfolio_id, security_id) pairs that currently have
+        an open position (quantity > 0) based on their most recent snapshot.
+        """
+        # Subquery to rank snapshots for each security within each portfolio by date
+        ranked_snapshots_subq = (
+            select(
+                DailyPositionSnapshot.portfolio_id,
+                DailyPositionSnapshot.security_id,
+                DailyPositionSnapshot.quantity,
+                func.row_number().over(
+                    partition_by=(
+                        DailyPositionSnapshot.portfolio_id,
+                        DailyPositionSnapshot.security_id,
+                    ),
+                    order_by=DailyPositionSnapshot.date.desc(),
+                ).label("rn"),
+            )
+            .subquery()
+        )
+
+        # Select the portfolio and security IDs from the subquery where the rank is 1
+        # (the latest) and the quantity is positive.
+        stmt = select(
+            ranked_snapshots_subq.c.portfolio_id,
+            ranked_snapshots_subq.c.security_id
+        ).where(
+            ranked_snapshots_subq.c.rn == 1,
+            ranked_snapshots_subq.c.quantity > 0
+        )
+
+        result = await self.db.execute(stmt)
+        open_positions = result.mappings().all()
+        logger.info(f"Found {len(open_positions)} open positions across all portfolios.")
+        return open_positions
