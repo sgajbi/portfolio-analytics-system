@@ -23,6 +23,42 @@ class ValuationRepository:
     def __init__(self, db: AsyncSession):
         self.db = db
 
+    @async_timed(repository="ValuationRepository", method="find_portfolios_holding_security_on_date")
+    async def find_portfolios_holding_security_on_date(self, security_id: str, a_date: date) -> List[str]:
+        """
+        Finds all unique portfolio_ids that had a non-zero position in a given
+        security, based on the latest snapshot on or before the given price date.
+        """
+        # Subquery to rank snapshots for the given security within each portfolio
+        # by date, to find the most recent one on or before 'a_date'.
+        latest_snapshot_subquery = (
+            select(
+                DailyPositionSnapshot.portfolio_id,
+                DailyPositionSnapshot.quantity,
+                func.row_number().over(
+                    partition_by=DailyPositionSnapshot.portfolio_id,
+                    order_by=DailyPositionSnapshot.date.desc(),
+                ).label("rn")
+            )
+            .where(
+                DailyPositionSnapshot.security_id == security_id,
+                DailyPositionSnapshot.date <= a_date
+            )
+            .subquery()
+        )
+
+        # Select the portfolio_id from the subquery where the rank is 1 (the latest)
+        # and the quantity is positive.
+        stmt = select(latest_snapshot_subquery.c.portfolio_id).where(
+            latest_snapshot_subquery.c.rn == 1,
+            latest_snapshot_subquery.c.quantity > 0
+        )
+
+        result = await self.db.execute(stmt)
+        portfolio_ids = result.scalars().all()
+        logger.info(f"Found {len(portfolio_ids)} portfolios holding '{security_id}' on or before {a_date}.")
+        return portfolio_ids
+
     @async_timed(repository="ValuationRepository", method="get_states_needing_backfill")
     async def get_states_needing_backfill(self, latest_business_date: date, limit: int) -> List[PositionState]:
         """
