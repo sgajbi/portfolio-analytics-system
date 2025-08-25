@@ -3,7 +3,7 @@ import logging
 from datetime import date
 from typing import Optional, List, Tuple
 
-from sqlalchemy import select, update, func
+from sqlalchemy import select, update, func, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
@@ -89,7 +89,7 @@ class PositionStateRepository:
         stmt = (
             update(PositionState)
             .where(
-                func.tuple_(PositionState.portfolio_id, PositionState.security_id).in_(keys),
+                tuple_(PositionState.portfolio_id, PositionState.security_id).in_(keys),
                 PositionState.watermark_date > new_watermark_date
             )
             .values(
