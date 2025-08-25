@@ -2,16 +2,17 @@
 import logging
 import asyncio
 import os
-from typing import List
+from typing import List, Dict, Any
 from datetime import date, timedelta
 
 from portfolio_common.db import get_async_db_session
 from portfolio_common.kafka_utils import KafkaProducer, get_kafka_producer
 from portfolio_common.config import KAFKA_VALUATION_REQUIRED_TOPIC
 from portfolio_common.events import PortfolioValuationRequiredEvent
-from portfolio_common.database_models import PortfolioValuationJob
+from portfolio_common.database_models import PortfolioValuationJob, PositionState
 from ..repositories.valuation_repository import ValuationRepository
 from portfolio_common.valuation_job_repository import ValuationJobRepository
+from portfolio_common.position_state_repository import PositionStateRepository
 
 
 logger = logging.getLogger(__name__)
@@ -20,7 +21,7 @@ class ValuationScheduler:
     """
     A background task that drives all valuation activity. It polls the position_state
     table to find keys that need backfilling, creates the necessary valuation jobs,
-    and dispatches currently pending jobs to Kafka.
+    dispatches them, and advances watermarks upon completion.
     """
     def __init__(self, poll_interval: int = 30, batch_size: int = 100):
         self._poll_interval = int(os.getenv("VALUATION_SCHEDULER_POLL_INTERVAL", poll_interval))
@@ -32,6 +33,43 @@ class ValuationScheduler:
         """Signals the scheduler to gracefully shut down."""
         logger.info("Valuation scheduler shutdown signal received.")
         self._running = False
+
+    async def _advance_watermarks(self, db):
+        """
+        Checks all REPROCESSING keys, finds how far their snapshots are contiguous,
+        and updates their watermark and status accordingly.
+        """
+        repo = ValuationRepository(db)
+        position_state_repo = PositionStateRepository(db)
+
+        latest_business_date = await repo.get_latest_business_date()
+        if not latest_business_date:
+            return
+
+        reprocessing_states = await repo.get_reprocessing_states(self._batch_size)
+        if not reprocessing_states:
+            return
+
+        advancable_dates = await repo.find_contiguous_snapshot_dates(reprocessing_states)
+        
+        updates_to_commit: List[Dict[str, Any]] = []
+        for state in reprocessing_states:
+            key = (state.portfolio_id, state.security_id)
+            new_watermark = advancable_dates.get(key)
+
+            if new_watermark and new_watermark > state.watermark_date:
+                is_complete = new_watermark == latest_business_date
+                new_status = 'CURRENT' if is_complete else 'REPROCESSING'
+                updates_to_commit.append({
+                    "portfolio_id": state.portfolio_id,
+                    "security_id": state.security_id,
+                    "watermark_date": new_watermark,
+                    "status": new_status
+                })
+        
+        if updates_to_commit:
+            updated_count = await position_state_repo.bulk_update_states(updates_to_commit)
+            logger.info(f"Advanced watermarks for {updated_count} position states.")
 
     async def _create_backfill_jobs(self, db):
         """
@@ -57,6 +95,7 @@ class ValuationScheduler:
             job_count = 0
             current_date = state.watermark_date + timedelta(days=1)
             
+            # Create jobs up to the latest business date
             while current_date <= latest_business_date:
                 await job_repo.upsert_job(
                     portfolio_id=state.portfolio_id,
@@ -106,9 +145,14 @@ class ValuationScheduler:
                     async with db.begin():
                         repo = ValuationRepository(db)
                         
+                        # Find and reset any jobs that have been stuck for too long
                         await repo.find_and_reset_stale_jobs()
+                        # Create new jobs for any positions with a lagging watermark
                         await self._create_backfill_jobs(db)
+                        # Claim a batch of pending jobs to be processed
                         claimed_jobs = await repo.find_and_claim_eligible_jobs(self._batch_size)
+                        # Check for completed reprocessing and advance watermarks
+                        await self._advance_watermarks(db)
                 
                 if claimed_jobs:
                     await self._dispatch_jobs(claimed_jobs)

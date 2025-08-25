@@ -23,6 +23,20 @@ class ValuationRepository:
     def __init__(self, db: AsyncSession):
         self.db = db
 
+    @async_timed(repository="ValuationRepository", method="get_reprocessing_states")
+    async def get_reprocessing_states(self, limit: int) -> List[PositionState]:
+        """
+        Finds keys in the position_state table that are currently reprocessing.
+        """
+        stmt = (
+            select(PositionState)
+            .where(PositionState.status == 'REPROCESSING')
+            .order_by(PositionState.updated_at.asc())
+            .limit(limit)
+        )
+        result = await self.db.execute(stmt)
+        return result.scalars().all()
+
     @async_timed(repository="ValuationRepository", method="find_contiguous_snapshot_dates")
     async def find_contiguous_snapshot_dates(self, states: List[PositionState]) -> Dict[Tuple[str, str], date]:
         """

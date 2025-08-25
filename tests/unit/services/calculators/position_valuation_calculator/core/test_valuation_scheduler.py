@@ -3,7 +3,6 @@ import pytest
 from unittest.mock import MagicMock, patch, AsyncMock
 from datetime import date, timedelta
 import asyncio
-from contextlib import asynccontextmanager
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from portfolio_common.database_models import PortfolioValuationJob, PositionState
@@ -12,6 +11,7 @@ from portfolio_common.config import KAFKA_VALUATION_REQUIRED_TOPIC
 from services.calculators.position_valuation_calculator.app.core.valuation_scheduler import ValuationScheduler
 from services.calculators.position_valuation_calculator.app.repositories.valuation_repository import ValuationRepository
 from portfolio_common.valuation_job_repository import ValuationJobRepository
+from portfolio_common.position_state_repository import PositionStateRepository
 
 pytestmark = pytest.mark.asyncio
 
@@ -34,6 +34,7 @@ def mock_dependencies():
     """A fixture to patch all external dependencies for the scheduler test."""
     mock_repo = AsyncMock(spec=ValuationRepository)
     mock_job_repo = AsyncMock(spec=ValuationJobRepository)
+    mock_state_repo = AsyncMock(spec=PositionStateRepository)
     
     mock_db_session = AsyncMock(spec=AsyncSession)
     mock_transaction = AsyncMock()
@@ -48,10 +49,13 @@ def mock_dependencies():
         "services.calculators.position_valuation_calculator.app.core.valuation_scheduler.ValuationRepository", return_value=mock_repo
     ), patch(
         "services.calculators.position_valuation_calculator.app.core.valuation_scheduler.ValuationJobRepository", return_value=mock_job_repo
+    ), patch(
+        "services.calculators.position_valuation_calculator.app.core.valuation_scheduler.PositionStateRepository", return_value=mock_state_repo
     ):
         yield {
             "repo": mock_repo,
-            "job_repo": mock_job_repo
+            "job_repo": mock_job_repo,
+            "state_repo": mock_state_repo
         }
 
 async def test_scheduler_creates_backfill_jobs(scheduler: ValuationScheduler, mock_dependencies: dict):
@@ -86,3 +90,48 @@ async def test_scheduler_creates_backfill_jobs(scheduler: ValuationScheduler, mo
     assert first_call_args['security_id'] == 'S1'
     assert first_call_args['valuation_date'] == date(2025, 8, 11)
     assert first_call_args['epoch'] == 1
+
+async def test_scheduler_advances_watermarks(scheduler: ValuationScheduler, mock_dependencies: dict):
+    """
+    GIVEN reprocessing states that have new contiguous snapshots
+    WHEN the scheduler's _advance_watermarks logic runs
+    THEN it should bulk update the states correctly.
+    """
+    # ARRANGE
+    mock_repo = mock_dependencies["repo"]
+    mock_state_repo = mock_dependencies["state_repo"]
+    latest_business_date = date(2025, 8, 15)
+
+    reprocessing_states = [
+        # This one is now complete
+        PositionState(portfolio_id="P1", security_id="S1", watermark_date=date(2025, 8, 10), epoch=1),
+        # This one has advanced but is not yet complete
+        PositionState(portfolio_id="P2", security_id="S2", watermark_date=date(2025, 8, 10), epoch=2),
+        # This one has no new snapshots, so it won't be in the result
+        PositionState(portfolio_id="P3", security_id="S3", watermark_date=date(2025, 8, 10), epoch=1),
+    ]
+    advancable_dates = {
+        ("P1", "S1"): date(2025, 8, 15), # Complete
+        ("P2", "S2"): date(2025, 8, 12), # Partially advanced
+    }
+
+    mock_repo.get_latest_business_date.return_value = latest_business_date
+    mock_repo.get_reprocessing_states.return_value = reprocessing_states
+    mock_repo.find_contiguous_snapshot_dates.return_value = advancable_dates
+
+    # ACT
+    await scheduler._advance_watermarks(AsyncMock())
+
+    # ASSERT
+    mock_state_repo.bulk_update_states.assert_awaited_once()
+    updates_arg = mock_state_repo.bulk_update_states.call_args[0][0]
+    
+    assert len(updates_arg) == 2
+    
+    update1 = next(u for u in updates_arg if u['portfolio_id'] == 'P1')
+    assert update1['watermark_date'] == date(2025, 8, 15)
+    assert update1['status'] == 'CURRENT'
+
+    update2 = next(u for u in updates_arg if u['portfolio_id'] == 'P2')
+    assert update2['watermark_date'] == date(2025, 8, 12)
+    assert update2['status'] == 'REPROCESSING'
