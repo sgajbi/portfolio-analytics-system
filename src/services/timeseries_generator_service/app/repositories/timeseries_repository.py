@@ -102,21 +102,15 @@ class TimeseriesRepository:
                     SELECT
                         p1.id
                     FROM portfolio_aggregation_jobs p1
-                    -- Join to get the current max epoch for the portfolio
-                    JOIN (
-                        SELECT portfolio_id, MAX(epoch) as max_epoch
-                        FROM position_state
-                        GROUP BY portfolio_id
-                    ) ps ON ps.portfolio_id = p1.portfolio_id
                     WHERE p1.status = 'PENDING' AND (
-                        -- Case 1: Prior day's timeseries exists for the current epoch.
+                        -- Case 1: Prior day's timeseries exists for the portfolio's current max epoch.
                         EXISTS (
                             SELECT 1 FROM portfolio_timeseries pts
                             WHERE pts.portfolio_id = p1.portfolio_id
                             AND pts.date = p1.aggregation_date - INTERVAL '1 day'
-                            AND pts.epoch = ps.max_epoch
+                            AND pts.epoch = (SELECT MAX(ps.epoch) FROM position_state ps WHERE ps.portfolio_id = p1.portfolio_id)
                         )
-                        -- Case 2: This is the very first job for this portfolio.
+                        -- Case 2: This is the very first job for this portfolio (no timeseries exist yet).
                         OR p1.aggregation_date = (
                             SELECT MIN(p2.aggregation_date)
                             FROM portfolio_aggregation_jobs p2
