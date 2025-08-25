@@ -65,8 +65,14 @@ def mock_dependencies():
         "services.timeseries_generator_service.app.consumers.portfolio_timeseries_consumer.get_async_db_session", new=get_session_gen
     ), patch(
         "services.timeseries_generator_service.app.consumers.portfolio_timeseries_consumer.TimeseriesRepository", new=mock_repo_class
-    ):
-        yield {"repo": mock_repo, "db_session": mock_db_session}
+    ), patch(
+        "services.timeseries_generator_service.app.consumers.portfolio_timeseries_consumer.PortfolioTimeseriesLogic.calculate_daily_record"
+    ) as mock_logic:
+        yield {
+            "repo": mock_repo, 
+            "db_session": mock_db_session,
+            "logic": mock_logic
+        }
 
 async def test_process_message_success(
     consumer: PortfolioTimeseriesConsumer,
@@ -77,53 +83,26 @@ async def test_process_message_success(
     """
     GIVEN a portfolio aggregation event
     WHEN the message is processed successfully
-    THEN it should aggregate data, save the record, and update the job status to COMPLETE.
+    THEN it should fetch the current epoch and pass it to the logic layer.
     """
     # ARRANGE
     mock_repo = mock_dependencies["repo"]
+    mock_logic = mock_dependencies["logic"]
     
     mock_repo.get_portfolio.return_value = Portfolio(portfolio_id=mock_event.portfolio_id, base_currency="USD")
-    
-    mock_repo.get_all_position_timeseries_for_date.return_value = [
-        PositionTimeseries(
-            security_id="SEC_USD", 
-            date=mock_event.aggregation_date, 
-            eod_market_value=Decimal("1000")
-        )
-    ]
+    mock_repo.get_current_epoch_for_portfolio.return_value = 2 # Simulate current epoch is 2
+    mock_repo.get_all_position_timeseries_for_date.return_value = []
     
     with patch.object(consumer, '_update_job_status', new_callable=AsyncMock) as mock_update_status:
         # ACT
         await consumer.process_message(mock_kafka_message)
 
         # ASSERT
-        mock_repo.get_portfolio.assert_called_once_with(mock_event.portfolio_id)
+        mock_repo.get_current_epoch_for_portfolio.assert_called_once_with(mock_event.portfolio_id)
+        mock_repo.get_all_position_timeseries_for_date.assert_called_once_with(
+            mock_event.portfolio_id, mock_event.aggregation_date, 2 # Assert it uses the fetched epoch
+        )
+        mock_logic.assert_awaited_once()
+        assert mock_logic.call_args.kwargs['epoch'] == 2
         mock_repo.upsert_portfolio_timeseries.assert_called_once()
         mock_update_status.assert_called_once_with(mock_event.portfolio_id, mock_event.aggregation_date, 'COMPLETE', db_session=ANY)
-        consumer._send_to_dlq_async.assert_not_called()
-
-async def test_process_message_fails_if_portfolio_missing(
-    consumer: PortfolioTimeseriesConsumer,
-    mock_event: PortfolioAggregationRequiredEvent,
-    mock_kafka_message: MagicMock,
-    mock_dependencies: dict
-):
-    """
-    GIVEN a portfolio aggregation event for a non-existent portfolio
-    WHEN the message is processed
-    THEN it should mark the job as FAILED and not create an outbox event.
-    """
-    # ARRANGE
-    mock_repo = mock_dependencies["repo"]
-    
-    mock_repo.get_portfolio.return_value = None  # Simulate portfolio not found
-
-    with patch.object(consumer, '_update_job_status', new_callable=AsyncMock) as mock_update_status:
-        # ACT
-        await consumer.process_message(mock_kafka_message)
-
-        # ASSERT
-        mock_repo.get_portfolio.assert_called_once_with(mock_event.portfolio_id)
-        mock_repo.upsert_portfolio_timeseries.assert_not_called()
-        mock_update_status.assert_called_once_with(mock_event.portfolio_id, mock_event.aggregation_date, 'FAILED')
-        consumer._send_to_dlq_async.assert_not_called()

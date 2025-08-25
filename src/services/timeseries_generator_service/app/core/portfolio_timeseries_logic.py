@@ -28,11 +28,12 @@ class PortfolioTimeseriesLogic:
     async def calculate_daily_record(
         portfolio: Portfolio,
         a_date: date,
+        epoch: int,
         position_timeseries_list: List[PositionTimeseries],
         repo: TimeseriesRepository
     ) -> PortfolioTimeseries:
         """
-        Calculates a single, complete portfolio time series record for a given day.
+        Calculates a single, complete portfolio time series record for a given day and epoch.
         """
         total_bod_mv = Decimal(0)
         total_bod_cf = Decimal(0)
@@ -74,20 +75,21 @@ class PortfolioTimeseriesLogic:
             total_bod_cf += (pos_ts.bod_cashflow_portfolio or Decimal(0)) * rate
             total_eod_cf += (pos_ts.eod_cashflow_portfolio or Decimal(0)) * rate
             
-            # FIX: Handle None before comparison
             if (pos_ts.bod_cashflow_portfolio or Decimal(0)) < 0:
                 total_fees += abs(pos_ts.bod_cashflow_portfolio * rate)
             if (pos_ts.eod_cashflow_portfolio or Decimal(0)) < 0:
                 total_fees += abs(pos_ts.eod_cashflow_portfolio * rate)
         
-        # 3. Calculate End of Day Market Value from definitive snapshot records
+        # 3. Calculate End of Day Market Value from definitive snapshot records for the correct epoch
         all_snapshots_for_day = await repo.get_all_snapshots_for_date(portfolio.portfolio_id, a_date)
         for snapshot in all_snapshots_for_day:
-            total_eod_mv += (snapshot.market_value or Decimal(0))
+            if snapshot.epoch == epoch: # Only include snapshots from the target epoch
+                total_eod_mv += (snapshot.market_value or Decimal(0))
 
         return PortfolioTimeseries(
             portfolio_id=portfolio.portfolio_id,
             date=a_date,
+            epoch=epoch,
             bod_market_value=total_bod_mv,
             bod_cashflow=total_bod_cf,
             eod_cashflow=total_eod_cf,

@@ -7,7 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from portfolio_common.database_models import (
     PositionTimeseries, PortfolioTimeseries, Portfolio, Cashflow, FxRate,
-    Instrument, PortfolioAggregationJob, MarketPrice, Transaction, DailyPositionSnapshot
+    Instrument, PortfolioAggregationJob, MarketPrice, Transaction, DailyPositionSnapshot,
+    PositionState
 )
 from portfolio_common.utils import async_timed
 
@@ -16,6 +17,21 @@ logger = logging.getLogger(__name__)
 class TimeseriesRepository:
     def __init__(self, db: AsyncSession):
         self.db = db
+
+    @async_timed(repository="TimeseriesRepository", method="get_current_epoch_for_portfolio")
+    async def get_current_epoch_for_portfolio(self, portfolio_id: str) -> int:
+        """
+        Finds the maximum (i.e., the most current) epoch for any security
+        within a given portfolio. Aggregation should run on this epoch.
+        Returns 0 if no state is found.
+        """
+        stmt = (
+            select(func.max(PositionState.epoch))
+            .where(PositionState.portfolio_id == portfolio_id)
+        )
+        result = await self.db.execute(stmt)
+        max_epoch = result.scalar_one_or_none()
+        return max_epoch or 0
 
     @async_timed(repository="TimeseriesRepository", method="get_all_snapshots_for_date")
     async def get_all_snapshots_for_date(self, portfolio_id: str, a_date: date) -> List[DailyPositionSnapshot]:
@@ -35,12 +51,12 @@ class TimeseriesRepository:
                 for c in timeseries_record.__table__.columns
                 if c.name not in ['created_at', 'updated_at']
             }
-            update_dict = {k: v for k, v in insert_dict.items() if k not in ['portfolio_id', 'security_id', 'date']}
+            update_dict = {k: v for k, v in insert_dict.items() if k not in ['portfolio_id', 'security_id', 'date', 'epoch']}
             update_dict['updated_at'] = func.now()
             stmt = pg_insert(PositionTimeseries).values(
                 **insert_dict
             ).on_conflict_do_update(
-                index_elements=['portfolio_id', 'security_id', 'date'],
+                index_elements=['portfolio_id', 'security_id', 'date', 'epoch'],
                 set_=update_dict
             )
             await self.db.execute(stmt)
@@ -57,12 +73,12 @@ class TimeseriesRepository:
                 for c in timeseries_record.__table__.columns
                 if c.name not in ['created_at', 'updated_at']
             }
-            update_dict = {k: v for k, v in insert_dict.items() if k not in ['portfolio_id', 'date']}
+            update_dict = {k: v for k, v in insert_dict.items() if k not in ['portfolio_id', 'date', 'epoch']}
             update_dict['updated_at'] = func.now()
             stmt = pg_insert(PortfolioTimeseries).values(
                 **insert_dict
             ).on_conflict_do_update(
-                index_elements=['portfolio_id', 'date'],
+                index_elements=['portfolio_id', 'date', 'epoch'],
                 set_=update_dict
             )
             await self.db.execute(stmt)
@@ -75,7 +91,7 @@ class TimeseriesRepository:
     async def find_and_claim_eligible_jobs(self, batch_size: int) -> List[PortfolioAggregationJob]:
         """
         Atomically claims eligible PENDING aggregation jobs. A job for date D is eligible if:
-        1. The portfolio timeseries record for date D-1 already exists.
+        1. The portfolio timeseries record for date D-1 (for the correct epoch) already exists.
         2. OR this job is for the earliest date for a portfolio that has no timeseries records yet.
         """
         query = text("""
@@ -86,12 +102,19 @@ class TimeseriesRepository:
                     SELECT
                         p1.id
                     FROM portfolio_aggregation_jobs p1
+                    -- Join to get the current max epoch for the portfolio
+                    JOIN (
+                        SELECT portfolio_id, MAX(epoch) as max_epoch
+                        FROM position_state
+                        GROUP BY portfolio_id
+                    ) ps ON ps.portfolio_id = p1.portfolio_id
                     WHERE p1.status = 'PENDING' AND (
-                        -- Case 1: Prior day's timeseries exists, enabling sequential processing.
+                        -- Case 1: Prior day's timeseries exists for the current epoch.
                         EXISTS (
                             SELECT 1 FROM portfolio_timeseries pts
                             WHERE pts.portfolio_id = p1.portfolio_id
                             AND pts.date = p1.aggregation_date - INTERVAL '1 day'
+                            AND pts.epoch = ps.max_epoch
                         )
                         -- Case 2: This is the very first job for this portfolio.
                         OR p1.aggregation_date = (
@@ -148,11 +171,12 @@ class TimeseriesRepository:
     
     @async_timed(repository="TimeseriesRepository", method="get_all_position_timeseries_for_date")
     async def get_all_position_timeseries_for_date(
-        self, portfolio_id: str, a_date: date
+        self, portfolio_id: str, a_date: date, epoch: int
     ) -> List[PositionTimeseries]:
         stmt = select(PositionTimeseries).filter_by(
             portfolio_id=portfolio_id,
-            date=a_date
+            date=a_date,
+            epoch=epoch
         )
         result = await self.db.execute(stmt)
         return result.scalars().all()
@@ -201,7 +225,7 @@ class TimeseriesRepository:
 
     @async_timed(repository="TimeseriesRepository", method="get_last_snapshot_before")
     async def get_last_snapshot_before(
-        self, portfolio_id: str, security_id: str, a_date: date
+        self, portfolio_id: str, security_id: str, a_date: date, epoch: int
     ) -> Optional[DailyPositionSnapshot]:
         stmt = (
             select(DailyPositionSnapshot)
@@ -209,6 +233,7 @@ class TimeseriesRepository:
                 DailyPositionSnapshot.portfolio_id == portfolio_id,
                 DailyPositionSnapshot.security_id == security_id,
                 DailyPositionSnapshot.date < a_date,
+                DailyPositionSnapshot.epoch == epoch
             )
             .order_by(DailyPositionSnapshot.date.desc())
             .limit(1)

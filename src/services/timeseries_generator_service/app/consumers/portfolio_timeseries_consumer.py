@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 class PortfolioTimeseriesConsumer(BaseConsumer):
     """
     Consumes scheduled aggregation jobs, calculates the daily portfolio time series
-    record, and updates the job status upon completion.
+    record for the correct epoch, and updates the job status upon completion.
     """
 
     async def process_message(self, msg: Message):
@@ -61,11 +61,17 @@ class PortfolioTimeseriesConsumer(BaseConsumer):
                     if not portfolio:
                         raise ValueError(f"Portfolio {portfolio_id} not found during aggregation.")
 
-                    position_timeseries_list = await repo.get_all_position_timeseries_for_date(portfolio_id, a_date)
+                    # Determine the correct epoch to aggregate for this portfolio
+                    target_epoch = await repo.get_current_epoch_for_portfolio(portfolio_id)
+
+                    position_timeseries_list = await repo.get_all_position_timeseries_for_date(
+                        portfolio_id, a_date, target_epoch
+                    )
                     
                     new_portfolio_record = await PortfolioTimeseriesLogic.calculate_daily_record(
                         portfolio=portfolio,
                         a_date=a_date,
+                        epoch=target_epoch,
                         position_timeseries_list=position_timeseries_list,
                         repo=repo
                     )
@@ -79,7 +85,7 @@ class PortfolioTimeseriesConsumer(BaseConsumer):
         except Exception:
             logger.error(f"Aggregation failed for ({portfolio_id}, {a_date}). Marking job as FAILED.", exc_info=True)
             await self._update_job_status(portfolio_id, a_date, 'FAILED')
-            
+        
     
     async def _update_job_status(self, portfolio_id: str, a_date: date, status: str, db_session=None):
         update_stmt = update(PortfolioAggregationJob).where(
