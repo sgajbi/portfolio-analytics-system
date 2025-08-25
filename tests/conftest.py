@@ -64,7 +64,7 @@ def db_engine(docker_services: DockerCompose):
 
 # List of all tables to be cleaned. Centralized here.
 TABLES_TO_TRUNCATE = [
-    "recalculation_jobs",
+    "position_state", # NEW: Add new table to be cleaned
     "business_dates",
     "portfolio_valuation_jobs", "portfolio_aggregation_jobs", "transaction_costs", "cashflows", "position_history", "daily_position_snapshots",
     "position_timeseries", "portfolio_timeseries", "transactions", "market_prices",
@@ -97,7 +97,6 @@ def clean_db_module(db_engine):
         "position_calculator_service",
         "position_valuation_calculator",
         "timeseries_generator_service",
-        "recalculation_service"
     ]
 
     print("\n--- Stopping services for module cleanup ---")
