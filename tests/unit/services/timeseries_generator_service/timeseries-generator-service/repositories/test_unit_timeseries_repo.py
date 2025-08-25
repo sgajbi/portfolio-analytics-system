@@ -1,4 +1,4 @@
-# tests/unit/services/timeseries-generator-service/repositories/test_unit_timeseries_repo.py
+# tests/unit/services/timeseries_generator_service/repositories/test_unit_timeseries_repo.py
 import pytest
 from datetime import date, datetime, timedelta, timezone
 from sqlalchemy.orm import Session
@@ -55,23 +55,25 @@ async def test_get_fx_rate(repository: TimeseriesRepository, mock_db_session: As
 
 async def test_upsert_position_timeseries(repository: TimeseriesRepository, mock_db_session: AsyncMock):
     """Verifies the construction of the position timeseries upsert statement."""
-    record = PositionTimeseries(portfolio_id="P1", security_id="S1", date=date(2025, 1, 10))
+    record = PositionTimeseries(portfolio_id="P1", security_id="S1", date=date(2025, 1, 10), epoch=1)
     await repository.upsert_position_timeseries(record)
     
     executed_stmt = mock_db_session.execute.call_args[0][0]
     compiled_stmt = str(executed_stmt.compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}))
     assert "INSERT INTO position_timeseries" in compiled_stmt
-    assert "ON CONFLICT (portfolio_id, security_id, date) DO UPDATE" in compiled_stmt
+    # --- FIX: Assert for the correct primary key including epoch ---
+    assert "ON CONFLICT (portfolio_id, security_id, date, epoch) DO UPDATE" in compiled_stmt
 
 async def test_upsert_portfolio_timeseries(repository: TimeseriesRepository, mock_db_session: AsyncMock):
     """Verifies the construction of the portfolio timeseries upsert statement."""
-    record = PortfolioTimeseries(portfolio_id="P1", date=date(2025, 1, 10))
+    record = PortfolioTimeseries(portfolio_id="P1", date=date(2025, 1, 10), epoch=1)
     await repository.upsert_portfolio_timeseries(record)
 
     executed_stmt = mock_db_session.execute.call_args[0][0]
     compiled_stmt = str(executed_stmt.compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}))
     assert "INSERT INTO portfolio_timeseries" in compiled_stmt
-    assert "ON CONFLICT (portfolio_id, date) DO UPDATE" in compiled_stmt
+    # --- FIX: Assert for the correct primary key including epoch ---
+    assert "ON CONFLICT (portfolio_id, date, epoch) DO UPDATE" in compiled_stmt
 
 async def test_find_and_reset_stale_jobs(repository: TimeseriesRepository, mock_db_session: AsyncMock):
     """Verifies the UPDATE statement for resetting stale jobs."""
