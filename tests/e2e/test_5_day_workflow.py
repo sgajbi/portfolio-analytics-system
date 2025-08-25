@@ -24,7 +24,7 @@ DAY_5 = "2025-08-23"
 pytestmark = pytest.mark.dependency()
 
 @pytest.fixture(scope="module")
-def setup_prerequisites(clean_db_module, api_endpoints):
+def setup_prerequisites(clean_db, api_endpoints):
     """
     A module-scoped fixture that ingests all prerequisite static data for the workflow.
     """
@@ -32,7 +32,7 @@ def setup_prerequisites(clean_db_module, api_endpoints):
 
     # Ingest Portfolio
     portfolio_payload = {
-      "portfolios": [
+        "portfolios": [
         {
           "portfolioId": PORTFOLIO_ID, "baseCurrency": "USD", "openDate": "2025-01-01",
           "cifId": "E2E_WF_CIF_01", "status": "ACTIVE", "riskExposure": "High",

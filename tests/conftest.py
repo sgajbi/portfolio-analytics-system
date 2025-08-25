@@ -25,7 +25,7 @@ def docker_services(request):
     A session-scoped fixture that starts the Docker Compose stack and waits for the
     ingestion_service and query_service to become healthy before yielding to the tests.
     """
-    # Remove the 'wait=True' flag to handle waiting manually.
+    # We now handle waiting explicitly in Python instead of using Docker's `--wait`.
     compose = DockerCompose(".", compose_file_name="docker-compose.yml")
     with compose:
         print("\n--- Waiting for API services to become healthy ---")
@@ -89,56 +89,6 @@ def clean_db(db_engine):
     truncate_query = text(f"TRUNCATE TABLE {', '.join(TABLES_TO_TRUNCATE)} RESTART IDENTITY CASCADE;")
     with db_engine.begin() as connection:
         connection.execute(truncate_query)
-    yield
-
-@pytest.fixture(scope="module")
-def clean_db_module(docker_services: DockerCompose, db_engine):
-    """
-    A module-scoped fixture that safely cleans the database between test modules.
-    It stops all services that might hold DB locks, truncates the tables,
-    restarts the services, and then waits for them to be healthy.
-    """
-    services_to_manage = [
-        "persistence_service", "cost_calculator_service", "cashflow_calculator_service",
-        "position_calculator_service", "position_valuation_calculator", "timeseries_generator_service",
-        "query_service", "ingestion_service"
-    ]
-    service_ports = {
-        "persistence_service": 8080, "cost_calculator_service": 8083, "cashflow_calculator_service": 8082,
-        "position_calculator_service": 8081, "position_valuation_calculator": 8084, "timeseries_generator_service": 8085,
-        "query_service": 8001, "ingestion_service": 8000
-    }
-
-    print("\n--- Stopping services for module cleanup ---")
-    subprocess.run(["docker", "compose", "stop"] + services_to_manage, check=True, capture_output=True, text=True)
-
-    print("\n--- Cleaning database tables (module scope) ---")
-    truncate_query = text(f"TRUNCATE TABLE {', '.join(TABLES_TO_TRUNCATE)} RESTART IDENTITY CASCADE;")
-    with db_engine.begin() as connection:
-        connection.execute(truncate_query)
-    
-    print("\n--- Restarting services after module cleanup ---")
-    subprocess.run(["docker", "compose", "start"] + services_to_manage, check=True, capture_output=True, text=True)
-
-    print("\n--- Waiting for restarted services to become healthy... ---")
-    timeout = 120
-    start_time = time.time()
-    for service_name in services_to_manage:
-        host = docker_services.get_service_host(service_name, service_ports[service_name])
-        port = docker_services.get_service_port(service_name, service_ports[service_name])
-        health_url = f"http://{host}:{port}/health/ready"
-        
-        while time.time() - start_time < timeout:
-            try:
-                response = requests.get(health_url, timeout=2)
-                if response.status_code == 200:
-                    print(f"--- Service '{service_name}' is healthy. ---")
-                    break
-            except requests.ConnectionError:
-                time.sleep(2)
-        else:
-            pytest.fail(f"Service '{service_name}' did not become healthy within {timeout} seconds.")
-
     yield
 
 @pytest_asyncio.fixture(scope="function")
