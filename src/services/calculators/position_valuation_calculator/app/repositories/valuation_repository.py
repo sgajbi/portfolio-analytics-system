@@ -346,7 +346,6 @@ class ValuationRepository:
             
         return reset_count
 
-    # --- NEW METHOD ---
     @async_timed(repository="ValuationRepository", method="get_all_open_positions")
     async def get_all_open_positions(self) -> List[dict]:
         """
@@ -384,3 +383,22 @@ class ValuationRepository:
         open_positions = result.mappings().all()
         logger.info(f"Found {len(open_positions)} open positions across all portfolios.")
         return open_positions
+
+    # --- NEW METHOD ---
+    @async_timed(repository="ValuationRepository", method="get_next_price_date")
+    async def get_next_price_date(self, security_id: str, after_date: date) -> Optional[date]:
+        """
+        Finds the date of the next available market price for a security strictly after
+        a given date.
+        """
+        stmt = (
+            select(MarketPrice.price_date)
+            .filter(
+                MarketPrice.security_id == security_id,
+                MarketPrice.price_date > after_date,
+            )
+            .order_by(MarketPrice.price_date.asc())
+            .limit(1)
+        )
+        result = await self.db.execute(stmt)
+        return result.scalar_one_or_none()
