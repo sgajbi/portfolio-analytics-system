@@ -24,24 +24,25 @@ class ValuationJobRepository:
         portfolio_id: str,
         security_id: str,
         valuation_date: date,
+        epoch: int,
         correlation_id: Optional[str] = None,
     ) -> None:
         """
         Idempotently creates or updates a valuation job, setting its status to 'PENDING'.
-        If a job for the same key exists and is 'COMPLETE' or 'PROCESSING', it will be reset to 'PENDING'.
+        If a job for the same key (including epoch) exists, it will be reset to 'PENDING'.
         """
         try:
             job_data = {
                 "portfolio_id": portfolio_id,
                 "security_id": security_id,
                 "valuation_date": valuation_date,
+                "epoch": epoch,
                 "status": "PENDING",
                 "correlation_id": correlation_id,
             }
 
             stmt = pg_insert(PortfolioValuationJob).values(**job_data)
 
-            # If a job already exists, update its status back to PENDING and refresh the updated_at timestamp.
             update_dict = {
                 "status": "PENDING",
                 "correlation_id": stmt.excluded.correlation_id,
@@ -49,7 +50,7 @@ class ValuationJobRepository:
             }
 
             final_stmt = stmt.on_conflict_do_update(
-                index_elements=['portfolio_id', 'security_id', 'valuation_date'],
+                index_elements=['portfolio_id', 'security_id', 'valuation_date', 'epoch'],
                 set_=update_dict
             )
 
@@ -60,6 +61,7 @@ class ValuationJobRepository:
                     "portfolio_id": portfolio_id,
                     "security_id": security_id,
                     "valuation_date": valuation_date,
+                    "epoch": epoch,
                 },
             )
         except Exception as e:

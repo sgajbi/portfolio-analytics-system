@@ -18,12 +18,11 @@ logger = logging.getLogger(__name__)
 
 class ValuationScheduler:
     """
-    A background task that acts as the system's daily heartbeat. It polls for the
-    latest business date, finds all open positions, and creates valuation jobs
-    for any days that have been missed, ensuring a complete time series.
+    A background task that drives all valuation activity. It polls the position_state
+    table to find keys that need backfilling, creates the necessary valuation jobs,
+    and dispatches currently pending jobs to Kafka.
     """
     def __init__(self, poll_interval: int = 30, batch_size: int = 100):
-        # Read interval from env var, fall back to the passed argument.
         self._poll_interval = int(os.getenv("VALUATION_SCHEDULER_POLL_INTERVAL", poll_interval))
         self._batch_size = batch_size
         self._running = True
@@ -34,55 +33,43 @@ class ValuationScheduler:
         logger.info("Valuation scheduler shutdown signal received.")
         self._running = False
 
-    async def _create_daily_roll_forward_jobs(self, db):
+    async def _create_backfill_jobs(self, db):
         """
-        Finds all open positions and creates valuation jobs for any days
-        between their last snapshot and the latest business day.
+        Finds keys with a lagging watermark and creates valuation jobs to fill the gap.
         """
         repo = ValuationRepository(db)
         job_repo = ValuationJobRepository(db)
         
         latest_business_date = await repo.get_latest_business_date()
-        
         if not latest_business_date:
-            logger.info("Scheduler: No business dates found, skipping roll-forward job creation.")
+            logger.info("Scheduler: No business dates found, skipping backfill job creation.")
             return
 
-        open_positions = await repo.get_all_open_positions()
-        if not open_positions:
-            logger.info("Scheduler: No open positions found, skipping roll-forward job creation.")
-            return
-
-        logger.info(f"Scheduler: Checking {len(open_positions)} open positions for roll-forward against latest business date {latest_business_date}.")
+        states_to_backfill = await repo.get_states_needing_backfill(latest_business_date, self._batch_size)
         
-        for pos in open_positions:
-            portfolio_id = pos['portfolio_id']
-            security_id = pos['security_id']
+        if not states_to_backfill:
+            logger.debug("Scheduler: No keys need backfilling.")
+            return
 
-            last_snapshot_date = await repo.get_last_snapshot_date(portfolio_id, security_id)
+        logger.info(f"Scheduler: Found {len(states_to_backfill)} keys needing backfill.")
+
+        for state in states_to_backfill:
+            job_count = 0
+            current_date = state.watermark_date + timedelta(days=1)
             
-            # If a position exists but has no snapshots yet, start from its first transaction date
-            if not last_snapshot_date:
-                last_snapshot_date = await repo.get_first_transaction_date(portfolio_id, security_id)
-                if not last_snapshot_date:
-                    continue # Should not happen if it's an open position, but defensive check
-
-            if last_snapshot_date < latest_business_date:
-                job_count = 0
-                current_date = last_snapshot_date + timedelta(days=1)
-                
-                while current_date <= latest_business_date:
-                    await job_repo.upsert_job(
-                        portfolio_id=portfolio_id,
-                        security_id=security_id,
-                        valuation_date=current_date,
-                        correlation_id=f"SCHEDULER_ROLL_FORWARD_{current_date.isoformat()}"
-                    )
-                    job_count += 1
-                    current_date += timedelta(days=1)
-                
-                if job_count > 0:
-                    logger.info(f"Scheduler: Created {job_count} roll-forward valuation jobs for {security_id} in {portfolio_id} up to {latest_business_date}.")
+            while current_date <= latest_business_date:
+                await job_repo.upsert_job(
+                    portfolio_id=state.portfolio_id,
+                    security_id=state.security_id,
+                    valuation_date=current_date,
+                    epoch=state.epoch,
+                    correlation_id=f"SCHEDULER_BACKFILL_{current_date.isoformat()}"
+                )
+                job_count += 1
+                current_date += timedelta(days=1)
+            
+            if job_count > 0:
+                logger.info(f"Scheduler: Created {job_count} backfill valuation jobs for {state.security_id} in {state.portfolio_id} for epoch {state.epoch}.")
 
     
     async def _dispatch_jobs(self, jobs: List[PortfolioValuationJob]):
@@ -118,21 +105,15 @@ class ValuationScheduler:
                     async with db.begin():
                         repo = ValuationRepository(db)
                         
-                        # 1. Recover any jobs that may have been orphaned.
                         await repo.find_and_reset_stale_jobs()
-                    
-                        # 2. Create any missing daily jobs for roll-forward.
-                        await self._create_daily_roll_forward_jobs(db)
-                        
-                        # 3. Atomically find and claim new eligible jobs.
+                        await self._create_backfill_jobs(db)
                         claimed_jobs = await repo.find_and_claim_eligible_jobs(self._batch_size)
                 
-                # 4. Dispatch the claimed jobs AFTER the transaction has been successfully committed.
                 if claimed_jobs:
                     await self._dispatch_jobs(claimed_jobs)
 
             except Exception as e:
-                logger.error("Error in valuation scheduler polling loop.", exc_info=True)
+                logger.error("Error in scheduler polling loop.", exc_info=True)
 
             try:
                 await asyncio.sleep(self._poll_interval)

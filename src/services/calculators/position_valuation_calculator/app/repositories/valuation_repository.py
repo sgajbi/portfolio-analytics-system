@@ -9,7 +9,8 @@ from sqlalchemy.orm import aliased
 
 from portfolio_common.database_models import (
     PositionHistory, MarketPrice, DailyPositionSnapshot, FxRate, Instrument, Portfolio,
-    PortfolioValuationJob, Transaction, BusinessDate, PortfolioTimeseries, PositionTimeseries
+    PortfolioValuationJob, Transaction, BusinessDate, PortfolioTimeseries, PositionTimeseries,
+    PositionState
 )
 from portfolio_common.utils import async_timed
 
@@ -22,34 +23,20 @@ class ValuationRepository:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    @async_timed(repository="ValuationRepository", method="delete_downstream_valuation_data")
-    async def delete_downstream_valuation_data(self, portfolio_id: str, security_id: str, from_date: date) -> None:
+    @async_timed(repository="ValuationRepository", method="get_states_needing_backfill")
+    async def get_states_needing_backfill(self, latest_business_date: date, limit: int) -> List[PositionState]:
         """
-        Deletes downstream data related to valuation and time series for a specific
-        security in a portfolio from a given date onwards. This is used when a
-        backdated price arrives, which does not affect transaction-level calculations.
+        Finds keys in the position_state table whose watermark is older than the
+        latest business date, indicating a need for backfilling valuations.
         """
-        logger.info(
-            "Deleting downstream valuation/timeseries data for backdated price update",
-            extra={"portfolio_id": portfolio_id, "security_id": security_id, "from_date": from_date.isoformat()}
+        stmt = (
+            select(PositionState)
+            .where(PositionState.watermark_date < latest_business_date)
+            .order_by(PositionState.updated_at.asc()) # Process oldest changes first
+            .limit(limit)
         )
-        
-        await self.db.execute(delete(PortfolioTimeseries).where(
-            PortfolioTimeseries.portfolio_id == portfolio_id,
-            PortfolioTimeseries.date >= from_date
-        ))
-        
-        await self.db.execute(delete(PositionTimeseries).where(
-            PositionTimeseries.portfolio_id == portfolio_id,
-            PositionTimeseries.security_id == security_id,
-            PositionTimeseries.date >= from_date
-        ))
-        
-        await self.db.execute(delete(DailyPositionSnapshot).where(
-            DailyPositionSnapshot.portfolio_id == portfolio_id,
-            DailyPositionSnapshot.security_id == security_id,
-            DailyPositionSnapshot.date >= from_date
-        ))
+        result = await self.db.execute(stmt)
+        return result.scalars().all()
 
     @async_timed(repository="ValuationRepository", method="get_last_position_history_before_date")
     async def get_last_position_history_before_date(self, portfolio_id: str, security_id: str, a_date: date) -> Optional[PositionHistory]:
@@ -70,111 +57,6 @@ class ValuationRepository:
         result = await self.db.execute(stmt)
         return result.scalars().first()
 
-    @async_timed(repository="ValuationRepository", method="get_next_price_date")
-    async def get_next_price_date(self, security_id: str, after_date: date) -> Optional[date]:
-        """
-        Finds the earliest market price date for a security that occurs after a given date.
-        This is used to define the end of a re-valuation period.
-        """
-        stmt = (
-            select(func.min(MarketPrice.price_date))
-            .where(
-                MarketPrice.security_id == security_id,
-                MarketPrice.price_date > after_date
-            )
-        )
-        result = await self.db.execute(stmt)
-        return result.scalar_one_or_none()
-
-    @async_timed(repository="ValuationRepository", method="find_portfolios_holding_security_on_date")
-    async def find_portfolios_holding_security_on_date(self, security_id: str, a_date: date) -> List[str]:
-        """
-        Finds all portfolio_ids that had a non-zero quantity of a security based on the
-        last known snapshot on or before a given date. This is used to find all
-        portfolios affected by a new market price.
-        """
-        
-        latest_snapshot_subq = (
-            select(
-                DailyPositionSnapshot.portfolio_id,
-                func.max(DailyPositionSnapshot.date).label("max_date")
-            )
-            .where(
-                DailyPositionSnapshot.security_id == security_id,
-                DailyPositionSnapshot.date <= a_date
-            )
-            .group_by(DailyPositionSnapshot.portfolio_id)
-            .subquery('latest_snapshot_dates')
-        )
-
-        stmt = (
-            select(DailyPositionSnapshot.portfolio_id)
-            .join(
-                latest_snapshot_subq,
-                (DailyPositionSnapshot.portfolio_id == latest_snapshot_subq.c.portfolio_id) &
-                (DailyPositionSnapshot.security_id == security_id) &
-                (DailyPositionSnapshot.date == latest_snapshot_subq.c.max_date)
-            )
-            .where(DailyPositionSnapshot.quantity != 0)
-        )
-
-        result = await self.db.execute(stmt)
-        portfolio_ids = result.scalars().all()
-        logger.info(f"Found {len(portfolio_ids)} portfolios holding '{security_id}' on or before {a_date}.")
-        return portfolio_ids
-
-    
-    @async_timed(repository="ValuationRepository", method="get_all_open_positions")
-    async def get_all_open_positions(self) -> List[Dict[str, any]]:
-        """
-        Finds all distinct (portfolio_id, security_id) pairs that currently have an open position.
-        """
-        latest_snapshot_subq = select(
-            DailyPositionSnapshot.portfolio_id,
-            DailyPositionSnapshot.security_id,
-            DailyPositionSnapshot.quantity,
-            func.row_number().over(
-                partition_by=(DailyPositionSnapshot.portfolio_id, DailyPositionSnapshot.security_id),
-                order_by=[
-                    DailyPositionSnapshot.date.desc(),
-                    DailyPositionSnapshot.id.desc()
-                ]
-            ).label("rn")
-        ).subquery('latest_snapshot')
-
-        stmt = (
-            select(
-                latest_snapshot_subq.c.portfolio_id,
-                latest_snapshot_subq.c.security_id
-            )
-            .where(
-                latest_snapshot_subq.c.rn == 1,
-                latest_snapshot_subq.c.quantity > 0
-            )
-        )
-        result = await self.db.execute(stmt)
-        return result.mappings().all()
-
-    @async_timed(repository="ValuationRepository", method="get_first_transaction_date")
-    async def get_first_transaction_date(self, portfolio_id: str, security_id: str) -> Optional[date]:
-        """Gets the date of the very first transaction for a security in a portfolio."""
-        stmt = select(func.min(func.date(Transaction.transaction_date))).where(
-            Transaction.portfolio_id == portfolio_id,
-            Transaction.security_id == security_id
-        )
-        result = await self.db.execute(stmt)
-        return result.scalar_one_or_none()
-
-    @async_timed(repository="ValuationRepository", method="get_last_snapshot_date")
-    async def get_last_snapshot_date(self, portfolio_id: str, security_id: str) -> Optional[date]:
-        """Gets the date of the most recent snapshot for a security in a portfolio."""
-        stmt = select(func.max(DailyPositionSnapshot.date)).where(
-            DailyPositionSnapshot.portfolio_id == portfolio_id,
-            DailyPositionSnapshot.security_id == security_id
-        )
-        result = await self.db.execute(stmt)
-        return result.scalar_one_or_none()
-
     @async_timed(repository="ValuationRepository", method="get_latest_business_date")
     async def get_latest_business_date(self) -> Optional[date]:
         """
@@ -184,22 +66,6 @@ class ValuationRepository:
         result = await self.db.execute(stmt)
         latest_date = result.scalar_one_or_none()
         return latest_date
-
-    @async_timed(repository="ValuationRepository", method="get_last_snapshot_before_date")
-    async def get_last_snapshot_before_date(self, portfolio_id: str, security_id: str, a_date: date) -> Optional[DailyPositionSnapshot]:
-        """Fetches the most recent daily position snapshot on or before a given date."""
-        stmt = (
-            select(DailyPositionSnapshot)
-            .filter(
-                DailyPositionSnapshot.portfolio_id == portfolio_id,
-                DailyPositionSnapshot.security_id == security_id,
-                DailyPositionSnapshot.date < a_date,
-            )
-            .order_by(DailyPositionSnapshot.date.desc())
-            .limit(1)
-        )
-        result = await self.db.execute(stmt)
-        return result.scalars().first()
 
     @async_timed(repository="ValuationRepository", method="update_job_status")
     async def update_job_status(self, portfolio_id: str, security_id: str, valuation_date: date, status: str):
@@ -241,17 +107,6 @@ class ValuationRepository:
             logger.info(f"Found and claimed {len(claimed_jobs)} eligible valuation jobs.")
         return [PortfolioValuationJob(**job) for job in claimed_jobs]
 
-    @async_timed(repository="ValuationRepository", method="get_daily_snapshot")
-    async def get_daily_snapshot(self, portfolio_id: str, security_id: str, a_date: date) -> Optional[DailyPositionSnapshot]:
-        """Fetches a single daily position snapshot for a specific key."""
-        stmt = select(DailyPositionSnapshot).filter_by(
-            portfolio_id=portfolio_id,
-            security_id=security_id,
-            date=a_date
-        )
-        result = await self.db.execute(stmt)
-        return result.scalars().first()
-
     @async_timed(repository="ValuationRepository", method="get_portfolio")
     async def get_portfolio(self, portfolio_id: str) -> Optional[Portfolio]:
         """Fetches a portfolio by its ID."""
@@ -274,6 +129,18 @@ class ValuationRepository:
             FxRate.to_currency == to_currency,
             FxRate.rate_date <= a_date
         ).order_by(FxRate.rate_date.desc())
+        result = await self.db.execute(stmt)
+        return result.scalars().first()
+
+    @async_timed(repository="ValuationRepository", method="get_latest_price_for_position")
+    async def get_latest_price_for_position(self, security_id: str, position_date: date) -> Optional[MarketPrice]:
+        """
+        Finds the most recent market price for a given security on or before the position's date.
+        """
+        stmt = select(MarketPrice).filter(
+            MarketPrice.security_id == security_id,
+            MarketPrice.price_date <= position_date
+        ).order_by(MarketPrice.price_date.desc())
         result = await self.db.execute(stmt)
         return result.scalars().first()
     
