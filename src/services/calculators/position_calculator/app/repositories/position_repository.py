@@ -5,12 +5,10 @@ from typing import List, Optional
 
 from sqlalchemy import select, func, delete
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.dialects.postgresql import insert as pg_insert
 from portfolio_common.database_models import (
-    PositionHistory, Transaction, DailyPositionSnapshot, BusinessDate, PortfolioValuationJob
+    PositionHistory, Transaction, DailyPositionSnapshot, BusinessDate
 )
 from portfolio_common.utils import async_timed
-from portfolio_common.valuation_job_repository import ValuationJobRepository
 
 logger = logging.getLogger(__name__)
 
@@ -30,59 +28,6 @@ class PositionRepository:
         result = await self.db.execute(stmt)
         latest_date = result.scalar_one_or_none()
         return latest_date
-
-    @async_timed(repository="PositionRepository", method="upsert_valuation_job")
-    async def upsert_valuation_job(
-        self,
-        portfolio_id: str,
-        security_id: str,
-        valuation_date: date,
-        correlation_id: Optional[str] = None
-    ) -> None:
-        """
-        Idempotently creates or updates a valuation job by delegating to the common repository.
-        """
-        repo = ValuationJobRepository(self.db)
-        await repo.upsert_job(
-            portfolio_id=portfolio_id,
-            security_id=security_id,
-            valuation_date=valuation_date,
-            correlation_id=correlation_id
-        )
-        logger.info(f"Staged upsert for VALUATION job for {security_id} on {valuation_date}")
-
-    @async_timed(repository="PositionRepository", method="find_open_security_ids_as_of")
-    async def find_open_security_ids_as_of(self, portfolio_id: str, a_date: date) -> List[str]:
-        """
-        Finds all security_ids in a portfolio that had a non-zero quantity
-        based on the last known snapshot on or before the given date.
-        """
-        latest_snapshot_subq = (
-            select(
-                DailyPositionSnapshot.security_id,
-                DailyPositionSnapshot.quantity,
-                func.row_number().over(
-                    partition_by=DailyPositionSnapshot.security_id,
-                    order_by=DailyPositionSnapshot.date.desc()
-                ).label("rn")
-            )
-            .where(
-                DailyPositionSnapshot.portfolio_id == portfolio_id,
-                DailyPositionSnapshot.date <= a_date
-            )
-            .subquery('latest_snapshot')
-        )
-
-        stmt = (
-            select(latest_snapshot_subq.c.security_id)
-            .where(
-                latest_snapshot_subq.c.rn == 1,
-                latest_snapshot_subq.c.quantity != 0
-            )
-        )
-
-        result = await self.db.execute(stmt)
-        return result.scalars().all()
 
     @async_timed(repository="PositionRepository", method="get_last_position_before")
     async def get_last_position_before(

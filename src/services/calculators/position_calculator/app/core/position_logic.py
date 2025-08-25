@@ -1,6 +1,6 @@
 # src/services/calculators/position_calculator/app/core/position_logic.py
 import logging
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from typing import List
 
@@ -9,6 +9,7 @@ from portfolio_common.database_models import PositionHistory, Transaction as DBT
 from ..core.position_models import PositionState
 from portfolio_common.events import TransactionEvent
 from ..repositories.position_repository import PositionRepository
+from portfolio_common.position_state_repository import PositionStateRepository
 from portfolio_common.logging_utils import correlation_id_var
 
 logger = logging.getLogger(__name__)
@@ -17,8 +18,8 @@ logger = logging.getLogger(__name__)
 class PositionCalculator:
     """
     Position Calculator:
-    Responsible for recalculating positions and routing to the correct
-    downstream process (Valuation or Recalculation) based on the transaction date.
+    Handles position recalculation. Detects back-dated transactions and triggers
+    a full reprocessing by incrementing the key's epoch and resetting its watermark.
     """
 
     @classmethod
@@ -27,54 +28,60 @@ class PositionCalculator:
         event: TransactionEvent,
         db_session: AsyncSession,
         repo: PositionRepository,
-        is_recalculation_event: bool = False
-    ) -> List[PositionHistory]:
+        position_state_repo: PositionStateRepository
+    ) -> None:
         """
-        Orchestrates recalculation and job routing for a single transaction event.
+        Orchestrates recalculation and reprocessing triggers for a single transaction event.
         """
         portfolio_id = event.portfolio_id
         security_id = event.security_id
         transaction_date = event.transaction_date.date()
-        correlation_id = correlation_id_var.get()
 
+        # Get the current state for this key
+        state = await position_state_repo.get_or_create_state(portfolio_id, security_id)
+
+        # Detect if the transaction is back-dated relative to the watermark
+        is_backdated = transaction_date <= state.watermark_date
+
+        if is_backdated:
+            logger.warning(
+                "Back-dated transaction detected. Triggering reprocessing flow.",
+                extra={
+                    "portfolio_id": portfolio_id, "security_id": security_id,
+                    "transaction_date": transaction_date.isoformat(),
+                    "watermark_date": state.watermark_date.isoformat(),
+                    "current_epoch": state.epoch
+                }
+            )
+            new_watermark = transaction_date - timedelta(days=1)
+            await position_state_repo.increment_epoch_and_reset_watermark(
+                portfolio_id, security_id, new_watermark
+            )
+            # NOTE: The re-emission of historical events will be implemented in the next step.
+            # For now, the process for this event stops here.
+            return
+
+        # --- Normal (Non-Backdated) Flow ---
         await repo.delete_positions_from(portfolio_id, security_id, transaction_date)
         anchor_position = await repo.get_last_position_before(portfolio_id, security_id, transaction_date)
         transactions_to_replay = await repo.get_transactions_on_or_after(portfolio_id, security_id, transaction_date)
         
         events_to_replay = [TransactionEvent.model_validate(t) for t in transactions_to_replay]
-        new_positions = cls._calculate_new_positions(anchor_position, events_to_replay)
+        new_positions = cls._calculate_new_positions(anchor_position, events_to_replay, state.epoch)
 
         if new_positions:
             await repo.save_positions(new_positions)
-            final_position_state = new_positions[-1]
+        
+        # NOTE: Watermark advancement will be handled by the ValuationScheduler, not here.
+        # This service's responsibility is to correctly build the position history.
 
-            # ROUTING LOGIC: Decide which job to create
-            latest_business_date = await repo.get_latest_business_date()
-            is_backdated = latest_business_date and final_position_state.position_date < latest_business_date
-
-            if is_backdated and not is_recalculation_event:
-                logger.info(f"Backdated transaction {event.transaction_id} detected. Staging recalculation job.")
-                await repo.create_recalculation_job(
-                    portfolio_id=final_position_state.portfolio_id,
-                    security_id=final_position_state.security_id,
-                    from_date=final_position_state.position_date,
-                    correlation_id=correlation_id
-                )
-            else:
-                await repo.upsert_valuation_job(
-                    portfolio_id=final_position_state.portfolio_id,
-                    security_id=final_position_state.security_id,
-                    valuation_date=final_position_state.position_date,
-                    correlation_id=correlation_id
-                )
-
-        logger.info(f"[Calculate] Staged {len(new_positions)} position records for Portfolio={portfolio_id}, Security={security_id}")
-        return new_positions
+        logger.info(f"[Calculate] Staged {len(new_positions)} position records for Epoch {state.epoch}")
 
     @staticmethod
     def _calculate_new_positions(
         anchor_position: PositionHistory | None,
-        transactions: List[TransactionEvent]
+        transactions: List[TransactionEvent],
+        epoch: int
     ) -> List[PositionHistory]:
         if not transactions:
             return []
@@ -97,7 +104,8 @@ class PositionCalculator:
                 position_date=transaction.transaction_date.date(),
                 quantity=new_state.quantity,
                 cost_basis=new_state.cost_basis,
-                cost_basis_local=new_state.cost_basis_local
+                cost_basis_local=new_state.cost_basis_local,
+                epoch=epoch # Tag record with the current epoch
             )
             new_history_records.append(new_position_record)
             

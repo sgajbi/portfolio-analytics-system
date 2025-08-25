@@ -12,6 +12,7 @@ from portfolio_common.logging_utils import correlation_id_var
 from portfolio_common.events import TransactionEvent
 from portfolio_common.db import get_async_db_session
 from portfolio_common.idempotency_repository import IdempotencyRepository
+from portfolio_common.position_state_repository import PositionStateRepository
 from portfolio_common.database_models import DailyPositionSnapshot
 
 from ..repositories.position_repository import PositionRepository
@@ -55,7 +56,6 @@ class TransactionEventConsumer(BaseConsumer):
             event = TransactionEvent.model_validate(data)
 
             async for db in get_async_db_session():
-                # FIX: Use 'async with' for correct transaction management
                 async with db.begin():
                     idempotency_repo = IdempotencyRepository(db)
                     if await idempotency_repo.is_event_processed(event_id, SERVICE_NAME):
@@ -63,20 +63,13 @@ class TransactionEventConsumer(BaseConsumer):
                         return
 
                     repo = PositionRepository(db)
-
-                    # --- Concurrency Lock Check ---
-                    # This check will be reimplemented against the new position_state table later
-                    # For now, we remove the dependency on the old system
-                    # if await recalc_job_repo.is_job_processing(event.portfolio_id, event.security_id):
-                    #     raise RecalculationInProgressError(
-                    #         f"Recalculation job is active for {event.portfolio_id}/{event.security_id}. Requeuing message."
-                    #     )
+                    position_state_repo = PositionStateRepository(db)
                     
                     await PositionCalculator.calculate(
-                        event,
-                        db,
+                        event=event,
+                        db_session=db,
                         repo=repo,
-                        is_recalculation_event=is_recalculation_event
+                        position_state_repo=position_state_repo
                     )
                     
                     await idempotency_repo.mark_event_processed(
