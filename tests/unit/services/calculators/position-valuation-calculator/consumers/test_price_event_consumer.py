@@ -5,7 +5,6 @@ from datetime import date
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from portfolio_common.events import MarketPricePersistedEvent
-from portfolio_common.recalculation_job_repository import RecalculationJobRepository
 from portfolio_common.valuation_job_repository import ValuationJobRepository
 from services.calculators.position_valuation_calculator.app.consumers.price_event_consumer import PriceEventConsumer
 from services.calculators.position_valuation_calculator.app.repositories.valuation_repository import ValuationRepository
@@ -51,7 +50,6 @@ def mock_dependencies():
     """A fixture to patch all external dependencies for the consumer test."""
     mock_repo = AsyncMock(spec=ValuationRepository)
     mock_idempotency_repo = AsyncMock(spec=IdempotencyRepository)
-    mock_recalc_job_repo = AsyncMock(spec=RecalculationJobRepository)
     mock_valuation_job_repo = AsyncMock(spec=ValuationJobRepository)
     
     mock_db_session = AsyncMock(spec=AsyncSession)
@@ -68,47 +66,13 @@ def mock_dependencies():
     ), patch(
         "services.calculators.position_valuation_calculator.app.consumers.price_event_consumer.IdempotencyRepository", return_value=mock_idempotency_repo
     ), patch(
-        "services.calculators.position_valuation_calculator.app.consumers.price_event_consumer.RecalculationJobRepository", return_value=mock_recalc_job_repo
-    ), patch(
         "services.calculators.position_valuation_calculator.app.consumers.price_event_consumer.ValuationJobRepository", return_value=mock_valuation_job_repo
     ):
         yield {
             "repo": mock_repo,
             "idempotency_repo": mock_idempotency_repo,
-            "recalc_job_repo": mock_recalc_job_repo,
             "valuation_job_repo": mock_valuation_job_repo
         }
-
-async def test_creates_recalculation_job_for_backdated_price(
-    consumer: PriceEventConsumer,
-    mock_kafka_message: MagicMock,
-    mock_event: MarketPricePersistedEvent,
-    mock_dependencies: dict
-):
-    """
-    GIVEN a back-dated market price event
-    WHEN the message is processed
-    THEN it should create a RECALCULATION job for each affected portfolio.
-    """
-    # ARRANGE
-    mock_repo = mock_dependencies["repo"]
-    mock_recalc_job_repo = mock_dependencies["recalc_job_repo"]
-    mock_valuation_job_repo = mock_dependencies["valuation_job_repo"]
-    mock_idempotency_repo = mock_dependencies["idempotency_repo"]
-
-    mock_idempotency_repo.is_event_processed.return_value = False
-    mock_repo.find_portfolios_holding_security_on_date.return_value = ["PORT_01"]
-    # Simulate a back-dated event by setting latest business date after the price date
-    mock_repo.get_latest_business_date.return_value = date(2025, 8, 10)
-    
-    # ACT
-    await consumer.process_message(mock_kafka_message)
-
-    # ASSERT
-    mock_recalc_job_repo.create_job.assert_awaited_once()
-    mock_valuation_job_repo.upsert_job.assert_not_called()
-    call_args = mock_recalc_job_repo.create_job.call_args.kwargs
-    assert call_args['from_date'] == mock_event.price_date
 
 async def test_creates_valuation_job_for_current_price(
     consumer: PriceEventConsumer,
@@ -123,7 +87,6 @@ async def test_creates_valuation_job_for_current_price(
     """
     # ARRANGE
     mock_repo = mock_dependencies["repo"]
-    mock_recalc_job_repo = mock_dependencies["recalc_job_repo"]
     mock_valuation_job_repo = mock_dependencies["valuation_job_repo"]
     mock_idempotency_repo = mock_dependencies["idempotency_repo"]
 
@@ -137,6 +100,5 @@ async def test_creates_valuation_job_for_current_price(
 
     # ASSERT
     mock_valuation_job_repo.upsert_job.assert_awaited_once()
-    mock_recalc_job_repo.create_job.assert_not_called()
     call_args = mock_valuation_job_repo.upsert_job.call_args.kwargs
     assert call_args['valuation_date'] == mock_event.price_date
