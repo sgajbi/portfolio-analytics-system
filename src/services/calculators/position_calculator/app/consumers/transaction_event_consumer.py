@@ -14,6 +14,7 @@ from portfolio_common.db import get_async_db_session
 from portfolio_common.idempotency_repository import IdempotencyRepository
 from portfolio_common.position_state_repository import PositionStateRepository
 from portfolio_common.kafka_utils import get_kafka_producer, KafkaProducer
+from portfolio_common.monitoring import EPOCH_MISMATCH_DROPPED_TOTAL # NEW IMPORT
 
 from ..repositories.position_repository import PositionRepository
 from ..core.position_logic import PositionCalculator
@@ -73,6 +74,12 @@ class TransactionEventConsumer(BaseConsumer):
                     message_epoch = reprocess_epoch if reprocess_epoch is not None else state.epoch
                     
                     if message_epoch < state.epoch:
+                        EPOCH_MISMATCH_DROPPED_TOTAL.labels(
+                            service_name=SERVICE_NAME,
+                            topic=msg.topic(),
+                            portfolio_id=event.portfolio_id,
+                            security_id=event.security_id,
+                        ).inc()
                         logger.warning(
                             "Message has stale epoch. Discarding.",
                             extra={

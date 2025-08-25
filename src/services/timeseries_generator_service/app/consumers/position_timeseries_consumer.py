@@ -17,11 +17,14 @@ from portfolio_common.events import DailyPositionSnapshotPersistedEvent
 from portfolio_common.db import get_async_db_session
 from portfolio_common.database_models import DailyPositionSnapshot, PortfolioAggregationJob, Instrument
 from portfolio_common.position_state_repository import PositionStateRepository
+from portfolio_common.monitoring import EPOCH_MISMATCH_DROPPED_TOTAL # NEW IMPORT
 
 from ..core.position_timeseries_logic import PositionTimeseriesLogic
 from ..repositories.timeseries_repository import TimeseriesRepository
 
 logger = logging.getLogger(__name__)
+
+SERVICE_NAME = "timeseries-generator" # Define service name for metric
 
 class InstrumentNotFoundError(Exception):
     pass
@@ -74,6 +77,12 @@ class PositionTimeseriesConsumer(BaseConsumer):
                     # --- EPOCH FENCING ---
                     state = await position_state_repo.get_or_create_state(event.portfolio_id, event.security_id)
                     if event.epoch < state.epoch:
+                        EPOCH_MISMATCH_DROPPED_TOTAL.labels(
+                            service_name=SERVICE_NAME,
+                            topic=msg.topic(),
+                            portfolio_id=event.portfolio_id,
+                            security_id=event.security_id,
+                        ).inc()
                         logger.warning(
                             "Snapshot event has stale epoch. Discarding.",
                             extra={

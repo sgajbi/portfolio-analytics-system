@@ -124,6 +124,15 @@ def outbox_batch_timer():
     return _OUTBOX_BATCH_SECONDS.time()
 
 # --------------------------------------------------------------------------------------
+# Reprocessing & Epoch Metrics
+# --------------------------------------------------------------------------------------
+EPOCH_MISMATCH_DROPPED_TOTAL = Counter(
+    "epoch_mismatch_dropped_total",
+    "Number of Kafka messages dropped due to a stale epoch.",
+    labelnames=("service_name", "topic", "portfolio_id", "security_id"),
+)
+
+# --------------------------------------------------------------------------------------
 # Optional generic HTTP metrics (use across services if helpful)
 # --------------------------------------------------------------------------------------
 HTTP_REQUESTS_TOTAL = Counter(
