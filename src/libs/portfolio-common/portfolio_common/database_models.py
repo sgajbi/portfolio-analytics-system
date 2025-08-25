@@ -3,7 +3,7 @@ from sqlalchemy import (
     Column, Integer, 
     String, Numeric, DateTime,
     Date, func,
-    ForeignKey, UniqueConstraint, Boolean, JSON, Index
+    ForeignKey, UniqueConstraint, Boolean, JSON, Index, PrimaryKeyConstraint
 )
 from sqlalchemy.orm import relationship
 
@@ -45,6 +45,7 @@ class PositionHistory(Base):
     security_id = Column(String, index=True, nullable=False)
     transaction_id = Column(String, ForeignKey('transactions.transaction_id'), nullable=False)
     position_date = Column(Date, index=True, nullable=False)
+    epoch = Column(Integer, nullable=False, default=0, server_default='0')
     quantity = Column(Numeric(18, 10), nullable=False)
     cost_basis = Column(Numeric(18, 10), nullable=False)
     cost_basis_local = Column(Numeric(18, 10), nullable=True)
@@ -58,6 +59,7 @@ class DailyPositionSnapshot(Base):
     portfolio_id = Column(String, ForeignKey('portfolios.portfolio_id'), index=True, nullable=False)
     security_id = Column(String, index=True, nullable=False)
     date = Column(Date, index=True, nullable=False)
+    epoch = Column(Integer, nullable=False, default=0, server_default='0')
     quantity = Column(Numeric(18, 10), nullable=False)
     cost_basis = Column(Numeric(18, 10), nullable=False)
     cost_basis_local = Column(Numeric(18, 10), nullable=True)
@@ -71,7 +73,7 @@ class DailyPositionSnapshot(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
     __table_args__ = (
-        UniqueConstraint('portfolio_id', 'security_id', 'date', name='_portfolio_security_date_uc'),
+        UniqueConstraint('portfolio_id', 'security_id', 'date', 'epoch', name='_portfolio_security_date_epoch_uc'),
         Index('ix_daily_position_snapshots_covering', 'portfolio_id', 'security_id', date.desc(), id.desc()),
     )
 
@@ -192,6 +194,7 @@ class PositionTimeseries(Base):
     portfolio_id = Column(String, ForeignKey('portfolios.portfolio_id'), primary_key=True)
     security_id = Column(String, ForeignKey('instruments.security_id'), primary_key=True)
     date = Column(Date, primary_key=True)
+    epoch = Column(Integer, primary_key=True, default=0, server_default='0')
     bod_market_value = Column(Numeric(18, 10), nullable=False)
     bod_cashflow_position = Column(Numeric(18, 10), nullable=False)
     eod_cashflow_position = Column(Numeric(18, 10), nullable=False)
@@ -209,6 +212,7 @@ class PortfolioTimeseries(Base):
 
     portfolio_id = Column(String, ForeignKey('portfolios.portfolio_id'), primary_key=True)
     date = Column(Date, primary_key=True)
+    epoch = Column(Integer, primary_key=True, default=0, server_default='0')
     bod_market_value = Column(Numeric(18, 10), nullable=False)
     bod_cashflow = Column(Numeric(18, 10), nullable=False)
     eod_cashflow = Column(Numeric(18, 10), nullable=False)
@@ -283,28 +287,26 @@ class PortfolioValuationJob(Base):
     portfolio_id = Column(String, nullable=False, index=True)
     security_id = Column(String, nullable=False, index=True)
     valuation_date = Column(Date, nullable=False, index=True)
+    epoch = Column(Integer, nullable=False, default=0, server_default='0')
     status = Column(String, nullable=False, default='PENDING', index=True)
     correlation_id = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
     __table_args__ = (
-        UniqueConstraint('portfolio_id', 'security_id', 'valuation_date', name='_portfolio_security_valuation_date_uc'),
+        UniqueConstraint('portfolio_id', 'security_id', 'valuation_date', 'epoch', name='_portfolio_security_valuation_date_epoch_uc'),
     )
 
-class RecalculationJob(Base):
+class PositionState(Base):
     """
-    Tracks portfolio-security pairs that require a full historical recalculation.
-    This table is the source of truth for the recalculation-service and provides
-    a locking and deduplication mechanism.
+    Tracks the current reprocessing state (epoch and watermark) for each portfolio-security key.
     """
-    __tablename__ = 'recalculation_jobs'
+    __tablename__ = 'position_state'
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    portfolio_id = Column(String, nullable=False, index=True)
-    security_id = Column(String, nullable=False, index=True)
-    from_date = Column(Date, nullable=False)
-    status = Column(String, nullable=False, default='PENDING', index=True)
-    correlation_id = Column(String, nullable=True)
+    portfolio_id = Column(String, primary_key=True)
+    security_id = Column(String, primary_key=True)
+    epoch = Column(Integer, nullable=False, server_default='0')
+    watermark_date = Column(Date, nullable=False)
+    status = Column(String, nullable=False, server_default='CURRENT', index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
