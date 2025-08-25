@@ -62,7 +62,6 @@ class PositionRepository:
         Retrieves the single latest daily snapshot for each security in a given portfolio,
         ensuring that the snapshot belongs to the current epoch for that security.
         """
-        # --- UPDATED QUERY LOGIC ---
         # Subquery to rank snapshots within each security, but only for snapshots
         # that match the current epoch defined in the position_state table.
         ranked_snapshots_subq = select(

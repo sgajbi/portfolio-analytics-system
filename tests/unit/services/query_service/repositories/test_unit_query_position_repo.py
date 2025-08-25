@@ -13,7 +13,7 @@ def mock_db_session() -> AsyncMock:
     """Provides a mock SQLAlchemy AsyncSession."""
     session = AsyncMock(spec=AsyncSession)
     mock_result = MagicMock()
-    
+ 
     mock_result.all.return_value = [("mock_snapshot", "mock_name")] 
     mock_result.scalars.return_value.all.return_value = ["mock_history_1", "mock_history_2"]
     session.execute = AsyncMock(return_value=mock_result)
@@ -61,8 +61,8 @@ async def test_get_latest_positions_by_portfolio(repository: PositionRepository,
     compiled_query = str(executed_stmt.compile(compile_kwargs={"literal_binds": True}))
     
     # Check for key components of the new complex query
-    assert "FROM position_state" in compiled_query
-    assert "daily_position_snapshots.epoch = latest_epoch.max_epoch" in compiled_query
+    assert "FROM daily_position_snapshots" in compiled_query
+    assert "JOIN position_state ON daily_position_snapshots.portfolio_id = position_state.portfolio_id AND daily_position_snapshots.security_id = position_state.security_id AND daily_position_snapshots.epoch = position_state.epoch" in compiled_query
     assert "row_number()" in compiled_query.lower()
     assert "PARTITION BY daily_position_snapshots.security_id" in compiled_query
     assert "WHERE ranked_snapshots.rn = 1" in compiled_query
