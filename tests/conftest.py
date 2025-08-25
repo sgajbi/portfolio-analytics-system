@@ -23,29 +23,37 @@ if project_root not in sys.path:
 def docker_services(request):
     """
     A session-scoped fixture that starts the Docker Compose stack and waits for the
-    ingestion_service to become healthy before yielding to the tests.
+    ingestion_service and query_service to become healthy before yielding to the tests.
     """
+    # Remove the 'wait=True' flag to handle waiting manually.
     compose = DockerCompose(".", compose_file_name="docker-compose.yml")
     with compose:
-        print("\n--- Waiting for services to become healthy ---")
+        print("\n--- Waiting for API services to become healthy ---")
 
-        host = compose.get_service_host("ingestion_service", 8000)
-        port = compose.get_service_port("ingestion_service", 8000)
-        health_url = f"http://{host}:{port}/health/ready"
-        
-        start_time = time.time()
+        services_to_check = {
+            "ingestion_service": 8000,
+            "query_service": 8001
+        }
         timeout = 180
-        while time.time() - start_time < timeout:
-            try:
-                response = requests.get(health_url)
-                if response.status_code == 200:
-                    print(f"Ingestion service is ready at {health_url}")
-                    break
-            except requests.ConnectionError:
-                time.sleep(2)
-        else:
-            pytest.fail(f"Ingestion service did not become ready within {timeout} seconds.")
+        
+        for service_name, port in services_to_check.items():
+            host = compose.get_service_host(service_name, port)
+            service_port = compose.get_service_port(service_name, port)
+            health_url = f"http://{host}:{service_port}/health/ready"
             
+            start_time = time.time()
+            while time.time() - start_time < timeout:
+                try:
+                    response = requests.get(health_url, timeout=2)
+                    if response.status_code == 200:
+                        print(f"--- Service '{service_name}' is healthy at {health_url} ---")
+                        break
+                except requests.ConnectionError:
+                    time.sleep(2)
+            else:
+                pytest.fail(f"Service '{service_name}' did not become healthy within {timeout} seconds.")
+            
+        print("\n--- All API services are healthy, proceeding with tests ---")
         yield compose
 
 @pytest.fixture(scope="session")
@@ -84,20 +92,22 @@ def clean_db(db_engine):
     yield
 
 @pytest.fixture(scope="module")
-def clean_db_module(db_engine):
+def clean_db_module(docker_services: DockerCompose, db_engine):
     """
     A module-scoped fixture that safely cleans the database between test modules.
     It stops all services that might hold DB locks, truncates the tables,
-    and then restarts the services to ensure a clean state.
+    restarts the services, and then waits for them to be healthy.
     """
     services_to_manage = [
-        "persistence_service",
-        "cost_calculator_service",
-        "cashflow_calculator_service",
-        "position_calculator_service",
-        "position_valuation_calculator",
-        "timeseries_generator_service",
+        "persistence_service", "cost_calculator_service", "cashflow_calculator_service",
+        "position_calculator_service", "position_valuation_calculator", "timeseries_generator_service",
+        "query_service", "ingestion_service"
     ]
+    service_ports = {
+        "persistence_service": 8080, "cost_calculator_service": 8083, "cashflow_calculator_service": 8082,
+        "position_calculator_service": 8081, "position_valuation_calculator": 8084, "timeseries_generator_service": 8085,
+        "query_service": 8001, "ingestion_service": 8000
+    }
 
     print("\n--- Stopping services for module cleanup ---")
     subprocess.run(["docker", "compose", "stop"] + services_to_manage, check=True, capture_output=True, text=True)
@@ -110,9 +120,24 @@ def clean_db_module(db_engine):
     print("\n--- Restarting services after module cleanup ---")
     subprocess.run(["docker", "compose", "start"] + services_to_manage, check=True, capture_output=True, text=True)
 
-    # It's critical to wait for services to be healthy again before tests proceed.
-    print("\n--- Waiting for services to restart... ---")
-    time.sleep(15)
+    print("\n--- Waiting for restarted services to become healthy... ---")
+    timeout = 120
+    start_time = time.time()
+    for service_name in services_to_manage:
+        host = docker_services.get_service_host(service_name, service_ports[service_name])
+        port = docker_services.get_service_port(service_name, service_ports[service_name])
+        health_url = f"http://{host}:{port}/health/ready"
+        
+        while time.time() - start_time < timeout:
+            try:
+                response = requests.get(health_url, timeout=2)
+                if response.status_code == 200:
+                    print(f"--- Service '{service_name}' is healthy. ---")
+                    break
+            except requests.ConnectionError:
+                time.sleep(2)
+        else:
+            pytest.fail(f"Service '{service_name}' did not become healthy within {timeout} seconds.")
 
     yield
 
@@ -151,8 +176,8 @@ def api_endpoints(docker_services):
     ingestion_port = docker_services.get_service_port("ingestion_service", 8000)
     ingestion_url = f"http://{ingestion_host}:{ingestion_port}"
 
-    query_host = docker_services.get_service_host("query-service", 8001)
-    query_port = docker_services.get_service_port("query-service", 8001)
+    query_host = docker_services.get_service_host("query_service", 8001)
+    query_port = docker_services.get_service_port("query_service", 8001)
     query_url = f"http://{query_host}:{query_port}"
     
     return {"ingestion": ingestion_url, "query": query_url}
