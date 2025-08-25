@@ -13,7 +13,7 @@ from portfolio_common.events import TransactionEvent
 from portfolio_common.db import get_async_db_session
 from portfolio_common.idempotency_repository import IdempotencyRepository
 from portfolio_common.position_state_repository import PositionStateRepository
-from portfolio_common.database_models import DailyPositionSnapshot
+from portfolio_common.kafka_utils import get_kafka_producer, KafkaProducer
 
 from ..repositories.position_repository import PositionRepository
 from ..core.position_logic import PositionCalculator
@@ -29,10 +29,14 @@ class RecalculationInProgressError(Exception):
 class TransactionEventConsumer(BaseConsumer):
     """
     Consumes processed transaction events, recalculates position history,
-    respects recalculation locks, and triggers new recalculation jobs for backdated transactions.
+    and triggers a full reprocessing flow for backdated transactions.
     """
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._producer: KafkaProducer = get_kafka_producer()
+
     @retry(
-        wait=wait_fixed(5), # Wait longer for retryable errors like the lock
+        wait=wait_fixed(5), # Wait longer for retryable errors
         stop=stop_after_attempt(12),
         before=before_log(logger, logging.INFO),
         retry=retry_if_exception_type((DBAPIError, IntegrityError, RecalculationInProgressError)),
@@ -44,13 +48,12 @@ class TransactionEventConsumer(BaseConsumer):
         event_id = f"{msg.topic()}-{msg.partition()}-{msg.offset()}"
         correlation_id = correlation_id_var.get()
 
-        is_recalculation_event = False
+        reprocess_epoch = None
         if msg.headers():
-            for header_key, _ in msg.headers():
-                if header_key == 'recalculation_id':
-                    is_recalculation_event = True
+            for header_key, header_value in msg.headers():
+                if header_key == 'reprocess_epoch':
+                    reprocess_epoch = int(header_value.decode('utf-8'))
                     break
-
         try:
             data = json.loads(value)
             event = TransactionEvent.model_validate(data)
@@ -65,11 +68,28 @@ class TransactionEventConsumer(BaseConsumer):
                     repo = PositionRepository(db)
                     position_state_repo = PositionStateRepository(db)
                     
+                    # --- EPOCH FENCING ---
+                    state = await position_state_repo.get_or_create_state(event.portfolio_id, event.security_id)
+                    message_epoch = reprocess_epoch if reprocess_epoch is not None else state.epoch
+                    
+                    if message_epoch < state.epoch:
+                        logger.warning(
+                            "Message has stale epoch. Discarding.",
+                            extra={
+                                "portfolio_id": event.portfolio_id, "security_id": event.security_id,
+                                "message_epoch": message_epoch, "current_epoch": state.epoch
+                            }
+                        )
+                        await idempotency_repo.mark_event_processed(event_id, event.portfolio_id, SERVICE_NAME, correlation_id)
+                        return
+                    
                     await PositionCalculator.calculate(
                         event=event,
                         db_session=db,
                         repo=repo,
-                        position_state_repo=position_state_repo
+                        position_state_repo=position_state_repo,
+                        kafka_producer=self._producer,
+                        current_state=state
                     )
                     
                     await idempotency_repo.mark_event_processed(

@@ -9,9 +9,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.services.calculators.position_calculator.app.consumers.transaction_event_consumer import TransactionEventConsumer, RecalculationInProgressError
 from portfolio_common.events import TransactionEvent
 from portfolio_common.idempotency_repository import IdempotencyRepository
-from portfolio_common.recalculation_job_repository import RecalculationJobRepository
+from portfolio_common.position_state_repository import PositionStateRepository
 from src.services.calculators.position_calculator.app.repositories.position_repository import PositionRepository
 from portfolio_common.logging_utils import correlation_id_var
+from portfolio_common.database_models import PositionState
 
 pytestmark = pytest.mark.asyncio
 
@@ -42,7 +43,7 @@ def mock_kafka_message(mock_transaction_event: TransactionEvent):
     mock_msg = MagicMock()
     mock_msg.value.return_value = mock_transaction_event.model_dump_json().encode('utf-8')
     mock_msg.key.return_value = "test_key".encode('utf-8')
-    mock_msg.headers.return_value = [('correlation_id', b'test-corr-id')]
+    mock_msg.headers.return_value = []
     mock_msg.topic.return_value = "test"
     mock_msg.partition.return_value = 0
     mock_msg.offset.return_value = 1
@@ -51,9 +52,8 @@ def mock_kafka_message(mock_transaction_event: TransactionEvent):
 @pytest.fixture
 def mock_dependencies():
     mock_idempotency_repo = AsyncMock(spec=IdempotencyRepository)
-    mock_recalc_job_repo = AsyncMock(spec=RecalculationJobRepository)
+    mock_position_state_repo = AsyncMock(spec=PositionStateRepository)
     mock_position_repo = AsyncMock(spec=PositionRepository)
-    mock_position_repo.get_latest_business_date = AsyncMock()
 
     mock_db_session = AsyncMock(spec=AsyncSession)
     
@@ -68,76 +68,49 @@ def mock_dependencies():
     with patch("src.services.calculators.position_calculator.app.consumers.transaction_event_consumer.get_async_db_session", new=get_session_gen), \
          patch("src.services.calculators.position_calculator.app.consumers.transaction_event_consumer.IdempotencyRepository", return_value=mock_idempotency_repo), \
          patch("src.services.calculators.position_calculator.app.consumers.transaction_event_consumer.PositionRepository", return_value=mock_position_repo), \
-         patch("src.services.calculators.position_calculator.app.consumers.transaction_event_consumer.RecalculationJobRepository", return_value=mock_recalc_job_repo), \
+         patch("src.services.calculators.position_calculator.app.consumers.transaction_event_consumer.PositionStateRepository", return_value=mock_position_state_repo), \
          patch("src.services.calculators.position_calculator.app.consumers.transaction_event_consumer.PositionCalculator.calculate") as mock_calculate:
         yield {
             "idempotency_repo": mock_idempotency_repo,
-            "recalc_job_repo": mock_recalc_job_repo,
+            "position_state_repo": mock_position_state_repo,
             "position_repo": mock_position_repo,
             "calculate_logic": mock_calculate
         }
 
-async def test_consumer_recalculates_positions(position_consumer: TransactionEventConsumer, mock_kafka_message: MagicMock, mock_dependencies: dict):
+async def test_consumer_calls_logic_with_correct_state(position_consumer: TransactionEventConsumer, mock_kafka_message: MagicMock, mock_dependencies: dict):
     # ARRANGE
     mock_dependencies["idempotency_repo"].is_event_processed.return_value = False
-    mock_dependencies["recalc_job_repo"].is_job_processing.return_value = False
-    
+    mock_state = PositionState(epoch=0)
+    mock_dependencies["position_state_repo"].get_or_create_state.return_value = mock_state
+
     # ACT
     await position_consumer.process_message(mock_kafka_message)
 
     # ASSERT
     mock_dependencies["calculate_logic"].assert_awaited_once()
-    # Verify the flag is passed as False when the header is absent
-    assert mock_dependencies["calculate_logic"].call_args.kwargs['is_recalculation_event'] is False
-    mock_dependencies["idempotency_repo"].mark_event_processed.assert_called_once()
+    call_kwargs = mock_dependencies["calculate_logic"].call_args.kwargs
+    assert call_kwargs['current_state'] == mock_state
 
-
-async def test_consumer_passes_recalculation_flag(position_consumer: TransactionEventConsumer, mock_kafka_message: MagicMock, mock_dependencies: dict):
+async def test_consumer_discards_stale_epoch_message(position_consumer: TransactionEventConsumer, mock_kafka_message: MagicMock, mock_dependencies: dict):
     """
-    GIVEN a Kafka message with a 'recalculation_id' header
+    GIVEN a Kafka message with a 'reprocess_epoch' header that is less than the current state epoch
     WHEN the consumer processes it
-    THEN it should call the PositionCalculator logic with is_recalculation_event=True.
+    THEN it should discard the message and not call the business logic.
     """
     # ARRANGE
     mock_dependencies["idempotency_repo"].is_event_processed.return_value = False
-    mock_dependencies["recalc_job_repo"].is_job_processing.return_value = False
-    # Add the special header to the mock message
-    mock_kafka_message.headers.return_value = [('recalculation_id', b'99')]
+    # The database state has a newer epoch
+    mock_state = PositionState(epoch=2)
+    mock_dependencies["position_state_repo"].get_or_create_state.return_value = mock_state
+    # The incoming message has a stale epoch header
+    mock_kafka_message.headers.return_value = [('reprocess_epoch', b'1')]
 
     # ACT
     await position_consumer.process_message(mock_kafka_message)
 
     # ASSERT
-    mock_dependencies["calculate_logic"].assert_awaited_once()
-    # Verify the flag is passed as True when the header is present
-    assert mock_dependencies["calculate_logic"].call_args.kwargs['is_recalculation_event'] is True
-
-
-async def test_consumer_triggers_recalc_for_backdated_txn(position_consumer: TransactionEventConsumer, mock_kafka_message: MagicMock, mock_transaction_event: TransactionEvent, mock_dependencies: dict):
-    # ARRANGE
-    mock_dependencies["idempotency_repo"].is_event_processed.return_value = False
-    mock_dependencies["recalc_job_repo"].is_job_processing.return_value = False
-    mock_dependencies["calculate_logic"].side_effect = mock_dependencies["position_repo"].create_recalculation_job
-
-    # ACT
-    token = correlation_id_var.set('test-corr-id')
-    try:
-        await position_consumer.process_message(mock_kafka_message)
-    finally:
-        correlation_id_var.reset(token)
-    
-    # ASSERT
-    mock_dependencies["calculate_logic"].assert_awaited_once()
-
-
-async def test_consumer_requeues_if_job_is_processing(position_consumer: TransactionEventConsumer, mock_kafka_message: MagicMock, mock_dependencies: dict):
-    # ARRANGE
-    mock_dependencies["idempotency_repo"].is_event_processed.return_value = False
-    mock_dependencies["recalc_job_repo"].is_job_processing.return_value = True
-
-    # ACT & ASSERT
-    with pytest.raises(RecalculationInProgressError):
-        await position_consumer.process_message(mock_kafka_message)
-
+    mock_dependencies["position_state_repo"].get_or_create_state.assert_awaited_once()
+    # Ensure the core logic was NOT called
     mock_dependencies["calculate_logic"].assert_not_called()
-    mock_dependencies["idempotency_repo"].mark_event_processed.assert_not_called()
+    # Ensure the event was still marked as processed for idempotency
+    mock_dependencies["idempotency_repo"].mark_event_processed.assert_called_once()

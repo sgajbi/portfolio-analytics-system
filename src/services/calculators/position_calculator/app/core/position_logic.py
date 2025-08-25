@@ -5,21 +5,23 @@ from decimal import Decimal
 from typing import List
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from portfolio_common.database_models import PositionHistory, Transaction as DBTransaction
-from ..core.position_models import PositionState
+from portfolio_common.database_models import PositionHistory, Transaction as DBTransaction, PositionState
+from ..core.position_models import PositionState as PositionStateDTO
 from portfolio_common.events import TransactionEvent
 from ..repositories.position_repository import PositionRepository
 from portfolio_common.position_state_repository import PositionStateRepository
 from portfolio_common.logging_utils import correlation_id_var
+from portfolio_common.kafka_utils import KafkaProducer
+from portfolio_common.config import KAFKA_PROCESSED_TRANSACTIONS_COMPLETED_TOPIC
 
 logger = logging.getLogger(__name__)
 
 
 class PositionCalculator:
     """
-    Position Calculator:
     Handles position recalculation. Detects back-dated transactions and triggers
-    a full reprocessing by incrementing the key's epoch and resetting its watermark.
+    a full reprocessing by incrementing the key's epoch and re-emitting all
+    historical events for that key.
     """
 
     @classmethod
@@ -28,7 +30,9 @@ class PositionCalculator:
         event: TransactionEvent,
         db_session: AsyncSession,
         repo: PositionRepository,
-        position_state_repo: PositionStateRepository
+        position_state_repo: PositionStateRepository,
+        kafka_producer: KafkaProducer,
+        current_state: PositionState
     ) -> None:
         """
         Orchestrates recalculation and reprocessing triggers for a single transaction event.
@@ -37,11 +41,7 @@ class PositionCalculator:
         security_id = event.security_id
         transaction_date = event.transaction_date.date()
 
-        # Get the current state for this key
-        state = await position_state_repo.get_or_create_state(portfolio_id, security_id)
-
-        # Detect if the transaction is back-dated relative to the watermark
-        is_backdated = transaction_date <= state.watermark_date
+        is_backdated = transaction_date <= current_state.watermark_date
 
         if is_backdated:
             logger.warning(
@@ -49,16 +49,28 @@ class PositionCalculator:
                 extra={
                     "portfolio_id": portfolio_id, "security_id": security_id,
                     "transaction_date": transaction_date.isoformat(),
-                    "watermark_date": state.watermark_date.isoformat(),
-                    "current_epoch": state.epoch
+                    "watermark_date": current_state.watermark_date.isoformat(),
+                    "current_epoch": current_state.epoch
                 }
             )
             new_watermark = transaction_date - timedelta(days=1)
-            await position_state_repo.increment_epoch_and_reset_watermark(
+            new_state = await position_state_repo.increment_epoch_and_reset_watermark(
                 portfolio_id, security_id, new_watermark
             )
-            # NOTE: The re-emission of historical events will be implemented in the next step.
-            # For now, the process for this event stops here.
+            
+            all_transactions = await repo.get_all_transactions_for_security(portfolio_id, security_id)
+            
+            logger.info(f"Re-emitting {len(all_transactions)} transactions for Epoch {new_state.epoch}")
+            for txn in all_transactions:
+                event_to_publish = TransactionEvent.model_validate(txn)
+                headers = [('reprocess_epoch', str(new_state.epoch).encode('utf-8'))]
+                kafka_producer.publish_message(
+                    topic=KAFKA_PROCESSED_TRANSACTIONS_COMPLETED_TOPIC,
+                    key=txn.portfolio_id,
+                    value=event_to_publish.model_dump(mode='json'),
+                    headers=headers
+                )
+            kafka_producer.flush()
             return
 
         # --- Normal (Non-Backdated) Flow ---
@@ -67,15 +79,12 @@ class PositionCalculator:
         transactions_to_replay = await repo.get_transactions_on_or_after(portfolio_id, security_id, transaction_date)
         
         events_to_replay = [TransactionEvent.model_validate(t) for t in transactions_to_replay]
-        new_positions = cls._calculate_new_positions(anchor_position, events_to_replay, state.epoch)
+        new_positions = cls._calculate_new_positions(anchor_position, events_to_replay, current_state.epoch)
 
         if new_positions:
             await repo.save_positions(new_positions)
         
-        # NOTE: Watermark advancement will be handled by the ValuationScheduler, not here.
-        # This service's responsibility is to correctly build the position history.
-
-        logger.info(f"[Calculate] Staged {len(new_positions)} position records for Epoch {state.epoch}")
+        logger.info(f"[Calculate] Staged {len(new_positions)} position records for Epoch {current_state.epoch}")
 
     @staticmethod
     def _calculate_new_positions(
@@ -86,7 +95,7 @@ class PositionCalculator:
         if not transactions:
             return []
 
-        current_state = PositionState(
+        current_state = PositionStateDTO(
             quantity=anchor_position.quantity if anchor_position else Decimal(0),
             cost_basis=anchor_position.cost_basis if anchor_position else Decimal(0),
             cost_basis_local=anchor_position.cost_basis_local if anchor_position and anchor_position.cost_basis_local is not None else Decimal(0)
@@ -114,7 +123,7 @@ class PositionCalculator:
         return new_history_records
 
     @staticmethod
-    def calculate_next_position(current_state: PositionState, transaction: TransactionEvent) -> PositionState:
+    def calculate_next_position(current_state: PositionStateDTO, transaction: TransactionEvent) -> PositionStateDTO:
         quantity = current_state.quantity
         cost_basis = current_state.cost_basis
         cost_basis_local = current_state.cost_basis_local
@@ -149,4 +158,4 @@ class PositionCalculator:
             cost_basis = Decimal(0)
             cost_basis_local = Decimal(0)
 
-        return PositionState(quantity=quantity, cost_basis=cost_basis, cost_basis_local=cost_basis_local)
+        return PositionStateDTO(quantity=quantity, cost_basis=cost_basis, cost_basis_local=cost_basis_local)

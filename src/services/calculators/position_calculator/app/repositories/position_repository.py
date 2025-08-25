@@ -19,6 +19,20 @@ class PositionRepository:
     def __init__(self, db: AsyncSession):
         self.db = db
 
+    @async_timed(repository="PositionRepository", method="get_all_transactions_for_security")
+    async def get_all_transactions_for_security(self, portfolio_id: str, security_id: str) -> List[Transaction]:
+        """
+        Fetches all transactions for a specific security within a portfolio, ordered chronologically.
+        This is required to replay the entire history accurately.
+        """
+        stmt = (
+            select(Transaction)
+            .where(Transaction.portfolio_id == portfolio_id, Transaction.security_id == security_id)
+            .order_by(Transaction.transaction_date.asc(), Transaction.id.asc())
+        )
+        result = await self.db.execute(stmt)
+        return result.scalars().all()
+
     @async_timed(repository="PositionRepository", method="get_latest_business_date")
     async def get_latest_business_date(self) -> Optional[date]:
         """
