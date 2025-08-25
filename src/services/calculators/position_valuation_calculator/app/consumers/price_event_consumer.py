@@ -13,7 +13,6 @@ from portfolio_common.events import MarketPricePersistedEvent
 from portfolio_common.db import get_async_db_session
 from portfolio_common.idempotency_repository import IdempotencyRepository
 from portfolio_common.logging_utils import correlation_id_var
-from portfolio_common.recalculation_job_repository import RecalculationJobRepository
 from portfolio_common.valuation_job_repository import ValuationJobRepository
 from ..repositories.valuation_repository import ValuationRepository
 
@@ -51,7 +50,6 @@ class PriceEventConsumer(BaseConsumer):
                 async with db.begin():
                     idempotency_repo = IdempotencyRepository(db)
                     repo = ValuationRepository(db)
-                    recalc_job_repo = RecalculationJobRepository(db)
                     valuation_job_repo = ValuationJobRepository(db)
                     
                     if await idempotency_repo.is_event_processed(event_id, SERVICE_NAME):
@@ -71,23 +69,20 @@ class PriceEventConsumer(BaseConsumer):
                     else:
                         logger.info(f"Found {len(affected_portfolios)} portfolios affected by price for {event.security_id}: {affected_portfolios}")
                         
+                        job_type = "VALUATION" # Default to VALUATION
+                        if is_backdated:
+                            # This will be replaced by the new epoch/watermark logic.
+                            # For now, we just create standard valuation jobs to get the system running.
+                            job_type = "VALUATION (BACKDATED)"
+
                         for portfolio_id in affected_portfolios:
-                            if is_backdated:
-                                await recalc_job_repo.create_job(
-                                    portfolio_id=portfolio_id,
-                                    security_id=event.security_id,
-                                    from_date=event.price_date,
-                                    correlation_id=correlation_id
-                                )
-                            else:
-                                await valuation_job_repo.upsert_job(
-                                    portfolio_id=portfolio_id,
-                                    security_id=event.security_id,
-                                    valuation_date=event.price_date,
-                                    correlation_id=correlation_id
-                                )
+                            await valuation_job_repo.upsert_job(
+                                portfolio_id=portfolio_id,
+                                security_id=event.security_id,
+                                valuation_date=event.price_date,
+                                correlation_id=correlation_id
+                            )
                         
-                        job_type = "RECALCULATION" if is_backdated else "VALUATION"
                         logger.info(f"Successfully staged {len(affected_portfolios)} {job_type} jobs.")
 
                     await idempotency_repo.mark_event_processed(event_id, "N/A", SERVICE_NAME, correlation_id)

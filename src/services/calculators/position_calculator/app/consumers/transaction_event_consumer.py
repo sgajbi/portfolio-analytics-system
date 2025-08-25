@@ -12,7 +12,6 @@ from portfolio_common.logging_utils import correlation_id_var
 from portfolio_common.events import TransactionEvent
 from portfolio_common.db import get_async_db_session
 from portfolio_common.idempotency_repository import IdempotencyRepository
-from portfolio_common.recalculation_job_repository import RecalculationJobRepository
 from portfolio_common.database_models import DailyPositionSnapshot
 
 from ..repositories.position_repository import PositionRepository
@@ -64,13 +63,14 @@ class TransactionEventConsumer(BaseConsumer):
                         return
 
                     repo = PositionRepository(db)
-                    recalc_job_repo = RecalculationJobRepository(db)
 
                     # --- Concurrency Lock Check ---
-                    if await recalc_job_repo.is_job_processing(event.portfolio_id, event.security_id):
-                        raise RecalculationInProgressError(
-                            f"Recalculation job is active for {event.portfolio_id}/{event.security_id}. Requeuing message."
-                        )
+                    # This check will be reimplemented against the new position_state table later
+                    # For now, we remove the dependency on the old system
+                    # if await recalc_job_repo.is_job_processing(event.portfolio_id, event.security_id):
+                    #     raise RecalculationInProgressError(
+                    #         f"Recalculation job is active for {event.portfolio_id}/{event.security_id}. Requeuing message."
+                    #     )
                     
                     await PositionCalculator.calculate(
                         event,
