@@ -26,7 +26,7 @@ async def test_get_portfolio_timeseries_for_range_constructs_correct_query(repos
     """
     GIVEN a portfolio ID and date range
     WHEN get_portfolio_timeseries_for_range is called
-    THEN it should construct a SELECT statement with the correct WHERE and ORDER BY clauses.
+    THEN it should construct a SELECT statement that filters by the current epoch using a subquery.
     """
     # ACT
     await repository.get_portfolio_timeseries_for_range(
@@ -44,3 +44,8 @@ async def test_get_portfolio_timeseries_for_range_constructs_correct_query(repos
     assert "portfolio_timeseries.date >= '2025-01-01'" in compiled_query
     assert "portfolio_timeseries.date <= '2025-01-31'" in compiled_query
     assert "ORDER BY portfolio_timeseries.date ASC" in compiled_query
+    
+    # Verify the critical epoch-filtering subquery components more robustly
+    assert "portfolio_timeseries.epoch = (SELECT max(position_state.epoch)" in compiled_query
+    assert "FROM position_state" in compiled_query
+    assert "WHERE position_state.portfolio_id = 'P1'" in compiled_query

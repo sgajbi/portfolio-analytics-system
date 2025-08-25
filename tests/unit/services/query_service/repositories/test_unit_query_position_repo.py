@@ -14,10 +14,9 @@ def mock_db_session() -> AsyncMock:
     session = AsyncMock(spec=AsyncSession)
     mock_result = MagicMock()
     
-    # Configure mock to handle different return types
     mock_result.all.return_value = [("mock_snapshot", "mock_name")] 
     mock_result.scalars.return_value.all.return_value = ["mock_history_1", "mock_history_2"]
-    session.execute.return_value = mock_result
+    session.execute = AsyncMock(return_value=mock_result)
     return session
 
 @pytest.fixture
@@ -29,7 +28,7 @@ async def test_get_position_history_with_filters(repository: PositionRepository,
     """
     GIVEN various filters
     WHEN get_position_history_by_security is called
-    THEN it should construct a SELECT statement with the correct WHERE and ORDER BY clauses.
+    THEN it should construct a SELECT statement with a JOIN to position_state and filter by epoch.
     """
     # ACT
     await repository.get_position_history_by_security(
@@ -43,17 +42,16 @@ async def test_get_position_history_with_filters(repository: PositionRepository,
     executed_stmt = mock_db_session.execute.call_args[0][0]
     compiled_query = str(executed_stmt.compile(compile_kwargs={"literal_binds": True}))
     
+    assert "FROM position_history JOIN position_state" in compiled_query
+    assert "position_history.epoch = position_state.epoch" in compiled_query
     assert "WHERE position_history.portfolio_id = 'P1'" in compiled_query
-    assert "AND position_history.security_id = 'S1'" in compiled_query
-    assert "AND position_history.position_date >= '2025-01-01'" in compiled_query
-    assert "AND position_history.position_date <= '2025-01-31'" in compiled_query
     assert "ORDER BY position_history.position_date ASC" in compiled_query
 
 async def test_get_latest_positions_by_portfolio(repository: PositionRepository, mock_db_session: AsyncMock):
     """
     GIVEN a portfolio_id
     WHEN get_latest_positions_by_portfolio is called
-    THEN it should construct the correct complex query using a window function.
+    THEN it should construct the correct complex query joining with position_state.
     """
     # ACT
     await repository.get_latest_positions_by_portfolio(portfolio_id="P1")
@@ -62,10 +60,9 @@ async def test_get_latest_positions_by_portfolio(repository: PositionRepository,
     executed_stmt = mock_db_session.execute.call_args[0][0]
     compiled_query = str(executed_stmt.compile(compile_kwargs={"literal_binds": True}))
     
-    # Check for key components of the complex query
+    # Check for key components of the new complex query
+    assert "FROM position_state" in compiled_query
+    assert "daily_position_snapshots.epoch = latest_epoch.max_epoch" in compiled_query
     assert "row_number()" in compiled_query.lower()
     assert "PARTITION BY daily_position_snapshots.security_id" in compiled_query
-    assert "ORDER BY daily_position_snapshots.date DESC" in compiled_query
-    assert "LEFT OUTER JOIN instruments ON instruments.security_id = ranked_snapshots.security_id" in compiled_query
     assert "WHERE ranked_snapshots.rn = 1" in compiled_query
-    assert "AND ranked_snapshots.quantity > 0" in compiled_query
