@@ -5,7 +5,7 @@ from decimal import Decimal
 
 from sqlalchemy.orm import Session
 from sqlalchemy.ext.asyncio import AsyncSession
-from portfolio_common.database_models import Portfolio, DailyPositionSnapshot
+from portfolio_common.database_models import Portfolio, DailyPositionSnapshot, PositionState, BusinessDate
 from src.services.calculators.position_valuation_calculator.app.repositories.valuation_repository import ValuationRepository
 
 pytestmark = pytest.mark.asyncio
@@ -59,3 +59,39 @@ async def test_find_portfolios_holding_security_on_date(db_engine, setup_holding
     # ASSERT
     assert len(portfolio_ids) == 1
     assert portfolio_ids[0] == "P1"
+
+async def test_find_contiguous_snapshot_dates(db_engine, clean_db, async_db_session: AsyncSession):
+    """
+    GIVEN position states and snapshots with and without gaps
+    WHEN find_contiguous_snapshot_dates is called
+    THEN it should return the correct latest contiguous date for each key.
+    """
+    # ARRANGE
+    repo = ValuationRepository(async_db_session)
+    states = [
+        PositionState(portfolio_id="P1", security_id="S1", watermark_date=date(2025, 8, 1), epoch=1, status='REPROCESSING'), # Has a gap
+        PositionState(portfolio_id="P2", security_id="S2", watermark_date=date(2025, 8, 1), epoch=1, status='REPROCESSING'), # No gaps
+        PositionState(portfolio_id="P3", security_id="S3", watermark_date=date(2025, 8, 1), epoch=1, status='REPROCESSING'), # No new snapshots
+    ]
+    snapshots = [
+        # P1/S1: Snapshots for day 2 and 4, but missing day 3 (gap)
+        DailyPositionSnapshot(portfolio_id="P1", security_id="S1", date=date(2025, 8, 2), epoch=1, quantity=1, cost_basis=1),
+        DailyPositionSnapshot(portfolio_id="P1", security_id="S1", date=date(2025, 8, 4), epoch=1, quantity=1, cost_basis=1),
+        # P2/S2: Snapshots for days 2, 3, 4 (contiguous)
+        DailyPositionSnapshot(portfolio_id="P2", security_id="S2", date=date(2025, 8, 2), epoch=1, quantity=1, cost_basis=1),
+        DailyPositionSnapshot(portfolio_id="P2", security_id="S2", date=date(2025, 8, 3), epoch=1, quantity=1, cost_basis=1),
+        DailyPositionSnapshot(portfolio_id="P2", security_id="S2", date=date(2025, 8, 4), epoch=1, quantity=1, cost_basis=1),
+    ]
+    business_dates = [BusinessDate(date=d) for d in [date(2025, 8, 2), date(2025, 8, 3), date(2025, 8, 4)]]
+    
+    async_db_session.add_all(states + snapshots + business_dates)
+    await async_db_session.commit()
+
+    # ACT
+    advancable_dates = await repo.find_contiguous_snapshot_dates(states)
+
+    # ASSERT
+    assert len(advancable_dates) == 2
+    assert advancable_dates[("P1", "S1")] == date(2025, 8, 2) # Stops at the gap
+    assert advancable_dates[("P2", "S2")] == date(2025, 8, 4) # Advances to the end
+    assert ("P3", "S3") not in advancable_dates # No snapshots, so not in result

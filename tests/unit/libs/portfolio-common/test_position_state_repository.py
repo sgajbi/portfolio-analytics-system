@@ -134,3 +134,37 @@ async def test_update_watermarks_if_older(
     p3_state = await async_db_session.get(PositionState, ("P3", "S3"))
     assert p3_state.watermark_date == new_watermark
     assert p3_state.status == 'REPROCESSING'
+
+async def test_bulk_update_states(clean_db, async_db_session: AsyncSession):
+    """
+    GIVEN a list of state updates
+    WHEN bulk_update_states is called
+    THEN it should update all corresponding records in a single operation.
+    """
+    # ARRANGE
+    repo = PositionStateRepository(async_db_session)
+    
+    state1 = PositionState(portfolio_id="P1", security_id="S1", watermark_date=date(2025, 6, 1), epoch=1, status='REPROCESSING')
+    state2 = PositionState(portfolio_id="P2", security_id="S2", watermark_date=date(2025, 6, 1), epoch=2, status='REPROCESSING')
+    async_db_session.add_all([state1, state2])
+    await async_db_session.commit()
+    
+    updates = [
+        {"portfolio_id": "P1", "security_id": "S1", "watermark_date": date(2025, 6, 15), "status": "CURRENT"},
+        {"portfolio_id": "P2", "security_id": "S2", "watermark_date": date(2025, 6, 20), "status": "REPROCESSING"},
+    ]
+
+    # ACT
+    updated_count = await repo.bulk_update_states(updates)
+    await async_db_session.commit()
+
+    # ASSERT
+    assert updated_count == 2
+    
+    p1_state = await async_db_session.get(PositionState, ("P1", "S1"))
+    assert p1_state.watermark_date == date(2025, 6, 15)
+    assert p1_state.status == 'CURRENT'
+    
+    p2_state = await async_db_session.get(PositionState, ("P2", "S2"))
+    assert p2_state.watermark_date == date(2025, 6, 20)
+    assert p2_state.status == 'REPROCESSING'

@@ -23,6 +23,81 @@ class ValuationRepository:
     def __init__(self, db: AsyncSession):
         self.db = db
 
+    @async_timed(repository="ValuationRepository", method="find_contiguous_snapshot_dates")
+    async def find_contiguous_snapshot_dates(self, states: List[PositionState]) -> Dict[Tuple[str, str], date]:
+        """
+        For a list of states in REPROCESSING, finds the latest date for each key
+        that has a continuous sequence of daily snapshots from its watermark.
+        """
+        if not states:
+            return {}
+
+        # This query is complex. It generates a series of dates for each key from its
+        # watermark to the latest business date. It then left-joins the snapshots and
+        # finds the last valid date before the first gap (where the snapshot is null).
+        query = text("""
+            WITH RECURSIVE date_series AS (
+                SELECT
+                    ps.portfolio_id,
+                    ps.security_id,
+                    (ps.watermark_date + INTERVAL '1 day')::DATE AS expected_date,
+                    ps.epoch
+                FROM position_state ps
+                WHERE
+                    tuple(ps.portfolio_id, ps.security_id) IN :keys
+                
+                UNION ALL
+                
+                SELECT
+                    ds.portfolio_id,
+                    ds.security_id,
+                    (ds.expected_date + INTERVAL '1 day')::DATE,
+                    ds.epoch
+                FROM date_series ds
+                WHERE ds.expected_date < (SELECT MAX(date) FROM business_dates)
+            ),
+            checked_snapshots AS (
+                SELECT
+                    ds.portfolio_id,
+                    ds.security_id,
+                    ds.expected_date,
+                    dps.id IS NOT NULL AS has_snapshot
+                FROM date_series ds
+                LEFT JOIN daily_position_snapshots dps
+                    ON ds.portfolio_id = dps.portfolio_id
+                    AND ds.security_id = dps.security_id
+                    AND ds.expected_date = dps.date
+                    AND ds.epoch = dps.epoch
+            ),
+            contiguous_dates AS (
+                SELECT
+                    cs.portfolio_id,
+                    cs.security_id,
+                    cs.expected_date
+                FROM checked_snapshots cs
+                WHERE cs.has_snapshot = true
+                AND NOT EXISTS (
+                    SELECT 1
+                    FROM checked_snapshots cs2
+                    WHERE cs2.portfolio_id = cs.portfolio_id
+                    AND cs2.security_id = cs.security_id
+                    AND cs2.expected_date < cs.expected_date
+                    AND cs2.has_snapshot = false
+                )
+            )
+            SELECT
+                portfolio_id,
+                security_id,
+                MAX(expected_date) as contiguous_date
+            FROM contiguous_dates
+            GROUP BY portfolio_id, security_id;
+        """)
+        
+        keys_tuple = tuple((s.portfolio_id, s.security_id) for s in states)
+        result = await self.db.execute(query, {"keys": keys_tuple})
+        
+        return {(row.portfolio_id, row.security_id): row.contiguous_date for row in result.mappings()}
+
     @async_timed(repository="ValuationRepository", method="find_portfolios_holding_security_on_date")
     async def find_portfolios_holding_security_on_date(self, security_id: str, a_date: date) -> List[str]:
         """
