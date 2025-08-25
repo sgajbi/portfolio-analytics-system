@@ -87,7 +87,11 @@ async def test_find_contiguous_snapshot_dates(db_engine, clean_db, async_db_sess
     ]
     business_dates = [BusinessDate(date=d) for d in [date(2025, 8, 2), date(2025, 8, 3), date(2025, 8, 4)]]
     
-    async_db_session.add_all(portfolios + states + snapshots + business_dates)
+    # --- FIX: Flush portfolios first to ensure they exist for the FK constraint ---
+    async_db_session.add_all(portfolios)
+    await async_db_session.flush()
+
+    async_db_session.add_all(states + snapshots + business_dates)
     await async_db_session.commit()
 
     # ACT
