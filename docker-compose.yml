@@ -18,7 +18,8 @@ services:
       retries: 5
       start_period: 10s
     networks:
-       - app_network
+      - app_network
+
   kafka:
     image: confluentinc/cp-kafka:7.5.0
     hostname: kafka
@@ -119,12 +120,12 @@ services:
     networks:
       - app_network
 
-  query-service:
+  query_service:
     build:
       context: .
       dockerfile: ./src/services/query_service/Dockerfile
-    hostname: query-service
-    container_name: query-service
+    hostname: query_service
+    container_name: query_service
     ports:
       - "8001:8001"
     environment:
@@ -150,8 +151,8 @@ services:
     build:
       context: .
       dockerfile: ./src/services/persistence_service/Dockerfile
-    hostname: persistence-service
-    container_name: persistence-service
+    hostname: persistence_service
+    container_name: persistence_service
     ports:
       - "8080:8080"
     environment:
@@ -180,8 +181,8 @@ services:
     build:
       context: .
       dockerfile: ./src/services/calculators/cost_calculator_service/Dockerfile
-    hostname: cost-calculator-service
-    container_name: cost-calculator-service
+    hostname: cost_calculator_service
+    container_name: cost_calculator_service
     ports:
       - "8083:8083"
     environment:
@@ -211,8 +212,8 @@ services:
     build:
       context: .
       dockerfile: ./src/services/calculators/cashflow_calculator_service/Dockerfile
-    hostname: cashflow-calculator-service
-    container_name: cashflow-calculator-service
+    hostname: cashflow_calculator_service
+    container_name: cashflow_calculator_service
     ports:
      - "8082:8082"
     environment:
@@ -241,8 +242,8 @@ services:
     build:
       context: .
       dockerfile: ./src/services/calculators/position_calculator/Dockerfile
-    hostname: position-calculator-service
-    container_name: position-calculator-service
+    hostname: position_calculator_service
+    container_name: position_calculator_service
     ports:
       - "8081:8081"
     environment:
@@ -271,8 +272,8 @@ services:
     build:
       context: .
       dockerfile: ./src/services/calculators/position_valuation_calculator/Dockerfile
-    hostname: position-valuation-calculator
-    container_name: position-valuation-calculator
+    hostname: position_valuation_calculator
+    container_name: position_valuation_calculator
     ports:
       - "8084:8084"
     environment:
@@ -302,8 +303,8 @@ services:
     build:
       context: .
       dockerfile: ./src/services/timeseries_generator_service/Dockerfile
-    hostname: timeseries-generator-service
-    container_name: timeseries-generator-service
+    hostname: timeseries_generator_service
+    container_name: timeseries_generator_service
     ports:
       - "8085:8085"
     environment:
@@ -341,7 +342,7 @@ services:
       - app_network
     depends_on:
       - ingestion_service
-      - query-service
+      - query_service
       - persistence_service
       - cost_calculator_service
       - cashflow_calculator_service

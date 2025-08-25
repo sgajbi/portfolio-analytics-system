@@ -1,6 +1,6 @@
 # src/services/ingestion_service/Dockerfile
 
-# Stage 1: Base image setup. This replaces the dependency on a pre-built image.
+# Stage 1: Base image setup.
 FROM python:3.11-slim-bookworm as python-base
 
 ENV POETRY_VIRTUALENVS_CREATE=false \

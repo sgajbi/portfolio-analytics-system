@@ -8,7 +8,6 @@ ENV POETRY_VIRTUALENVS_CREATE=false \
     PYTHONUNBUFFERED=1 \
     PATH="/opt/venv/bin:$PATH"
 
-# NEW: Install curl for the healthcheck command
 RUN apt-get update && \
     apt-get install -y --no-install-recommends curl && \
     rm -rf /var/lib/apt/lists/*

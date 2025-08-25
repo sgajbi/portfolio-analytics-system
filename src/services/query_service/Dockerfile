@@ -27,10 +27,9 @@ RUN pip install -e /app/src/libs/portfolio-common
 COPY src/libs/performance-calculator-engine/ /app/src/libs/performance-calculator-engine/
 RUN pip install /app/src/libs/performance-calculator-engine
 
-# --- DIRECTLY INSTALL THE MISSING DEPENDENCY ---
 RUN pip install python-dateutil
 
-# Copy service (underscore path) and install
+# Copy service and install
 COPY src/services/query_service/pyproject.toml /app/src/services/query_service/pyproject.toml
 COPY src/services/query_service/app /app/src/services/query_service/app
 RUN pip install /app/src/services/query_service
