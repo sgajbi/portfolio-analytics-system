@@ -25,6 +25,15 @@ pythonpath = [
     "src",
     "src/libs/portfolio-common",
     "src/libs/financial-calculator-engine/src",
+    "src/libs/performance-calculator-engine/src",
+    "src/services/ingestion-service",
+    "src/services/persistence-service",
+    "src/services/query-service",
+    "src/services/calculators/cashflow-calculator-service",
+    "src/services/calculators/cost-calculator-service",
+    "src/services/calculators/position-calculator",
+    "src/services/calculators/position-valuation-calculator",
+    "src/services/timeseries-generator-service",
 ]
 addopts = "--strict-markers"
 minversion = "6.0"
