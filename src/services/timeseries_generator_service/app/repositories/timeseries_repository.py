@@ -94,46 +94,56 @@ class TimeseriesRepository:
         1. The portfolio timeseries record for date D-1 (for the correct epoch) already exists.
         2. OR this job is for the earliest date for a portfolio that has no timeseries records yet.
         """
-        query = text("""
-            UPDATE portfolio_aggregation_jobs
-            SET status = 'PROCESSING', updated_at = now()
-            WHERE id IN (
-                SELECT id FROM (
-                    SELECT
-                        p1.id
-                    FROM portfolio_aggregation_jobs p1
-                    WHERE p1.status = 'PENDING' AND (
-                        -- Case 1: Prior day's timeseries exists for the portfolio's current max epoch.
-                        EXISTS (
-                            SELECT 1 FROM portfolio_timeseries pts
-                            WHERE pts.portfolio_id = p1.portfolio_id
-                            AND pts.date = p1.aggregation_date - INTERVAL '1 day'
-                            AND pts.epoch = (SELECT MAX(ps.epoch) FROM position_state ps WHERE ps.portfolio_id = p1.portfolio_id)
-                        )
-                        -- Case 2: This is the very first job for this portfolio (no timeseries exist yet).
-                        OR p1.aggregation_date = (
-                            SELECT MIN(p2.aggregation_date)
-                            FROM portfolio_aggregation_jobs p2
-                            WHERE p2.portfolio_id = p1.portfolio_id
-                            AND NOT EXISTS (
-                                SELECT 1 FROM portfolio_timeseries pts
-                                WHERE pts.portfolio_id = p1.portfolio_id
-                            )
-                        )
+        # Step 1: Select IDs of eligible jobs. This query is safe to use with joins and subqueries.
+        eligibility_query = text("""
+            SELECT
+                p1.id
+            FROM portfolio_aggregation_jobs p1
+            WHERE p1.status = 'PENDING' AND (
+                -- Case 1: Prior day's timeseries exists for the portfolio's current max epoch.
+                EXISTS (
+                    SELECT 1 FROM portfolio_timeseries pts
+                    WHERE pts.portfolio_id = p1.portfolio_id
+                    AND pts.date = p1.aggregation_date - INTERVAL '1 day'
+                    AND pts.epoch = (SELECT MAX(ps.epoch) FROM position_state ps WHERE ps.portfolio_id = p1.portfolio_id)
+                )
+                -- Case 2: This is the very first job for this portfolio (no timeseries exist yet).
+                OR p1.aggregation_date = (
+                    SELECT MIN(p2.aggregation_date)
+                    FROM portfolio_aggregation_jobs p2
+                    WHERE p2.portfolio_id = p1.portfolio_id
+                    AND NOT EXISTS (
+                        SELECT 1 FROM portfolio_timeseries pts
+                        WHERE pts.portfolio_id = p1.portfolio_id
                     )
-                    ORDER BY p1.portfolio_id, p1.aggregation_date
-                    LIMIT :batch_size
-                    FOR UPDATE SKIP LOCKED
-                ) AS eligible_jobs
+                )
             )
-            RETURNING *;
+            ORDER BY p1.portfolio_id, p1.aggregation_date
+            LIMIT :batch_size
+            FOR UPDATE SKIP LOCKED;
         """)
         
-        result = await self.db.execute(query, {"batch_size": batch_size})
-        claimed_jobs = result.mappings().all()
+        result_proxy = await self.db.execute(eligibility_query, {"batch_size": batch_size})
+        eligible_ids = [row[0] for row in result_proxy.fetchall()]
+
+        if not eligible_ids:
+            return []
+
+        # Step 2: Update the claimed jobs by their ID and return them.
+        update_query = (
+            update(PortfolioAggregationJob)
+            .where(PortfolioAggregationJob.id.in_(eligible_ids))
+            .values(status='PROCESSING', updated_at=func.now())
+            .returning(PortfolioAggregationJob)
+        )
+        
+        result = await self.db.execute(update_query)
+        claimed_jobs = result.scalars().all()
+        
         if claimed_jobs:
             logger.info(f"Found and claimed {len(claimed_jobs)} eligible aggregation jobs.")
-        return [PortfolioAggregationJob(**job) for job in claimed_jobs]
+        
+        return claimed_jobs
 
     @async_timed(repository="TimeseriesRepository", method="get_portfolio")
     async def get_portfolio(self, portfolio_id: str) -> Optional[Portfolio]:
