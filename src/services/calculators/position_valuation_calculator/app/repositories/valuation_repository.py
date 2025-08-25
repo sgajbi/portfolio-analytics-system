@@ -2,10 +2,11 @@
 import logging
 from datetime import date, datetime, timedelta, timezone
 from typing import List, Optional, Dict, Tuple
-from sqlalchemy import select, func, distinct, exists, text, update, delete, tuple_, column
+from sqlalchemy import select, func, distinct, exists, text, update, delete, tuple_, cast
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import aliased
+from sqlalchemy.sql.expression import lateral
 from sqlalchemy.types import Date
 
 from portfolio_common.database_models import (
@@ -49,70 +50,67 @@ class ValuationRepository:
 
         keys_tuple = tuple((s.portfolio_id, s.security_id) for s in states)
 
-        # --- FIX: The original raw SQL query had parameter binding issues with asyncpg.
-        # This has been rewritten using SQLAlchemy's Expression Language to ensure
-        # cross-dialect compatibility and correct parameter handling.
-        # The query finds the first "gap" in snapshots after a watermark and returns
-        # the date just before that gap. If no gap is found, it returns the date
-        # of the latest snapshot.
-
-        s = aliased(PositionState, name="s")
-        dps = aliased(DailyPositionSnapshot, name="dps")
-
-        # Subquery to find the max business date once.
+        s = aliased(PositionState)
+        dps = aliased(DailyPositionSnapshot)
         max_business_date_subq = select(func.max(BusinessDate.date)).scalar_subquery()
 
-        # The series of expected dates from watermark + 1 to the max business date.
-        date_series = func.generate_series(
-            s.watermark_date + timedelta(days=1),
-            max_business_date_subq,
-            timedelta(days=1),
-        ).cast(Date).alias("expected_date")
-
-        # Subquery to find the first date in the series that does NOT have a
-        # corresponding snapshot. This is the "first gap".
-        first_gap_subq = (
+        # Correlated subquery to generate the series of expected dates for each state.
+        date_series_subq = (
             select(
-                func.min(date_series.c.expected_date).label("first_gap_date")
+                func.generate_series(
+                    s.watermark_date + timedelta(days=1),
+                    max_business_date_subq,
+                    timedelta(days=1),
+                ).cast(Date).label("expected_date")
             )
-            .select_from(date_series)
-            .where(
-                ~exists().where(
-                    dps.portfolio_id == s.portfolio_id,
-                    dps.security_id == s.security_id,
-                    dps.epoch == s.epoch,
-                    dps.date == date_series.c.expected_date,
+            .correlate(s)
+            .subquery("date_series")
+        )
+
+        # Subquery to find the first date in the generated series that does NOT
+        # have a corresponding snapshot. This is the first "gap".
+        first_gap_subq = (
+            select(func.min(date_series_subq.c.expected_date))
+            .select_from(
+                date_series_subq.outerjoin(
+                    dps,
+                    (dps.portfolio_id == s.portfolio_id) &
+                    (dps.security_id == s.security_id) &
+                    (dps.epoch == s.epoch) &
+                    (dps.date == date_series_subq.c.expected_date)
                 )
             )
+            .where(dps.id == None)
         ).correlate(s).scalar_subquery()
 
-        # Subquery to find the latest snapshot date for a given key.
+        # Subquery to find the date of the latest existing snapshot for a key.
         latest_snapshot_subq = (
             select(func.max(dps.date))
             .where(
-                dps.portfolio_id == s.portfolio_id,
-                dps.security_id == s.security_id,
-                dps.epoch == s.epoch
+                (dps.portfolio_id == s.portfolio_id) &
+                (dps.security_id == s.security_id) &
+                (dps.epoch == s.epoch)
             )
         ).correlate(s).scalar_subquery()
 
-        # Main query to bring it all together.
+        # Main query to combine the logic.
         stmt = (
             select(
                 s.portfolio_id,
                 s.security_id,
-                # The contiguous date is either the day before the first gap,
-                # or if there's no gap, it's the date of the latest snapshot.
-                func.coalesce(
-                    first_gap_subq - timedelta(days=1),
-                    latest_snapshot_subq
+                # --- FIX: Cast the final result to Date to resolve type mismatch ---
+                cast(
+                    func.coalesce(
+                        first_gap_subq - timedelta(days=1),
+                        latest_snapshot_subq
+                    ),
+                    Date
                 ).label("contiguous_date")
             )
             .select_from(s)
             .where(
                 tuple_(s.portfolio_id, s.security_id).in_(keys_tuple),
-                # Only consider states that have at least one snapshot to advance from.
-                exists(latest_snapshot_subq)
+                latest_snapshot_subq.isnot(None)
             )
         )
         
