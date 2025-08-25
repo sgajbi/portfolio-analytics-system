@@ -73,6 +73,9 @@ async def test_find_contiguous_snapshot_dates(db_engine, clean_db, async_db_sess
         PositionState(portfolio_id="P2", security_id="S2", watermark_date=date(2025, 8, 1), epoch=1, status='REPROCESSING'), # No gaps
         PositionState(portfolio_id="P3", security_id="S3", watermark_date=date(2025, 8, 1), epoch=1, status='REPROCESSING'), # No new snapshots
     ]
+    # Add portfolios to satisfy foreign key constraints
+    portfolios = [Portfolio(portfolio_id=p_id, base_currency="USD", open_date=date(2024,1,1), risk_exposure="a", investment_time_horizon="b", portfolio_type="c", booking_center="d", cif_id="e", status="f") for p_id in ["P1", "P2", "P3"]]
+
     snapshots = [
         # P1/S1: Snapshots for day 2 and 4, but missing day 3 (gap)
         DailyPositionSnapshot(portfolio_id="P1", security_id="S1", date=date(2025, 8, 2), epoch=1, quantity=1, cost_basis=1),
@@ -84,7 +87,7 @@ async def test_find_contiguous_snapshot_dates(db_engine, clean_db, async_db_sess
     ]
     business_dates = [BusinessDate(date=d) for d in [date(2025, 8, 2), date(2025, 8, 3), date(2025, 8, 4)]]
     
-    async_db_session.add_all(states + snapshots + business_dates)
+    async_db_session.add_all(portfolios + states + snapshots + business_dates)
     await async_db_session.commit()
 
     # ACT
