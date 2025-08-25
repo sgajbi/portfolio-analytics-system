@@ -13,6 +13,12 @@ from portfolio_common.database_models import PortfolioValuationJob, PositionStat
 from ..repositories.valuation_repository import ValuationRepository
 from portfolio_common.valuation_job_repository import ValuationJobRepository
 from portfolio_common.position_state_repository import PositionStateRepository
+# NEW IMPORTS
+from portfolio_common.monitoring import (
+    REPROCESSING_ACTIVE_KEYS_TOTAL,
+    SNAPSHOT_LAG_SECONDS,
+    SCHEDULER_GAP_DAYS
+)
 
 
 logger = logging.getLogger(__name__)
@@ -47,6 +53,7 @@ class ValuationScheduler:
             return
 
         reprocessing_states = await repo.get_reprocessing_states(self._batch_size)
+        REPROCESSING_ACTIVE_KEYS_TOTAL.set(len(reprocessing_states)) # SET METRIC
         if not reprocessing_states:
             return
 
@@ -92,6 +99,12 @@ class ValuationScheduler:
         logger.info(f"Scheduler: Found {len(states_to_backfill)} keys needing backfill.")
 
         for state in states_to_backfill:
+            # --- OBSERVE METRICS ---
+            gap_days = (latest_business_date - state.watermark_date).days
+            SCHEDULER_GAP_DAYS.observe(gap_days)
+            SNAPSHOT_LAG_SECONDS.observe(gap_days * 86400)
+            # --- END METRICS ---
+
             job_count = 0
             current_date = state.watermark_date + timedelta(days=1)
             

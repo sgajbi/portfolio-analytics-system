@@ -132,6 +132,23 @@ EPOCH_MISMATCH_DROPPED_TOTAL = Counter(
     labelnames=("service_name", "topic", "portfolio_id", "security_id"),
 )
 
+REPROCESSING_ACTIVE_KEYS_TOTAL = Gauge(
+    "reprocessing_active_keys_total",
+    "Total number of (portfolio, security) keys currently in a REPROCESSING state."
+)
+
+SNAPSHOT_LAG_SECONDS = Histogram(
+    "snapshot_lag_seconds",
+    "The lag between the latest business date and a key's watermark, in seconds.",
+    buckets=(3600, 86400, 172800, 604800, 2592000) # 1hr, 1d, 2d, 1wk, 30d
+)
+
+SCHEDULER_GAP_DAYS = Histogram(
+    "scheduler_gap_days",
+    "The gap in days between the latest business date and a key's watermark.",
+    buckets=(1, 2, 5, 10, 30, 90, 365)
+)
+
 # --------------------------------------------------------------------------------------
 # Optional generic HTTP metrics (use across services if helpful)
 # --------------------------------------------------------------------------------------
