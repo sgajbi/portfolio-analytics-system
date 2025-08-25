@@ -5,7 +5,8 @@ from decimal import Decimal
 
 from sqlalchemy.orm import Session
 from sqlalchemy.ext.asyncio import AsyncSession
-from portfolio_common.database_models import Portfolio, PortfolioAggregationJob, PortfolioTimeseries
+# --- UPDATED IMPORTS ---
+from portfolio_common.database_models import Portfolio, PortfolioAggregationJob, PortfolioTimeseries, PositionState
 from src.services.timeseries_generator_service.app.repositories.timeseries_repository import TimeseriesRepository
 
 pytestmark = pytest.mark.asyncio
@@ -14,6 +15,7 @@ pytestmark = pytest.mark.asyncio
 def setup_sequential_jobs(db_engine, clean_db):
     """
     Sets up a portfolio and two sequential, PENDING aggregation jobs.
+    Also creates the necessary PositionState record for epoch awareness.
     """
     portfolio_id = "SEQ_JOB_TEST_01"
     day1 = date(2025, 8, 18)
@@ -21,6 +23,22 @@ def setup_sequential_jobs(db_engine, clean_db):
 
     with Session(db_engine) as session:
         session.add(Portfolio(portfolio_id=portfolio_id, base_currency="USD", open_date=date(2024,1,1), risk_exposure="a", investment_time_horizon="b", portfolio_type="c", booking_center="d", cif_id="e", status="f"))
+        
+        # --- NEW: Add PositionState record for the portfolio ---
+        # The scheduler logic now depends on this to determine the correct epoch.
+        # We assume no securities yet, so it's a placeholder for the portfolio's max epoch.
+        # Note: A real flow would create this when a security is first traded.
+        # For this test, we can just ensure a record exists for the portfolio.
+        # A better approach for a real system might be to have a portfolio-level epoch,
+        # but for now, this aligns the test with the query's expectation.
+        # Let's assume the scheduler logic needs a baseline. A "placeholder" security is okay here.
+        session.add(PositionState(
+            portfolio_id=portfolio_id, 
+            security_id="PLACEHOLDER", 
+            epoch=0, 
+            watermark_date=date(2024,1,1))
+        )
+        
         session.flush()
 
         session.add_all([
@@ -56,7 +74,17 @@ async def test_find_and_claim_eligible_jobs_sequential_logic(setup_sequential_jo
 
     # ARRANGE 2: Simulate the completion of the first job by creating its timeseries record
     with Session(db_engine) as session:
-        session.add(PortfolioTimeseries(portfolio_id=portfolio_id, date=day1, bod_market_value=0, bod_cashflow=0, eod_cashflow=0, eod_market_value=0, fees=0))
+        # --- UPDATED: Explicitly set epoch to match what the query expects (0) ---
+        session.add(PortfolioTimeseries(
+            portfolio_id=portfolio_id, 
+            date=day1, 
+            epoch=0, # The default/initial epoch
+            bod_market_value=0, 
+            bod_cashflow=0, 
+            eod_cashflow=0, 
+            eod_market_value=0, 
+            fees=0
+        ))
         session.commit()
     
     # ACT 2: Second call

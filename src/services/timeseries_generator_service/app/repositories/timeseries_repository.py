@@ -94,7 +94,9 @@ class TimeseriesRepository:
         1. The portfolio timeseries record for date D-1 (for the correct epoch) already exists.
         2. OR this job is for the earliest date for a portfolio that has no timeseries records yet.
         """
-        # Step 1: Select IDs of eligible jobs. This query is safe to use with joins and subqueries.
+        # --- UPDATED QUERY LOGIC ---
+        # The subquery for the epoch is now wrapped in COALESCE to default to 0
+        # if no position_state record exists for the portfolio yet.
         eligibility_query = text("""
             SELECT
                 p1.id
@@ -105,7 +107,7 @@ class TimeseriesRepository:
                     SELECT 1 FROM portfolio_timeseries pts
                     WHERE pts.portfolio_id = p1.portfolio_id
                     AND pts.date = p1.aggregation_date - INTERVAL '1 day'
-                    AND pts.epoch = (SELECT MAX(ps.epoch) FROM position_state ps WHERE ps.portfolio_id = p1.portfolio_id)
+                    AND pts.epoch = COALESCE((SELECT MAX(ps.epoch) FROM position_state ps WHERE ps.portfolio_id = p1.portfolio_id), 0)
                 )
                 -- Case 2: This is the very first job for this portfolio (no timeseries exist yet).
                 OR p1.aggregation_date = (
