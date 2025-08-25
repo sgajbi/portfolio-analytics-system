@@ -6,7 +6,8 @@ from decimal import Decimal
 # Use the synchronous engine for test setup, as it's simpler.
 from sqlalchemy.orm import Session
 from sqlalchemy.ext.asyncio import AsyncSession
-from portfolio_common.database_models import Portfolio, Instrument, DailyPositionSnapshot
+# --- UPDATED IMPORT ---
+from portfolio_common.database_models import Portfolio, Instrument, DailyPositionSnapshot, PositionState
 
 # CORRECTED IMPORT: Now points to the query_service's repository
 from src.services.query_service.app.repositories.position_repository import PositionRepository
@@ -23,20 +24,33 @@ def setup_test_data(db_engine):
         session.add_all([portfolio, instrument])
         session.flush()
 
+        # --- NEW: Create the corresponding PositionState record ---
+        # The query now depends on this record existing to find the latest epoch.
+        position_state = PositionState(
+            portfolio_id="POS_REPO_TEST_01",
+            security_id="SEC_POS_TEST_01",
+            epoch=0, # Snapshots will have default epoch of 0
+            watermark_date=date(2024, 1, 1),
+            status='CURRENT'
+        )
+        session.add(position_state)
+        # --- END NEW ---
+
         # Create two snapshots for the same security on different days
         today = date.today()
         yesterday = today - timedelta(days=1)
 
         snapshot_yesterday = DailyPositionSnapshot(
             portfolio_id="POS_REPO_TEST_01", security_id="SEC_POS_TEST_01", date=yesterday,
-            quantity=Decimal("100"), cost_basis=Decimal("10000")
+            quantity=Decimal("100"), cost_basis=Decimal("10000"), epoch=0 # Explicitly set epoch
         )
         snapshot_today = DailyPositionSnapshot(
             portfolio_id="POS_REPO_TEST_01", security_id="SEC_POS_TEST_01", date=today,
-            quantity=Decimal("110"), cost_basis=Decimal("11000")
+            quantity=Decimal("110"), cost_basis=Decimal("11000"), epoch=0 # Explicitly set epoch
         )
         session.add_all([snapshot_yesterday, snapshot_today])
         session.commit()
+    
     return {"today": today, "yesterday": yesterday}
 
 
@@ -57,9 +71,11 @@ async def test_get_latest_positions_by_portfolio(clean_db, setup_test_data, asyn
     assert len(latest_positions) == 1
 
     # The result is a Row object, where the first element is the snapshot
-    latest_snapshot = latest_positions[0][0]
+    # The second element is the instrument name from the joined table.
+    latest_snapshot, instrument_name = latest_positions[0]
     
     assert latest_snapshot.portfolio_id == portfolio_id
     assert latest_snapshot.security_id == "SEC_POS_TEST_01"
     assert latest_snapshot.date == setup_test_data["today"]
     assert latest_snapshot.quantity == Decimal("110")
+    assert instrument_name == "TestSec"
