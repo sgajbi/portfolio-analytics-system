@@ -1,11 +1,12 @@
-# src/services/calculators/position-valuation-calculator/app/repositories/valuation_repository.py
+# src/services/calculators/position_valuation_calculator/app/repositories/valuation_repository.py
 import logging
 from datetime import date, datetime, timedelta, timezone
 from typing import List, Optional, Dict, Tuple
-from sqlalchemy import select, func, distinct, exists, text, update, delete, tuple_
+from sqlalchemy import select, func, distinct, exists, text, update, delete, tuple_, column
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import aliased
+from sqlalchemy.types import Date
 
 from portfolio_common.database_models import (
     PositionHistory, MarketPrice, DailyPositionSnapshot, FxRate, Instrument, Portfolio,
@@ -46,83 +47,63 @@ class ValuationRepository:
         if not states:
             return {}
 
-        # --- FIX: Replaced raw SQL with SQLAlchemy Expression Language to prevent syntax errors ---
         keys_tuple = tuple((s.portfolio_id, s.security_id) for s in states)
-        
-        # This query is complex but now dialect-agnostic. It finds the first date
-        # where a snapshot is MISSING for each key, and then finds the day BEFORE that missing date.
-        # If no gaps are found, it returns the latest snapshot date for that key.
-        
-        # 1. Subquery to find the first gap date for each key
-        s = aliased(PositionState)
-        d = func.generate_series(
-            s.watermark_date + timedelta(days=1),
-            select(func.max(BusinessDate.date)).scalar_subquery(),
-            timedelta(days=1)
-        ).alias('d')
-        
-        date_series = (
-            select(
-                s.portfolio_id,
-                s.security_id,
-                s.epoch,
-                d.column_0.label("expected_date")
-            )
-            .select_from(s)
-            .join(d, text("true")) # Lateral join equivalent
-            .where(tuple_(s.portfolio_id, s.security_id).in_(keys_tuple))
-            .cte('date_series')
-        )
 
-        snapshots_alias = aliased(DailyPositionSnapshot)
-        
-        first_gap_subq = (
-            select(
-                date_series.c.portfolio_id,
-                date_series.c.security_id,
-                func.min(date_series.c.expected_date).label('first_gap_date')
+        # --- FIX: Use a direct text() query for this complex, dialect-specific logic ---
+        stmt = text("""
+            WITH first_gap AS (
+                SELECT
+                    s.portfolio_id,
+                    s.security_id,
+                    MIN(d.expected_date) as first_gap_date
+                FROM
+                    position_state s,
+                    LATERAL generate_series(
+                        s.watermark_date + interval '1 day',
+                        (SELECT MAX(date) FROM business_dates),
+                        '1 day'::interval
+                    ) AS d(expected_date)
+                LEFT JOIN
+                    daily_position_snapshots dps
+                ON
+                    s.portfolio_id = dps.portfolio_id
+                    AND s.security_id = dps.security_id
+                    AND s.epoch = dps.epoch
+                    AND d.expected_date = dps.date
+                WHERE
+                    (s.portfolio_id, s.security_id) IN :keys
+                    AND dps.id IS NULL
+                GROUP BY
+                    s.portfolio_id, s.security_id
+            ),
+            latest_snapshot AS (
+                SELECT
+                    portfolio_id,
+                    security_id,
+                    MAX(date) as latest_snapshot_date
+                FROM
+                    daily_position_snapshots
+                WHERE
+                    (portfolio_id, security_id) IN :keys
+                GROUP BY
+                    portfolio_id, security_id
             )
-            .join(
-                snapshots_alias,
-                (date_series.c.portfolio_id == snapshots_alias.portfolio_id) &
-                (date_series.c.security_id == snapshots_alias.security_id) &
-                (date_series.c.epoch == snapshots_alias.epoch) &
-                (date_series.c.expected_date == snapshots_alias.date),
-                isouter=True
-            )
-            .where(snapshots_alias.id == None)
-            .group_by(date_series.c.portfolio_id, date_series.c.security_id)
-            .subquery('first_gap')
-        )
-
-        # 2. Main query to get the latest contiguous date
-        latest_snapshot_subq = (
-            select(
-                DailyPositionSnapshot.portfolio_id,
-                DailyPositionSnapshot.security_id,
-                func.max(DailyPositionSnapshot.date).label('latest_snapshot_date')
-            )
-            .where(tuple_(DailyPositionSnapshot.portfolio_id, DailyPositionSnapshot.security_id).in_(keys_tuple))
-            .group_by(DailyPositionSnapshot.portfolio_id, DailyPositionSnapshot.security_id)
-            .subquery('latest_snapshot')
-        )
-        
-        stmt = (
-            select(
-                latest_snapshot_subq.c.portfolio_id,
-                latest_snapshot_subq.c.security_id,
-                func.coalesce(
-                    first_gap_subq.c.first_gap_date - timedelta(days=1),
-                    latest_snapshot_subq.c.latest_snapshot_date
-                ).label("contiguous_date")
-            )
-            .join(
-                first_gap_subq,
-                (latest_snapshot_subq.c.portfolio_id == first_gap_subq.c.portfolio_id) &
-                (latest_snapshot_subq.c.security_id == first_gap_subq.c.security_id),
-                isouter=True
-            )
-        )
+            SELECT
+                ls.portfolio_id,
+                ls.security_id,
+                COALESCE(
+                    fg.first_gap_date - interval '1 day',
+                    ls.latest_snapshot_date
+                ) AS contiguous_date
+            FROM
+                latest_snapshot ls
+            LEFT JOIN
+                first_gap fg
+            ON
+                ls.portfolio_id = fg.portfolio_id
+                AND ls.security_id = fg.security_id
+        """).bindparams(keys=keys_tuple)
+        # --- END FIX ---
         
         result = await self.db.execute(stmt)
         return {(row.portfolio_id, row.security_id): row.contiguous_date for row in result.mappings()}
@@ -133,8 +114,6 @@ class ValuationRepository:
         Finds all unique portfolio_ids that had a non-zero position in a given
         security, based on the latest snapshot on or before the given price date.
         """
-        # Subquery to rank snapshots for the given security within each portfolio
-        # by date, to find the most recent one on or before 'a_date'.
         latest_snapshot_subquery = (
             select(
                 DailyPositionSnapshot.portfolio_id,
@@ -151,8 +130,6 @@ class ValuationRepository:
             .subquery()
         )
 
-        # Select the portfolio_id from the subquery where the rank is 1 (the latest)
-        # and the quantity is positive.
         stmt = select(latest_snapshot_subquery.c.portfolio_id).where(
             latest_snapshot_subquery.c.rn == 1,
             latest_snapshot_subquery.c.quantity > 0
