@@ -99,6 +99,7 @@ class DailyPositionSnapshotPersistedEvent(BaseModel):
     portfolio_id: str
     security_id: str
     date: date
+    epoch: int
 
 class CashflowCalculatedEvent(BaseModel):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)

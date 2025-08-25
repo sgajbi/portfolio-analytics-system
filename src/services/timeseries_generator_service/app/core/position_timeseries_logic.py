@@ -13,12 +13,12 @@ class PositionTimeseriesLogic:
     def calculate_daily_record(
         current_snapshot: DailyPositionSnapshot,
         previous_snapshot: DailyPositionSnapshot | None,
-        cashflows: List[Cashflow]
+        cashflows: List[Cashflow],
+        epoch: int
     ) -> PositionTimeseries:
         """
         Calculates a single, complete position time series record for a given day.
         """
-        # Use the previous day's snapshot as the source of truth for BOD market value
         bod_market_value = previous_snapshot.market_value_local if previous_snapshot and previous_snapshot.market_value_local is not None else Decimal(0)
 
         eod_market_value = current_snapshot.market_value_local or Decimal(0)
@@ -30,7 +30,6 @@ class PositionTimeseriesLogic:
         bod_cf_pos, eod_cf_pos = Decimal(0), Decimal(0)
         bod_cf_port, eod_cf_port = Decimal(0), Decimal(0)
         
-        # Segregate cashflows into the four buckets based on their boolean flags
         for cf in cashflows:
             if cf.is_position_flow:
                 if cf.timing == 'BOD':
@@ -48,6 +47,7 @@ class PositionTimeseriesLogic:
             portfolio_id=current_snapshot.portfolio_id,
             security_id=current_snapshot.security_id,
             date=current_snapshot.date,
+            epoch=epoch,
             bod_market_value=bod_market_value,
             bod_cashflow_position=bod_cf_pos,
             eod_cashflow_position=eod_cf_pos,

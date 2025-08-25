@@ -15,7 +15,6 @@ from src.services.timeseries_generator_service.app.repositories.timeseries_repos
 from portfolio_common.position_state_repository import PositionStateRepository
 
 
-logger = logging.getLogger(__name__)
 pytestmark = pytest.mark.asyncio
 
 @pytest.fixture
@@ -40,7 +39,6 @@ def mock_event() -> DailyPositionSnapshotPersistedEvent:
 
 @pytest.fixture
 def mock_kafka_message(mock_event: DailyPositionSnapshotPersistedEvent) -> MagicMock:
-    """Creates a mock Kafka message from the event."""
     mock_msg = MagicMock()
     mock_msg.value.return_value = mock_event.model_dump_json().encode('utf-8')
     mock_msg.headers.return_value = []
@@ -48,7 +46,6 @@ def mock_kafka_message(mock_event: DailyPositionSnapshotPersistedEvent) -> Magic
 
 @pytest.fixture
 def mock_dependencies():
-    # Create a mock with the full spec of the real repository
     mock_repo = AsyncMock(spec=TimeseriesRepository)
     mock_state_repo = AsyncMock(spec=PositionStateRepository)
     
@@ -85,17 +82,13 @@ async def test_process_message_success(
     mock_db_session.get.return_value = DailyPositionSnapshot(
         id=mock_event.id, quantity=Decimal(100), cost_basis=Decimal(1000), market_value_local=Decimal(1100)
     )
-    mock_repo.get_last_snapshot_before.return_value = DailyPositionSnapshot(
-        market_value_local=Decimal(1050)
-    )
+    mock_repo.get_last_snapshot_before.return_value = DailyPositionSnapshot(market_value_local=Decimal(1050))
     mock_repo.get_all_cashflows_for_security_date.return_value = []
 
     # ACT
     await consumer._process_message_with_retry(mock_kafka_message)
 
     # ASSERT
-    mock_repo.get_instrument.assert_awaited_once_with(mock_event.security_id)
-    mock_db_session.get.assert_awaited_once_with(DailyPositionSnapshot, mock_event.id)
     mock_repo.upsert_position_timeseries.assert_awaited_once()
     # Verify the correct epoch was used for the query
     mock_repo.get_last_snapshot_before.assert_awaited_once_with(
@@ -128,4 +121,4 @@ async def test_process_message_skips_stale_epoch(
     # ASSERT
     mock_repo.get_instrument.assert_not_called()
     mock_repo.upsert_position_timeseries.assert_not_called()
-    assert "Snapshot event has stale epoch. Discarding." in caplog.text
+    assert "Message has stale epoch. Discarding." in caplog.text

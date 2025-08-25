@@ -16,6 +16,7 @@ from portfolio_common.logging_utils import correlation_id_var
 from portfolio_common.events import DailyPositionSnapshotPersistedEvent
 from portfolio_common.db import get_async_db_session
 from portfolio_common.database_models import DailyPositionSnapshot, PortfolioAggregationJob, Instrument
+from portfolio_common.position_state_repository import PositionStateRepository
 
 from ..core.position_timeseries_logic import PositionTimeseriesLogic
 from ..repositories.timeseries_repository import TimeseriesRepository
@@ -63,12 +64,25 @@ class PositionTimeseriesConsumer(BaseConsumer):
             event = DailyPositionSnapshotPersistedEvent.model_validate(event_data)
             correlation_id = correlation_id_var.get() 
 
-            logger.info(f"Processing position snapshot for {event.security_id} on {event.date}")
+            logger.info(f"Processing position snapshot for {event.security_id} on {event.date} for epoch {event.epoch}")
 
             async for db in get_async_db_session():
                 async with db.begin():
                     repo = TimeseriesRepository(db)
+                    position_state_repo = PositionStateRepository(db)
                     
+                    # --- EPOCH FENCING ---
+                    state = await position_state_repo.get_or_create_state(event.portfolio_id, event.security_id)
+                    if event.epoch < state.epoch:
+                        logger.warning(
+                            "Snapshot event has stale epoch. Discarding.",
+                            extra={
+                                "portfolio_id": event.portfolio_id, "security_id": event.security_id,
+                                "message_epoch": event.epoch, "current_epoch": state.epoch
+                            }
+                        )
+                        return # Acknowledge message without processing
+
                     instrument = await repo.get_instrument(event.security_id)
                     if not instrument:
                         raise InstrumentNotFoundError(f"Instrument '{event.security_id}' not found. Will retry.")
@@ -78,11 +92,11 @@ class PositionTimeseriesConsumer(BaseConsumer):
                         logger.warning(f"DailyPositionSnapshot record with id {event.id} not found. Skipping.")
                         return
 
-                    # --- LOGIC CHANGE: Fetch previous day's SNAPSHOT, not timeseries ---
                     previous_snapshot = await repo.get_last_snapshot_before(
                         portfolio_id=event.portfolio_id,
                         security_id=event.security_id,
-                        a_date=event.date
+                        a_date=event.date,
+                        epoch=event.epoch
                     )
                     
                     cashflows = await repo.get_all_cashflows_for_security_date(
@@ -91,13 +105,12 @@ class PositionTimeseriesConsumer(BaseConsumer):
                     
                     new_timeseries_record = PositionTimeseriesLogic.calculate_daily_record(
                         current_snapshot=current_snapshot,
-                        previous_snapshot=previous_snapshot, # Pass snapshot instead of timeseries
-                        cashflows=cashflows
+                        previous_snapshot=previous_snapshot,
+                        cashflows=cashflows,
+                        epoch=event.epoch
                     )
                     
                     await repo.upsert_position_timeseries(new_timeseries_record)
-
-                    # Trigger an aggregation job for the current day.
                     await self._stage_aggregation_job(db, event.portfolio_id, event.date, correlation_id)
             
         except (json.JSONDecodeError, ValidationError) as e:

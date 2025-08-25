@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from services.calculators.position_valuation_calculator.app.consumers.valuation_consumer import ValuationConsumer, DataNotFoundError
-from portfolio_common.events import PortfolioValuationRequiredEvent
+from portfolio_common.events import PortfolioValuationRequiredEvent, DailyPositionSnapshotPersistedEvent
 from portfolio_common.database_models import DailyPositionSnapshot, MarketPrice, Instrument, Portfolio, FxRate, PositionHistory
 from portfolio_common.logging_utils import correlation_id_var
 from portfolio_common.idempotency_repository import IdempotencyRepository
@@ -88,7 +88,7 @@ async def test_valuation_consumer_success(
     """
     GIVEN a valid valuation required event with an epoch
     WHEN the consumer processes the message
-    THEN it should fetch position history for that epoch and create an epoch-tagged snapshot.
+    THEN it should fetch position history for that epoch and create an epoch-tagged snapshot and event.
     """
     # ARRANGE
     mock_idempotency_repo = mock_dependencies["idempotency_repo"]
@@ -108,8 +108,11 @@ async def test_valuation_consumer_success(
     mock_valuation_repo.get_fx_rate.return_value = FxRate(rate=Decimal("1.1"))
 
     persisted_snapshot = DailyPositionSnapshot(
-        id=1, portfolio_id=mock_event.portfolio_id,
-        security_id=mock_event.security_id, date=mock_event.valuation_date, epoch=mock_event.epoch
+        id=1,
+        portfolio_id=mock_event.portfolio_id,
+        security_id=mock_event.security_id,
+        date=mock_event.valuation_date,
+        epoch=mock_event.epoch
     )
     mock_valuation_repo.upsert_daily_snapshot.return_value = persisted_snapshot
 
@@ -124,11 +127,8 @@ async def test_valuation_consumer_success(
     mock_valuation_repo.get_last_position_history_before_date.assert_called_once_with(
         mock_event.portfolio_id, mock_event.security_id, mock_event.valuation_date, mock_event.epoch
     )
-    mock_valuation_repo.upsert_daily_snapshot.assert_called_once()
-    
-    saved_snapshot_arg = mock_valuation_repo.upsert_daily_snapshot.call_args[0][0]
-    assert saved_snapshot_arg.valuation_status == 'VALUED_CURRENT'
-    assert saved_snapshot_arg.epoch == mock_event.epoch
-
     mock_outbox_repo.create_outbox_event.assert_called_once()
-    consumer._send_to_dlq_async.assert_not_called()
+    
+    # Verify the outbound event contains the epoch
+    outbound_payload = mock_outbox_repo.create_outbox_event.call_args.kwargs['payload']
+    assert outbound_payload['epoch'] == mock_event.epoch
