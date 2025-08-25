@@ -1,11 +1,11 @@
 # tests/unit/services/calculators/position-valuation-calculator/consumers/test_price_event_consumer.py
 import pytest
 from unittest.mock import MagicMock, patch, AsyncMock
-from datetime import date
+from datetime import date, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from portfolio_common.events import MarketPricePersistedEvent
-from portfolio_common.valuation_job_repository import ValuationJobRepository
+from portfolio_common.position_state_repository import PositionStateRepository
 from services.calculators.position_valuation_calculator.app.consumers.price_event_consumer import PriceEventConsumer
 from services.calculators.position_valuation_calculator.app.repositories.valuation_repository import ValuationRepository
 from portfolio_common.idempotency_repository import IdempotencyRepository
@@ -50,7 +50,7 @@ def mock_dependencies():
     """A fixture to patch all external dependencies for the consumer test."""
     mock_repo = AsyncMock(spec=ValuationRepository)
     mock_idempotency_repo = AsyncMock(spec=IdempotencyRepository)
-    mock_valuation_job_repo = AsyncMock(spec=ValuationJobRepository)
+    mock_position_state_repo = AsyncMock(spec=PositionStateRepository)
     
     mock_db_session = AsyncMock(spec=AsyncSession)
     mock_transaction = AsyncMock()
@@ -66,15 +66,47 @@ def mock_dependencies():
     ), patch(
         "services.calculators.position_valuation_calculator.app.consumers.price_event_consumer.IdempotencyRepository", return_value=mock_idempotency_repo
     ), patch(
-        "services.calculators.position_valuation_calculator.app.consumers.price_event_consumer.ValuationJobRepository", return_value=mock_valuation_job_repo
+        "services.calculators.position_valuation_calculator.app.consumers.price_event_consumer.PositionStateRepository", return_value=mock_position_state_repo
     ):
         yield {
             "repo": mock_repo,
             "idempotency_repo": mock_idempotency_repo,
-            "valuation_job_repo": mock_valuation_job_repo
+            "position_state_repo": mock_position_state_repo
         }
 
-async def test_creates_valuation_job_for_current_price(
+async def test_backdated_price_resets_watermark(
+    consumer: PriceEventConsumer,
+    mock_kafka_message: MagicMock,
+    mock_event: MarketPricePersistedEvent,
+    mock_dependencies: dict
+):
+    """
+    GIVEN a back-dated market price event
+    WHEN the message is processed
+    THEN it should reset the watermark for each affected portfolio.
+    """
+    # ARRANGE
+    mock_repo = mock_dependencies["repo"]
+    mock_position_state_repo = mock_dependencies["position_state_repo"]
+    mock_idempotency_repo = mock_dependencies["idempotency_repo"]
+
+    mock_idempotency_repo.is_event_processed.return_value = False
+    mock_repo.find_portfolios_holding_security_on_date.return_value = ["PORT_01", "PORT_02"]
+    # Simulate a back-dated event by setting latest business date AFTER the price date
+    mock_repo.get_latest_business_date.return_value = mock_event.price_date + timedelta(days=5)
+    
+    # ACT
+    await consumer.process_message(mock_kafka_message)
+
+    # ASSERT
+    mock_position_state_repo.update_watermarks_if_older.assert_awaited_once()
+    call_args = mock_position_state_repo.update_watermarks_if_older.call_args.kwargs
+    
+    expected_keys = [("PORT_01", mock_event.security_id), ("PORT_02", mock_event.security_id)]
+    assert call_args['keys'] == expected_keys
+    assert call_args['new_watermark_date'] == mock_event.price_date - timedelta(days=1)
+
+async def test_current_price_does_not_reset_watermark(
     consumer: PriceEventConsumer,
     mock_kafka_message: MagicMock,
     mock_event: MarketPricePersistedEvent,
@@ -83,22 +115,20 @@ async def test_creates_valuation_job_for_current_price(
     """
     GIVEN a current-day market price event
     WHEN the message is processed
-    THEN it should create a VALUATION job for each affected portfolio.
+    THEN it should NOT attempt to reset any watermarks.
     """
     # ARRANGE
     mock_repo = mock_dependencies["repo"]
-    mock_valuation_job_repo = mock_dependencies["valuation_job_repo"]
+    mock_position_state_repo = mock_dependencies["position_state_repo"]
     mock_idempotency_repo = mock_dependencies["idempotency_repo"]
 
     mock_idempotency_repo.is_event_processed.return_value = False
-    mock_repo.find_portfolios_holding_security_on_date.return_value = ["PORT_01"]
-    # Simulate a current event by setting latest business date equal to the price date
+    # Simulate a current event
     mock_repo.get_latest_business_date.return_value = mock_event.price_date
     
     # ACT
     await consumer.process_message(mock_kafka_message)
 
     # ASSERT
-    mock_valuation_job_repo.upsert_job.assert_awaited_once()
-    call_args = mock_valuation_job_repo.upsert_job.call_args.kwargs
-    assert call_args['valuation_date'] == mock_event.price_date
+    mock_position_state_repo.update_watermarks_if_older.assert_not_called()
+    mock_repo.find_portfolios_holding_security_on_date.assert_not_called()
