@@ -19,6 +19,44 @@ class PositionRepository:
     def __init__(self, db: AsyncSession):
         self.db = db
 
+    # --- NEW METHOD ---
+    @async_timed(repository="PositionRepository", method="find_open_security_ids_as_of")
+    async def find_open_security_ids_as_of(self, portfolio_id: str, as_of_date: date) -> List[str]:
+        """
+        Finds all unique security IDs in a portfolio that had a non-zero quantity
+        based on the latest available snapshot on or before the specified date.
+        """
+        # Subquery to rank snapshots for each security within the portfolio by date.
+        latest_snapshot_subquery = (
+            select(
+                DailyPositionSnapshot.security_id,
+                DailyPositionSnapshot.quantity,
+                func.row_number().over(
+                    partition_by=DailyPositionSnapshot.security_id,
+                    order_by=DailyPositionSnapshot.date.desc(),
+                ).label("rn"),
+            )
+            .where(
+                DailyPositionSnapshot.portfolio_id == portfolio_id,
+                DailyPositionSnapshot.date <= as_of_date,
+            )
+            .subquery()
+        )
+
+        # Select the security_id from the subquery where the rank is 1 (the latest)
+        # and the quantity is positive.
+        stmt = select(latest_snapshot_subquery.c.security_id).where(
+            latest_snapshot_subquery.c.rn == 1,
+            latest_snapshot_subquery.c.quantity > 0,
+        )
+
+        result = await self.db.execute(stmt)
+        security_ids = result.scalars().all()
+        logger.info(
+            f"Found {len(security_ids)} open security positions for portfolio '{portfolio_id}' as of {as_of_date}."
+        )
+        return security_ids
+
     @async_timed(repository="PositionRepository", method="get_all_transactions_for_security")
     async def get_all_transactions_for_security(self, portfolio_id: str, security_id: str) -> List[Transaction]:
         """
