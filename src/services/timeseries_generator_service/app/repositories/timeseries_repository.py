@@ -51,15 +51,22 @@ class TimeseriesRepository:
                 for c in timeseries_record.__table__.columns
                 if c.name not in ['created_at', 'updated_at']
             }
-            update_dict = {k: v for k, v in insert_dict.items() if k not in ['portfolio_id', 'security_id', 'date', 'epoch']}
+            # --- FIX: Construct the update dictionary correctly ---
+            update_dict = {
+                k: v for k, v in insert_dict.items() 
+                if k not in ['portfolio_id', 'security_id', 'date', 'epoch']
+            }
             update_dict['updated_at'] = func.now()
-            stmt = pg_insert(PositionTimeseries).values(
-                **insert_dict
-            ).on_conflict_do_update(
+            
+            stmt = pg_insert(PositionTimeseries).values(**insert_dict)
+            
+            # --- FIX: Add the on_conflict_do_update clause ---
+            final_stmt = stmt.on_conflict_do_update(
                 index_elements=['portfolio_id', 'security_id', 'date', 'epoch'],
                 set_=update_dict
             )
-            await self.db.execute(stmt)
+
+            await self.db.execute(final_stmt)
             logger.info(f"Staged upsert for position time series for {timeseries_record.security_id} on {timeseries_record.date}")
         except Exception as e:
             logger.error(f"Failed to stage upsert for position time series: {e}", exc_info=True)
@@ -73,15 +80,22 @@ class TimeseriesRepository:
                 for c in timeseries_record.__table__.columns
                 if c.name not in ['created_at', 'updated_at']
             }
-            update_dict = {k: v for k, v in insert_dict.items() if k not in ['portfolio_id', 'date', 'epoch']}
+            # --- FIX: Construct the update dictionary correctly ---
+            update_dict = {
+                k: v for k, v in insert_dict.items() 
+                if k not in ['portfolio_id', 'date', 'epoch']
+            }
             update_dict['updated_at'] = func.now()
-            stmt = pg_insert(PortfolioTimeseries).values(
-                **insert_dict
-            ).on_conflict_do_update(
+            
+            stmt = pg_insert(PortfolioTimeseries).values(**insert_dict)
+
+            # --- FIX: Add the on_conflict_do_update clause ---
+            final_stmt = stmt.on_conflict_do_update(
                 index_elements=['portfolio_id', 'date', 'epoch'],
                 set_=update_dict
             )
-            await self.db.execute(stmt)
+
+            await self.db.execute(final_stmt)
             logger.info(f"Staged upsert for portfolio time series for {timeseries_record.portfolio_id} on {timeseries_record.date}")
         except Exception as e:
             logger.error(f"Failed to stage upsert for portfolio time series: {e}", exc_info=True)
@@ -94,7 +108,6 @@ class TimeseriesRepository:
         1. The portfolio timeseries record for date D-1 (for the correct epoch) already exists.
         2. OR this job is for the earliest date for a portfolio that has no timeseries records yet.
         """
-        # --- UPDATED QUERY LOGIC ---
         # The subquery for the epoch is now wrapped in COALESCE to default to 0
         # if no position_state record exists for the portfolio yet.
         eligibility_query = text("""
