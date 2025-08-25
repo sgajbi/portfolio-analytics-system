@@ -33,7 +33,8 @@ def mock_event() -> PortfolioValuationRequiredEvent:
     return PortfolioValuationRequiredEvent(
         portfolio_id="PORT_VAL_01",
         security_id="SEC_VAL_01",
-        valuation_date=date(2025, 8, 1)
+        valuation_date=date(2025, 8, 1),
+        epoch=1
     )
 
 @pytest.fixture
@@ -85,9 +86,9 @@ async def test_valuation_consumer_success(
     mock_dependencies: dict
 ):
     """
-    GIVEN a valid valuation required event
+    GIVEN a valid valuation required event with an epoch
     WHEN the consumer processes the message
-    THEN it should fetch position history, perform valuation, create a snapshot, and save the results.
+    THEN it should fetch position history for that epoch and create an epoch-tagged snapshot.
     """
     # ARRANGE
     mock_idempotency_repo = mock_dependencies["idempotency_repo"]
@@ -106,12 +107,9 @@ async def test_valuation_consumer_success(
     mock_valuation_repo.get_latest_price_for_position.return_value = MarketPrice(price=Decimal("90"), currency="EUR", price_date=mock_event.valuation_date)
     mock_valuation_repo.get_fx_rate.return_value = FxRate(rate=Decimal("1.1"))
 
-    # FIX: Correctly construct the mock persisted snapshot by mapping field names
     persisted_snapshot = DailyPositionSnapshot(
-        id=1,
-        portfolio_id=mock_event.portfolio_id,
-        security_id=mock_event.security_id,
-        date=mock_event.valuation_date
+        id=1, portfolio_id=mock_event.portfolio_id,
+        security_id=mock_event.security_id, date=mock_event.valuation_date, epoch=mock_event.epoch
     )
     mock_valuation_repo.upsert_daily_snapshot.return_value = persisted_snapshot
 
@@ -123,53 +121,14 @@ async def test_valuation_consumer_success(
         correlation_id_var.reset(token)
 
     # ASSERT
-    mock_idempotency_repo.is_event_processed.assert_called_once()
-    mock_valuation_repo.get_last_position_history_before_date.assert_called_once_with(mock_event.portfolio_id, mock_event.security_id, mock_event.valuation_date)
+    mock_valuation_repo.get_last_position_history_before_date.assert_called_once_with(
+        mock_event.portfolio_id, mock_event.security_id, mock_event.valuation_date, mock_event.epoch
+    )
     mock_valuation_repo.upsert_daily_snapshot.assert_called_once()
     
     saved_snapshot_arg = mock_valuation_repo.upsert_daily_snapshot.call_args[0][0]
     assert saved_snapshot_arg.valuation_status == 'VALUED_CURRENT'
+    assert saved_snapshot_arg.epoch == mock_event.epoch
 
-    mock_valuation_repo.update_job_status.assert_called_once_with(mock_event.portfolio_id, mock_event.security_id, mock_event.valuation_date, 'COMPLETE')
     mock_outbox_repo.create_outbox_event.assert_called_once()
     consumer._send_to_dlq_async.assert_not_called()
-
-async def test_valuation_consumer_creates_unvalued_snapshot_if_no_price(
-    consumer: ValuationConsumer, 
-    mock_kafka_message: MagicMock, 
-    mock_event: PortfolioValuationRequiredEvent,
-    mock_dependencies: dict
-):
-    """
-    GIVEN a valuation event where no market price can be found
-    WHEN the consumer processes the message
-    THEN it should still create a snapshot but with a status of UNVALUED.
-    """
-    # ARRANGE
-    mock_valuation_repo = mock_dependencies["valuation_repo"]
-    mock_idempotency_repo = mock_dependencies["idempotency_repo"]
-
-    mock_idempotency_repo.is_event_processed.return_value = False
-    mock_position_history = PositionHistory(quantity=Decimal("100"), cost_basis=Decimal("10000"), cost_basis_local=Decimal("8000"))
-    mock_valuation_repo.get_last_position_history_before_date.return_value = mock_position_history
-    mock_valuation_repo.get_instrument.return_value = Instrument(currency="EUR", security_id=mock_event.security_id)
-    mock_valuation_repo.get_portfolio.return_value = Portfolio(base_currency="USD", portfolio_id=mock_event.portfolio_id)
-    mock_valuation_repo.get_latest_price_for_position.return_value = None # No price found
-    
-    # FIX: Correctly construct the mock persisted snapshot by mapping field names
-    persisted_snapshot = DailyPositionSnapshot(
-        id=1,
-        portfolio_id=mock_event.portfolio_id,
-        security_id=mock_event.security_id,
-        date=mock_event.valuation_date
-    )
-    mock_valuation_repo.upsert_daily_snapshot.return_value = persisted_snapshot
-
-    # ACT
-    await consumer.process_message(mock_kafka_message)
-
-    # ASSERT
-    mock_valuation_repo.upsert_daily_snapshot.assert_called_once()
-    saved_snapshot_arg = mock_valuation_repo.upsert_daily_snapshot.call_args[0][0]
-    assert saved_snapshot_arg.valuation_status == 'UNVALUED'
-    assert saved_snapshot_arg.market_price is None

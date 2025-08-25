@@ -83,6 +83,7 @@ class ValuationScheduler:
                 portfolio_id=job.portfolio_id,
                 security_id=job.security_id,
                 valuation_date=job.valuation_date,
+                epoch=job.epoch,
                 correlation_id=job.correlation_id
             )
             headers = [('correlation_id', (job.correlation_id or "").encode('utf-8'))]

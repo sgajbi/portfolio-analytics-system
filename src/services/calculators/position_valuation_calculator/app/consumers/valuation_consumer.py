@@ -49,7 +49,7 @@ class ValuationConsumer(BaseConsumer):
             event_data = json.loads(value)
             event = PortfolioValuationRequiredEvent.model_validate(event_data)
             
-            logger.info(f"Processing valuation job for {event.security_id} in {event.portfolio_id} on {event.valuation_date}")
+            logger.info(f"Processing valuation job for {event.security_id} in {event.portfolio_id} on {event.valuation_date} for epoch {event.epoch}")
 
             async for db in get_async_db_session():
                 async with db.begin():
@@ -61,10 +61,12 @@ class ValuationConsumer(BaseConsumer):
                         logger.warning(f"Event {event_id} already processed. Skipping.")
                         return
 
-                    # 1. Get the state of the position for the valuation date
-                    position_state = await repo.get_last_position_history_before_date(event.portfolio_id, event.security_id, event.valuation_date)
+                    # 1. Get the state of the position for the valuation date and epoch
+                    position_state = await repo.get_last_position_history_before_date(
+                        event.portfolio_id, event.security_id, event.valuation_date, event.epoch
+                    )
                     if not position_state:
-                        raise DataNotFoundError(f"Position history not found for {event.security_id} on or before {event.valuation_date}")
+                        raise DataNotFoundError(f"Position history not found for epoch {event.epoch} of {event.security_id} on or before {event.valuation_date}")
 
                     # 2. Fetch all necessary reference data
                     instrument = await repo.get_instrument(event.security_id)
@@ -81,6 +83,7 @@ class ValuationConsumer(BaseConsumer):
                         portfolio_id=event.portfolio_id,
                         security_id=event.security_id,
                         date=event.valuation_date,
+                        epoch=event.epoch,
                         quantity=position_state.quantity,
                         cost_basis=position_state.cost_basis,
                         cost_basis_local=position_state.cost_basis_local
@@ -98,7 +101,7 @@ class ValuationConsumer(BaseConsumer):
                                 cost_basis_base=snapshot.cost_basis, cost_basis_local=snapshot.cost_basis_local,
                                 price_currency=price.currency, instrument_currency=instrument.currency,
                                 portfolio_currency=portfolio.base_currency,
-                                price_to_instrument_fx_rate=None, # Assuming price is in instrument currency for now
+                                price_to_instrument_fx_rate=None,
                                 instrument_to_portfolio_fx_rate=fx_rate.rate if fx_rate else None
                             )
                             if valuation_result:

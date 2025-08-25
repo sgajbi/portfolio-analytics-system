@@ -6,7 +6,6 @@ from decimal import Decimal
 
 class BusinessDateEvent(BaseModel):
     """Event model for a raw business date."""
-    # FIX: Add populate_by_name=True to correctly handle the 'businessDate' alias
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
     business_date: date = Field(..., alias="businessDate")
 
@@ -149,6 +148,7 @@ class PortfolioValuationRequiredEvent(BaseModel):
     portfolio_id: str
     security_id: str
     valuation_date: date
+    epoch: int
     correlation_id: Optional[str] = None
 
 class PerformanceCalculatedEvent(BaseModel):

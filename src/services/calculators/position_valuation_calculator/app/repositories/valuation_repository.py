@@ -39,10 +39,10 @@ class ValuationRepository:
         return result.scalars().all()
 
     @async_timed(repository="ValuationRepository", method="get_last_position_history_before_date")
-    async def get_last_position_history_before_date(self, portfolio_id: str, security_id: str, a_date: date) -> Optional[PositionHistory]:
+    async def get_last_position_history_before_date(self, portfolio_id: str, security_id: str, a_date: date, epoch: int) -> Optional[PositionHistory]:
         """
-        Fetches the most recent position history record on or before a given date.
-        This is used to find the definitive state of a position for a snapshot.
+        Fetches the most recent position history record for a specific epoch
+        on or before a given date.
         """
         stmt = (
             select(PositionHistory)
@@ -50,6 +50,7 @@ class ValuationRepository:
                 PositionHistory.portfolio_id == portfolio_id,
                 PositionHistory.security_id == security_id,
                 PositionHistory.position_date <= a_date,
+                PositionHistory.epoch == epoch
             )
             .order_by(PositionHistory.position_date.desc(), PositionHistory.id.desc())
             .limit(1)
