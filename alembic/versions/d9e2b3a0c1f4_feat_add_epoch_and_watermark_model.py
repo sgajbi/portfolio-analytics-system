@@ -1,6 +1,6 @@
 """feat: Add epoch and watermark model for reprocessing
 
-Revision ID: <your_new_revision_id>
+Revision ID: d9e2b3a0c1f4
 Revises: 41f42bda6d1e
 Create Date: 2025-08-25 21:40:00.000000
 
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = '<your_new_revision_id>'
+revision: str = 'd9e2b3a0c1f4'
 down_revision: Union[str, None] = '41f42bda6d1e'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -101,7 +101,7 @@ def downgrade() -> None:
     op.drop_column('portfolio_valuation_jobs', 'epoch')
     op.drop_column('portfolio_timeseries', 'epoch')
     op.drop_column('daily_position_snapshots', 'epoch')
-    
+
     # 4. Drop the new position_state table
     op.drop_index(op.f('ix_position_state_status'), table_name='position_state')
     op.drop_table('position_state')
