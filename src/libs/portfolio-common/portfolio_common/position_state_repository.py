@@ -1,9 +1,9 @@
 # src/libs/portfolio-common/portfolio_common/position_state_repository.py
 import logging
 from datetime import date
-from typing import Optional
+from typing import Optional, List, Tuple
 
-from sqlalchemy import select, update
+from sqlalchemy import select, update, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
@@ -71,3 +71,31 @@ class PositionStateRepository:
         )
         result = await self.db.execute(stmt)
         return result.scalar_one()
+
+    @async_timed(repository="PositionStateRepository", method="update_watermarks_if_older")
+    async def update_watermarks_if_older(
+        self,
+        keys: List[Tuple[str, str]],
+        new_watermark_date: date
+    ) -> int:
+        """
+        For a given list of (portfolio_id, security_id) keys, updates the
+        watermark_date only if the new date is older than the existing one.
+        Returns the number of rows that were updated.
+        """
+        if not keys:
+            return 0
+
+        stmt = (
+            update(PositionState)
+            .where(
+                func.tuple_(PositionState.portfolio_id, PositionState.security_id).in_(keys),
+                PositionState.watermark_date > new_watermark_date
+            )
+            .values(
+                watermark_date=new_watermark_date,
+                status='REPROCESSING' # A watermark reset always implies reprocessing is needed
+            )
+        )
+        result = await self.db.execute(stmt)
+        return result.rowcount

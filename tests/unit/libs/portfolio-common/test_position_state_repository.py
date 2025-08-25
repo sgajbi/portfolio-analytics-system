@@ -91,3 +91,46 @@ async def test_increment_epoch_and_reset_watermark(
     # Verify the change was persisted
     fetched_state = await async_db_session.get(PositionState, (portfolio_id, security_id))
     assert fetched_state.epoch == 1
+
+async def test_update_watermarks_if_older(
+    clean_db, async_db_session: AsyncSession
+):
+    """
+    GIVEN multiple existing state records
+    WHEN update_watermarks_if_older is called
+    THEN it should only update the records where the new watermark is older.
+    """
+    # ARRANGE
+    repo = PositionStateRepository(async_db_session)
+    keys_to_update = [("P1", "S1"), ("P2", "S2"), ("P3", "S3")]
+    
+    # P1: Watermark is newer, should be updated
+    state1 = PositionState(portfolio_id="P1", security_id="S1", watermark_date=date(2025, 6, 15), epoch=0, status='CURRENT')
+    # P2: Watermark is older, should NOT be updated
+    state2 = PositionState(portfolio_id="P2", security_id="S2", watermark_date=date(2025, 5, 1), epoch=0, status='CURRENT')
+    # P3: Watermark is newer, should be updated
+    state3 = PositionState(portfolio_id="P3", security_id="S3", watermark_date=date(2025, 8, 1), epoch=0, status='CURRENT')
+    
+    async_db_session.add_all([state1, state2, state3])
+    await async_db_session.commit()
+
+    # ACT
+    new_watermark = date(2025, 6, 10)
+    updated_count = await repo.update_watermarks_if_older(keys_to_update, new_watermark)
+    await async_db_session.commit()
+
+    # ASSERT
+    assert updated_count == 2
+    
+    # Verify states
+    p1_state = await async_db_session.get(PositionState, ("P1", "S1"))
+    assert p1_state.watermark_date == new_watermark
+    assert p1_state.status == 'REPROCESSING'
+    
+    p2_state = await async_db_session.get(PositionState, ("P2", "S2"))
+    assert p2_state.watermark_date == date(2025, 5, 1) # Unchanged
+    assert p2_state.status == 'CURRENT' # Unchanged
+    
+    p3_state = await async_db_session.get(PositionState, ("P3", "S3"))
+    assert p3_state.watermark_date == new_watermark
+    assert p3_state.status == 'REPROCESSING'
