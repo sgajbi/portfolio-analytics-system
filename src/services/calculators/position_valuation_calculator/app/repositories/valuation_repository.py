@@ -9,8 +9,7 @@ from sqlalchemy.orm import aliased
 
 from portfolio_common.database_models import (
     PositionHistory, MarketPrice, DailyPositionSnapshot, FxRate, Instrument, Portfolio,
-    PortfolioValuationJob, Transaction, BusinessDate, PortfolioTimeseries, PositionTimeseries,
-    RecalculationJob
+    PortfolioValuationJob, Transaction, BusinessDate, PortfolioTimeseries, PositionTimeseries
 )
 from portfolio_common.utils import async_timed
 
@@ -22,32 +21,6 @@ class ValuationRepository:
     """
     def __init__(self, db: AsyncSession):
         self.db = db
-
-    @async_timed(repository="ValuationRepository", method="are_recalculations_processing")
-    async def are_recalculations_processing(self, portfolio_security_pairs: List[Tuple[str, str]]) -> List[Tuple[str, str]]:
-        """
-        Checks which of the given (portfolio_id, security_id) pairs have an active
-        recalculation job in the 'PROCESSING' state.
-
-        Args:
-            portfolio_security_pairs: A list of tuples, where each tuple is (portfolio_id, security_id).
-
-        Returns:
-            A list of (portfolio_id, security_id) tuples for which an active recalculation job exists.
-        """
-        if not portfolio_security_pairs:
-            return []
-
-        # Create a condition to check for multiple pairs using tuple comparison
-        stmt = (
-            select(RecalculationJob.portfolio_id, RecalculationJob.security_id)
-            .where(
-                tuple_(RecalculationJob.portfolio_id, RecalculationJob.security_id).in_(portfolio_security_pairs),
-                RecalculationJob.status == 'PROCESSING'
-            )
-        )
-        result = await self.db.execute(stmt)
-        return result.all()
 
     @async_timed(repository="ValuationRepository", method="delete_downstream_valuation_data")
     async def delete_downstream_valuation_data(self, portfolio_id: str, security_id: str, from_date: date) -> None:
@@ -303,18 +276,6 @@ class ValuationRepository:
         ).order_by(FxRate.rate_date.desc())
         result = await self.db.execute(stmt)
         return result.scalars().first()
-
-    @async_timed(repository="ValuationRepository", method="get_latest_price_for_position")
-    async def get_latest_price_for_position(self, security_id: str, position_date: date) -> Optional[MarketPrice]:
-        """
-        Finds the most recent market price for a given security on or before the position's date.
-        """
-        stmt = select(MarketPrice).filter(
-            MarketPrice.security_id == security_id,
-            MarketPrice.price_date <= position_date
-        ).order_by(MarketPrice.price_date.desc())
-        result = await self.db.execute(stmt)
-        return result.scalars().first()
     
     @async_timed(repository="ValuationRepository", method="upsert_daily_snapshot")
     async def upsert_daily_snapshot(self, snapshot: DailyPositionSnapshot) -> DailyPositionSnapshot:
@@ -326,6 +287,7 @@ class ValuationRepository:
                 "portfolio_id": snapshot.portfolio_id,
                 "security_id": snapshot.security_id,
                 "date": snapshot.date,
+                "epoch": snapshot.epoch,
                 "quantity": snapshot.quantity,
                 "cost_basis": snapshot.cost_basis,
                 "cost_basis_local": snapshot.cost_basis_local,
@@ -353,7 +315,7 @@ class ValuationRepository:
             }
 
             final_stmt = stmt.on_conflict_do_update(
-                index_elements=['portfolio_id', 'security_id', 'date'],
+                index_elements=['portfolio_id', 'security_id', 'date', 'epoch'],
                 set_=update_values
             ).returning(DailyPositionSnapshot)
 

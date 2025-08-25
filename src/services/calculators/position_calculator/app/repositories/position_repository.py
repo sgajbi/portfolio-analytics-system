@@ -7,11 +7,9 @@ from sqlalchemy import select, func, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from portfolio_common.database_models import (
-    PositionHistory, Transaction, DailyPositionSnapshot, BusinessDate, PortfolioValuationJob,
-    RecalculationJob
+    PositionHistory, Transaction, DailyPositionSnapshot, BusinessDate, PortfolioValuationJob
 )
 from portfolio_common.utils import async_timed
-from portfolio_common.recalculation_job_repository import RecalculationJobRepository
 from portfolio_common.valuation_job_repository import ValuationJobRepository
 
 logger = logging.getLogger(__name__)
@@ -52,26 +50,6 @@ class PositionRepository:
             correlation_id=correlation_id
         )
         logger.info(f"Staged upsert for VALUATION job for {security_id} on {valuation_date}")
-
-    @async_timed(repository="PositionRepository", method="create_recalculation_job")
-    async def create_recalculation_job(
-        self,
-        portfolio_id: str,
-        security_id: str,
-        from_date: date,
-        correlation_id: Optional[str] = None,
-    ) -> None:
-        """
-        Creates a new recalculation job by delegating to the common repository.
-        """
-        repo = RecalculationJobRepository(self.db)
-        await repo.create_job(
-            portfolio_id=portfolio_id,
-            security_id=security_id,
-            from_date=from_date,
-            correlation_id=correlation_id,
-        )
-        logger.info(f"Staged new RECALCULATION job for {security_id} from {from_date}")
 
     @async_timed(repository="PositionRepository", method="find_open_security_ids_as_of")
     async def find_open_security_ids_as_of(self, portfolio_id: str, a_date: date) -> List[str]:

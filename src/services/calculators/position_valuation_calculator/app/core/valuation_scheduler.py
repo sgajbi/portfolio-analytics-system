@@ -37,8 +37,7 @@ class ValuationScheduler:
     async def _create_daily_roll_forward_jobs(self, db):
         """
         Finds all open positions and creates valuation jobs for any days
-        between their last snapshot and the latest business day, respecting
-        recalculation locks.
+        between their last snapshot and the latest business day.
         """
         repo = ValuationRepository(db)
         job_repo = ValuationJobRepository(db)
@@ -54,26 +53,9 @@ class ValuationScheduler:
             logger.info("Scheduler: No open positions found, skipping roll-forward job creation.")
             return
 
-        # Check which of these positions are currently locked by a recalculation job
-        open_position_tuples = [(pos['portfolio_id'], pos['security_id']) for pos in open_positions]
-        locked_positions = await repo.are_recalculations_processing(open_position_tuples)
-        locked_positions_set = set(locked_positions)
-
-        if locked_positions_set:
-            logger.info(
-                f"Scheduler: Deferring roll-forward for {len(locked_positions_set)} positions "
-                f"due to active recalculation jobs: {list(locked_positions_set)}"
-            )
+        logger.info(f"Scheduler: Checking {len(open_positions)} open positions for roll-forward against latest business date {latest_business_date}.")
         
-        # Filter out the locked positions
-        unlocked_positions = [
-            pos for pos in open_positions 
-            if (pos['portfolio_id'], pos['security_id']) not in locked_positions_set
-        ]
-
-        logger.info(f"Scheduler: Checking {len(unlocked_positions)} unlocked open positions for roll-forward against latest business date {latest_business_date}.")
-        
-        for pos in unlocked_positions:
+        for pos in open_positions:
             portfolio_id = pos['portfolio_id']
             security_id = pos['security_id']
 
