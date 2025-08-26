@@ -73,10 +73,18 @@ class ValuationConsumer(BaseConsumer):
                     portfolio = await repo.get_portfolio(event.portfolio_id)
                     price = await repo.get_latest_price_for_position(event.security_id, event.valuation_date)
                     
-                    if not all([instrument, portfolio]):
-                        logger.error(f"Missing critical data (instrument or portfolio). Job will be marked FAILED.")
+                    # --- FIX: ADDED GRANULAR LOGGING ---
+                    if not instrument or not portfolio:
+                        error_msg = "Missing critical data. "
+                        if not instrument:
+                            error_msg += f"Instrument '{event.security_id}' not found. "
+                        if not portfolio:
+                            error_msg += f"Portfolio '{event.portfolio_id}' not found."
+                        
+                        logger.error(f"{error_msg} Job will be marked FAILED.")
                         await repo.update_job_status(event.portfolio_id, event.security_id, event.valuation_date, 'FAILED')
                         return
+                    # --- END FIX ---
 
                     # 3. Build the initial snapshot from the position state
                     snapshot = DailyPositionSnapshot(
