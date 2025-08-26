@@ -1,102 +1,72 @@
-# RFC --- Portfolio Analytics: Robust, Resilient & Scalable Valuation Pipeline
 
-**Status:** Draft 1\
-**Date:** 26 Aug 2025\
-**Owner:** `<you>`{=html}
+# RFC 003 : Robust, Resilient & Scalable Valuation Pipeline 
 
-## Executive Summary
+## 1. Summary
 
-The valuation pipeline is generating jobs for dates before positions
-exist, causing `DataNotFoundError`, DLQ pollution, and consumer
-shutdowns.\
-This RFC proposes position-aware scheduling, better error taxonomy,
-durable job lifecycle states, negative caching, and improved
-observability.
+The current valuation pipeline is not resilient to data timing issues. The scheduler creates valuation jobs for dates before a position actually exists, leading to `DataNotFoundError` exceptions in the consumer. These errors are incorrectly treated as retryable, which pollutes the Dead-Letter Queue (DLQ), causes consumer instability, and creates significant operational noise.
 
-## Problem
+This proposal outlines a plan to make the pipeline robust by introducing **position-aware job scheduling**, a **durable job lifecycle**, and **smarter consumer error handling**.
 
-1.  Scheduler creates jobs before first-open date of a position.\
-2.  `DataNotFoundError` treated as retryable, leading to retries, DLQ
-    entries, and shutdowns.\
-3.  No durable lifecycle state; invalid jobs keep reappearing.\
-4.  Operational noise and unstable throughput.
+---
 
-## Goals
+## 2. Architectural Assessment & Refinements
 
--   No jobs before first-open date.\
--   Non-retry for permanent gaps; retry only transient errors.\
--   Exactly-once side effects.\
--   Strong observability, metrics, alerts.\
--   Horizontal scalability.
+This approach is a significant architectural improvement that simplifies the system while making it more robust.
 
-## Proposed Changes
+* **Simplicity & Determinism**: The `position_state` table makes the state of each `(portfolio_id, security_id)` key **explicit and centralized**, moving away from a complex, implicit state spread across event streams. This makes the system's behavior deterministic and easier to reason about.
+* **Resilience & Concurrency**: **Epoch fencing** is the core mechanism for safety, elegantly solving potential race conditions between a live data flow and a back-dated replay.
+* **Scalability**: By scoping all reprocessing to an individual key, this design avoids disruptive, system-wide recalculations.
+* **Observability**: The explicit state in the `position_state` table makes it trivial to monitor keys that are stuck in a `REPROCESSING` state or have a lagging `watermark_date`.
 
-### Scheduler
+### 2.1. Refinements for Edge Cases
 
--   Compute `first_open_date` per `(portfolio, security, epoch)`.\
--   Start jobs at `max(watermark+1, first_open_date−1)`.\
--   If no open date, mark key `NO_POSITION`.
+The following refinements will be incorporated into the implementation to handle specific edge cases:
 
-### Consumer
+1.  **Watermark Advancement Authority**:
+    * **Refinement**: The **`ValuationScheduler` will be the sole authority** responsible for advancing the `watermark_date`. It will only do so after confirming that all valuation jobs for a contiguous date range have successfully completed.
+2.  **"Thundering Herd" on Price Updates**:
+    * **Refinement**: The `ValuationScheduler` must handle a sudden influx of reprocessing triggers gracefully. Its logic will batch queries on the `position_state` table and stagger the enqueuing of new valuation jobs to avoid overwhelming Kafka or downstream services.
+3.  **API Read Experience During Reprocessing**:
+    * **Refinement**: The API response for a key in a `REPROCESSING` state will be enhanced to include a status flag (e.g., `{"reprocessing_status": "IN_PROGRESS"}`) to inform the user that the data is being updated.
+4.  **Rapid Back-to-Back Reprocessing**:
+    * **Refinement**: The design handles this via chained epoch increments (e.g., `N` -> `N+1` -> `N+2`). The atomic `UPDATE` on the `position_state` table and epoch fencing in consumers are critical. This will be a priority for integration testing.
 
--   Retryable: DB, missing price/FX.\
--   Non-retryable: `DataNotFoundError` → mark `SKIPPED_NO_POSITION`, no
-    DLQ.
+---
 
-### Job Lifecycle
+## 3. Proposed Changes
 
--   `status`: {PENDING, CLAIMED, COMPLETE, RETRYABLE_FAILED,
-    SKIPPED_NO_POSITION}.\
--   `failure_reason`, `attempt_count`.\
--   Negative caching: don't recreate skipped jobs unless earlier data
-    appears.
+### 3.1. Database Schema Enhancement
 
-### Observability
+We will introduce a durable lifecycle for valuation jobs by adding columns to the `portfolio_valuation_jobs` table.
 
--   Prometheus metrics: jobs created, skipped, retries, DLQ.\
--   Alerts on DLQ \>0.5% and skip anomalies.\
--   OpenTelemetry spans for tracing.
+* **New Columns**:
+    * `attempt_count` (INTEGER)
+    * `failure_reason` (TEXT)
+* **New Statuses**:
+    * The `status` field will be leveraged to include new terminal states like `SKIPPED_NO_POSITION`.
 
-### Health
+### 3.2. Position-Aware Job Scheduling
 
--   Consumers never exit on data gaps.\
--   Circuit breaker for noisy keys.
+The `ValuationScheduler` will be modified to prevent creating jobs for dates where no position exists.
 
-## Schema
+* **Fetch First Open Date**: The scheduler will determine the `first_open_date` for each `(portfolio, security, epoch)` key.
+* **Adjust Backfill Start**: The job creation loop will start from `max(watermark_date + 1, first_open_date)`.
 
-``` sql
-ALTER TABLE valuation_jobs
-  ADD COLUMN status TEXT NOT NULL DEFAULT 'PENDING',
-  ADD COLUMN failure_reason TEXT NULL,
-  ADD COLUMN attempt_count INT NOT NULL DEFAULT 0;
-```
+### 3.3. Intelligent Consumer Error Handling
 
-## Test Plan
+The `ValuationConsumer` will be updated to distinguish between transient and permanent errors.
 
--   Unit: scheduler start date, consumer error handling.\
--   Integration: ensure no jobs before positions.\
--   Load: simulate millions of jobs, confirm bounded retries.
+* **Retryable Errors**: Transient issues (e.g., DB connection errors) will remain retryable.
+* **Permanent Errors (`DataNotFoundError`)**: When no position history is found, the consumer will mark the job `SKIPPED_NO_POSITION` and will **not** send the message to the DLQ.
 
-## Rollout
+---
 
-1.  DB migration.\
-2.  Release consumer error handling.\
-3.  Release scheduler with position-aware backfill.\
-4.  Enable negative caching.\
-5.  Turn on alerts.
+## 4. High-Level Implementation Plan
 
-Rollback: feature flags.
+1.  **DB Migration**: Add the `attempt_count` and `failure_reason` columns.
+2.  **Consumer Logic**: Update the `ValuationConsumer` with the new error handling.
+3.  **Repository Enhancement**: Add a method to find the `first_open_date` for securities.
+4.  **Scheduler Logic**: Update the `ValuationScheduler` with position-aware logic.
+5.  **Observability**: Add Prometheus metrics to monitor the new states.
 
-## Risks
-
--   Slow queries → add indexes, cache first_open_date.\
--   Late data → trigger re-eval.\
--   Schema drift → migration checks.
-
-## Acceptance Criteria
-
--   No jobs created before first-open date.\
--   `DataNotFoundError` skipped, not retried or DLQ.\
--   Consumers remain alive.\
--   DLQ rate \<0.5% (transient only).\
--   Deterministic backfills complete within SLOs.
+ 
