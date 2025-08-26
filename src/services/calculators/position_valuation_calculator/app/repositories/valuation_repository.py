@@ -204,8 +204,23 @@ class ValuationRepository:
         return latest_date
 
     @async_timed(repository="ValuationRepository", method="update_job_status")
-    async def update_job_status(self, portfolio_id: str, security_id: str, valuation_date: date, status: str):
-        """Updates the status of a specific valuation job."""
+    async def update_job_status(
+        self,
+        portfolio_id: str,
+        security_id: str,
+        valuation_date: date,
+        status: str,
+        failure_reason: Optional[str] = None
+    ):
+        """Updates the status of a specific valuation job, optionally with a failure reason."""
+        values_to_update = {
+            "status": status,
+            "updated_at": func.now(),
+            "attempt_count": PortfolioValuationJob.attempt_count + 1
+        }
+        if failure_reason:
+            values_to_update["failure_reason"] = failure_reason
+
         stmt = (
             update(PortfolioValuationJob)
             .where(
@@ -213,7 +228,7 @@ class ValuationRepository:
                 PortfolioValuationJob.security_id == security_id,
                 PortfolioValuationJob.valuation_date == valuation_date
             )
-            .values(status=status, updated_at=func.now())
+            .values(**values_to_update)
         )
         await self.db.execute(stmt)
 
@@ -225,7 +240,7 @@ class ValuationRepository:
         """
         query = text("""
             UPDATE portfolio_valuation_jobs
-            SET status = 'PROCESSING'
+            SET status = 'PROCESSING', updated_at = now(), attempt_count = attempt_count + 1
             WHERE id IN (
                 SELECT id
                 FROM portfolio_valuation_jobs
@@ -326,7 +341,7 @@ class ValuationRepository:
 
             result = await self.db.execute(final_stmt)
             persisted_snapshot = result.scalar_one()
-            # --- FIX: REMOVED redundant flush call ---
+            
             logger.info(f"Staged upsert for daily snapshot for {snapshot.security_id} on {snapshot.date}")
             return persisted_snapshot
         except Exception as e:
@@ -392,6 +407,7 @@ class ValuationRepository:
         )
 
         result = await self.db.execute(stmt)
+        
         open_positions = result.mappings().all()
         logger.info(f"Found {len(open_positions)} open positions across all portfolios.")
         return open_positions

@@ -58,8 +58,11 @@ def mock_dependencies():
     mock_valuation_repo = AsyncMock(spec=ValuationRepository)
     
     mock_db_session = AsyncMock(spec=AsyncSession)
-    mock_transaction = AsyncMock()
-    mock_db_session.begin.return_value = mock_transaction
+    
+    @asynccontextmanager
+    async def mock_begin_transaction():
+        yield
+    mock_db_session.begin.side_effect = mock_begin_transaction
     
     async def get_session_gen():
         yield mock_db_session
@@ -132,3 +135,41 @@ async def test_valuation_consumer_success(
     # Verify the outbound event contains the epoch
     outbound_payload = mock_outbox_repo.create_outbox_event.call_args.kwargs['payload']
     assert outbound_payload['epoch'] == mock_event.epoch
+
+async def test_process_message_handles_data_not_found_error(
+    consumer: ValuationConsumer, 
+    mock_kafka_message: MagicMock, 
+    mock_event: PortfolioValuationRequiredEvent,
+    mock_dependencies: dict
+):
+    """
+    GIVEN a job for which no position history exists
+    WHEN the consumer processes the message
+    THEN it should catch DataNotFoundError, mark the job as SKIPPED, and NOT send to DLQ.
+    """
+    # ARRANGE
+    mock_idempotency_repo = mock_dependencies["idempotency_repo"]
+    mock_outbox_repo = mock_dependencies["outbox_repo"]
+    mock_valuation_repo = mock_dependencies["valuation_repo"]
+
+    mock_idempotency_repo.is_event_processed.return_value = False
+    
+    # Simulate the key error condition
+    mock_valuation_repo.get_last_position_history_before_date.return_value = None
+
+    # ACT
+    await consumer.process_message(mock_kafka_message)
+
+    # ASSERT
+    # Verify the job status was updated to the terminal 'SKIPPED' state
+    mock_valuation_repo.update_job_status.assert_called_once()
+    call_args = mock_valuation_repo.update_job_status.call_args.kwargs
+    assert call_args['status'] == 'SKIPPED_NO_POSITION'
+    assert 'Position history not found' in call_args['failure_reason']
+
+    # Verify other actions were NOT taken
+    mock_outbox_repo.create_outbox_event.assert_not_called()
+    consumer._send_to_dlq_async.assert_not_called()
+
+    # Verify the event was still marked as processed to prevent retries
+    mock_idempotency_repo.mark_event_processed.assert_called_once()
