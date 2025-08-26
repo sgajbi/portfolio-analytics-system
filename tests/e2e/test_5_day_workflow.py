@@ -24,7 +24,7 @@ DAY_5 = "2025-08-23"
 pytestmark = pytest.mark.dependency()
 
 @pytest.fixture(scope="module")
-def setup_prerequisites(clean_db, api_endpoints):
+def setup_prerequisites(clean_db_module, api_endpoints):
     """
     A module-scoped fixture that ingests all prerequisite static data for the workflow.
     """
@@ -80,7 +80,7 @@ def test_day_1_workflow(setup_prerequisites, db_engine, poll_db_until):
     ingestion_url = setup_prerequisites["ingestion"]
 
     requests.post(f"{ingestion_url}/ingest/business-dates", json={"business_dates": [{"businessDate": DAY_1}]})
-    requests.post(f"{ingestion_url}/ingest/transactions", json={"transactions": [{"transaction_id": "TXN_DAY1_DEPOSIT_01", "portfolio_id": PORTFOLIO_ID, "security_id": CASH_USD_ID, "instrument_id": "CASH_USD", "transaction_date": f"{DAY_1}T10:00:00Z", "transaction_type": "DEPOSIT", "quantity": 1000000, "price": 1.0, "gross_transaction_amount": 1000000.0, "trade_currency": "USD", "currency": "USD"}]})
+    requests.post(f"{ingestion_url}/ingest/transactions", json={"transactions": [{"transaction_id": "TXN_DAY1_DEPOSIT_01", "portfolio_id": PORTFOLIO_ID, "instrument_id": "CASH_USD", "security_id": CASH_USD_ID, "transaction_date": f"{DAY_1}T10:00:00Z", "transaction_type": "DEPOSIT", "quantity": 1000000, "price": 1.0, "gross_transaction_amount": 1000000.0, "trade_currency": "USD", "currency": "USD"}]})
     requests.post(f"{ingestion_url}/ingest/market-prices", json={"market_prices": [{"securityId": CASH_USD_ID, "priceDate": DAY_1, "price": 1.0, "currency": "USD"}]})
     
     query = "SELECT valuation_status FROM daily_position_snapshots WHERE portfolio_id = :pid AND security_id = :sid AND date = :date"
