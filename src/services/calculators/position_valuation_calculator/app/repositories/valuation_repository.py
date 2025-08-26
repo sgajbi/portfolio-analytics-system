@@ -429,3 +429,41 @@ class ValuationRepository:
         )
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
+    
+    @async_timed(repository="ValuationRepository", method="get_first_open_dates_for_keys")
+    async def get_first_open_dates_for_keys(
+        self, keys: List[Tuple[str, str, int]]
+    ) -> Dict[Tuple[str, str, int], date]:
+        """
+        For a list of (portfolio_id, security_id, epoch) tuples, finds the earliest
+        position_date from the position_history table for each.
+        """
+        if not keys:
+            return {}
+
+        stmt = (
+            select(
+                PositionHistory.portfolio_id,
+                PositionHistory.security_id,
+                PositionHistory.epoch,
+                func.min(PositionHistory.position_date).label("first_open_date")
+            )
+            .where(
+                tuple_(
+                    PositionHistory.portfolio_id,
+                    PositionHistory.security_id,
+                    PositionHistory.epoch
+                ).in_(keys)
+            )
+            .group_by(
+                PositionHistory.portfolio_id,
+                PositionHistory.security_id,
+                PositionHistory.epoch
+            )
+        )
+
+        result = await self.db.execute(stmt)
+        return {
+            (row.portfolio_id, row.security_id, row.epoch): row.first_open_date
+            for row in result
+        }

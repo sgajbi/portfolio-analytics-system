@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 
-from portfolio_common.database_models import PortfolioValuationJob, DailyPositionSnapshot, Portfolio, MarketPrice
+from portfolio_common.database_models import PortfolioValuationJob, DailyPositionSnapshot, Portfolio, MarketPrice, PositionHistory, Transaction
 from src.services.calculators.position_valuation_calculator.app.repositories.valuation_repository import ValuationRepository
 
 pytestmark = pytest.mark.asyncio
@@ -81,6 +81,36 @@ def setup_price_data(db_engine):
             MarketPrice(security_id="S2", price_date=date(2025, 8, 5), price=Decimal("200"), currency="USD"),
         ]
         session.add_all(prices)
+        session.commit()
+
+@pytest.fixture(scope="function")
+def setup_first_open_date_data(db_engine):
+    """Sets up position history records for testing the first_open_date query."""
+    with Session(db_engine) as session:
+        # Prerequisites
+        session.add_all([
+            Portfolio(portfolio_id="P1", base_currency="USD", open_date=date(2024,1,1), risk_exposure="a", investment_time_horizon="b", portfolio_type="c", booking_center="d", cif_id="e", status="f"),
+            Portfolio(portfolio_id="P2", base_currency="USD", open_date=date(2024,1,1), risk_exposure="a", investment_time_horizon="b", portfolio_type="c", booking_center="d", cif_id="e", status="f"),
+        ])
+        session.add_all([
+            Transaction(transaction_id="T1", portfolio_id="P1", instrument_id="I1", security_id="S1", transaction_date=date(2025,1,1), transaction_type="BUY", quantity=1, price=1, gross_transaction_amount=1, trade_currency="USD", currency="USD"),
+            Transaction(transaction_id="T2", portfolio_id="P1", instrument_id="I1", security_id="S1", transaction_date=date(2025,1,1), transaction_type="BUY", quantity=1, price=1, gross_transaction_amount=1, trade_currency="USD", currency="USD"),
+            Transaction(transaction_id="T3", portfolio_id="P1", instrument_id="I2", security_id="S2", transaction_date=date(2025,1,1), transaction_type="BUY", quantity=1, price=1, gross_transaction_amount=1, trade_currency="USD", currency="USD"),
+            Transaction(transaction_id="T4", portfolio_id="P2", instrument_id="I1", security_id="S1", transaction_date=date(2025,1,1), transaction_type="BUY", quantity=1, price=1, gross_transaction_amount=1, trade_currency="USD", currency="USD"),
+        ])
+        session.commit()
+
+        # Position History Records
+        session.add_all([
+            # P1/S1: First open is 2025-03-15
+            PositionHistory(transaction_id="T1", portfolio_id="P1", security_id="S1", position_date=date(2025, 3, 15), epoch=0, quantity=1, cost_basis=1),
+            PositionHistory(transaction_id="T2", portfolio_id="P1", security_id="S1", position_date=date(2025, 4, 1), epoch=0, quantity=1, cost_basis=1),
+            # P1/S2: First open is 2025-02-10
+            PositionHistory(transaction_id="T3", portfolio_id="P1", security_id="S2", position_date=date(2025, 2, 10), epoch=0, quantity=1, cost_basis=1),
+            # P2/S1: Has records in epoch 0 and a later one in epoch 1
+            PositionHistory(transaction_id="T4", portfolio_id="P2", security_id="S1", position_date=date(2025, 5, 5), epoch=0, quantity=1, cost_basis=1),
+            PositionHistory(transaction_id="T4", portfolio_id="P2", security_id="S1", position_date=date(2025, 6, 6), epoch=1, quantity=1, cost_basis=1),
+        ])
         session.commit()
 
 @pytest_asyncio.fixture(scope="function")
@@ -183,3 +213,28 @@ async def test_find_and_reset_stale_jobs(clean_db, setup_stale_job_data, session
         
         job4 = await session.get(PortfolioValuationJob, 4)
         assert job4.status == "COMPLETE"
+
+async def test_get_first_open_dates_for_keys(clean_db, setup_first_open_date_data, async_db_session: AsyncSession):
+    """
+    GIVEN a set of position history records for various keys and epochs
+    WHEN get_first_open_dates_for_keys is called
+    THEN it should return a dictionary mapping each key to its earliest position_date.
+    """
+    # ARRANGE
+    repo = ValuationRepository(async_db_session)
+    keys_to_query = [
+        ("P1", "S1", 0),
+        ("P1", "S2", 0),
+        ("P2", "S1", 1),
+        ("P99", "S99", 0), # A key with no history
+    ]
+
+    # ACT
+    first_open_dates = await repo.get_first_open_dates_for_keys(keys_to_query)
+
+    # ASSERT
+    assert len(first_open_dates) == 3
+    assert first_open_dates[("P1", "S1", 0)] == date(2025, 3, 15)
+    assert first_open_dates[("P1", "S2", 0)] == date(2025, 2, 10)
+    assert first_open_dates[("P2", "S1", 1)] == date(2025, 6, 6)
+    assert ("P99", "S99", 0) not in first_open_dates
