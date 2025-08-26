@@ -80,7 +80,8 @@ class ValuationScheduler:
 
     async def _create_backfill_jobs(self, db):
         """
-        Finds keys with a lagging watermark and creates valuation jobs to fill the gap.
+        Finds keys with a lagging watermark and creates valuation jobs to fill the gap,
+        starting from the later of the portfolio's open date or the watermark date.
         """
         repo = ValuationRepository(db)
         job_repo = ValuationJobRepository(db)
@@ -96,6 +97,11 @@ class ValuationScheduler:
             logger.debug("Scheduler: No keys need backfilling.")
             return
 
+        # Fetch portfolio open dates for all states in a single query for efficiency
+        portfolio_ids = list(set(s.portfolio_id for s in states_to_backfill))
+        portfolios = await repo.get_portfolios_by_ids(portfolio_ids)
+        open_dates_map = {p.portfolio_id: p.open_date for p in portfolios}
+
         logger.info(f"Scheduler: Found {len(states_to_backfill)} keys needing backfill.")
 
         for state in states_to_backfill:
@@ -104,9 +110,17 @@ class ValuationScheduler:
             SCHEDULER_GAP_DAYS.observe(gap_days)
             SNAPSHOT_LAG_SECONDS.observe(gap_days * 86400)
             # --- END METRICS ---
+            
+            portfolio_open_date = open_dates_map.get(state.portfolio_id)
+            if not portfolio_open_date:
+                logger.warning(f"Could not find open date for portfolio {state.portfolio_id}. Skipping backfill for key ({state.portfolio_id}, {state.security_id}).")
+                continue
 
+            # Determine the correct start date for backfilling, ensuring it's not before the portfolio existed.
+            start_date = max(state.watermark_date, portfolio_open_date - timedelta(days=1))
+            
             job_count = 0
-            current_date = state.watermark_date + timedelta(days=1)
+            current_date = start_date + timedelta(days=1)
             
             # Create jobs up to the latest business date
             while current_date <= latest_business_date:

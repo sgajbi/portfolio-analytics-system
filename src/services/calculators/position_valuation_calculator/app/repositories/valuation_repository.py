@@ -25,6 +25,15 @@ class ValuationRepository:
     def __init__(self, db: AsyncSession):
         self.db = db
 
+    @async_timed(repository="ValuationRepository", method="get_portfolios_by_ids")
+    async def get_portfolios_by_ids(self, portfolio_ids: List[str]) -> List[Portfolio]:
+        """Fetches multiple portfolios by their portfolio_id strings."""
+        if not portfolio_ids:
+            return []
+        stmt = select(Portfolio).where(Portfolio.portfolio_id.in_(portfolio_ids))
+        result = await self.db.execute(stmt)
+        return result.scalars().all()
+
     @async_timed(repository="ValuationRepository", method="get_reprocessing_states")
     async def get_reprocessing_states(self, limit: int) -> List[PositionState]:
         """
@@ -241,6 +250,7 @@ class ValuationRepository:
         result = await self.db.execute(stmt)
         return result.scalars().first()
 
+    
     @async_timed(repository="ValuationRepository", method="get_instrument")
     async def get_instrument(self, security_id: str) -> Optional[Instrument]:
         """Fetches an instrument by its security ID."""
@@ -259,6 +269,7 @@ class ValuationRepository:
         result = await self.db.execute(stmt)
         return result.scalars().first()
 
+    
     @async_timed(repository="ValuationRepository", method="get_latest_price_for_position")
     async def get_latest_price_for_position(self, security_id: str, position_date: date) -> Optional[MarketPrice]:
         """
