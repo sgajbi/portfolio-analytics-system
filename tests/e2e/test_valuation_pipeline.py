@@ -45,7 +45,6 @@ def setup_valuation_data(clean_db_module, api_endpoints, db_engine, poll_db_unti
     validation_func = lambda r: r is not None and r.valuation_status == 'VALUED_CURRENT'
     
     poll_db_until(
-        db_engine=db_engine,
         query=query,
         validation_func=validation_func,
         params=params,
