@@ -4,8 +4,8 @@ import requests
 import time
 import subprocess
 import os
-from testcontainers.compose import DockerCompose
 import sys
+from testcontainers.compose import DockerCompose
 # UPDATED IMPORTS
 from sqlalchemy import create_engine, text
 import pytest_asyncio
@@ -24,12 +24,17 @@ def docker_services(request):
     """
     A session-scoped fixture that starts the Docker Compose stack and waits for the
     ingestion_service and query_service to become healthy before yielding to the tests.
-    """
-    # We now handle waiting explicitly in Python instead of using Docker's `--wait`.
-    compose = DockerCompose(".", compose_file_name="docker-compose.yml")
-    with compose:
-        print("\n--- Waiting for API services to become healthy ---")
 
+    This fixture now uses a manual polling mechanism in Python instead of relying on
+    Docker's '--wait' flag to provide more resilient and reliable startup for tests.
+    """
+    compose = DockerCompose(".", compose_file_name="docker-compose.yml")
+    
+    try:
+        # Manually call up() without --wait to avoid the brittle healthcheck enforcement at startup
+        compose.up()
+
+        print("\n--- Waiting for API services to become healthy ---")
         services_to_check = {
             "ingestion_service": 8000,
             "query_service": 8001
@@ -55,6 +60,9 @@ def docker_services(request):
             
         print("\n--- All API services are healthy, proceeding with tests ---")
         yield compose
+    finally:
+        # Ensure services are torn down at the end of the session
+        compose.down()
 
 @pytest.fixture(scope="session")
 def db_engine(docker_services: DockerCompose):
