@@ -34,7 +34,6 @@ FROM python-base as final
 
 COPY --from=builder --chown=appuser:appuser /opt/venv /opt/venv
 COPY --from=builder --chown=appuser:appuser /app/src/services/calculators/position_valuation_calculator/app /app/app
-COPY --from=builder --chown=appuser:appuser /app/src/libs /app/src/libs
 
 USER appuser
 EXPOSE 8084
