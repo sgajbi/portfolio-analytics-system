@@ -26,7 +26,13 @@ def setup_persistence_data(clean_db_module, api_endpoints, poll_for_data):
         {"securityId": "SEC_NO_PRICE", "name": "Unpriced Instrument", "isin": "ISIN_NO_PRICE", "instrumentCurrency": "USD", "productType": "Equity"}
     ]})
     requests.post(f"{ingestion_url}/ingest/market-prices", json={"market_prices": [{"securityId": security_id, "priceDate": price_date, "price": 123.45, "currency": "HKD"}]})
-    requests.post(f"{ingestion_url}/ingest/fx-rates", json={"fx_rates": [{"fromCurrency": "USD", "toCurrency": "EUR", "rateDate": price_date, "rate": 0.95}]})
+    
+    # --- FIX: Added required USD->SGD rate for the cost calculator ---
+    requests.post(f"{ingestion_url}/ingest/fx-rates", json={"fx_rates": [
+        {"fromCurrency": "USD", "toCurrency": "EUR", "rateDate": price_date, "rate": 0.95},
+        {"fromCurrency": "USD", "toCurrency": "SGD", "rateDate": price_date, "rate": 1.35}
+    ]})
+    
     requests.post(f"{ingestion_url}/ingest/transactions", json={"transactions": [{"transaction_id": transaction_id, "portfolio_id": portfolio_id, "instrument_id": "TEST", "security_id": security_id, "transaction_date": f"{price_date}T10:00:00Z", "transaction_type": "BUY", "quantity": 100, "price": 10, "gross_transaction_amount": 1000, "trade_currency": "USD", "currency": "USD"}]})
 
     # Poll all endpoints to ensure data is ready before tests run
