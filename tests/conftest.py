@@ -5,47 +5,41 @@ import time
 import subprocess
 import os
 import sys
-from testcontainers.compose import DockerCompose
-# UPDATED IMPORTS
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, text, exc
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy.orm import Session
 from typing import Callable, Any
 
-
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-
+# REFACTORED: Use subprocess directly for more control over Docker Compose
 @pytest.fixture(scope="session")
 def docker_services(request):
     """
-    A session-scoped fixture that starts the Docker Compose stack and waits for the
-    ingestion_service and query_service to become healthy before yielding to the tests.
-
-    This fixture now uses a manual polling mechanism in Python instead of relying on
-    Docker's '--wait' flag to provide more resilient and reliable startup for tests.
+    Starts the Docker Compose stack using subprocess and waits for services to be healthy.
+    This provides more control and resilience than the default testcontainers behavior.
     """
-    compose = DockerCompose(".", compose_file_name="docker-compose.yml")
+    compose_file = os.path.join(project_root, "docker-compose.yml")
     
     try:
-        # Manually call up() without --wait to avoid the brittle healthcheck enforcement at startup
-        compose.up()
-
+        # Use --build to ensure images are up-to-date and -d to run in the background
+        subprocess.run(
+            ["docker", "compose", "-f", compose_file, "up", "--build", "-d"], 
+            check=True, capture_output=True
+        )
+        
+        # Manual polling for service health
         print("\n--- Waiting for API services to become healthy ---")
         services_to_check = {
-            "ingestion_service": 8000,
-            "query_service": 8001
+            "ingestion_service": "http://localhost:8000/health/ready",
+            "query_service": "http://localhost:8001/health/ready"
         }
         timeout = 180
         
-        for service_name, port in services_to_check.items():
-            host = compose.get_service_host(service_name, port)
-            service_port = compose.get_service_port(service_name, port)
-            health_url = f"http://{host}:{service_port}/health/ready"
-            
+        for service_name, health_url in services_to_check.items():
             start_time = time.time()
             while time.time() - start_time < timeout:
                 try:
@@ -54,33 +48,60 @@ def docker_services(request):
                         print(f"--- Service '{service_name}' is healthy at {health_url} ---")
                         break
                 except requests.ConnectionError:
-                    time.sleep(2)
+                    time.sleep(3)
             else:
                 pytest.fail(f"Service '{service_name}' did not become healthy within {timeout} seconds.")
-            
+
         print("\n--- All API services are healthy, proceeding with tests ---")
-        yield compose
+        yield
+    
     finally:
-        # Ensure services are torn down at the end of the session
-        compose.down()
+        print("\n--- Tearing down Docker services ---")
+        subprocess.run(
+            ["docker", "compose", "-f", compose_file, "down", "-v", "--remove-orphans"],
+            check=False, capture_output=True
+        )
+
 
 @pytest.fixture(scope="session")
-def db_engine(docker_services: DockerCompose):
+def api_endpoints(docker_services):
     """
-    A session-scoped fixture that provides a SQLAlchemy Engine.
-    The engine is created only once for the entire test session for efficiency.
+    Provides the hardcoded URLs for the services, dependent on the docker_services fixture.
     """
-    host = docker_services.get_service_host("postgres", 5432)
-    port = docker_services.get_service_port("postgres", 5432)
-    url = f"postgresql://{os.getenv('POSTGRES_USER', 'user')}:{os.getenv('POSTGRES_PASSWORD', 'password')}@{host}:{port}/{os.getenv('POSTGRES_DB', 'portfolio_db')}"
-    engine = create_engine(url)
+    return {
+        "ingestion": "http://localhost:8000",
+        "query": "http://localhost:8001"
+    }
+
+
+@pytest.fixture(scope="session")
+def db_engine(docker_services):
+    """
+    Provides a SQLAlchemy Engine, ensuring the Docker services are running first.
+    """
+    db_url = os.getenv("HOST_DATABASE_URL", "postgresql://user:password@localhost:5432/portfolio_db")
     
-    yield engine
-    engine.dispose()
+    # Wait for the database to be connectable
+    engine = create_engine(db_url)
+    timeout = 60
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        try:
+            with engine.connect() as connection:
+                connection.execute(text("SELECT 1"))
+            print("--- Database is connectable ---")
+            yield engine
+            engine.dispose()
+            return
+        except exc.OperationalError:
+            time.sleep(2)
+    
+    pytest.fail(f"Database did not become connectable within {timeout} seconds.")
+
 
 # List of all tables to be cleaned. Centralized here.
 TABLES_TO_TRUNCATE = [
-    "position_state", # NEW: Add new table to be cleaned
+    "position_state",
     "business_dates",
     "portfolio_valuation_jobs", "portfolio_aggregation_jobs", "transaction_costs", "cashflows", "position_history", "daily_position_snapshots",
     "position_timeseries", "portfolio_timeseries", "transactions", "market_prices",
@@ -91,7 +112,6 @@ TABLES_TO_TRUNCATE = [
 def clean_db(db_engine):
     """
     A function-scoped fixture that cleans all data from tables using TRUNCATE.
-    Used for integration and unit tests that require a clean state for each test function.
     """
     print("\n--- Cleaning database tables (function scope) ---")
     truncate_query = text(f"TRUNCATE TABLE {', '.join(TABLES_TO_TRUNCATE)} RESTART IDENTITY CASCADE;")
@@ -102,9 +122,7 @@ def clean_db(db_engine):
 @pytest_asyncio.fixture(scope="function")
 async def async_db_session(db_engine):
     """
-    A function-scoped async fixture that provides a SQLAlchemy AsyncSession
-    connected to the test database. Ensures the engine and session are
-    created and torn down within the active asyncio event loop of the test.
+    A function-scoped async fixture that provides a SQLAlchemy AsyncSession.
     """
     sync_url = db_engine.url
     async_url = sync_url.render_as_string(hide_password=False).replace(
@@ -122,23 +140,6 @@ async def async_db_session(db_engine):
         yield session
 
     await async_engine.dispose()
-
-# --- E2E Helper Fixtures (Moved from tests/e2e/conftest.py) ---
-
-@pytest.fixture(scope="module")
-def api_endpoints(docker_services):
-    """
-    Provides the URLs for the ingestion and query services for the entire test module.
-    """
-    ingestion_host = docker_services.get_service_host("ingestion_service", 8000)
-    ingestion_port = docker_services.get_service_port("ingestion_service", 8000)
-    ingestion_url = f"http://{ingestion_host}:{ingestion_port}"
-
-    query_host = docker_services.get_service_host("query_service", 8001)
-    query_port = docker_services.get_service_port("query_service", 8001)
-    query_url = f"http://{query_host}:{query_port}"
-    
-    return {"ingestion": ingestion_url, "query": query_url}
 
 @pytest.fixture(scope="module")
 def poll_for_data():
