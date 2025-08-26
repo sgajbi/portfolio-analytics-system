@@ -326,7 +326,7 @@ class ValuationRepository:
 
             result = await self.db.execute(final_stmt)
             persisted_snapshot = result.scalar_one()
-            await self.db.flush()
+            # --- FIX: REMOVED redundant flush call ---
             logger.info(f"Staged upsert for daily snapshot for {snapshot.security_id} on {snapshot.date}")
             return persisted_snapshot
         except Exception as e:
