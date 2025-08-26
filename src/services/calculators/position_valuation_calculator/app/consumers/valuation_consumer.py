@@ -83,6 +83,7 @@ class ValuationConsumer(BaseConsumer):
                             
                             logger.error(f"{error_msg} Job will be marked FAILED.")
                             await repo.update_job_status(event.portfolio_id, event.security_id, event.valuation_date, 'FAILED', failure_reason=error_msg)
+                            await idempotency_repo.mark_event_processed(event_id, event.portfolio_id, SERVICE_NAME, correlation_id)
                             return
                         
                         # 3. Build the initial snapshot from the position state

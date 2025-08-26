@@ -107,7 +107,6 @@ class ValuationRepository:
             select(
                 s.portfolio_id,
                 s.security_id,
-                # --- FIX: Cast the final result to Date to resolve type mismatch ---
                 cast(
                     func.coalesce(
                         first_gap_subq - timedelta(days=1),

@@ -154,7 +154,7 @@ async def test_process_message_handles_data_not_found_error(
 
     mock_idempotency_repo.is_event_processed.return_value = False
     
-    # Simulate the key error condition
+    # Simulate the key error condition by having the repo return None
     mock_valuation_repo.get_last_position_history_before_date.return_value = None
 
     # ACT
