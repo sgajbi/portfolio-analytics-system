@@ -88,7 +88,8 @@ class ValuationScheduler:
         
         latest_business_date = await repo.get_latest_business_date()
         if not latest_business_date:
-            logger.info("Scheduler: No business dates found, skipping backfill job creation.")
+            # FIX: Changed from INFO to DEBUG to reduce log noise
+            logger.debug("Scheduler: No business dates found, skipping backfill job creation.")
             return
 
         states_to_backfill = await repo.get_states_needing_backfill(latest_business_date, self._batch_size)
@@ -96,13 +97,14 @@ class ValuationScheduler:
         if not states_to_backfill:
             logger.debug("Scheduler: No keys need backfilling.")
             return
+        
+        # --- NEW: Added INFO log for successful case ---
+        logger.info(f"Scheduler: Found {len(states_to_backfill)} keys needing backfill up to {latest_business_date}.")
 
         # Fetch portfolio open dates for all states in a single query for efficiency
         portfolio_ids = list(set(s.portfolio_id for s in states_to_backfill))
         portfolios = await repo.get_portfolios_by_ids(portfolio_ids)
         open_dates_map = {p.portfolio_id: p.open_date for p in portfolios}
-
-        logger.info(f"Scheduler: Found {len(states_to_backfill)} keys needing backfill.")
 
         for state in states_to_backfill:
             # --- OBSERVE METRICS ---
