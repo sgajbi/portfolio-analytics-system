@@ -34,11 +34,12 @@ class PreviousTimeseriesNotFoundError(Exception):
 
 class PositionTimeseriesConsumer(BaseConsumer):
     async def process_message(self, msg: Message):
+        # --- FIX: Removed PreviousTimeseriesNotFoundError from retryable exceptions ---
         retry_config = retry(
             wait=wait_fixed(3),
             stop=stop_after_attempt(15),
             before=before_log(logger, logging.INFO),
-            retry=retry_if_exception_type((IntegrityError, InstrumentNotFoundError, PreviousTimeseriesNotFoundError))
+            retry=retry_if_exception_type((IntegrityError, InstrumentNotFoundError))
         )
         retryable_process = retry_config(self._process_message_with_retry)
         try:
