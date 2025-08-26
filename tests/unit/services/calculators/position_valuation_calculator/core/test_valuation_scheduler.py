@@ -58,38 +58,66 @@ def mock_dependencies():
             "state_repo": mock_state_repo
         }
 
-async def test_scheduler_creates_backfill_jobs(scheduler: ValuationScheduler, mock_dependencies: dict):
+async def test_scheduler_creates_position_aware_backfill_jobs(scheduler: ValuationScheduler, mock_dependencies: dict):
     """
-    GIVEN a position_state with a watermark older than the latest business date
-    WHEN the scheduler's _create_backfill_jobs logic runs
-    THEN it should create valuation jobs for the missing days with the correct epoch.
+    GIVEN a state with a very old watermark but a much more recent first_open_date
+    WHEN the scheduler runs _create_backfill_jobs
+    THEN it should create jobs starting from the first_open_date, not the watermark.
     """
     # ARRANGE
     mock_repo = mock_dependencies["repo"]
     mock_job_repo = mock_dependencies["job_repo"]
     
     latest_business_date = date(2025, 8, 12)
+    first_open_date = date(2025, 8, 10)
+
+    states_to_backfill = [
+        PositionState(portfolio_id="P1", security_id="S1", watermark_date=date(1970, 1, 1), epoch=1)
+    ]
     
+    mock_repo.get_latest_business_date.return_value = latest_business_date
+    mock_repo.get_states_needing_backfill.return_value = states_to_backfill
+    mock_repo.get_first_open_dates_for_keys.return_value = {
+        ("P1", "S1", 1): first_open_date
+    }
+
+    # ACT
+    await scheduler._create_backfill_jobs(AsyncMock())
+
+    # ASSERT
+    # It should create jobs for the 10th, 11th, and 12th
+    assert mock_job_repo.upsert_job.call_count == 3
+    
+    # Check that the first job created is for the first_open_date
+    first_call_args = mock_job_repo.upsert_job.call_args_list[0].kwargs
+    assert first_call_args['valuation_date'] == date(2025, 8, 10)
+    assert first_call_args['epoch'] == 1
+
+async def test_scheduler_skips_jobs_for_keys_with_no_position_history(scheduler: ValuationScheduler, mock_dependencies: dict):
+    """
+    GIVEN a state needing backfill but no corresponding position history
+    WHEN the scheduler runs _create_backfill_jobs
+    THEN it should NOT create any valuation jobs for that key.
+    """
+    # ARRANGE
+    mock_repo = mock_dependencies["repo"]
+    mock_job_repo = mock_dependencies["job_repo"]
+    
+    latest_business_date = date(2025, 8, 12)
     states_to_backfill = [
         PositionState(portfolio_id="P1", security_id="S1", watermark_date=date(2025, 8, 10), epoch=1)
     ]
     
     mock_repo.get_latest_business_date.return_value = latest_business_date
     mock_repo.get_states_needing_backfill.return_value = states_to_backfill
+    # Simulate the key not being found in the position history
+    mock_repo.get_first_open_dates_for_keys.return_value = {}
 
     # ACT
     await scheduler._create_backfill_jobs(AsyncMock())
 
     # ASSERT
-    # It should create jobs for the 11th and 12th
-    assert mock_job_repo.upsert_job.call_count == 2
-    
-    # Check the call for the first missing day (the 11th)
-    first_call_args = mock_job_repo.upsert_job.call_args_list[0].kwargs
-    assert first_call_args['portfolio_id'] == 'P1'
-    assert first_call_args['security_id'] == 'S1'
-    assert first_call_args['valuation_date'] == date(2025, 8, 11)
-    assert first_call_args['epoch'] == 1
+    mock_job_repo.upsert_job.assert_not_called()
 
 async def test_scheduler_advances_watermarks(scheduler: ValuationScheduler, mock_dependencies: dict):
     """

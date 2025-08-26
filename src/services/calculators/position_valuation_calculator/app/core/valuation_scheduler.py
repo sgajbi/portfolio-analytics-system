@@ -81,14 +81,13 @@ class ValuationScheduler:
     async def _create_backfill_jobs(self, db):
         """
         Finds keys with a lagging watermark and creates valuation jobs to fill the gap,
-        starting from the later of the portfolio's open date or the watermark date.
+        starting from the later of the watermark date or the position's first open date.
         """
         repo = ValuationRepository(db)
         job_repo = ValuationJobRepository(db)
         
         latest_business_date = await repo.get_latest_business_date()
         if not latest_business_date:
-            # FIX: Changed from INFO to DEBUG to reduce log noise
             logger.debug("Scheduler: No business dates found, skipping backfill job creation.")
             return
 
@@ -98,28 +97,26 @@ class ValuationScheduler:
             logger.debug("Scheduler: No keys need backfilling.")
             return
         
-        # --- NEW: Added INFO log for successful case ---
         logger.info(f"Scheduler: Found {len(states_to_backfill)} keys needing backfill up to {latest_business_date}.")
 
-        # Fetch portfolio open dates for all states in a single query for efficiency
-        portfolio_ids = list(set(s.portfolio_id for s in states_to_backfill))
-        portfolios = await repo.get_portfolios_by_ids(portfolio_ids)
-        open_dates_map = {p.portfolio_id: p.open_date for p in portfolios}
+        # --- NEW LOGIC: Make scheduler position-aware ---
+        keys_to_check = [(s.portfolio_id, s.security_id, s.epoch) for s in states_to_backfill]
+        first_open_dates = await repo.get_first_open_dates_for_keys(keys_to_check)
 
         for state in states_to_backfill:
-            # --- OBSERVE METRICS ---
             gap_days = (latest_business_date - state.watermark_date).days
             SCHEDULER_GAP_DAYS.observe(gap_days)
             SNAPSHOT_LAG_SECONDS.observe(gap_days * 86400)
-            # --- END METRICS ---
             
-            portfolio_open_date = open_dates_map.get(state.portfolio_id)
-            if not portfolio_open_date:
-                logger.warning(f"Could not find open date for portfolio {state.portfolio_id}. Skipping backfill for key ({state.portfolio_id}, {state.security_id}).")
+            key = (state.portfolio_id, state.security_id, state.epoch)
+            first_open_date = first_open_dates.get(key)
+
+            if not first_open_date:
+                logger.warning(f"No position history found for key {key}. Skipping backfill job creation.")
                 continue
 
-            # Determine the correct start date for backfilling, ensuring it's not before the portfolio existed.
-            start_date = max(state.watermark_date, portfolio_open_date - timedelta(days=1))
+            # Determine the correct start date for backfilling.
+            start_date = max(state.watermark_date, first_open_date - timedelta(days=1))
             
             job_count = 0
             current_date = start_date + timedelta(days=1)
