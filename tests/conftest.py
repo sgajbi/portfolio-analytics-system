@@ -119,6 +119,19 @@ def clean_db(db_engine):
         connection.execute(truncate_query)
     yield
 
+@pytest.fixture(scope="module")
+def clean_db_module(db_engine):
+    """
+    A module-scoped fixture that cleans all data from tables using TRUNCATE.
+    Used by E2E tests to ensure a clean state before the test module runs.
+    """
+    print("\n--- Cleaning database tables (module scope) ---")
+    truncate_query = text(f"TRUNCATE TABLE {', '.join(TABLES_TO_TRUNCATE)} RESTART IDENTITY CASCADE;")
+    with db_engine.begin() as connection:
+        connection.execute(truncate_query)
+    yield
+
+
 @pytest_asyncio.fixture(scope="function")
 async def async_db_session(db_engine):
     """
