@@ -62,7 +62,7 @@ class PositionCalculator:
             )
             return
 
-        # --- FIX: Back-dating check now only runs for original events (no reprocess_epoch header) ---
+        # --- Back-dating check now only runs for original events (no reprocess_epoch) ---
         is_backdated = transaction_date <= current_state.watermark_date
         if is_backdated and reprocess_epoch is None:
             logger.warning(
@@ -84,12 +84,12 @@ class PositionCalculator:
             logger.info(f"Re-emitting {len(all_transactions)} transactions for Epoch {new_state.epoch}")
             for txn in all_transactions:
                 event_to_publish = TransactionEvent.model_validate(txn)
-                headers = [('reprocess_epoch', str(new_state.epoch).encode('utf-8'))]
+                # --- FIX: Embed epoch in payload, remove headers ---
+                event_to_publish.epoch = new_state.epoch
                 kafka_producer.publish_message(
                     topic=KAFKA_PROCESSED_TRANSACTIONS_COMPLETED_TOPIC,
                     key=txn.portfolio_id,
-                    value=event_to_publish.model_dump(mode='json'),
-                    headers=headers
+                    value=event_to_publish.model_dump(mode='json')
                 )
             kafka_producer.flush()
             return

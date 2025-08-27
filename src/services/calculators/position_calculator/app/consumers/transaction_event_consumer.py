@@ -14,7 +14,7 @@ from portfolio_common.db import get_async_db_session
 from portfolio_common.idempotency_repository import IdempotencyRepository
 from portfolio_common.position_state_repository import PositionStateRepository
 from portfolio_common.kafka_utils import get_kafka_producer, KafkaProducer
-from portfolio_common.monitoring import EPOCH_MISMATCH_DROPPED_TOTAL # NEW IMPORT
+from portfolio_common.monitoring import EPOCH_MISMATCH_DROPPED_TOTAL 
 
 from ..repositories.position_repository import PositionRepository
 from ..core.position_logic import PositionCalculator
@@ -49,15 +49,11 @@ class TransactionEventConsumer(BaseConsumer):
         event_id = f"{msg.topic()}-{msg.partition()}-{msg.offset()}"
         correlation_id = correlation_id_var.get()
 
-        reprocess_epoch = None
-        if msg.headers():
-            for header_key, header_value in msg.headers():
-                if header_key == 'reprocess_epoch':
-                    reprocess_epoch = int(header_value.decode('utf-8'))
-                    break
         try:
             data = json.loads(value)
             event = TransactionEvent.model_validate(data)
+            # --- FIX: Read epoch from payload, not headers ---
+            reprocess_epoch = event.epoch
 
             async for db in get_async_db_session():
                 async with db.begin():
@@ -69,8 +65,6 @@ class TransactionEventConsumer(BaseConsumer):
                     repo = PositionRepository(db)
                     position_state_repo = PositionStateRepository(db)
                     
-                    # --- FIX: Pass reprocess_epoch to the logic layer ---
-                    # The core logic will now handle epoch fencing and back-dating detection.
                     await PositionCalculator.calculate(
                         event=event,
                         db_session=db,
