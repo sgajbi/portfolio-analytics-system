@@ -159,6 +159,7 @@ class CostCalculatorConsumer(BaseConsumer):
 
                     new_transaction_ids = {event.transaction_id}
                     
+                    
                     processor = self._get_transaction_processor()
                     processed, errored = processor.process_transactions(
                         existing_transactions_raw=[],
@@ -175,13 +176,16 @@ class CostCalculatorConsumer(BaseConsumer):
                     for p_txn in processed_new:
                         updated_txn = await repo.update_transaction_costs(p_txn)
                         
-                        # --- FIX: Re-hydrate trade_fee before creating the outbound event ---
                         if p_txn.fees and p_txn.fees.total_fees > 0:
                             updated_txn.trade_fee = p_txn.fees.total_fees
                         else:
                             updated_txn.trade_fee = Decimal(0)
                         
                         full_event_to_publish = TransactionEvent.model_validate(updated_txn)
+
+                        # --- FIX: Propagate epoch from incoming event to outgoing event ---
+                        if event.epoch is not None:
+                            full_event_to_publish.epoch = event.epoch
 
                         await outbox_repo.create_outbox_event(
                             aggregate_type='ProcessedTransaction',
