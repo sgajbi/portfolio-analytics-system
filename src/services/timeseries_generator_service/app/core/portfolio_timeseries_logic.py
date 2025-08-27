@@ -64,7 +64,8 @@ class PortfolioTimeseriesLogic:
             instrument_currency = instrument.currency
             rate = Decimal(1.0)
 
-            if instrument_currency != portfolio_currency:
+            # --- FIX: Add .strip() to make the comparison robust against whitespace ---
+            if instrument_currency.strip() != portfolio_currency.strip():
                 fx_rate = await repo.get_fx_rate(instrument_currency, portfolio_currency, pos_ts.date)
                 if not fx_rate:
                     error_msg = f"Missing FX rate from {instrument_currency} to {portfolio_currency} for date {pos_ts.date}."
