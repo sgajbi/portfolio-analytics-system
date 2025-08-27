@@ -87,6 +87,8 @@ class TransactionEvent(BaseModel):
     transaction_fx_rate: Optional[Decimal] = None
     net_cost_local: Optional[Decimal] = None
     realized_gain_loss_local: Optional[Decimal] = None
+    # --- NEW FIELD ---
+    epoch: Optional[int] = None
 
 class DailyPositionSnapshotPersistedEvent(BaseModel):
     """
