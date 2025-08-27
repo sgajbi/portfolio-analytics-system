@@ -8,8 +8,9 @@ ENV POETRY_VIRTUALENVS_CREATE=false \
     PYTHONUNBUFFERED=1 \
     PATH="/opt/venv/bin:$PATH"
 
+# --- FIX: Add build-essential and libpq-dev for compiling dependencies ---
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends curl && \
+    apt-get install -y --no-install-recommends curl build-essential libpq-dev && \
     rm -rf /var/lib/apt/lists/*
 
 RUN useradd --create-home appuser

@@ -1,8 +1,10 @@
 # tests/unit/services/calculators/cost_calculator_service/consumer/test_cost_calculator_consumer.py
 import pytest
+import json
 from unittest.mock import MagicMock, patch, AsyncMock
 from datetime import datetime
 from decimal import Decimal
+
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from portfolio_common.events import TransactionEvent
