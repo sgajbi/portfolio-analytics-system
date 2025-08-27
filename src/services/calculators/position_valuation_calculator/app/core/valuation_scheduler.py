@@ -13,7 +13,6 @@ from portfolio_common.database_models import PortfolioValuationJob, PositionStat
 from ..repositories.valuation_repository import ValuationRepository
 from portfolio_common.valuation_job_repository import ValuationJobRepository
 from portfolio_common.position_state_repository import PositionStateRepository
-# NEW IMPORTS
 from portfolio_common.monitoring import (
     REPROCESSING_ACTIVE_KEYS_TOTAL,
     SNAPSHOT_LAG_SECONDS,
@@ -43,7 +42,7 @@ class ValuationScheduler:
 
     async def _advance_watermarks(self, db):
         """
-        Checks all REPROCESSING keys, finds how far their snapshots are contiguous,
+        Checks all lagging keys, finds how far their snapshots are contiguous,
         and updates their watermark and status accordingly.
         """
         repo = ValuationRepository(db)
@@ -53,21 +52,25 @@ class ValuationScheduler:
         if not latest_business_date:
             return
 
-        reprocessing_states = await repo.get_reprocessing_states(self._batch_size)
-        REPROCESSING_ACTIVE_KEYS_TOTAL.set(len(reprocessing_states)) # SET METRIC
-        if not reprocessing_states:
+        lagging_states = await repo.get_lagging_states(latest_business_date, self._batch_size)
+        
+        # This metric is now more accurate, reflecting all states being worked on.
+        reprocessing_count = sum(1 for s in lagging_states if s.status == 'REPROCESSING')
+        REPROCESSING_ACTIVE_KEYS_TOTAL.set(reprocessing_count)
+        
+        if not lagging_states:
             return
 
-        advancable_dates = await repo.find_contiguous_snapshot_dates(reprocessing_states)
+        advancable_dates = await repo.find_contiguous_snapshot_dates(lagging_states)
         
         updates_to_commit: List[Dict[str, Any]] = []
-        for state in reprocessing_states:
+        for state in lagging_states:
             key = (state.portfolio_id, state.security_id)
             new_watermark = advancable_dates.get(key)
 
             if new_watermark and new_watermark > state.watermark_date:
                 is_complete = new_watermark == latest_business_date
-                new_status = 'CURRENT' if is_complete else 'REPROCESSING'
+                new_status = 'CURRENT' if is_complete else state.status # Keep REPROCESSING status if not yet complete
                 updates_to_commit.append({
                     "portfolio_id": state.portfolio_id,
                     "security_id": state.security_id,
@@ -100,7 +103,6 @@ class ValuationScheduler:
         
         logger.info(f"Scheduler: Found {len(states_to_backfill)} keys needing backfill up to {latest_business_date}.")
 
-        # --- NEW LOGIC: Make scheduler position-aware ---
         keys_to_check = [(s.portfolio_id, s.security_id, s.epoch) for s in states_to_backfill]
         first_open_dates = await repo.get_first_open_dates_for_keys(keys_to_check)
 
@@ -175,13 +177,9 @@ class ValuationScheduler:
                     async with db.begin():
                         repo = ValuationRepository(db)
                         
-                        # Find and reset any jobs that have been stuck for too long
                         await repo.find_and_reset_stale_jobs()
-                        # Create new jobs for any positions with a lagging watermark
                         await self._create_backfill_jobs(db)
-                        # Claim a batch of pending jobs to be processed
                         claimed_jobs = await repo.find_and_claim_eligible_jobs(self._batch_size)
-                        # Check for completed reprocessing and advance watermarks
                         await self._advance_watermarks(db)
                 
                 if claimed_jobs:

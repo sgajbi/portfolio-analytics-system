@@ -34,14 +34,16 @@ class ValuationRepository:
         result = await self.db.execute(stmt)
         return result.scalars().all()
 
-    @async_timed(repository="ValuationRepository", method="get_reprocessing_states")
-    async def get_reprocessing_states(self, limit: int) -> List[PositionState]:
+    @async_timed(repository="ValuationRepository", method="get_lagging_states")
+    async def get_lagging_states(self, latest_business_date: date, limit: int) -> List[PositionState]:
         """
-        Finds keys in the position_state table that are currently reprocessing.
+        Finds keys in the position_state table whose watermark is older than the
+        latest business date, indicating a potential need for advancement.
+        This includes both CURRENT and REPROCESSING states.
         """
         stmt = (
             select(PositionState)
-            .where(PositionState.status == 'REPROCESSING')
+            .where(PositionState.watermark_date < latest_business_date)
             .order_by(PositionState.updated_at.asc())
             .limit(limit)
         )
@@ -51,7 +53,7 @@ class ValuationRepository:
     @async_timed(repository="ValuationRepository", method="find_contiguous_snapshot_dates")
     async def find_contiguous_snapshot_dates(self, states: List[PositionState]) -> Dict[Tuple[str, str], date]:
         """
-        For a list of states in REPROCESSING, finds the latest date for each key
+        For a list of states, finds the latest date for each key
         that has a continuous sequence of daily snapshots from its watermark.
         """
         if not states:
