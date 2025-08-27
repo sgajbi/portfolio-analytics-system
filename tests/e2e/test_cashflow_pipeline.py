@@ -61,10 +61,8 @@ def test_cashflow_pipeline(setup_cashflow_data, db_engine):
     
     amount, currency, classification, timing, is_pos_flow, is_port_flow, calc_type = result
     
-    # A BUY transaction results in an outflow of cash from the perspective of the position
-    # The amount is NET = Gross Amount (1000) + Fee (5.50) = 1005.50
-    # The sign is negative for outflows.
-    expected_amount = Decimal("-1005.50")
+    # FIX: A BUY is a positive inflow to the position. Expected amount = (Gross Amount + Fee)
+    expected_amount = Decimal("1005.50")
 
     assert amount.compare(expected_amount) == 0
     assert currency == "USD"
