@@ -78,7 +78,7 @@ def mock_dependencies():
         }
 
 async def test_consumer_calls_logic_with_no_epoch_for_original_event(position_consumer: TransactionEventConsumer, mock_kafka_message: MagicMock, mock_dependencies: dict):
-    """Tests that an original event (no header) calls the logic with reprocess_epoch=None."""
+    """Tests that an original event (no epoch in payload) calls the logic with reprocess_epoch=None."""
     # ARRANGE
     mock_dependencies["idempotency_repo"].is_event_processed.return_value = False
 
@@ -90,11 +90,12 @@ async def test_consumer_calls_logic_with_no_epoch_for_original_event(position_co
     call_kwargs = mock_dependencies["calculate_logic"].call_args.kwargs
     assert call_kwargs['reprocess_epoch'] is None
 
-async def test_consumer_passes_reprocess_epoch_header_to_logic(position_consumer: TransactionEventConsumer, mock_kafka_message: MagicMock, mock_dependencies: dict):
-    """Tests that the consumer correctly parses the reprocess_epoch header and passes it to the logic layer."""
+async def test_consumer_passes_reprocess_epoch_payload_to_logic(position_consumer: TransactionEventConsumer, mock_kafka_message: MagicMock, mock_transaction_event: TransactionEvent, mock_dependencies: dict):
+    """Tests that the consumer correctly parses the reprocess_epoch from the payload and passes it to the logic layer."""
     # ARRANGE
     mock_dependencies["idempotency_repo"].is_event_processed.return_value = False
-    mock_kafka_message.headers.return_value = [('reprocess_epoch', b'2')] # Set the header
+    mock_transaction_event.epoch = 2 # Set the epoch in the event payload
+    mock_kafka_message.value.return_value = mock_transaction_event.model_dump_json().encode('utf-8')
 
     # ACT
     await position_consumer.process_message(mock_kafka_message)

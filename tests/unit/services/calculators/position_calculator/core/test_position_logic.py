@@ -103,9 +103,10 @@ async def test_calculate_re_emits_events_for_original_backdated_transaction(
     mock_repo.get_all_transactions_for_security.assert_awaited_once_with("P1", "S1")
     assert mock_kafka_producer.publish_message.call_count == 2
     mock_kafka_producer.flush.assert_called_once()
+    
+    # Verify the epoch is embedded in the replayed event payload
     first_call_args = mock_kafka_producer.publish_message.call_args_list[0].kwargs
-    headers_dict = {key: value for key, value in first_call_args['headers']}
-    assert headers_dict['reprocess_epoch'] == b'1'
+    assert first_call_args['value']['epoch'] == 1
 
 async def test_calculate_bypasses_back_dating_check_for_replayed_event(
     mock_repo: AsyncMock,

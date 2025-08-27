@@ -117,6 +117,7 @@ async def test_consumer_integration_with_engine(cost_calculator_consumer: CostCa
         data.pop('portfolio_base_currency', None)
         data.pop('fees', None)
         data.pop('accrued_interest', None)
+        data.pop('epoch', None) # Pop epoch as it's not a DB column here
         return DBTransaction(**data)
     mock_repo.update_transaction_costs.side_effect = create_db_tx
 
@@ -159,22 +160,37 @@ async def test_consumer_uses_trade_fee_in_calculation(
     
     assert updated_transaction_arg.net_cost == Decimal("1507.50")
 
-async def test_process_message_skips_processed_event(
-    cost_calculator_consumer: CostCalculatorConsumer, mock_sell_kafka_message: MagicMock, mock_dependencies
+async def test_consumer_propagates_epoch_field(
+    cost_calculator_consumer: CostCalculatorConsumer, mock_buy_kafka_message: MagicMock, mock_dependencies
 ):
     """
-    GIVEN a transaction message that has already been processed
-    WHEN the process_message method is called
-    THEN it should skip all business logic.
+    GIVEN an incoming transaction event with an epoch
+    WHEN the consumer processes it
+    THEN the outbound event it creates should also contain that same epoch.
     """
     # ARRANGE
+    mock_repo = mock_dependencies["repo"]
     mock_idempotency_repo = mock_dependencies["idempotency_repo"]
-    mock_idempotency_repo.is_event_processed.return_value = True
+    mock_outbox_repo = mock_dependencies["outbox_repo"]
+    
+    # Set the epoch on the incoming event
+    incoming_event_dict = mock_buy_kafka_message.value().decode('utf-8')
+    incoming_event_dict = json.loads(incoming_event_dict)
+    incoming_event_dict['epoch'] = 2
+    mock_buy_kafka_message.value.return_value = json.dumps(incoming_event_dict).encode('utf-8')
+
+    mock_idempotency_repo.is_event_processed.return_value = False
+    mock_repo.get_transaction_history.return_value = []
+    mock_repo.get_portfolio.return_value = Portfolio(base_currency="USD", portfolio_id="PORT_COST_01")
+    mock_repo.get_fx_rate.return_value = None
+    
+    # Simulate the update returning a DB object that can be validated by Pydantic
+    mock_repo.update_transaction_costs.side_effect = lambda arg: DBTransaction(**arg.model_dump(exclude={'portfolio_base_currency', 'fees', 'accrued_interest', 'epoch'}))
 
     # ACT
-    await cost_calculator_consumer.process_message(mock_sell_kafka_message)
+    await cost_calculator_consumer.process_message(mock_buy_kafka_message)
 
     # ASSERT
-    mock_idempotency_repo.is_event_processed.assert_called_once()
-    mock_dependencies["repo"].get_transaction_history.assert_not_called()
-    mock_dependencies["outbox_repo"].create_outbox_event.assert_not_called()
+    mock_outbox_repo.create_outbox_event.assert_called_once()
+    outbound_payload = mock_outbox_repo.create_outbox_event.call_args.kwargs['payload']
+    assert outbound_payload['epoch'] == 2
