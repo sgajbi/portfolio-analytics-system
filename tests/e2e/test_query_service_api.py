@@ -1,24 +1,18 @@
 # tests/e2e/test_query_service_api.py
 import pytest
-import requests
-import time
 import uuid
-from sqlalchemy.orm import Session
-from sqlalchemy import text
+from .api_client import E2EApiClient
 
 @pytest.fixture(scope="module")
-def setup_e2e_data(clean_db_module, api_endpoints, poll_for_data):
+def setup_e2e_data(clean_db_module, e2e_api_client: E2EApiClient):
     """
     A module-scoped fixture to ingest a consistent set of data for testing
     API features like sorting, filtering, and pagination.
     """
-    ingestion_url = api_endpoints["ingestion"]
-    query_url = api_endpoints["query"]
     portfolio_id = f"E2E_API_TEST_{uuid.uuid4()}"
     
     # Ingest Portfolio
-    payload = {"portfolios": [{"portfolioId": portfolio_id, "baseCurrency": "USD", "openDate": "2025-01-01", "cifId": "API_CIF", "status": "ACTIVE", "riskExposure": "a", "investmentTimeHorizon": "b", "portfolioType": "c", "bookingCenter": "d"}]}
-    requests.post(f"{ingestion_url}/ingest/portfolios", json=payload)
+    e2e_api_client.ingest("/ingest/portfolios", {"portfolios": [{"portfolioId": portfolio_id, "baseCurrency": "USD", "openDate": "2025-01-01", "cifId": "API_CIF", "status": "ACTIVE", "riskExposure": "a", "investmentTimeHorizon": "b", "portfolioType": "c", "bookingCenter": "d"}]})
 
     # Ingest a diverse set of transactions for filtering and sorting
     transactions = [
@@ -27,25 +21,24 @@ def setup_e2e_data(clean_db_module, api_endpoints, poll_for_data):
         {"transaction_id": f"{portfolio_id}_T3", "portfolio_id": portfolio_id, "instrument_id": "A", "security_id": "S1", "transaction_date": "2025-08-03T12:00:00Z", "transaction_type": "SELL", "quantity": 2, "price": 110, "gross_transaction_amount": 220, "trade_currency": "USD", "currency": "USD"},
         {"transaction_id": f"{portfolio_id}_T4", "portfolio_id": portfolio_id, "instrument_id": "C", "security_id": "S3", "transaction_date": "2025-08-05T09:00:00Z", "transaction_type": "BUY", "quantity": 25, "price": 50, "gross_transaction_amount": 1250, "trade_currency": "USD", "currency": "USD"}
     ]
-    requests.post(f"{ingestion_url}/ingest/transactions", json={"transactions": transactions})
+    e2e_api_client.ingest("/ingest/transactions", {"transactions": transactions})
     
     # Poll until all transactions are available via the API
-    poll_url = f"{query_url}/portfolios/{portfolio_id}/transactions"
+    poll_url = f"/portfolios/{portfolio_id}/transactions"
     validation_func = lambda data: data.get("transactions") and len(data["transactions"]) == 4
-    poll_for_data(poll_url, validation_func, timeout=60)
+    e2e_api_client.poll_for_data(poll_url, validation_func, timeout=60)
 
-    return {"portfolio_id": portfolio_id, "query_url": query_url}
+    return {"portfolio_id": portfolio_id}
 
 
-def test_transaction_query_default_sort(setup_e2e_data):
+def test_transaction_query_default_sort(setup_e2e_data, e2e_api_client: E2EApiClient):
     """
     Tests that the default sort order for transactions is by date descending.
     """
     portfolio_id = setup_e2e_data["portfolio_id"]
-    url = f'{setup_e2e_data["query_url"]}/portfolios/{portfolio_id}/transactions'
+    url = f'/portfolios/{portfolio_id}/transactions'
     
-    response = requests.get(url)
-    assert response.status_code == 200
+    response = e2e_api_client.query(url)
     data = response.json()
     
     assert len(data["transactions"]) == 4
@@ -55,15 +48,14 @@ def test_transaction_query_default_sort(setup_e2e_data):
     assert data["transactions"][2]["transaction_id"] == f"{portfolio_id}_T3"
     assert data["transactions"][3]["transaction_id"] == f"{portfolio_id}_T1"
 
-def test_transaction_query_custom_sort(setup_e2e_data):
+def test_transaction_query_custom_sort(setup_e2e_data, e2e_api_client: E2EApiClient):
     """
     Tests sorting transactions by quantity in ascending order.
     """
     portfolio_id = setup_e2e_data["portfolio_id"]
-    url = f'{setup_e2e_data["query_url"]}/portfolios/{portfolio_id}/transactions?sort_by=quantity&sort_order=asc'
+    url = f'/portfolios/{portfolio_id}/transactions?sort_by=quantity&sort_order=asc'
     
-    response = requests.get(url)
-    assert response.status_code == 200
+    response = e2e_api_client.query(url)
     data = response.json()
     
     assert len(data["transactions"]) == 4
@@ -73,15 +65,14 @@ def test_transaction_query_custom_sort(setup_e2e_data):
     assert data["transactions"][2]["transaction_id"] == f"{portfolio_id}_T1"
     assert data["transactions"][3]["transaction_id"] == f"{portfolio_id}_T4"
 
-def test_transaction_query_filter_by_security_id(setup_e2e_data):
+def test_transaction_query_filter_by_security_id(setup_e2e_data, e2e_api_client: E2EApiClient):
     """
     Tests filtering transactions by a specific security ID.
     """
     portfolio_id = setup_e2e_data["portfolio_id"]
-    url = f'{setup_e2e_data["query_url"]}/portfolios/{portfolio_id}/transactions?security_id=S1'
+    url = f'/portfolios/{portfolio_id}/transactions?security_id=S1'
     
-    response = requests.get(url)
-    assert response.status_code == 200
+    response = e2e_api_client.query(url)
     data = response.json()
 
     assert len(data["transactions"]) == 2
@@ -92,15 +83,14 @@ def test_transaction_query_filter_by_security_id(setup_e2e_data):
     assert f"{portfolio_id}_T1" in returned_ids
     assert f"{portfolio_id}_T3" in returned_ids
 
-def test_transaction_query_filter_and_sort(setup_e2e_data):
+def test_transaction_query_filter_and_sort(setup_e2e_data, e2e_api_client: E2EApiClient):
     """
     Tests combining a filter (security_id) with custom sorting (quantity asc).
     """
     portfolio_id = setup_e2e_data["portfolio_id"]
-    url = f'{setup_e2e_data["query_url"]}/portfolios/{portfolio_id}/transactions?security_id=S1&sort_by=quantity&sort_order=asc'
+    url = f'/portfolios/{portfolio_id}/transactions?security_id=S1&sort_by=quantity&sort_order=asc'
     
-    response = requests.get(url)
-    assert response.status_code == 200
+    response = e2e_api_client.query(url)
     data = response.json()
 
     assert len(data["transactions"]) == 2
@@ -108,17 +98,16 @@ def test_transaction_query_filter_and_sort(setup_e2e_data):
     assert data["transactions"][0]["transaction_id"] == f"{portfolio_id}_T3"
     assert data["transactions"][1]["transaction_id"] == f"{portfolio_id}_T1"
 
-def test_transaction_query_pagination(setup_e2e_data):
+def test_transaction_query_pagination(setup_e2e_data, e2e_api_client: E2EApiClient):
     """
     Tests using limit and skip for paginating transaction results.
     """
     portfolio_id = setup_e2e_data["portfolio_id"]
-    base_url = f'{setup_e2e_data["query_url"]}/portfolios/{portfolio_id}/transactions'
+    base_url = f'/portfolios/{portfolio_id}/transactions'
 
     # ACT 1: Get the first page (limit=2, skip=0)
     url_page1 = f"{base_url}?limit=2&skip=0"
-    response1 = requests.get(url_page1)
-    assert response1.status_code == 200
+    response1 = e2e_api_client.query(url_page1)
     data1 = response1.json()
 
     # ASSERT 1
@@ -132,8 +121,7 @@ def test_transaction_query_pagination(setup_e2e_data):
 
     # ACT 2: Get the second page (limit=2, skip=2)
     url_page2 = f"{base_url}?limit=2&skip=2"
-    response2 = requests.get(url_page2)
-    assert response2.status_code == 200
+    response2 = e2e_api_client.query(url_page2)
     data2 = response2.json()
 
     # ASSERT 2
