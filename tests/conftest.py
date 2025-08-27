@@ -11,6 +11,9 @@ from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, Asyn
 from sqlalchemy.orm import Session
 from typing import Callable, Any
 
+# --- NEW: Import the E2E API Client ---
+from tests.e2e.api_client import E2EApiClient
+
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
@@ -62,17 +65,15 @@ def docker_services(request):
             check=False, capture_output=True
         )
 
-
+# --- NEW: E2E API Client Fixture ---
 @pytest.fixture(scope="session")
-def api_endpoints(docker_services):
-    """
-    Provides the hardcoded URLs for the services, dependent on the docker_services fixture.
-    """
-    return {
-        "ingestion": "http://localhost:8000",
-        "query": "http://localhost:8001"
-    }
-
+def e2e_api_client(docker_services) -> E2EApiClient:
+    """Provides an instance of the E2EApiClient for E2E tests."""
+    return E2EApiClient(
+        ingestion_url="http://localhost:8000",
+        query_url="http://localhost:8001"
+    )
+# --- END NEW ---
 
 @pytest.fixture(scope="session")
 def db_engine(docker_services):
@@ -153,31 +154,6 @@ async def async_db_session(db_engine):
         yield session
 
     await async_engine.dispose()
-
-@pytest.fixture(scope="module")
-def poll_for_data():
-    """
-    Provides a generic polling utility to query an endpoint until a condition is met.
-    """
-    def _poll(url: str, validation_func, timeout: int = 45, fail_message: str = "Polling timed out"):
-        start_time = time.time()
-        last_response_data = None
-        while time.time() - start_time < timeout:
-            try:
-                response = requests.get(url, timeout=5)
-                if response.status_code == 200:
-                    last_response_data = response.json()
-                    if validation_func(last_response_data):
-                        return last_response_data
-            except requests.ConnectionError:
-                pass 
-            time.sleep(1)
-        
-        pytest.fail(
-            f"{fail_message} after {timeout} seconds for URL {url}. "
-            f"Last response: {last_response_data}"
-        )
-    return _poll
 
 @pytest.fixture(scope="module")
 def poll_db_until(db_engine):
