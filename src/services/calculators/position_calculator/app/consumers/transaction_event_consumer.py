@@ -69,34 +69,15 @@ class TransactionEventConsumer(BaseConsumer):
                     repo = PositionRepository(db)
                     position_state_repo = PositionStateRepository(db)
                     
-                    # --- EPOCH FENCING ---
-                    state = await position_state_repo.get_or_create_state(event.portfolio_id, event.security_id)
-                    message_epoch = reprocess_epoch if reprocess_epoch is not None else state.epoch
-                    
-                    if message_epoch < state.epoch:
-                        EPOCH_MISMATCH_DROPPED_TOTAL.labels(
-                            service_name=SERVICE_NAME,
-                            topic=msg.topic(),
-                            portfolio_id=event.portfolio_id,
-                            security_id=event.security_id,
-                        ).inc()
-                        logger.warning(
-                            "Message has stale epoch. Discarding.",
-                            extra={
-                                "portfolio_id": event.portfolio_id, "security_id": event.security_id,
-                                "message_epoch": message_epoch, "current_epoch": state.epoch
-                            }
-                        )
-                        await idempotency_repo.mark_event_processed(event_id, event.portfolio_id, SERVICE_NAME, correlation_id)
-                        return
-                    
+                    # --- FIX: Pass reprocess_epoch to the logic layer ---
+                    # The core logic will now handle epoch fencing and back-dating detection.
                     await PositionCalculator.calculate(
                         event=event,
                         db_session=db,
                         repo=repo,
                         position_state_repo=position_state_repo,
                         kafka_producer=self._producer,
-                        current_state=state
+                        reprocess_epoch=reprocess_epoch
                     )
                     
                     await idempotency_repo.mark_event_processed(

@@ -2,7 +2,7 @@
 import logging
 from datetime import date, timedelta
 from decimal import Decimal
-from typing import List
+from typing import List, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from portfolio_common.database_models import PositionHistory, Transaction as DBTransaction, PositionState
@@ -13,6 +13,7 @@ from portfolio_common.position_state_repository import PositionStateRepository
 from portfolio_common.logging_utils import correlation_id_var
 from portfolio_common.kafka_utils import KafkaProducer
 from portfolio_common.config import KAFKA_PROCESSED_TRANSACTIONS_COMPLETED_TOPIC
+from portfolio_common.monitoring import EPOCH_MISMATCH_DROPPED_TOTAL
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +33,7 @@ class PositionCalculator:
         repo: PositionRepository,
         position_state_repo: PositionStateRepository,
         kafka_producer: KafkaProducer,
-        current_state: PositionState
+        reprocess_epoch: Optional[int] = None
     ) -> None:
         """
         Orchestrates recalculation and reprocessing triggers for a single transaction event.
@@ -41,9 +42,29 @@ class PositionCalculator:
         security_id = event.security_id
         transaction_date = event.transaction_date.date()
 
-        is_backdated = transaction_date <= current_state.watermark_date
+        current_state = await position_state_repo.get_or_create_state(portfolio_id, security_id)
+        
+        # --- EPOCH FENCING ---
+        message_epoch = reprocess_epoch if reprocess_epoch is not None else current_state.epoch
+        if message_epoch < current_state.epoch:
+            EPOCH_MISMATCH_DROPPED_TOTAL.labels(
+                service_name="position-calculator",
+                topic="processed_transactions_completed",
+                portfolio_id=portfolio_id,
+                security_id=security_id,
+            ).inc()
+            logger.warning(
+                "Message has stale epoch. Discarding.",
+                extra={
+                    "portfolio_id": portfolio_id, "security_id": security_id,
+                    "message_epoch": message_epoch, "current_epoch": current_state.epoch
+                }
+            )
+            return
 
-        if is_backdated:
+        # --- FIX: Back-dating check now only runs for original events (no reprocess_epoch header) ---
+        is_backdated = transaction_date <= current_state.watermark_date
+        if is_backdated and reprocess_epoch is None:
             logger.warning(
                 "Back-dated transaction detected. Triggering reprocessing flow.",
                 extra={
@@ -73,18 +94,18 @@ class PositionCalculator:
             kafka_producer.flush()
             return
 
-        # --- Normal (Non-Backdated) Flow ---
-        await repo.delete_positions_from(portfolio_id, security_id, transaction_date)
-        anchor_position = await repo.get_last_position_before(portfolio_id, security_id, transaction_date)
+        # --- Normal Flow (for original and replayed events) ---
+        await repo.delete_positions_from(portfolio_id, security_id, transaction_date, message_epoch)
+        anchor_position = await repo.get_last_position_before(portfolio_id, security_id, transaction_date, message_epoch)
         transactions_to_replay = await repo.get_transactions_on_or_after(portfolio_id, security_id, transaction_date)
         
         events_to_replay = [TransactionEvent.model_validate(t) for t in transactions_to_replay]
-        new_positions = cls._calculate_new_positions(anchor_position, events_to_replay, current_state.epoch)
+        new_positions = cls._calculate_new_positions(anchor_position, events_to_replay, message_epoch)
 
         if new_positions:
             await repo.save_positions(new_positions)
         
-        logger.info(f"[Calculate] Staged {len(new_positions)} position records for Epoch {current_state.epoch}")
+        logger.info(f"[Calculate] Staged {len(new_positions)} position records for Epoch {message_epoch}")
 
     @staticmethod
     def _calculate_new_positions(

@@ -83,12 +83,13 @@ class PositionRepository:
 
     @async_timed(repository="PositionRepository", method="get_last_position_before")
     async def get_last_position_before(
-        self, portfolio_id: str, security_id: str, a_date: date
+        self, portfolio_id: str, security_id: str, a_date: date, epoch: int
     ) -> Optional[PositionHistory]:
         stmt = select(PositionHistory).filter(
             PositionHistory.portfolio_id == portfolio_id,
             PositionHistory.security_id == security_id,
-            PositionHistory.position_date < a_date
+            PositionHistory.position_date < a_date,
+            PositionHistory.epoch == epoch
         ).order_by(PositionHistory.position_date.desc(), PositionHistory.id.desc())
         
         result = await self.db.execute(stmt)
@@ -109,18 +110,19 @@ class PositionRepository:
 
     @async_timed(repository="PositionRepository", method="delete_positions_from")
     async def delete_positions_from(
-        self, portfolio_id: str, security_id: str, a_date: date
+        self, portfolio_id: str, security_id: str, a_date: date, epoch: int
     ) -> int:
         stmt = delete(PositionHistory).where(
             PositionHistory.portfolio_id == portfolio_id,
             PositionHistory.security_id == security_id,
-            PositionHistory.position_date >= a_date
+            PositionHistory.position_date >= a_date,
+            PositionHistory.epoch == epoch
         )
         result = await self.db.execute(stmt)
         deleted_count = result.rowcount or 0
         logger.info(
             f"Deleted {deleted_count} stale position records "
-            f"for {security_id} from {a_date} onward."
+            f"for {security_id} in epoch {epoch} from {a_date} onward."
         )
         return deleted_count
 
