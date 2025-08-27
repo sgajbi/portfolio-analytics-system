@@ -149,6 +149,26 @@ SCHEDULER_GAP_DAYS = Histogram(
     buckets=(1, 2, 5, 10, 30, 90, 365)
 )
 
+# --- NEW: Valuation Pipeline Metrics ---
+VALUATION_JOBS_CREATED_TOTAL = Counter(
+    "valuation_jobs_created_total",
+    "Total number of valuation jobs created by the scheduler.",
+    labelnames=("portfolio_id", "security_id"),
+)
+
+VALUATION_JOBS_SKIPPED_TOTAL = Counter(
+    "valuation_jobs_skipped_total",
+    "Total number of valuation jobs skipped by the consumer due to no position history.",
+    labelnames=("portfolio_id", "security_id"),
+)
+
+VALUATION_JOBS_FAILED_TOTAL = Counter(
+    "valuation_jobs_failed_total",
+    "Total number of valuation jobs that failed for terminal reasons (e.g., missing ref data).",
+    labelnames=("portfolio_id", "security_id", "reason"),
+)
+# --- END NEW ---
+
 # --------------------------------------------------------------------------------------
 # Optional generic HTTP metrics (use across services if helpful)
 # --------------------------------------------------------------------------------------

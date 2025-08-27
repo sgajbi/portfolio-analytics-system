@@ -14,6 +14,7 @@ from portfolio_common.config import KAFKA_DAILY_POSITION_SNAPSHOT_PERSISTED_TOPI
 from portfolio_common.idempotency_repository import IdempotencyRepository
 from portfolio_common.outbox_repository import OutboxRepository
 from portfolio_common.logging_utils import correlation_id_var
+from portfolio_common.monitoring import VALUATION_JOBS_SKIPPED_TOTAL, VALUATION_JOBS_FAILED_TOTAL
 from ..repositories.valuation_repository import ValuationRepository
 from ..logic.valuation_logic import ValuationLogic
 from portfolio_common.database_models import DailyPositionSnapshot
@@ -81,6 +82,9 @@ class ValuationConsumer(BaseConsumer):
                             if not portfolio:
                                 error_msg += f"Portfolio '{event.portfolio_id}' not found."
                             
+                            VALUATION_JOBS_FAILED_TOTAL.labels(
+                                portfolio_id=event.portfolio_id, security_id=event.security_id, reason="missing_ref_data"
+                            ).inc()
                             logger.error(f"{error_msg} Job will be marked FAILED.")
                             await repo.update_job_status(event.portfolio_id, event.security_id, event.valuation_date, 'FAILED', failure_reason=error_msg)
                             await idempotency_repo.mark_event_processed(event_id, event.portfolio_id, SERVICE_NAME, correlation_id)
@@ -102,6 +106,9 @@ class ValuationConsumer(BaseConsumer):
                             fx_rate = await repo.get_fx_rate(instrument.currency, portfolio.base_currency, event.valuation_date)
                             if instrument.currency != portfolio.base_currency and not fx_rate:
                                 snapshot.valuation_status = 'FAILED'
+                                VALUATION_JOBS_FAILED_TOTAL.labels(
+                                    portfolio_id=event.portfolio_id, security_id=event.security_id, reason="missing_fx_rate"
+                                ).inc()
                                 logger.error(f"Missing required FX rate for valuation. Job will be marked FAILED.")
                             else:
                                 valuation_result = ValuationLogic.calculate_valuation(
@@ -139,6 +146,9 @@ class ValuationConsumer(BaseConsumer):
                 
                 except DataNotFoundError as e:
                     # This is a non-retryable, expected error if a job was created for a date before a position existed.
+                    VALUATION_JOBS_SKIPPED_TOTAL.labels(
+                        portfolio_id=event.portfolio_id, security_id=event.security_id
+                    ).inc()
                     logger.warning(f"Skipping job due to missing position data: {e}", extra={"portfolio_id": event.portfolio_id, "security_id": event.security_id, "date": event.valuation_date})
                     async with db.begin():
                         repo = ValuationRepository(db)

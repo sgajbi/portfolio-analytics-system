@@ -17,7 +17,8 @@ from portfolio_common.position_state_repository import PositionStateRepository
 from portfolio_common.monitoring import (
     REPROCESSING_ACTIVE_KEYS_TOTAL,
     SNAPSHOT_LAG_SECONDS,
-    SCHEDULER_GAP_DAYS
+    SCHEDULER_GAP_DAYS,
+    VALUATION_JOBS_CREATED_TOTAL
 )
 
 
@@ -134,6 +135,9 @@ class ValuationScheduler:
                 current_date += timedelta(days=1)
             
             if job_count > 0:
+                VALUATION_JOBS_CREATED_TOTAL.labels(
+                    portfolio_id=state.portfolio_id, security_id=state.security_id
+                ).inc(job_count)
                 logger.info(f"Scheduler: Created {job_count} backfill valuation jobs for {state.security_id} in {state.portfolio_id} for epoch {state.epoch}.")
 
     
