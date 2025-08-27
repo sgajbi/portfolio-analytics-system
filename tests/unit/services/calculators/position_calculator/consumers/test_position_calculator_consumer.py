@@ -77,11 +77,10 @@ def mock_dependencies():
             "calculate_logic": mock_calculate
         }
 
-async def test_consumer_calls_logic_with_correct_state(position_consumer: TransactionEventConsumer, mock_kafka_message: MagicMock, mock_dependencies: dict):
+async def test_consumer_calls_logic_with_no_epoch_for_original_event(position_consumer: TransactionEventConsumer, mock_kafka_message: MagicMock, mock_dependencies: dict):
+    """Tests that an original event (no header) calls the logic with reprocess_epoch=None."""
     # ARRANGE
     mock_dependencies["idempotency_repo"].is_event_processed.return_value = False
-    mock_state = PositionState(epoch=0)
-    mock_dependencies["position_state_repo"].get_or_create_state.return_value = mock_state
 
     # ACT
     await position_consumer.process_message(mock_kafka_message)
@@ -89,28 +88,18 @@ async def test_consumer_calls_logic_with_correct_state(position_consumer: Transa
     # ASSERT
     mock_dependencies["calculate_logic"].assert_awaited_once()
     call_kwargs = mock_dependencies["calculate_logic"].call_args.kwargs
-    assert call_kwargs['current_state'] == mock_state
+    assert call_kwargs['reprocess_epoch'] is None
 
-async def test_consumer_discards_stale_epoch_message(position_consumer: TransactionEventConsumer, mock_kafka_message: MagicMock, mock_dependencies: dict):
-    """
-    GIVEN a Kafka message with a 'reprocess_epoch' header that is less than the current state epoch
-    WHEN the consumer processes it
-    THEN it should discard the message and not call the business logic.
-    """
+async def test_consumer_passes_reprocess_epoch_header_to_logic(position_consumer: TransactionEventConsumer, mock_kafka_message: MagicMock, mock_dependencies: dict):
+    """Tests that the consumer correctly parses the reprocess_epoch header and passes it to the logic layer."""
     # ARRANGE
     mock_dependencies["idempotency_repo"].is_event_processed.return_value = False
-    # The database state has a newer epoch
-    mock_state = PositionState(epoch=2)
-    mock_dependencies["position_state_repo"].get_or_create_state.return_value = mock_state
-    # The incoming message has a stale epoch header
-    mock_kafka_message.headers.return_value = [('reprocess_epoch', b'1')]
+    mock_kafka_message.headers.return_value = [('reprocess_epoch', b'2')] # Set the header
 
     # ACT
     await position_consumer.process_message(mock_kafka_message)
 
     # ASSERT
-    mock_dependencies["position_state_repo"].get_or_create_state.assert_awaited_once()
-    # Ensure the core logic was NOT called
-    mock_dependencies["calculate_logic"].assert_not_called()
-    # Ensure the event was still marked as processed for idempotency
-    mock_dependencies["idempotency_repo"].mark_event_processed.assert_called_once()
+    mock_dependencies["calculate_logic"].assert_awaited_once()
+    call_kwargs = mock_dependencies["calculate_logic"].call_args.kwargs
+    assert call_kwargs['reprocess_epoch'] == 2
