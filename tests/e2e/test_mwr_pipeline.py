@@ -1,59 +1,46 @@
 # tests/e2e/test_mwr_pipeline.py
 import pytest
-import requests
 import time
 from decimal import Decimal
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 from datetime import date, timedelta
 
-# This helper is defined in the root conftest.py
+from .api_client import E2EApiClient
 from tests.conftest import poll_db_until
 
 @pytest.fixture(scope="module")
-def setup_mwr_data(clean_db_module, db_engine, api_endpoints, poll_db_until):
+def setup_mwr_data(clean_db_module, db_engine, e2e_api_client: E2EApiClient, poll_db_until):
     """
     A module-scoped fixture to ingest data for an MWR scenario and wait for the
     backend pipeline to generate the necessary time-series data using a robust
     sequential ingestion pattern.
     """
-    ingestion_url = api_endpoints["ingestion"]
     portfolio_id = "E2E_MWR_PERF_01"
     
     # --- Ingest Prerequisite Data ---
-    requests.post(f"{ingestion_url}/ingest/portfolios", json={"portfolios": [{"portfolioId": portfolio_id, "baseCurrency": "USD", "openDate": "2025-01-01", "cifId": "MWR_CIF", "status": "ACTIVE", "riskExposure":"a", "investmentTimeHorizon":"b", "portfolioType":"c", "bookingCenter":"d"}]})
-    requests.post(f"{ingestion_url}/ingest/instruments", json={"instruments": [{"securityId": "CASH_USD", "name": "US Dollar", "isin": "CASH_USD_ISIN", "instrumentCurrency": "USD", "productType": "Cash"}]})
+    e2e_api_client.ingest("/ingest/portfolios", {"portfolios": [{"portfolioId": portfolio_id, "baseCurrency": "USD", "openDate": "2025-01-01", "cifId": "MWR_CIF", "status": "ACTIVE", "riskExposure":"a", "investmentTimeHorizon":"b", "portfolioType":"c", "bookingCenter":"d"}]})
+    e2e_api_client.ingest("/ingest/instruments", {"instruments": [{"securityId": "CASH_USD", "name": "US Dollar", "isin": "CASH_USD_ISIN", "instrumentCurrency": "USD", "productType": "Cash"}]})
 
-    # --- Day 1 (2025-01-01): Set business date, then ingest transaction and price.
-    requests.post(f"{ingestion_url}/ingest/business-dates", json={"business_dates": [{"businessDate": "2025-01-01"}]})
-    requests.post(f"{ingestion_url}/ingest/transactions", json={"transactions": [{"transaction_id": "MWR_DEPOSIT_01", "portfolio_id": portfolio_id, "instrument_id": "CASH", "security_id": "CASH_USD", "transaction_date": "2025-01-01T10:00:00Z", "transaction_type": "DEPOSIT", "quantity": 1000, "price": 1, "gross_transaction_amount": 1000, "trade_currency": "USD", "currency": "USD"}]})
-    requests.post(f"{ingestion_url}/ingest/market-prices", json={"market_prices": [{"securityId": "CASH_USD", "priceDate": "2025-01-01", "price": 1.0, "currency": "USD"}]})
-
-    # Poll until Day 1 is processed to ensure sequential state
-    poll_db_until(
-        query="SELECT 1 FROM portfolio_timeseries WHERE portfolio_id = :pid AND date = :date",
-        params={"pid": portfolio_id, "date": "2025-01-01"},
-        validation_func=lambda r: r is not None,
-        fail_message="Pipeline did not generate portfolio_timeseries for Day 1."
-    )
-
-    # --- Day 15 (2025-01-15): Set business date, then ingest transaction.
-    requests.post(f"{ingestion_url}/ingest/business-dates", json={"business_dates": [{"businessDate": "2025-01-15"}]})
-    requests.post(f"{ingestion_url}/ingest/transactions", json={"transactions": [{"transaction_id": "MWR_DEPOSIT_02", "portfolio_id": portfolio_id, "instrument_id": "CASH", "security_id": "CASH_USD", "transaction_date": "2025-01-15T10:00:00Z", "transaction_type": "DEPOSIT", "quantity": 200, "price": 1, "gross_transaction_amount": 200, "trade_currency": "USD", "currency": "USD"}]})
-
-    # --- Day 31 (2025-01-31): Set business date, then ingest final price.
-    requests.post(f"{ingestion_url}/ingest/business-dates", json={"business_dates": [{"businessDate": "2025-01-31"}]})
-    requests.post(f"{ingestion_url}/ingest/market-prices", json={"market_prices": [{"securityId": "CASH_USD", "priceDate": "2025-01-31", "price": 1.04166667, "currency": "USD"}]})
-    
-    # Now, ingest all remaining business dates to trigger the final roll-forward.
+    # Ingest all business dates up front to ensure schedulers can work
     all_dates = []
-    current_date = date(2025, 1, 2) # Start from day 2
+    current_date = date(2025, 1, 1)
     while current_date <= date(2025, 1, 31):
         all_dates.append({"businessDate": current_date.isoformat()})
         current_date += timedelta(days=1)
     if all_dates:
-        requests.post(f"{ingestion_url}/ingest/business-dates", json={"business_dates": all_dates})
+        e2e_api_client.ingest("/ingest/business-dates", {"business_dates": all_dates})
 
+    # --- Ingest transactions and prices ---
+    e2e_api_client.ingest("/ingest/transactions", {"transactions": [
+        {"transaction_id": "MWR_DEPOSIT_01", "portfolio_id": portfolio_id, "instrument_id": "CASH", "security_id": "CASH_USD", "transaction_date": "2025-01-01T10:00:00Z", "transaction_type": "DEPOSIT", "quantity": 1000, "price": 1, "gross_transaction_amount": 1000, "trade_currency": "USD", "currency": "USD"},
+        {"transaction_id": "MWR_DEPOSIT_02", "portfolio_id": portfolio_id, "instrument_id": "CASH", "security_id": "CASH_USD", "transaction_date": "2025-01-15T10:00:00Z", "transaction_type": "DEPOSIT", "quantity": 200, "price": 1, "gross_transaction_amount": 200, "trade_currency": "USD", "currency": "USD"}
+    ]})
+    e2e_api_client.ingest("/ingest/market-prices", {"market_prices": [
+        {"securityId": "CASH_USD", "priceDate": "2025-01-01", "price": 1.0, "currency": "USD"},
+        {"securityId": "CASH_USD", "priceDate": "2025-01-31", "price": 1.04166667, "currency": "USD"}
+    ]})
+    
     # Poll until the timeseries for the last day is fully generated.
     poll_db_until(
         query="SELECT 1 FROM portfolio_timeseries WHERE portfolio_id = :pid AND date = :date",
@@ -63,20 +50,19 @@ def setup_mwr_data(clean_db_module, db_engine, api_endpoints, poll_db_until):
         fail_message="Pipeline did not generate portfolio_timeseries for the final day."
     )
     
-    return {"portfolio_id": portfolio_id, "query_url": api_endpoints["query"]}
+    return {"portfolio_id": portfolio_id}
 
-def test_mwr_api_calculates_correctly(setup_mwr_data):
+def test_mwr_api_calculates_correctly(setup_mwr_data, e2e_api_client: E2EApiClient):
     """
     Tests the full MWR pipeline by calling the new endpoint and verifying the result.
     The test scenario is:
     - Jan 1: Begin MV = 0, Contribution = 1000
     - Jan 15: Contribution = 200
-    - Jan 31: End MV = 1250
+    - Jan 31: End MV = 1250 (which is 1200 * 1.04166667 price)
     """
     # ARRANGE
     portfolio_id = setup_mwr_data["portfolio_id"]
-    query_url = setup_mwr_data["query_url"]
-    api_url = f"{query_url}/portfolios/{portfolio_id}/performance/mwr"
+    api_url = f"/portfolios/{portfolio_id}/performance/mwr"
     
     request_payload = {
         "scope": { "as_of_date": "2025-01-31" },
@@ -87,11 +73,11 @@ def test_mwr_api_calculates_correctly(setup_mwr_data):
     }
     
     # ACT
-    response = requests.post(api_url, json=request_payload)
+    response = e2e_api_client.post_query(api_url, request_payload)
+    data = response.json()
     
     # ASSERT
     assert response.status_code == 200
-    data = response.json()
     
     assert "TestPeriod" in data["summary"]
     result = data["summary"]["TestPeriod"]
