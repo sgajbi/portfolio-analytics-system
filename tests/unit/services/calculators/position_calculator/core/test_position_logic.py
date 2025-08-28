@@ -140,7 +140,6 @@ async def test_calculate_bypasses_back_dating_check_for_replayed_event(
     # The normal calculation logic SHOULD have been called.
     mock_repo.save_positions.assert_awaited_once()
 
-# --- NEW TEST ---
 async def test_back_dated_check_uses_snapshot_date_when_watermark_is_stale(
     mock_repo: AsyncMock,
     mock_state_repo: AsyncMock,
@@ -183,3 +182,35 @@ async def test_back_dated_check_uses_snapshot_date_when_watermark_is_stale(
     mock_state_repo.increment_epoch_and_reset_watermark.assert_awaited_once()
     mock_repo.get_all_transactions_for_security.assert_awaited_once() # Confirms reprocessing was triggered
     mock_kafka_producer.flush.assert_called_once()
+
+async def test_same_day_transaction_is_not_backdated(
+    mock_repo: AsyncMock,
+    mock_state_repo: AsyncMock,
+    mock_kafka_producer: MagicMock,
+    sample_event: TransactionEvent
+):
+    """
+    GIVEN a transaction date that is THE SAME AS the effective completed date
+    WHEN PositionCalculator.calculate runs
+    THEN it should NOT be considered back-dated and should process normally.
+    """
+    # ARRANGE
+    # The transaction is on 2025-08-20. We set the effective date to the same day.
+    current_state = PositionState(watermark_date=date(2025, 8, 20), epoch=0)
+    mock_state_repo.get_or_create_state.return_value = current_state
+    mock_repo.get_latest_completed_snapshot_date.return_value = None # Watermark is the effective date
+    
+    # --- FIX: Ensure the repo returns the event being processed ---
+    mock_repo.get_transactions_on_or_after.return_value = [sample_event]
+
+    # ACT
+    await PositionCalculator.calculate(
+        sample_event, AsyncMock(), mock_repo, mock_state_repo, mock_kafka_producer, reprocess_epoch=None
+    )
+
+    # ASSERT
+    # Reprocessing should NOT be triggered
+    mock_state_repo.increment_epoch_and_reset_watermark.assert_not_called()
+    # Normal processing should occur
+    mock_repo.save_positions.assert_awaited_once()
+    

@@ -72,9 +72,10 @@ class PositionCalculator:
             latest_snapshot_date if latest_snapshot_date else date(1970, 1, 1)
         )
         
-        is_backdated = transaction_date <= effective_completed_date
-        # --- END RFC CHANGE ---
-
+        # --- LOGIC FIX: Use strict less-than to avoid flagging same-day events ---
+        is_backdated = transaction_date < effective_completed_date
+        # --- END LOGIC FIX ---
+        
         if is_backdated and reprocess_epoch is None:
             logger.warning(
                 "Back-dated transaction detected. Triggering reprocessing flow.",
