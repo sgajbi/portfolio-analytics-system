@@ -130,13 +130,14 @@ async def test_scheduler_advances_watermarks(scheduler: ValuationScheduler, mock
     mock_state_repo = mock_dependencies["state_repo"]
     latest_business_date = date(2025, 8, 15)
 
-    lagging_states = [ # <-- RENAME VARIABLE FOR CLARITY
+    # --- FIX: Explicitly set the 'status' for each test object ---
+    lagging_states = [
         # This one is now complete
-        PositionState(portfolio_id="P1", security_id="S1", watermark_date=date(2025, 8, 10), epoch=1),
+        PositionState(portfolio_id="P1", security_id="S1", watermark_date=date(2025, 8, 10), epoch=1, status='REPROCESSING'),
         # This one has advanced but is not yet complete
-        PositionState(portfolio_id="P2", security_id="S2", watermark_date=date(2025, 8, 10), epoch=2),
+        PositionState(portfolio_id="P2", security_id="S2", watermark_date=date(2025, 8, 10), epoch=2, status='REPROCESSING'),
         # This one has no new snapshots, so it won't be in the result
-        PositionState(portfolio_id="P3", security_id="S3", watermark_date=date(2025, 8, 10), epoch=1),
+        PositionState(portfolio_id="P3", security_id="S3", watermark_date=date(2025, 8, 10), epoch=1, status='REPROCESSING'),
     ]
     advancable_dates = {
         ("P1", "S1"): date(2025, 8, 15), # Complete
@@ -144,7 +145,6 @@ async def test_scheduler_advances_watermarks(scheduler: ValuationScheduler, mock
     }
 
     mock_repo.get_latest_business_date.return_value = latest_business_date
-    # --- FIX: Use the correct method name ---
     mock_repo.get_lagging_states.return_value = lagging_states
     mock_repo.find_contiguous_snapshot_dates.return_value = advancable_dates
 
