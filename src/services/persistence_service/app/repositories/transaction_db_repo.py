@@ -24,7 +24,8 @@ class TransactionDBRepository:
         UPSERT (INSERT ... ON CONFLICT DO UPDATE) for high performance and concurrency safety.
         """
         try:
-            event_dict = event.model_dump()
+            # FIX: Exclude the 'epoch' field, which does not exist in the DB table.
+            event_dict = event.model_dump(exclude={'epoch'})
             
             # The statement to execute.
             stmt = pg_insert(DBTransaction).values(
