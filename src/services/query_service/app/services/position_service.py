@@ -1,4 +1,4 @@
-# services/query-service/app/services/position_service.py
+# src/services/query_service/app/services/position_service.py
 import logging
 from datetime import date
 from typing import List, Optional
@@ -71,7 +71,8 @@ class PositionService:
         db_results = await self.repo.get_latest_positions_by_portfolio(portfolio_id)
         
         positions = []
-        for pos_snapshot, instrument_name in db_results:
+        # UPDATED: Unpack the new reprocessing_status field
+        for pos_snapshot, instrument_name, reprocessing_status in db_results:
             valuation_dto = ValuationData(
                 market_price=pos_snapshot.market_price,
                 market_value=pos_snapshot.market_value,
@@ -86,7 +87,8 @@ class PositionService:
                 cost_basis_local=pos_snapshot.cost_basis_local,
                 instrument_name=instrument_name or "N/A",
                 position_date=pos_snapshot.date,
-                valuation=valuation_dto
+                valuation=valuation_dto,
+                reprocessing_status=reprocessing_status # ADDED: Map the status to the DTO
             )
             positions.append(position_dto)
         

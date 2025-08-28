@@ -17,6 +17,7 @@ class Position(BaseModel):
     cost_basis_local: Optional[Decimal] = None
     
     valuation: Optional[ValuationData] = None
+    reprocessing_status: Optional[str] = None # ADDED: New field for reprocessing status
     
     model_config = ConfigDict(from_attributes=True)
 

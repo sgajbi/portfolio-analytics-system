@@ -20,10 +20,12 @@ def mock_position_repo() -> AsyncMock:
     ]
     
     mock_snapshot = DailyPositionSnapshot(
-        security_id="S1", quantity=Decimal(100), cost_basis=Decimal(1000), 
+        security_id="S1", 
+        quantity=Decimal(100), cost_basis=Decimal(1000), 
         date=date(2025, 1, 1)
     )
-    repo.get_latest_positions_by_portfolio.return_value = [(mock_snapshot, "Test Instrument")]
+    # UPDATED: Return a 3-element tuple including the status
+    repo.get_latest_positions_by_portfolio.return_value = [(mock_snapshot, "Test Instrument", "CURRENT")]
     return repo
 
 async def test_get_position_history(mock_position_repo: AsyncMock):
@@ -63,3 +65,4 @@ async def test_get_latest_positions(mock_position_repo: AsyncMock):
         assert len(response.positions) == 1
         assert response.positions[0].security_id == "S1"
         assert response.positions[0].instrument_name == "Test Instrument"
+        assert response.positions[0].reprocessing_status == "CURRENT" # VERIFY: New status field is mapped
