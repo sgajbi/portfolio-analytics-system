@@ -1,4 +1,4 @@
-# services/query-service/app/repositories/position_repository.py
+# src/services/query_service/app/repositories/position_repository.py
 import logging
 from datetime import date
 from typing import List, Any, Optional
@@ -67,6 +67,7 @@ class PositionRepository:
         ranked_snapshots_subq = select(
             DailyPositionSnapshot,
             Instrument.name.label("instrument_name"),
+            PositionState.status.label("reprocessing_status"), # ADDED: Fetch the status
             func.row_number().over(
                 partition_by=DailyPositionSnapshot.security_id,
                 order_by=[
@@ -91,7 +92,8 @@ class PositionRepository:
         # and filter out any closed positions (quantity > 0).
         stmt = select(
             ranked_alias,
-            ranked_snapshots_subq.c.instrument_name
+            ranked_snapshots_subq.c.instrument_name,
+            ranked_snapshots_subq.c.reprocessing_status # ADDED: Select the status
         ).filter(
             ranked_snapshots_subq.c.rn == 1,
             ranked_alias.quantity > 0

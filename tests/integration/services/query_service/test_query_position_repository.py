@@ -1,4 +1,4 @@
-# tests/integration/services/query_service/test_position_repository.py
+# tests/integration/services/query_service/test_query_position_repository.py
 import pytest
 from datetime import date, timedelta
 from decimal import Decimal
@@ -72,10 +72,11 @@ async def test_get_latest_positions_by_portfolio(clean_db, setup_test_data, asyn
 
     # The result is a Row object, where the first element is the snapshot
     # The second element is the instrument name from the joined table.
-    latest_snapshot, instrument_name = latest_positions[0]
+    latest_snapshot, instrument_name, reprocessing_status = latest_positions[0]
     
     assert latest_snapshot.portfolio_id == portfolio_id
     assert latest_snapshot.security_id == "SEC_POS_TEST_01"
     assert latest_snapshot.date == setup_test_data["today"]
     assert latest_snapshot.quantity == Decimal("110")
     assert instrument_name == "TestSec"
+    assert reprocessing_status == "CURRENT" # VERIFY: New status field is returned correctly
