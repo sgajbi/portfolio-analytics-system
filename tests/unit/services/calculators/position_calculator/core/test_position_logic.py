@@ -19,6 +19,8 @@ def mock_repo() -> AsyncMock:
     repo = AsyncMock(spec=PositionRepository)
     repo.get_transactions_on_or_after.return_value = []
     repo.get_last_position_before.return_value = None
+    # NEW: Add default return value for the new method
+    repo.get_latest_completed_snapshot_date.return_value = None
     return repo
 
 @pytest.fixture
@@ -137,3 +139,47 @@ async def test_calculate_bypasses_back_dating_check_for_replayed_event(
 
     # The normal calculation logic SHOULD have been called.
     mock_repo.save_positions.assert_awaited_once()
+
+# --- NEW TEST ---
+async def test_back_dated_check_uses_snapshot_date_when_watermark_is_stale(
+    mock_repo: AsyncMock,
+    mock_state_repo: AsyncMock,
+    mock_kafka_producer: MagicMock,
+    sample_event: TransactionEvent
+):
+    """
+    GIVEN a back-dated transaction (date is 2025-08-20)
+    AND the position_state watermark is stale (1970-01-01)
+    BUT a daily snapshot exists for a later date (2025-08-22)
+    WHEN PositionCalculator.calculate runs for this original event
+    THEN it should correctly identify it as back-dated and trigger reprocessing.
+    """
+    # ARRANGE
+    # 1. State has a stale, far-past watermark but is in epoch 0
+    current_state = PositionState(watermark_date=date(1970, 1, 1), epoch=0, status='CURRENT')
+    mock_state_repo.get_or_create_state.return_value = current_state
+
+    # 2. A snapshot exists for a date *after* our incoming transaction
+    latest_snapshot_date = date(2025, 8, 22)
+    mock_repo.get_latest_completed_snapshot_date.return_value = latest_snapshot_date
+
+    # 3. Mocks for the reprocessing path
+    mock_state_repo.increment_epoch_and_reset_watermark.return_value = PositionState(epoch=1)
+    mock_repo.get_all_transactions_for_security.return_value = [] # Return empty list is fine for this test
+
+    # ACT
+    await PositionCalculator.calculate(
+        event=sample_event,
+        db_session=AsyncMock(),
+        repo=mock_repo,
+        position_state_repo=mock_state_repo,
+        kafka_producer=mock_kafka_producer,
+        reprocess_epoch=None # This is an original event, not a replay
+    )
+
+    # ASSERT
+    # The logic should have consulted the snapshot date and triggered a reset
+    mock_repo.get_latest_completed_snapshot_date.assert_awaited_once_with("P1", "S1", 0)
+    mock_state_repo.increment_epoch_and_reset_watermark.assert_awaited_once()
+    mock_repo.get_all_transactions_for_security.assert_awaited_once() # Confirms reprocessing was triggered
+    mock_kafka_producer.flush.assert_called_once()

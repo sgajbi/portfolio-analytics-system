@@ -20,6 +20,17 @@ class PositionRepository:
         self.db = db
 
     # --- NEW METHOD ---
+    @async_timed(repository="PositionRepository", method="get_latest_completed_snapshot_date")
+    async def get_latest_completed_snapshot_date(
+        self, portfolio_id: str, security_id: str, epoch: int
+    ) -> Optional[date]:
+        """
+        Finds the latest date for which a daily snapshot has been successfully
+        created for a given key in a specific epoch.
+        """
+        pass
+
+    # --- EXISTING METHOD ---
     @async_timed(repository="PositionRepository", method="find_open_security_ids_as_of")
     async def find_open_security_ids_as_of(self, portfolio_id: str, as_of_date: date) -> List[str]:
         """
