@@ -122,7 +122,6 @@ async def test_update_watermarks_if_older(
     # ASSERT
     assert updated_count == 2
     
-    # Verify states
     p1_state = await async_db_session.get(PositionState, ("P1", "S1"))
     assert p1_state.watermark_date == new_watermark
     assert p1_state.status == 'REPROCESSING'
@@ -139,7 +138,7 @@ async def test_bulk_update_states(clean_db, async_db_session: AsyncSession):
     """
     GIVEN a list of state updates
     WHEN bulk_update_states is called
-    THEN it should update all corresponding records in a single operation.
+    THEN it should update all corresponding records in a single atomic operation.
     """
     # ARRANGE
     repo = PositionStateRepository(async_db_session)

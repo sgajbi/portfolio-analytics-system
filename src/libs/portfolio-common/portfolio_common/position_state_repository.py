@@ -3,7 +3,7 @@ import logging
 from datetime import date
 from typing import Optional, List, Tuple, Dict, Any
 
-from sqlalchemy import select, update, func, tuple_
+from sqlalchemy import select, update, func, tuple_, values, column, String, Date
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
@@ -23,32 +23,32 @@ class PositionStateRepository:
     @async_timed(repository="PositionStateRepository", method="bulk_update_states")
     async def bulk_update_states(self, updates: List[Dict[str, Any]]) -> int:
         """
-        Performs a bulk update of PositionState records by iterating through
-        the updates. This ensures compatibility across DB drivers.
+        Performs a single, atomic bulk update of PositionState records
+        using an UPDATE FROM VALUES clause for efficiency and to prevent deadlocks.
         `updates` is a list of dicts, each with:
         {'portfolio_id': str, 'security_id': str, 'watermark_date': date, 'status': str}
         """
         if not updates:
             return 0
 
-        # Note: A loop of individual updates is more compatible than a complex CASE
-        # statement, which has driver-specific limitations with tuple arguments.
-        for u in updates:
-            stmt = (
-                update(PositionState)
-                .where(
-                    PositionState.portfolio_id == u['portfolio_id'],
-                    PositionState.security_id == u['security_id']
-                )
-                .values(
-                    watermark_date=u['watermark_date'],
-                    status=u['status'],
-                    updated_at=func.now()
-                )
+        # This statement constructs an UPDATE ... FROM (VALUES ...) ... query,
+        # which is the standard and most performant way to do a bulk update in PostgreSQL.
+        stmt = (
+            update(PositionState)
+            .where(
+                tuple_(PositionState.portfolio_id, PositionState.security_id) ==
+                tuple_(column("portfolio_id", String), column("security_id", String))
             )
-            await self.db.execute(stmt)
-
-        return len(updates)
+            .values(
+                watermark_date=column("watermark_date", Date),
+                status=column("status", String),
+                updated_at=func.now()
+            )
+            .execution_options(synchronize_session=None)
+        )
+        
+        result = await self.db.execute(stmt, updates)
+        return result.rowcount
 
     @async_timed(repository="PositionStateRepository", method="get_or_create_state")
     async def get_or_create_state(self, portfolio_id: str, security_id: str) -> PositionState:
