@@ -43,16 +43,16 @@ class PositionService:
         )
         
         positions = []
-        for row in db_results:
-            # FIX: PositionHistory objects do not contain valuation data.
-            # The `valuation` field on the DTO is optional and should be None here.
+        # UPDATED: Unpack the new reprocessing_status field from the row
+        for position_history_obj, reprocessing_status in db_results:
             record = PositionHistoryRecord(
-                position_date=row.position_date,
-                transaction_id=row.transaction_id,
-                quantity=row.quantity,
-                cost_basis=row.cost_basis,
-                cost_basis_local=row.cost_basis_local,
-                valuation=None
+                position_date=position_history_obj.position_date,
+                transaction_id=position_history_obj.transaction_id,
+                quantity=position_history_obj.quantity,
+                cost_basis=position_history_obj.cost_basis,
+                cost_basis_local=position_history_obj.cost_basis_local,
+                valuation=None,
+                reprocessing_status=reprocessing_status # ADDED: Map the status to the DTO
             )
             positions.append(record)
         

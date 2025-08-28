@@ -15,9 +15,10 @@ pytestmark = pytest.mark.asyncio
 def mock_position_repo() -> AsyncMock:
     """Provides a mock PositionRepository."""
     repo = AsyncMock(spec=PositionRepository)
-    repo.get_position_history_by_security.return_value = [
-        PositionHistory(transaction_id="T1", position_date=date(2025,1,1), quantity=1, cost_basis=1, cost_basis_local=1)
-    ]
+    
+    # UPDATED: Return a tuple of (PositionHistory, status)
+    mock_history_obj = PositionHistory(transaction_id="T1", position_date=date(2025,1,1), quantity=1, cost_basis=1, cost_basis_local=1)
+    repo.get_position_history_by_security.return_value = [(mock_history_obj, "CURRENT")]
     
     mock_snapshot = DailyPositionSnapshot(
         security_id="S1", 
@@ -46,6 +47,7 @@ async def test_get_position_history(mock_position_repo: AsyncMock):
         assert len(response.positions) == 1
         assert response.positions[0].transaction_id == "T1"
         assert response.positions[0].valuation is None # Verify valuation is correctly set to None
+        assert response.positions[0].reprocessing_status == "CURRENT" # VERIFY: New status field is mapped
 
 async def test_get_latest_positions(mock_position_repo: AsyncMock):
     """Tests the latest portfolio positions service method."""

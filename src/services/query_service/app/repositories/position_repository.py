@@ -24,13 +24,16 @@ class PositionRepository:
         security_id: str,
         start_date: Optional[date] = None,
         end_date: Optional[date] = None
-    ) -> List[PositionHistory]:
+    ) -> List[Any]: # UPDATED: Return type is now a list of rows/tuples
         """
         Retrieves the time series of position history for a specific security,
         filtered to include only records from the current epoch for that key.
         """
         stmt = (
-            select(PositionHistory)
+            select(
+                PositionHistory,
+                PositionState.status.label("reprocessing_status") # ADDED: Fetch the status
+            )
             .join(
                 PositionState,
                 (PositionHistory.portfolio_id == PositionState.portfolio_id) &
@@ -50,7 +53,7 @@ class PositionRepository:
             stmt = stmt.filter(PositionHistory.position_date <= end_date)
 
         results = await self.db.execute(stmt.order_by(PositionHistory.position_date.asc()))
-        history = results.scalars().all()
+        history = results.all() # UPDATED: Use .all() to get rows
         logger.info(
             f"Found {len(history)} position history records for security '{security_id}' "
             f"in portfolio '{portfolio_id}'."

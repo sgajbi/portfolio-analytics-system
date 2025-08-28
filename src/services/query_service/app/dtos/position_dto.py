@@ -40,6 +40,7 @@ class PositionHistoryRecord(BaseModel):
     cost_basis_local: Optional[Decimal] = Field(None, description="The total cost basis in the instrument's local currency.")
 
     valuation: Optional[ValuationData] = None
+    reprocessing_status: Optional[str] = None # ADDED: New field for reprocessing status
     
     model_config = ConfigDict(
         from_attributes=True
