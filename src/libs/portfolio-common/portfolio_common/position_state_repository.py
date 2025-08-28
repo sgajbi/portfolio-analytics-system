@@ -48,6 +48,8 @@ class PositionStateRepository:
         )
         
         result = await self.db.execute(stmt, updates)
+        # FIX: The result proxy from a bulk update does not have a .rowcount attribute directly.
+        # It is available on the underlying cursor result.
         return result.rowcount
 
     @async_timed(repository="PositionStateRepository", method="get_or_create_state")
