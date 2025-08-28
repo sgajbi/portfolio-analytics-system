@@ -19,7 +19,7 @@ class PositionRepository:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    # --- NEW METHOD ---
+    # --- IMPLEMENTATION FOR NEW METHOD ---
     @async_timed(repository="PositionRepository", method="get_latest_completed_snapshot_date")
     async def get_latest_completed_snapshot_date(
         self, portfolio_id: str, security_id: str, epoch: int
@@ -28,7 +28,16 @@ class PositionRepository:
         Finds the latest date for which a daily snapshot has been successfully
         created for a given key in a specific epoch.
         """
-        pass
+        stmt = (
+            select(func.max(DailyPositionSnapshot.date))
+            .where(
+                DailyPositionSnapshot.portfolio_id == portfolio_id,
+                DailyPositionSnapshot.security_id == security_id,
+                DailyPositionSnapshot.epoch == epoch
+            )
+        )
+        result = await self.db.execute(stmt)
+        return result.scalar_one_or_none()
 
     # --- EXISTING METHOD ---
     @async_timed(repository="PositionRepository", method="find_open_security_ids_as_of")
