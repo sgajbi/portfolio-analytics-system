@@ -2,9 +2,9 @@
 import logging
 import json
 from pydantic import ValidationError
-from confluent_kafka import Message
 from sqlalchemy.exc import IntegrityError
 from tenacity import retry, stop_after_attempt, wait_fixed, before_log
+from confluent_kafka import Message
 
 from portfolio_common.kafka_consumer import BaseConsumer
 from portfolio_common.logging_utils import correlation_id_var
@@ -67,12 +67,11 @@ class CashflowCalculatorConsumer(BaseConsumer):
                         await db.commit()
                         return
 
-                    # Calculate and persist cashflow
-                    cashflow_to_save = CashflowLogic.calculate(event, rule)
+                    # Calculate and persist cashflow, passing the epoch
+                    cashflow_to_save = CashflowLogic.calculate(event, rule, epoch=event.epoch)
                     saved = await cashflow_repo.create_cashflow(cashflow_to_save)
 
-                    # --- LOGIC CHANGE ---
-                    # Build the event with the new boolean flags
+                    # Build the completion event, including the epoch
                     completion_evt = CashflowCalculatedEvent(
                         id=saved.id,
                         transaction_id=saved.transaction_id,
@@ -85,9 +84,9 @@ class CashflowCalculatorConsumer(BaseConsumer):
                         timing=saved.timing,
                         is_position_flow=saved.is_position_flow,
                         is_portfolio_flow=saved.is_portfolio_flow,
-                        calculationType=saved.calculation_type
+                        calculationType=saved.calculation_type,
+                        epoch=saved.epoch # Propagate the epoch to the outbound event
                     )
-                    # --- END LOGIC CHANGE ---
 
                     # 🔑 Keying policy: use portfolio_id for strict partition affinity
                     await outbox_repo.create_outbox_event(

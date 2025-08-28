@@ -1,5 +1,6 @@
 import logging
 from decimal import Decimal
+from typing import Optional
 from portfolio_common.database_models import Cashflow
 from portfolio_common.events import TransactionEvent
 from .cashflow_config import CashflowRule, CashflowCalculationType
@@ -14,7 +15,8 @@ class CashflowLogic:
     @staticmethod
     def calculate(
         transaction: TransactionEvent,
-        rule: CashflowRule
+        rule: CashflowRule,
+        epoch: Optional[int] = 0
     ) -> Cashflow:
         """
         Applies the calculation rule to a transaction to generate a cashflow.
@@ -53,7 +55,8 @@ class CashflowLogic:
             timing=rule.timing.value,
             calculation_type=rule.calc_type.value,
             is_position_flow=rule.is_position_flow,
-            is_portfolio_flow=rule.is_portfolio_flow
+            is_portfolio_flow=rule.is_portfolio_flow,
+            epoch=epoch or 0 # Assign the epoch, defaulting to 0
         )
 
         logger.info(f"Calculated cashflow for txn {transaction.transaction_id}: Amount={amount}, Class='{rule.classification.value}'")

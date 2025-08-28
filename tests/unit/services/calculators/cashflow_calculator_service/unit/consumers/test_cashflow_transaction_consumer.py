@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch, AsyncMock, ANY
 from datetime import datetime, date
 from decimal import Decimal
 from contextlib import asynccontextmanager
+import json
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from portfolio_common.logging_utils import correlation_id_var
@@ -38,7 +39,7 @@ def mock_kafka_message():
         instrument_id="INST_CFC_01",
         security_id="SEC_CFC_01",
         transaction_date=datetime(2025, 8, 1, 10, 0, 0),
-        transaction_type="BUY",
+        transaction_type="BUY", # Default type
         quantity=Decimal("100"),
         price=Decimal("10"),
         gross_transaction_amount=Decimal("1000"),
@@ -110,7 +111,8 @@ async def test_process_message_success(
         amount=Decimal("1005.50"), currency="USD", classification="INVESTMENT_OUTFLOW",
         timing="BOD", calculation_type="NET",
         is_position_flow=True,
-        is_portfolio_flow=False # Correct for a BUY
+        is_portfolio_flow=False, # Correct for a BUY
+        epoch=0 # Default epoch
     )
     mock_cashflow_repo.create_cashflow.return_value = mock_saved_cashflow
 
@@ -157,3 +159,49 @@ async def test_process_message_skips_processed_event(
     mock_outbox_repo.create_outbox_event.assert_not_called()
     mock_idempotency_repo.mark_event_processed.assert_not_called()
     cashflow_consumer._send_to_dlq_async.assert_not_called()
+
+# --- NEW TEST ---
+async def test_process_message_propagates_epoch(
+    cashflow_consumer: CashflowCalculatorConsumer,
+    mock_kafka_message: MagicMock,
+    mock_dependencies: dict
+):
+    """
+    GIVEN a transaction event that includes an epoch from a reprocessing flow
+    WHEN the consumer processes it
+    THEN it should populate the epoch in both the persisted DB record and the outbound event.
+    """
+    # ARRANGE
+    mock_idempotency_repo = mock_dependencies["idempotency_repo"]
+    mock_outbox_repo = mock_dependencies["outbox_repo"]
+    mock_cashflow_repo = mock_dependencies["cashflow_repo"]
+
+    # Modify the incoming event to include an epoch
+    incoming_event_dict = json.loads(mock_kafka_message.value().decode('utf-8'))
+    incoming_event_dict['epoch'] = 2
+    mock_kafka_message.value.return_value = json.dumps(incoming_event_dict).encode('utf-8')
+
+    mock_idempotency_repo.is_event_processed.return_value = False
+    
+    # Simulate the DB record being returned with the correct epoch
+    mock_saved_cashflow = Cashflow(
+        id=2, transaction_id="TXN_CASHFLOW_CONSUMER", portfolio_id="PORT_CFC_01",
+        security_id="SEC_CFC_01", cashflow_date=date(2025, 8, 1),
+        amount=Decimal("1005.50"), currency="USD", classification="INVESTMENT_OUTFLOW",
+        timing="BOD", calculation_type="NET",
+        is_position_flow=True, is_portfolio_flow=False, epoch=2
+    )
+    mock_cashflow_repo.create_cashflow.return_value = mock_saved_cashflow
+
+    # ACT
+    await cashflow_consumer.process_message(mock_kafka_message)
+
+    # ASSERT
+    # 1. Assert the logic was called with an epoch
+    logic_call_args = mock_cashflow_repo.create_cashflow.call_args[0][0]
+    assert logic_call_args.epoch == 2
+
+    # 2. Assert the outbound event contains the epoch
+    mock_outbox_repo.create_outbox_event.assert_called_once()
+    outbox_payload = mock_outbox_repo.create_outbox_event.call_args.kwargs['payload']
+    assert outbox_payload['epoch'] == 2
