@@ -175,6 +175,9 @@ class Cashflow(Base):
     portfolio_id = Column(String, ForeignKey('portfolios.portfolio_id'), index=True, nullable=False)
     security_id = Column(String, index=True, nullable=True)
     cashflow_date = Column(Date, index=True, nullable=False)
+    # --- NEW COLUMN ---
+    epoch = Column(Integer, nullable=False, default=0, server_default='0')
+    # --- END NEW COLUMN ---
     amount = Column(Numeric(18, 10), nullable=False)
     currency = Column(String(3), nullable=False)
     classification = Column(String, nullable=False)
