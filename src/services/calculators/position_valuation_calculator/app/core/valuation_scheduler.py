@@ -80,7 +80,16 @@ class ValuationScheduler:
         
         if updates_to_commit:
             updated_count = await position_state_repo.bulk_update_states(updates_to_commit)
-            logger.info(f"Advanced watermarks for {updated_count} position states.")
+            # --- RFC CHANGE B: Add explicit logging ---
+            log_examples = [
+                f"({u['portfolio_id']},{u['security_id']})->{u['watermark_date']}"
+                for u in updates_to_commit[:3]
+            ]
+            logger.info(
+                f"ValuationScheduler: advanced {updated_count} watermarks.",
+                extra={"examples": log_examples}
+            )
+            # --- END RFC CHANGE ---
 
     async def _create_backfill_jobs(self, db):
         """
@@ -107,9 +116,11 @@ class ValuationScheduler:
         first_open_dates = await repo.get_first_open_dates_for_keys(keys_to_check)
 
         for state in states_to_backfill:
+            # --- RFC CHANGE B: Add observability metrics ---
             gap_days = (latest_business_date - state.watermark_date).days
             SCHEDULER_GAP_DAYS.observe(gap_days)
             SNAPSHOT_LAG_SECONDS.observe(gap_days * 86400)
+            # --- END RFC CHANGE ---
             
             key = (state.portfolio_id, state.security_id, state.epoch)
             first_open_date = first_open_dates.get(key)
@@ -180,6 +191,7 @@ class ValuationScheduler:
                         await repo.find_and_reset_stale_jobs()
                         await self._create_backfill_jobs(db)
                         claimed_jobs = await repo.find_and_claim_eligible_jobs(self._batch_size)
+                        
                         await self._advance_watermarks(db)
                 
                 if claimed_jobs:
