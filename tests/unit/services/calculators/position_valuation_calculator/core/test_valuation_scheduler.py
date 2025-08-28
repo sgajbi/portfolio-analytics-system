@@ -119,6 +119,7 @@ async def test_scheduler_skips_jobs_for_keys_with_no_position_history(scheduler:
     # ASSERT
     mock_job_repo.upsert_job.assert_not_called()
 
+# --- NEW TEST ---
 async def test_scheduler_advances_watermarks(scheduler: ValuationScheduler, mock_dependencies: dict):
     """
     GIVEN reprocessing states that have new contiguous snapshots
