@@ -62,14 +62,26 @@ class PositionCalculator:
             )
             return
 
-        # --- Back-dating check now only runs for original events (no reprocess_epoch) ---
-        is_backdated = transaction_date <= current_state.watermark_date
+        # --- RFC CHANGE A: Harden the back-dated detector ---
+        # Determine the effective date of the last completed work for the current epoch.
+        latest_snapshot_date = await repo.get_latest_completed_snapshot_date(
+            portfolio_id, security_id, current_state.epoch
+        )
+        effective_completed_date = max(
+            current_state.watermark_date,
+            latest_snapshot_date if latest_snapshot_date else date(1970, 1, 1)
+        )
+        
+        is_backdated = transaction_date <= effective_completed_date
+        # --- END RFC CHANGE ---
+
         if is_backdated and reprocess_epoch is None:
             logger.warning(
                 "Back-dated transaction detected. Triggering reprocessing flow.",
                 extra={
                     "portfolio_id": portfolio_id, "security_id": security_id,
                     "transaction_date": transaction_date.isoformat(),
+                    "effective_completed_date": effective_completed_date.isoformat(),
                     "watermark_date": current_state.watermark_date.isoformat(),
                     "current_epoch": current_state.epoch
                 }
