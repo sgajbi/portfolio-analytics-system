@@ -36,7 +36,7 @@ class ValuationConsumer(BaseConsumer):
         wait=wait_fixed(3),
         stop=stop_after_attempt(5),
         before=before_log(logger, logging.INFO),
-        retry=retry_if_exception_type((DBAPIError, OperationalError, DataNotFoundError)),
+        retry=retry_if_exception_type((DBAPIError, OperationalError)), # REFACTORED: Removed DataNotFoundError
         reraise=True
     )
     async def process_message(self, msg: Message):
@@ -164,7 +164,7 @@ class ValuationConsumer(BaseConsumer):
         except (json.JSONDecodeError, ValidationError) as e:
             logger.error(f"Message validation failed for key '{key}'. Sending to DLQ.", exc_info=True)
             await self._send_to_dlq_async(msg, e)
-        except (DBAPIError, OperationalError, DataNotFoundError) as e:
+        except (DBAPIError, OperationalError) as e:
             logger.warning(f"DB or data availability error for event {event_id}: {e}. Retrying...", exc_info=False)
             raise
         except Exception as e:
