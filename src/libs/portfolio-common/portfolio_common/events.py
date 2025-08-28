@@ -111,6 +111,7 @@ class CashflowCalculatedEvent(BaseModel):
     portfolio_id: str
     security_id: Optional[str] = None
     cashflow_date: date
+    epoch: Optional[int] = None
     amount: Decimal
     currency: str
     classification: str
