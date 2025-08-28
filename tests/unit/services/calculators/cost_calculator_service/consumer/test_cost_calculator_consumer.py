@@ -121,6 +121,8 @@ async def test_consumer_integration_with_engine(cost_calculator_consumer: CostCa
         data.pop('accrued_interest', None)
         data.pop('epoch', None) # Pop epoch as it's not a DB column here
         data.pop('net_transaction_amount', None)
+        data.pop('average_price', None)
+        data.pop('error_reason', None)
         return DBTransaction(**data)
     mock_repo.update_transaction_costs.side_effect = create_db_tx
 
@@ -188,9 +190,10 @@ async def test_consumer_propagates_epoch_field(
     mock_repo.get_fx_rate.return_value = None
     
     # Simulate the update returning a DB object that can be validated by Pydantic
-    # --- FIX: Added 'net_transaction_amount' to the exclude set ---
+    # --- FIX: Added 'average_price' and 'error_reason' to the exclude set ---
     exclude_fields = {
-        'portfolio_base_currency', 'fees', 'accrued_interest', 'epoch', 'net_transaction_amount'
+        'portfolio_base_currency', 'fees', 'accrued_interest', 'epoch', 
+        'net_transaction_amount', 'average_price', 'error_reason'
     }
     mock_repo.update_transaction_costs.side_effect = lambda arg: DBTransaction(
         **arg.model_dump(exclude=exclude_fields)
