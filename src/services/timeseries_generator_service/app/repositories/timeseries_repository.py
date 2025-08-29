@@ -3,6 +3,7 @@ import logging
 from datetime import date, datetime, timedelta, timezone
 from typing import Optional, List
 from sqlalchemy import select, text, update, exists, func
+from sqlalchemy.orm import aliased
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from portfolio_common.database_models import (
@@ -105,7 +106,7 @@ class TimeseriesRepository:
         2. OR this job is for the earliest date for a portfolio that has no timeseries records yet.
         """
         p1 = PortfolioAggregationJob
-        p2 = PortfolioAggregationJob.__alias__()
+        p2 = aliased(PortfolioAggregationJob)
         pts = PortfolioTimeseries
         ps = PositionState
 
