@@ -4,8 +4,9 @@ import pandas as pd
 import numpy as np
 from datetime import date
 
-from risk_analytics_engine.metrics import calculate_volatility, calculate_drawdown
+from risk_analytics_engine.metrics import calculate_volatility, calculate_drawdown, calculate_sharpe_ratio
 from risk_analytics_engine.exceptions import InsufficientDataError
+from risk_analytics_engine.helpers import convert_annual_rate_to_periodic
 
 def test_calculate_volatility_happy_path():
     """
@@ -78,3 +79,38 @@ def test_calculate_drawdown_raises_for_insufficient_data():
     """
     with pytest.raises(InsufficientDataError):
         calculate_drawdown(pd.Series([], dtype=float))
+
+def test_calculate_sharpe_ratio_happy_path():
+    """
+    GIVEN a series of returns and a risk-free rate
+    WHEN calculate_sharpe_ratio is called
+    THEN it should return the correct annualized Sharpe Ratio.
+    """
+    # ARRANGE
+    returns = pd.Series([3, 1, 5, 3]) # Mean=3, Stdev=1.633
+    annual_rf_rate = 0.025 # 2.5%
+    annualization_factor = 252
+    
+    periodic_rf_rate = convert_annual_rate_to_periodic(annual_rf_rate, annualization_factor)
+
+    # ACT
+    result = calculate_sharpe_ratio(returns, periodic_rf_rate, annualization_factor)
+
+    # ASSERT
+    # Manual calculation for verification
+    returns_dec = returns / 100
+    excess_returns = returns_dec - periodic_rf_rate
+    mean_ex = excess_returns.mean()
+    std_ex = excess_returns.std()
+    expected_sharpe = (mean_ex / std_ex) * np.sqrt(annualization_factor)
+    
+    assert result == pytest.approx(expected_sharpe)
+
+def test_calculate_sharpe_ratio_insufficient_data():
+    """
+    GIVEN a return series with fewer than two data points
+    WHEN calculate_sharpe_ratio is called
+    THEN it should raise an InsufficientDataError.
+    """
+    with pytest.raises(InsufficientDataError):
+        calculate_sharpe_ratio(pd.Series([1.0]), 0.0, 252)
