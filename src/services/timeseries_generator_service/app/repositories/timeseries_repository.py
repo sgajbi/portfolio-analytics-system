@@ -51,7 +51,6 @@ class TimeseriesRepository:
                 for c in timeseries_record.__table__.columns
                 if c.name not in ['created_at', 'updated_at']
             }
-            # --- FIX: Construct the update dictionary correctly ---
             update_dict = {
                 k: v for k, v in insert_dict.items() 
                 if k not in ['portfolio_id', 'security_id', 'date', 'epoch']
@@ -60,7 +59,6 @@ class TimeseriesRepository:
             
             stmt = pg_insert(PositionTimeseries).values(**insert_dict)
             
-            # --- FIX: Add the on_conflict_do_update clause ---
             final_stmt = stmt.on_conflict_do_update(
                 index_elements=['portfolio_id', 'security_id', 'date', 'epoch'],
                 set_=update_dict
@@ -80,7 +78,6 @@ class TimeseriesRepository:
                 for c in timeseries_record.__table__.columns
                 if c.name not in ['created_at', 'updated_at']
             }
-            # --- FIX: Construct the update dictionary correctly ---
             update_dict = {
                 k: v for k, v in insert_dict.items() 
                 if k not in ['portfolio_id', 'date', 'epoch']
@@ -89,7 +86,6 @@ class TimeseriesRepository:
             
             stmt = pg_insert(PortfolioTimeseries).values(**insert_dict)
 
-            # --- FIX: Add the on_conflict_do_update clause ---
             final_stmt = stmt.on_conflict_do_update(
                 index_elements=['portfolio_id', 'date', 'epoch'],
                 set_=update_dict
