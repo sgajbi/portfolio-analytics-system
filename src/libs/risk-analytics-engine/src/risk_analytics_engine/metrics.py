@@ -108,3 +108,40 @@ def calculate_sharpe_ratio(
     sharpe_ratio = mean_excess_return / std_dev_excess_return
     
     return sharpe_ratio * np.sqrt(annualization_factor)
+
+
+def calculate_sortino_ratio(
+    returns: pd.Series,
+    periodic_mar: float,
+    annualization_factor: int
+) -> Optional[float]:
+    """
+    Calculates the annualized Sortino Ratio.
+
+    Args:
+        returns: A pandas Series of periodic returns (as percentages).
+        periodic_mar: The minimum acceptable return for a single period (as a decimal).
+        annualization_factor: The factor for annualizing (e.g., 252 for daily).
+
+    Returns:
+        The annualized Sortino Ratio, or None if downside deviation is zero.
+    """
+    if len(returns) < 2:
+        raise InsufficientDataError("Sortino Ratio requires at least two data points.")
+
+    returns_decimal = returns / 100
+    
+    # Calculate excess returns over the MAR
+    excess_returns = returns_decimal - periodic_mar
+    
+    # Calculate downside deviation
+    downside_returns = excess_returns[excess_returns < 0]
+    downside_deviation = np.sqrt((downside_returns**2).sum() / len(returns))
+
+    if downside_deviation == 0:
+        return None
+
+    mean_excess_return = excess_returns.mean()
+    sortino_ratio = mean_excess_return / downside_deviation
+    
+    return sortino_ratio * np.sqrt(annualization_factor)

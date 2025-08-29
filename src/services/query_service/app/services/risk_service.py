@@ -13,7 +13,7 @@ from performance_calculator_engine.helpers import resolve_period
 from performance_calculator_engine.constants import DATE, DAILY_ROR_PCT
 
 # New imports for risk engine
-from risk_analytics_engine.metrics import calculate_volatility, calculate_drawdown, calculate_sharpe_ratio
+from risk_analytics_engine.metrics import calculate_volatility, calculate_drawdown, calculate_sharpe_ratio, calculate_sortino_ratio
 from risk_analytics_engine.helpers import convert_annual_rate_to_periodic
 from risk_analytics_engine.exceptions import InsufficientDataError
 
@@ -83,12 +83,15 @@ class RiskService:
         default_annualization_factor = {"DAILY": 252, "WEEKLY": 52, "MONTHLY": 12}[request.options.frequency]
         annualization_factor = request.options.annualization_factor or default_annualization_factor
 
-        # Pre-calculate the periodic risk-free rate once
         periodic_rf_rate = 0.0
         if request.options.risk_free_mode == "ANNUAL_RATE" and request.options.risk_free_annual_rate is not None:
             periodic_rf_rate = convert_annual_rate_to_periodic(
                 request.options.risk_free_annual_rate, annualization_factor
             )
+        
+        periodic_mar = convert_annual_rate_to_periodic(
+            request.options.mar_annual_rate, annualization_factor
+        )
 
         for name, start_date, end_date in resolved_periods:
             period_df = base_returns_df[
@@ -130,6 +133,18 @@ class RiskService:
                 except InsufficientDataError as e:
                     logger.warning("Could not calculate Sharpe Ratio for period '%s': %s", name, e)
                     period_metrics["SHARPE"] = RiskValue(value=None, details={"error": str(e)})
+            
+            if "SORTINO" in request.metrics:
+                try:
+                    sortino = calculate_sortino_ratio(
+                        returns=returns_series,
+                        periodic_mar=periodic_mar,
+                        annualization_factor=annualization_factor
+                    )
+                    period_metrics["SORTINO"] = RiskValue(value=sortino)
+                except InsufficientDataError as e:
+                    logger.warning("Could not calculate Sortino Ratio for period '%s': %s", name, e)
+                    period_metrics["SORTINO"] = RiskValue(value=None, details={"error": str(e)})
 
             results[name] = RiskPeriodResult(
                 start_date=start_date, end_date=end_date, metrics=period_metrics

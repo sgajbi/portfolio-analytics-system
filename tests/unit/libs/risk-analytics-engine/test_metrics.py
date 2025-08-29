@@ -4,7 +4,7 @@ import pandas as pd
 import numpy as np
 from datetime import date
 
-from risk_analytics_engine.metrics import calculate_volatility, calculate_drawdown, calculate_sharpe_ratio
+from risk_analytics_engine.metrics import calculate_volatility, calculate_drawdown, calculate_sharpe_ratio, calculate_sortino_ratio
 from risk_analytics_engine.exceptions import InsufficientDataError
 from risk_analytics_engine.helpers import convert_annual_rate_to_periodic
 
@@ -114,3 +114,25 @@ def test_calculate_sharpe_ratio_insufficient_data():
     """
     with pytest.raises(InsufficientDataError):
         calculate_sharpe_ratio(pd.Series([1.0]), 0.0, 252)
+
+def test_calculate_sortino_ratio_happy_path():
+    """
+    GIVEN a series of returns and a MAR
+    WHEN calculate_sortino_ratio is called
+    THEN it should return the correct annualized Sortino Ratio.
+    """
+    # ARRANGE
+    returns = pd.Series([3, 5, -2, 4, -1]) # MAR is 0%
+    annualization_factor = 252
+    
+    # ACT
+    result = calculate_sortino_ratio(returns, 0.0, annualization_factor)
+
+    # ASSERT
+    returns_dec = returns / 100
+    downside_returns = returns_dec[returns_dec < 0]
+    downside_dev = np.sqrt((downside_returns**2).sum() / len(returns))
+    mean_return = returns_dec.mean()
+    expected_sortino = (mean_return / downside_dev) * np.sqrt(annualization_factor)
+
+    assert result == pytest.approx(expected_sortino)
