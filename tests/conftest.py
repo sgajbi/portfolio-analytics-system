@@ -34,13 +34,57 @@ def docker_services(request):
             check=True, capture_output=True
         )
         
+        # --- THIS IS THE FIX ---
+        # Wait specifically for the migration-runner to complete successfully.
+        print("\n--- Waiting for database migrations to complete ---")
+        timeout = 120
+        start_time = time.time()
+        migration_success = False
+        while time.time() - start_time < timeout:
+            try:
+                # Check the exit code of the migration-runner container
+                result = subprocess.run(
+                    ["docker", "compose", "-f", compose_file, "ps", "--status=exited", "-q", "migration-runner"],
+                    capture_output=True, text=True, check=True
+                )
+                container_id = result.stdout.strip()
+
+                if container_id:
+                    exit_code_result = subprocess.run(
+                        ["docker", "inspect", container_id, "--format", "{{.State.ExitCode}}"],
+                        capture_output=True, text=True, check=True
+                    )
+                    exit_code = exit_code_result.stdout.strip()
+                    if exit_code == "0":
+                        print("--- Database migrations completed successfully ---")
+                        migration_success = True
+                        break
+                    else:
+                        # If it exited with an error, capture logs and fail immediately
+                        logs_result = subprocess.run(
+                            ["docker", "compose", "-f", compose_file, "logs", "migration-runner"],
+                            capture_output=True, text=True
+                        )
+                        pytest.fail(f"migration-runner container exited with non-zero status: {exit_code}.\nLogs:\n{logs_result.stdout}")
+                time.sleep(2)
+            except Exception as e:
+                print(f"Polling for migration-runner failed: {e}")
+                time.sleep(2)
+
+        if not migration_success:
+            logs_result = subprocess.run(
+                ["docker", "compose", "-f", compose_file, "logs", "migration-runner"],
+                capture_output=True, text=True
+            )
+            pytest.fail(f"Migration-runner did not complete successfully within {timeout} seconds.\nLogs:\n{logs_result.stdout}")
+        # --- END FIX ---
+
         # Manual polling for service health
         print("\n--- Waiting for API services to become healthy ---")
         services_to_check = {
             "ingestion_service": "http://localhost:8000/health/ready",
             "query_service": "http://localhost:8001/health/ready"
         }
-        timeout = 180
         
         for service_name, health_url in services_to_check.items():
             start_time = time.time()

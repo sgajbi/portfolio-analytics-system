@@ -95,7 +95,7 @@ services:
       postgres:
         condition: service_healthy
     command: ["alembic", "upgrade", "head"]
-    restart: on-failure
+    restart: 'no'
     networks:
       - app_network
 
