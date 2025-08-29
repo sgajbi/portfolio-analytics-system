@@ -3,7 +3,7 @@ import logging
 from datetime import date
 from typing import Optional, List, Tuple, Dict, Any
 
-from sqlalchemy import select, update, func, tuple_, values, column, String, Date
+from sqlalchemy import select, update, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
@@ -23,36 +23,34 @@ class PositionStateRepository:
     @async_timed(repository="PositionStateRepository", method="bulk_update_states")
     async def bulk_update_states(self, updates: List[Dict[str, Any]]) -> int:
         """
-        Performs a single, atomic bulk update of PositionState records
-        using an UPDATE FROM VALUES clause for efficiency and to prevent deadlocks.
+        Performs an atomic bulk update of PositionState records.
         `updates` is a list of dicts, each with:
         {'portfolio_id': str, 'security_id': str, 'watermark_date': date, 'status': str}
         """
         if not updates:
             return 0
-
-        # This statement constructs an UPDATE ... FROM (VALUES ...) ... query,
-        # which is the standard and most performant way to do a bulk update in PostgreSQL.
-        stmt = (
-            update(PositionState)
-            .where(
-                tuple_(PositionState.portfolio_id, PositionState.security_id) ==
-                tuple_(column("portfolio_id", String), column("security_id", String))
-            )
-            .values(
-                watermark_date=column("watermark_date", Date),
-                status=column("status", String),
-                updated_at=func.now()
-            )
-            .execution_options(synchronize_session=None)
-            .returning(PositionState.portfolio_id)
-        )
         
-        result = await self.db.execute(stmt, updates)
-        # By adding .returning(), the result is iterable. We can count the returned
-        # rows to get the number of updated records.
-        updated_rows = result.fetchall()
-        return len(updated_rows)
+        # REFACTORED: Use a loop of individual updates for maximum reliability.
+        # This is still atomic due to the surrounding transaction in the calling service.
+        total_updated = 0
+        for update_item in updates:
+            stmt = (
+                update(PositionState)
+                .where(
+                    PositionState.portfolio_id == update_item["portfolio_id"],
+                    PositionState.security_id == update_item["security_id"]
+                )
+                .values(
+                    watermark_date=update_item["watermark_date"],
+                    status=update_item["status"],
+                    updated_at=func.now()
+                )
+                .execution_options(synchronize_session=False)
+            )
+            result = await self.db.execute(stmt)
+            total_updated += result.rowcount
+            
+        return total_updated
 
     @async_timed(repository="PositionStateRepository", method="get_or_create_state")
     async def get_or_create_state(self, portfolio_id: str, security_id: str) -> PositionState:
@@ -120,10 +118,13 @@ class PositionStateRepository:
         if not keys:
             return 0
 
+        # REFACTORED: Use a more standard WHERE clause for reliability.
+        # SQLAlchemy can efficiently translate `IN` clauses.
         stmt = (
             update(PositionState)
             .where(
-                tuple_(PositionState.portfolio_id, PositionState.security_id).in_(keys),
+                PositionState.portfolio_id.in_([k[0] for k in keys]),
+                PositionState.security_id.in_([k[1] for k in keys]),
                 PositionState.watermark_date > new_watermark_date
             )
             .values(
