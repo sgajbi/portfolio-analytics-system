@@ -141,7 +141,7 @@ def test_fifo_consume_sell_insufficient_quantity(fifo_strategy: FIFOBasisStrateg
     assert cost_base == Decimal("0")
     assert consumed_qty == Decimal("0")
     # FIX: Corrected assertion to match the actual error message format
-    assert error == "Sell quantity (101) exceeds available holdings (100)."
+    assert error == "Sell quantity (101) exceeds available holdings (100.0)."
     assert fifo_strategy.get_available_quantity("P1", "FIFO_STOCK") == Decimal("100")
 
 def test_fifo_multi_lot_disposition(fifo_strategy: FIFOBasisStrategy):

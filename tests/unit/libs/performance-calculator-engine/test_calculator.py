@@ -94,7 +94,7 @@ def test_full_calculation_logic(sample_config, sample_timeseries_data):
 
     # Also check a key intermediate calculation on a prior day
     # FIX: Corrected expected value to be more precise.
-    assert pytest.approx(results_df.iloc[2][FINAL_CUMULATIVE_ROR_PCT]) == 2.944961
+    assert pytest.approx(results_df.iloc[2][FINAL_CUMULATIVE_ROR_PCT], abs=1e-6) == 2.944961
     
     # Verify the NIP flag was set correctly
     assert results_df.iloc[3][NIP] == 1
