@@ -104,37 +104,54 @@ class TimeseriesRepository:
         1. The portfolio timeseries record for date D-1 (for the correct epoch) already exists.
         2. OR this job is for the earliest date for a portfolio that has no timeseries records yet.
         """
-        # The subquery for the epoch is now wrapped in COALESCE to default to 0
-        # if no position_state record exists for the portfolio yet.
-        eligibility_query = text("""
-            SELECT
-                p1.id
-            FROM portfolio_aggregation_jobs p1
-            WHERE p1.status = 'PENDING' AND (
-                -- Case 1: Prior day's timeseries exists for the portfolio's current max epoch.
-                EXISTS (
-                    SELECT 1 FROM portfolio_timeseries pts
-                    WHERE pts.portfolio_id = p1.portfolio_id
-                    AND pts.date = p1.aggregation_date - INTERVAL '1 day'
-                    AND pts.epoch = COALESCE((SELECT MAX(ps.epoch) FROM position_state ps WHERE ps.portfolio_id = p1.portfolio_id), 0)
-                )
-                -- Case 2: This is the very first job for this portfolio (no timeseries exist yet).
-                OR p1.aggregation_date = (
-                    SELECT MIN(p2.aggregation_date)
-                    FROM portfolio_aggregation_jobs p2
-                    WHERE p2.portfolio_id = p1.portfolio_id
-                    AND NOT EXISTS (
-                        SELECT 1 FROM portfolio_timeseries pts
-                        WHERE pts.portfolio_id = p1.portfolio_id
-                    )
-                )
-            )
-            ORDER BY p1.portfolio_id, p1.aggregation_date
-            LIMIT :batch_size
-            FOR UPDATE SKIP LOCKED;
-        """)
+        p1 = PortfolioAggregationJob
+        p2 = PortfolioAggregationJob.__alias__()
+        pts = PortfolioTimeseries
+        ps = PositionState
+
+        # Subquery to find the current epoch for a given portfolio
+        current_epoch_subq = (
+            select(func.max(ps.epoch))
+            .where(ps.portfolio_id == p1.portfolio_id)
+            .scalar_subquery()
+            .correlate(p1)
+        )
         
-        result_proxy = await self.db.execute(eligibility_query, {"batch_size": batch_size})
+        # Subquery to check for the existence of the prior day's timeseries record
+        prior_day_exists_subq = (
+            exists(pts)
+            .where(
+                pts.portfolio_id == p1.portfolio_id,
+                pts.date == p1.aggregation_date - timedelta(days=1),
+                pts.epoch == func.coalesce(current_epoch_subq, 0)
+            )
+            .correlate(p1)
+        )
+        
+        # Subquery to check if this is the first job for a portfolio with no history
+        is_first_job_subq = p1.aggregation_date == (
+            select(func.min(p2.aggregation_date))
+            .where(
+                p2.portfolio_id == p1.portfolio_id,
+                ~exists(pts).where(pts.portfolio_id == p1.portfolio_id).correlate(p2)
+            )
+            .scalar_subquery()
+            .correlate(p1)
+        )
+
+        # Main query to find the IDs of eligible jobs
+        eligibility_query = (
+            select(p1.id)
+            .where(
+                p1.status == 'PENDING',
+                (prior_day_exists_subq | is_first_job_subq)
+            )
+            .order_by(p1.portfolio_id, p1.aggregation_date)
+            .limit(batch_size)
+            .with_for_update(skip_locked=True)
+        )
+        
+        result_proxy = await self.db.execute(eligibility_query)
         eligible_ids = [row[0] for row in result_proxy.fetchall()]
 
         if not eligible_ids:
