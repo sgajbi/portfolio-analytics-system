@@ -133,7 +133,7 @@ class OutboxDispatcher:
                             update(OutboxEvent)
                             .where(OutboxEvent.id.in_(failure_ids))
                             .values(
-                                retry_count=OutboxEvent.retry_count + 1,
+                                retry_count=func.coalesce(OutboxEvent.retry_count, 0) + 1,
                                 last_attempted_at=datetime.now(timezone.utc),
                             )
                         )
