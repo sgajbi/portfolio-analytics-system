@@ -1,18 +1,15 @@
 # tests/e2e/test_failure_scenarios.py
 import pytest
-import requests
 import time
 import uuid
-import os
 import subprocess
 from sqlalchemy.orm import Session
 from sqlalchemy import text, exc
 from confluent_kafka import Consumer
+import requests
 
-from portfolio_common.config import (
-    KAFKA_BOOTSTRAP_SERVERS,
-    KAFKA_PERSISTENCE_DLQ_TOPIC
-)
+from portfolio_common.config import KAFKA_BOOTSTRAP_SERVERS, KAFKA_PERSISTENCE_DLQ_TOPIC
+from .api_client import E2EApiClient
 
 def wait_for_postgres_ready(db_engine, timeout=30):
     """Waits for the PostgreSQL container to be ready for connections."""
@@ -27,18 +24,27 @@ def wait_for_postgres_ready(db_engine, timeout=30):
             time.sleep(1)
     pytest.fail(f"PostgreSQL did not become ready within {timeout} seconds.")
 
-@pytest.mark.xfail(reason="Known flaky test: DB recovery is timing-sensitive and requires deeper investigation.")
-def test_db_outage_recovery(docker_services, db_engine, clean_db):
+def wait_for_service_ready(service_url: str, timeout: int = 60):
+    """Polls a service's /health/ready endpoint until it returns 200 OK."""
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        try:
+            response = requests.get(service_url, timeout=2)
+            if response.status_code == 200:
+                print(f"\n--- Service at {service_url} is healthy ---")
+                return
+        except requests.ConnectionError:
+            pass # Service is not up yet, ignore and retry
+        time.sleep(2)
+    pytest.fail(f"Service at {service_url} did not become healthy within {timeout} seconds.")
+
+def test_db_outage_recovery(docker_services, db_engine, clean_db_module, e2e_api_client: E2EApiClient, poll_db_until):
     """
     Tests that the persistence-service can recover from a transient DB outage,
     successfully process a message after retrying, and does not send the
     message to the DLQ.
     """
-    # 1. ARRANGE: Get service URLs and define test data
-    ingestion_host = docker_services.get_service_host("ingestion_service", 8000)
-    ingestion_port = docker_services.get_service_port("ingestion_service", 8000)
-    ingestion_url = f"http://{ingestion_host}:{ingestion_port}"
-
+    # 1. ARRANGE: Define test data
     portfolio_id = f"E2E_FAIL_PORT_{uuid.uuid4()}"
     transaction_id = f"E2E_FAIL_TXN_{uuid.uuid4()}"
 
@@ -52,23 +58,19 @@ def test_db_outage_recovery(docker_services, db_engine, clean_db):
     dlq_consumer.subscribe([KAFKA_PERSISTENCE_DLQ_TOPIC])
 
     # 3. ARRANGE: Ingest prerequisite portfolio data
-    portfolio_payload = {"portfolios": [{
-        "portfolioId": portfolio_id, "baseCurrency": "USD", "openDate": "2025-01-01",
-        "cifId": "FAIL_CIF", "status": "ACTIVE", "riskExposure": "a",
-        "investmentTimeHorizon": "b", "portfolioType": "c", "bookingCenter": "d"
-    }]}
-    assert requests.post(f"{ingestion_url}/ingest/portfolios", json=portfolio_payload).status_code == 202
+    portfolio_payload = {"portfolios": [{"portfolioId": portfolio_id, "baseCurrency": "USD", "openDate": "2025-01-01", "cifId": "FAIL_CIF", "status": "ACTIVE", "riskExposure": "a", "investmentTimeHorizon": "b", "portfolioType": "c", "bookingCenter": "d"}]}
+    e2e_api_client.ingest("/ingest/portfolios", portfolio_payload)
 
-    # 4. ACT: Ingest the target transaction
+    # 4. ACT: Ingest the target transaction, which will be consumed by persistence-service
     transaction_payload = {"transactions": [{"transaction_id": transaction_id, "portfolio_id": portfolio_id, "instrument_id": "FAIL_INST", "security_id": "SEC_FAIL", "transaction_date": "2025-08-05T10:00:00Z", "transaction_type": "BUY", "quantity": 1, "price": 1, "gross_transaction_amount": 1, "trade_currency": "USD", "currency": "USD"}]}
-    response = requests.post(f"{ingestion_url}/ingest/transactions", json=transaction_payload)
-    assert response.status_code == 202
+    e2e_api_client.ingest("/ingest/transactions", transaction_payload)
     print(f"\n--- Ingested transaction '{transaction_id}' ---")
     
     # 5. ACT: Simulate database outage
     print("\n--- Stopping PostgreSQL container ---")
     subprocess.run(["docker", "compose", "stop", "postgres"], check=True, capture_output=True)
     
+    # Give a moment for the service to notice the DB is gone
     time.sleep(5) 
     
     print("\n--- Starting PostgreSQL container ---")
@@ -77,26 +79,24 @@ def test_db_outage_recovery(docker_services, db_engine, clean_db):
     
     print("\n--- Restarting persistence_service to ensure DB reconnection ---")
     subprocess.run(["docker", "compose", "restart", "persistence_service"], check=True, capture_output=True)
-    time.sleep(30) 
+    
+    # 6. ACT: Wait for the persistence service to become healthy again
+    wait_for_service_ready("http://localhost:8080/health/ready")
 
-    # 6. ASSERT: Verify the transaction is eventually persisted
-    with Session(db_engine) as session:
-        start_time = time.time()
-        timeout = 310
-        while time.time() - start_time < timeout:
-            query = text("SELECT count(*) FROM transactions WHERE transaction_id = :txn_id")
-            count = session.execute(query, {"txn_id": transaction_id}).scalar_one_or_none()
-            if count and count > 0:
-                print(f"\n--- Transaction '{transaction_id}' successfully persisted ---")
-                break
-            time.sleep(2)
-        else:
-            pytest.fail(f"Transaction '{transaction_id}' was not persisted within {timeout} seconds after DB recovery.")
+    # 7. ASSERT: Verify the transaction is eventually persisted using the robust polling utility
+    poll_db_until(
+        query="SELECT 1 FROM transactions WHERE transaction_id = :txn_id",
+        params={"txn_id": transaction_id},
+        validation_func=lambda r: r is not None,
+        timeout=60, # The service should recover and process well within this time
+        fail_message=f"Transaction '{transaction_id}' was not persisted after DB recovery."
+    )
+    print(f"\n--- Transaction '{transaction_id}' successfully persisted ---")
 
-    # 7. ASSERT: Verify the DLQ is empty
+    # 8. ASSERT: Verify the DLQ is empty
     print("\n--- Verifying DLQ is empty ---")
     msg = dlq_consumer.poll(timeout=10)
     dlq_consumer.close()
     
-    assert msg is None, f"A message was unexpectedly found in the DLQ: {msg.value()}"
+    assert msg is None, f"A message was unexpectedly found in the DLQ: {msg.value() if msg else 'None'}"
     print("\n--- DLQ verified to be empty ---")
