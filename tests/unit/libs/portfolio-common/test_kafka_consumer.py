@@ -5,7 +5,7 @@ import asyncio
 from unittest.mock import patch, MagicMock, AsyncMock
 
 from confluent_kafka import KafkaError
-from portfolio_common.kafka_consumer import BaseConsumer
+from portfolio_common.kafka_consumer import BaseConsumer, RetryableConsumerError
 from portfolio_common.logging_utils import correlation_id_var
 
 pytestmark = pytest.mark.asyncio
@@ -71,8 +71,8 @@ async def test_run_loop_success_path(test_consumer: ConcreteTestConsumer, mock_c
     test_consumer.process_message_mock.assert_awaited_once_with(mock_msg)
     mock_confluent_consumer.commit.assert_called_once_with(message=mock_msg, asynchronous=False)
 
-async def test_run_loop_failure_sends_to_dlq(test_consumer: ConcreteTestConsumer, mock_confluent_consumer: MagicMock):
-    """Tests the failure path: a processing error triggers a DLQ publish and prevents a commit."""
+async def test_run_loop_failure_sends_to_dlq_and_commits(test_consumer: ConcreteTestConsumer, mock_confluent_consumer: MagicMock):
+    """Tests the failure path: a processing error triggers a DLQ publish and then commits the offset."""
     # ARRANGE
     mock_msg = create_mock_message("key2", {"data": "value2"})
     mock_confluent_consumer.poll.return_value = mock_msg
@@ -89,8 +89,29 @@ async def test_run_loop_failure_sends_to_dlq(test_consumer: ConcreteTestConsumer
 
     # ASSERT
     test_consumer.process_message_mock.assert_awaited_once_with(mock_msg)
-    mock_confluent_consumer.commit.assert_not_called()
+    mock_confluent_consumer.commit.assert_called_once_with(message=mock_msg, asynchronous=False)
     test_consumer._send_to_dlq_async.assert_awaited_once()
+
+async def test_run_loop_retryable_error_does_not_commit(test_consumer: ConcreteTestConsumer, mock_confluent_consumer: MagicMock):
+    """Tests the retryable path: a RetryableConsumerError prevents the offset from being committed."""
+    # ARRANGE
+    mock_msg = create_mock_message("key_retry", {"data": "value_retry"})
+    mock_confluent_consumer.poll.return_value = mock_msg
+    
+    async def fail_and_stop(*args, **kwargs):
+        test_consumer.shutdown()
+        raise RetryableConsumerError("DB connection dropped!")
+
+    test_consumer.process_message_mock.side_effect = fail_and_stop
+    test_consumer._send_to_dlq_async = AsyncMock()
+
+    # ACT
+    await test_consumer.run()
+
+    # ASSERT
+    test_consumer.process_message_mock.assert_awaited_once_with(mock_msg)
+    mock_confluent_consumer.commit.assert_not_called()
+    test_consumer._send_to_dlq_async.assert_not_called()
 
 async def test_dlq_payload_is_correct(test_consumer: ConcreteTestConsumer, mock_kafka_producer: MagicMock):
     """Tests that the DLQ payload is formatted correctly."""
