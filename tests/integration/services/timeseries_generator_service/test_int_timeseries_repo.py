@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from portfolio_common.database_models import PortfolioAggregationJob
+from portfolio_common.database_models import PortfolioAggregationJob, Portfolio
 from src.services.timeseries_generator_service.app.repositories.timeseries_repository import TimeseriesRepository
 
 pytestmark = pytest.mark.asyncio
@@ -21,6 +21,17 @@ def setup_stale_aggregation_job_data(db_engine):
     with Session(db_engine) as session:
         now = datetime.now(timezone.utc)
         stale_time = now - timedelta(minutes=20)
+        
+        # --- THIS IS THE FIX ---
+        # Create the prerequisite portfolio records first to satisfy the foreign key constraint.
+        portfolios = [
+            Portfolio(portfolio_id="P1_STALE", base_currency="USD", open_date=date(2024,1,1), risk_exposure="a", investment_time_horizon="b", portfolio_type="c", booking_center="d", cif_id="e", status="f"),
+            Portfolio(portfolio_id="P2_RECENT", base_currency="USD", open_date=date(2024,1,1), risk_exposure="a", investment_time_horizon="b", portfolio_type="c", booking_center="d", cif_id="e", status="f"),
+            Portfolio(portfolio_id="P3_PENDING", base_currency="USD", open_date=date(2024,1,1), risk_exposure="a", investment_time_horizon="b", portfolio_type="c", booking_center="d", cif_id="e", status="f"),
+        ]
+        session.add_all(portfolios)
+        session.flush()
+        # --- END FIX ---
         
         jobs = [
             # 1. Stale and PROCESSING -> Should be reset to PENDING
