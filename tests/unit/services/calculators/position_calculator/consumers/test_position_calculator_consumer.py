@@ -104,3 +104,34 @@ async def test_consumer_passes_reprocess_epoch_payload_to_logic(position_consume
     mock_dependencies["calculate_logic"].assert_awaited_once()
     call_kwargs = mock_dependencies["calculate_logic"].call_args.kwargs
     assert call_kwargs['reprocess_epoch'] == 2
+
+# --- NEW TEST ---
+async def test_consumer_sends_to_dlq_on_unexpected_error(
+    position_consumer: TransactionEventConsumer,
+    mock_kafka_message: MagicMock,
+    mock_dependencies: dict
+):
+    """
+    GIVEN a valid message
+    WHEN the core logic layer (PositionCalculator.calculate) raises an unexpected Exception
+    THEN the consumer should catch it and send the message to the DLQ.
+    """
+    # ARRANGE
+    mock_dependencies["idempotency_repo"].is_event_processed.return_value = False
+    mock_logic = mock_dependencies["calculate_logic"]
+    
+    # Configure the mocked logic to raise a generic, unexpected error
+    mock_logic.side_effect = Exception("A critical logic error occurred!")
+
+    # ACT
+    await position_consumer.process_message(mock_kafka_message)
+
+    # ASSERT
+    # The logic should have been called, triggering the error
+    mock_logic.assert_awaited_once()
+
+    # The message should have been sent to the DLQ
+    position_consumer._send_to_dlq_async.assert_awaited_once()
+    
+    # The idempotency key should NOT be marked as processed, allowing for redelivery/replay
+    mock_dependencies["idempotency_repo"].mark_event_processed.assert_not_called()
