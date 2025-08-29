@@ -3,7 +3,7 @@ import logging
 from datetime import date
 from typing import Optional, List, Tuple, Dict, Any
 
-from sqlalchemy import select, update, func
+from sqlalchemy import select, update, func, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
@@ -30,8 +30,6 @@ class PositionStateRepository:
         if not updates:
             return 0
         
-        # REFACTORED: Use a loop of individual updates for maximum reliability.
-        # This is still atomic due to the surrounding transaction in the calling service.
         total_updated = 0
         for update_item in updates:
             stmt = (
@@ -118,13 +116,10 @@ class PositionStateRepository:
         if not keys:
             return 0
 
-        # REFACTORED: Use a more standard WHERE clause for reliability.
-        # SQLAlchemy can efficiently translate `IN` clauses.
         stmt = (
             update(PositionState)
             .where(
-                PositionState.portfolio_id.in_([k[0] for k in keys]),
-                PositionState.security_id.in_([k[1] for k in keys]),
+                tuple_(PositionState.portfolio_id, PositionState.security_id).in_(keys),
                 PositionState.watermark_date > new_watermark_date
             )
             .values(
