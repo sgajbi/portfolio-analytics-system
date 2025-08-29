@@ -3,6 +3,7 @@ import pytest
 import pandas as pd
 import numpy as np
 from datetime import date
+from scipy.stats import norm
 
 from risk_analytics_engine.metrics import (
     calculate_volatility, calculate_drawdown, calculate_sharpe_ratio,
@@ -89,7 +90,8 @@ def test_calculate_var_and_es():
     """Tests VaR and ES calculations across different methods."""
     # Arrange: A skewed distribution to highlight differences between methods
     returns = pd.Series([-5, -2, -1, 0, 1, 1, 2, 2, 3, 10])
-    confidence = 0.95 # We expect the 5th percentile loss
+    confidence = 0.95
+    alpha = 1 - confidence
 
     # Act
     var_hist = calculate_var(returns, confidence, "HISTORICAL")
@@ -109,7 +111,7 @@ def test_calculate_var_and_es():
     # Gaussian VaR
     mean = returns.mean() / 100
     std = returns.std() / 100
-    z_score = -1.64485
+    z_score = norm.ppf(alpha) # Use the precise value from scipy
     expected_gauss_var = -(mean + z_score * std) * 100
     assert var_gauss == pytest.approx(expected_gauss_var)
 
