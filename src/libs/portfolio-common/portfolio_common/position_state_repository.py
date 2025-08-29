@@ -48,9 +48,8 @@ class PositionStateRepository:
         )
         
         result = await self.db.execute(stmt, updates)
-        # FIX: The result proxy from a bulk update does not have a .rowcount attribute directly.
-        # It is available on the underlying cursor result.
-        return result.rowcount
+        # FIX: The IteratorResult object does not have .rowcount, but its underlying cursor does.
+        return result.cursor.rowcount
 
     @async_timed(repository="PositionStateRepository", method="get_or_create_state")
     async def get_or_create_state(self, portfolio_id: str, security_id: str) -> PositionState:
