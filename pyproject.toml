@@ -27,6 +27,7 @@ pythonpath = [
     "src/libs/portfolio-common",
     "src/libs/financial-calculator-engine/src",
     "src/libs/performance-calculator-engine/src",
+    "src/libs/risk-analytics-engine/src",
     "src/services/ingestion_service",
     "src/services/persistence_service",
     "src/services/query_service",
