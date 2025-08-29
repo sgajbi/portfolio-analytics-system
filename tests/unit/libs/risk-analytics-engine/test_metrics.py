@@ -4,7 +4,11 @@ import pandas as pd
 import numpy as np
 from datetime import date
 
-from risk_analytics_engine.metrics import calculate_volatility, calculate_drawdown, calculate_sharpe_ratio, calculate_sortino_ratio
+from risk_analytics_engine.metrics import (
+    calculate_volatility, calculate_drawdown, calculate_sharpe_ratio,
+    calculate_sortino_ratio, calculate_beta, calculate_tracking_error,
+    calculate_information_ratio
+)
 from risk_analytics_engine.exceptions import InsufficientDataError
 from risk_analytics_engine.helpers import convert_annual_rate_to_periodic
 
@@ -136,3 +140,33 @@ def test_calculate_sortino_ratio_happy_path():
     expected_sortino = (mean_return / downside_dev) * np.sqrt(annualization_factor)
 
     assert result == pytest.approx(expected_sortino)
+
+def test_benchmark_metrics():
+    """
+    GIVEN a portfolio and benchmark return series
+    WHEN beta, tracking error, and info ratio are calculated
+    THEN they should return the correct results.
+    """
+    # ARRANGE
+    portfolio_returns = pd.Series([1.1, 1.5, 2.0, 1.8, 0.5]) / 100
+    benchmark_returns = pd.Series([1.0, 1.2, 1.8, 1.5, 0.3]) / 100
+    annualization_factor = 252
+    
+    # ACT
+    beta = calculate_beta(portfolio_returns, benchmark_returns)
+    tracking_error = calculate_tracking_error(portfolio_returns, benchmark_returns, annualization_factor)
+    info_ratio = calculate_information_ratio(portfolio_returns, benchmark_returns, annualization_factor)
+
+    # ASSERT
+    # Beta = Cov(p, b) / Var(b)
+    expected_beta = portfolio_returns.cov(benchmark_returns) / benchmark_returns.var()
+    assert beta == pytest.approx(expected_beta)
+    
+    # Tracking Error = Stdev(p - b) * sqrt(k)
+    active_return = portfolio_returns - benchmark_returns
+    expected_te = active_return.std() * np.sqrt(annualization_factor)
+    assert tracking_error == pytest.approx(expected_te)
+    
+    # Info Ratio = Mean(p - b) / Stdev(p - b) * sqrt(k) (annualized)
+    expected_ir = (active_return.mean() * annualization_factor) / expected_te
+    assert info_ratio == pytest.approx(expected_ir)

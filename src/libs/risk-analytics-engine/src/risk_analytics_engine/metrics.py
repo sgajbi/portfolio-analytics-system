@@ -131,10 +131,8 @@ def calculate_sortino_ratio(
 
     returns_decimal = returns / 100
     
-    # Calculate excess returns over the MAR
     excess_returns = returns_decimal - periodic_mar
     
-    # Calculate downside deviation
     downside_returns = excess_returns[excess_returns < 0]
     downside_deviation = np.sqrt((downside_returns**2).sum() / len(returns))
 
@@ -145,3 +143,53 @@ def calculate_sortino_ratio(
     sortino_ratio = mean_excess_return / downside_deviation
     
     return sortino_ratio * np.sqrt(annualization_factor)
+
+
+def calculate_beta(
+    portfolio_returns: pd.Series,
+    benchmark_returns: pd.Series
+) -> Optional[float]:
+    """Calculates the Beta of a portfolio relative to a benchmark."""
+    if len(portfolio_returns) < 2 or len(benchmark_returns) < 2:
+        raise InsufficientDataError("Beta calculation requires at least two data points for both series.")
+        
+    covariance = portfolio_returns.cov(benchmark_returns)
+    variance = benchmark_returns.var()
+    
+    return covariance / variance if variance != 0 else None
+
+
+def calculate_tracking_error(
+    portfolio_returns: pd.Series,
+    benchmark_returns: pd.Series,
+    annualization_factor: int
+) -> float:
+    """Calculates the annualized Tracking Error."""
+    if len(portfolio_returns) < 2:
+        raise InsufficientDataError("Tracking Error requires at least two data points.")
+
+    active_return = portfolio_returns - benchmark_returns
+    return active_return.std() * np.sqrt(annualization_factor)
+
+
+def calculate_information_ratio(
+    portfolio_returns: pd.Series,
+    benchmark_returns: pd.Series,
+    annualization_factor: int
+) -> Optional[float]:
+    """Calculates the annualized Information Ratio."""
+    if len(portfolio_returns) < 2:
+        raise InsufficientDataError("Information Ratio requires at least two data points.")
+
+    active_return = portfolio_returns - benchmark_returns
+    mean_active_return = active_return.mean()
+    tracking_error = active_return.std()
+
+    if tracking_error == 0:
+        return None
+        
+    # Note: Annualization for IR is debated. A common method is to annualize both parts.
+    annualized_mean_active = mean_active_return * annualization_factor
+    annualized_tracking_error = tracking_error * np.sqrt(annualization_factor)
+    
+    return annualized_mean_active / annualized_tracking_error if annualized_tracking_error != 0 else None
