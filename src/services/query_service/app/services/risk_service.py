@@ -16,7 +16,7 @@ from performance_calculator_engine.constants import DATE, DAILY_ROR_PCT
 from risk_analytics_engine.metrics import (
     calculate_volatility, calculate_drawdown, calculate_sharpe_ratio,
     calculate_sortino_ratio, calculate_beta, calculate_tracking_error,
-    calculate_information_ratio
+    calculate_information_ratio, calculate_var, calculate_expected_shortfall
 )
 from risk_analytics_engine.helpers import convert_annual_rate_to_periodic
 from risk_analytics_engine.exceptions import InsufficientDataError
@@ -31,7 +31,7 @@ class RiskService:
         self.db = db
         self.perf_repo = PerformanceRepository(db)
         self.portfolio_repo = PortfolioRepository(db)
-        self.price_repo = MarketPriceRepository(db) # For benchmark prices
+        self.price_repo = MarketPriceRepository(db)
 
     async def _get_benchmark_returns(self, security_id: str, start_date: date, end_date: date) -> pd.DataFrame:
         """Fetches and calculates daily returns for a benchmark security."""
@@ -82,7 +82,6 @@ class RiskService:
 
         base_returns_df[DATE] = pd.to_datetime(base_returns_df[DATE])
 
-        # Fetch benchmark returns if needed for any requested metric
         benchmark_returns_df = pd.DataFrame()
         benchmark_metrics = {"BETA", "TRACKING_ERROR", "INFORMATION_RATIO"}
         if request.options.benchmark_security_id and any(m in request.metrics for m in benchmark_metrics):
@@ -107,7 +106,6 @@ class RiskService:
             period_metrics = {}
             returns_series = period_df.set_index(DATE)[DAILY_ROR_PCT]
 
-            # --- Metric Calculations ---
             if "VOLATILITY" in request.metrics:
                 try: period_metrics["VOLATILITY"] = RiskValue(value=calculate_volatility(returns_series, annual_factor))
                 except InsufficientDataError as e: period_metrics["VOLATILITY"] = RiskValue(value=None, details={"error": str(e)})
@@ -126,11 +124,9 @@ class RiskService:
                 try: period_metrics["SORTINO"] = RiskValue(value=calculate_sortino_ratio(returns_series, periodic_mar, annual_factor))
                 except InsufficientDataError as e: period_metrics["SORTINO"] = RiskValue(value=None, details={"error": str(e)})
 
-            # --- Benchmark Metric Calculations ---
             if not benchmark_returns_df.empty and any(m in request.metrics for m in benchmark_metrics):
                 aligned_df = pd.merge(returns_series, benchmark_returns_df, left_index=True, right_index=True, how='inner')
-                p_returns = aligned_df[DAILY_ROR_PCT]
-                b_returns = aligned_df['returns']
+                p_returns, b_returns = aligned_df[DAILY_ROR_PCT], aligned_df['returns']
                 
                 if "BETA" in request.metrics:
                     try: period_metrics["BETA"] = RiskValue(value=calculate_beta(p_returns, b_returns))
@@ -141,6 +137,21 @@ class RiskService:
                 if "INFORMATION_RATIO" in request.metrics:
                     try: period_metrics["INFORMATION_RATIO"] = RiskValue(value=calculate_information_ratio(p_returns, b_returns, annual_factor))
                     except InsufficientDataError as e: period_metrics["INFORMATION_RATIO"] = RiskValue(value=None, details={"error": str(e)})
+
+            if "VAR" in request.metrics:
+                try:
+                    var_options = request.options.var
+                    var_val = calculate_var(returns_series, var_options.confidence, var_options.method)
+                    
+                    details = {}
+                    if var_options.include_expected_shortfall:
+                        es_val = calculate_expected_shortfall(returns_series, var_options.confidence, var_val)
+                        details["expected_shortfall"] = es_val
+
+                    period_metrics["VAR"] = RiskValue(value=var_val, details=details or None)
+                except (InsufficientDataError, ValueError) as e:
+                    logger.warning("Could not calculate VaR for period '%s': %s", name, e)
+                    period_metrics["VAR"] = RiskValue(value=None, details={"error": str(e)})
 
             results[name] = RiskPeriodResult(start_date=start_date, end_date=end_date, metrics=period_metrics)
 
