@@ -120,7 +120,7 @@ async def test_update_watermarks_if_older(
     await async_db_session.commit()
 
     # FIX: Expire the session cache to force a reload from the DB for assertions
-    await async_db_session.expire_all()
+    async_db_session.expire_all()
 
     # ASSERT
     assert updated_count == 2
@@ -161,7 +161,7 @@ async def test_bulk_update_states(clean_db, async_db_session: AsyncSession):
     await async_db_session.commit()
 
     # FIX: Expire the session cache to force a reload from the DB for assertions
-    await async_db_session.expire_all()
+    async_db_session.expire_all()
 
     # ASSERT
     assert updated_count == 2
