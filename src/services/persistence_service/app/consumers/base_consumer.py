@@ -7,13 +7,13 @@ from abc import ABC, abstractmethod
 from pydantic import BaseModel, ValidationError
 from confluent_kafka import Message
 from sqlalchemy.exc import DBAPIError, IntegrityError, OperationalError
-from tenacity import retry, stop_after_delay, wait_exponential, before_log, retry_if_exception_type
 
 from portfolio_common.kafka_consumer import BaseConsumer
 from portfolio_common.logging_utils import correlation_id_var
 from portfolio_common.db import get_async_db_session
 from portfolio_common.idempotency_repository import IdempotencyRepository
 from portfolio_common.outbox_repository import OutboxRepository
+from portfolio_common.exceptions import RetryableConsumerError
 
 logger = logging.getLogger(__name__)
 
@@ -56,24 +56,12 @@ class GenericPersistenceConsumer(BaseConsumer, ABC):
         return None
 
     async def process_message(self, msg: Message):
-        """Processes a single message with retries and error handling."""
-        try:
-            await self._process_message_with_retry(msg)
-        except (OperationalError, DBAPIError):
-            logger.critical(f"Unrecoverable DB error for {self.service_name}. Shutting down.", exc_info=True)
-            sys.exit(1)
-        except Exception as e:
-            logger.error(f"Fatal error for {self.service_name} after retries. Sending to DLQ.", exc_info=True)
-            await self._send_to_dlq_async(msg, e)
-
-    @retry(
-        wait=wait_exponential(multiplier=1, min=2, max=10),
-        stop=stop_after_delay(300),
-        before=before_log(logger, logging.INFO),
-        retry=retry_if_exception_type((DBAPIError, IntegrityError, OperationalError)),
-        reraise=True
-    )
-    async def _process_message_with_retry(self, msg: Message):
+        """
+        Processes a single message.
+        - For transient DB errors, raises RetryableConsumerError to trigger Kafka redelivery.
+        - For validation/poison-pill errors, sends to DLQ.
+        - For unexpected errors, raises them to be handled by the BaseConsumer.
+        """
         event_id = f"{msg.topic()}-{msg.partition()}-{msg.offset()}"
         correlation_id = correlation_id_var.get()
         event = None
@@ -82,7 +70,6 @@ class GenericPersistenceConsumer(BaseConsumer, ABC):
             event_data = json.loads(msg.value().decode('utf-8'))
             event = self.event_model.model_validate(event_data)
             
-            # Use a specific attribute for idempotency key if available (e.g., transaction_id), else use the Kafka coordinates.
             idempotency_key = getattr(event, 'transaction_id', event_id)
 
             async for db in get_async_db_session():
@@ -108,11 +95,12 @@ class GenericPersistenceConsumer(BaseConsumer, ABC):
                     )
 
         except (json.JSONDecodeError, ValidationError) as e:
+            # This is a non-retryable "poison pill" message. Send to DLQ.
             logger.error("Message validation failed. Sending to DLQ.", exc_info=True)
             await self._send_to_dlq_async(msg, e)
-        except (DBAPIError, IntegrityError, OperationalError):
-            logger.warning(f"DB error for {self.service_name}. Retrying...", exc_info=True)
-            raise
-        except Exception as e:
-            logger.error(f"Unexpected error in {self.service_name}. Sending to DLQ.", exc_info=True)
-            await self._send_to_dlq_async(msg, e)
+            # IMPORTANT: Re-raise a generic exception to ensure the base consumer commits the offset.
+            raise ValueError("Poison pill message detected") 
+        except (DBAPIError, IntegrityError, OperationalError) as e:
+            # This is a transient DB error. Signal the base consumer to retry.
+            logger.warning(f"DB error for {self.service_name}. Raising RetryableConsumerError.", exc_info=False)
+            raise RetryableConsumerError(f"Database error: {e}") from e

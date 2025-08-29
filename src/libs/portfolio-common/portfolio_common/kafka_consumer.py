@@ -1,19 +1,19 @@
-# libs/portfolio-common/portfolio_common/kafka_consumer.py
+# src/libs/portfolio-common/portfolio_common/kafka_consumer.py
 import logging
 import json
 import traceback
 import asyncio
 import functools
 import time
-import inspect # NEW IMPORT
+import inspect
 from datetime import datetime, timezone
 from abc import ABC, abstractmethod
 from typing import Optional, Dict
 from confluent_kafka import Consumer, KafkaException, Message
 
 from .kafka_utils import get_kafka_producer
-from tenacity import retry, stop_after_attempt, wait_fixed, before_log
 from .logging_utils import correlation_id_var, generate_correlation_id
+from .exceptions import RetryableConsumerError
 
 logger = logging.getLogger(__name__)
 
@@ -52,28 +52,12 @@ class BaseConsumer(ABC):
             self._producer = get_kafka_producer()
             logger.info(f"DLQ enabled for consumer of topic '{self.topic}'. Failing messages will be sent to '{self.dlq_topic}'.")
 
-    @retry(stop=stop_after_attempt(5), wait=wait_fixed(5), before=before_log(logger, logging.INFO))
     def _initialize_consumer(self):
-        """Initializes and subscribes the Kafka consumer with retries."""
+        """Initializes and subscribes the Kafka consumer."""
         logger.info(f"Initializing consumer for topic '{self.topic}' with group '{self._consumer_config['group.id']}'...")
         self._consumer = Consumer(self._consumer_config)
         self._consumer.subscribe([self.topic])
         logger.info(f"Consumer successfully subscribed to topic '{self.topic}'.")
-
-    def _send_to_dlq_sync(self, msg: Message, error: Exception, loop: asyncio.AbstractEventLoop):
-        """
-        Schedules the async _send_to_dlq method to run on the main event loop.
-        """
-        if not loop or not self._running:
-            return
-        
-        future = asyncio.run_coroutine_threadsafe(
-            self._send_to_dlq_async(msg, error), loop
-        )
-        try:
-            future.result(timeout=10)
-        except Exception as e:
-            logger.error(f"FATAL: Could not schedule message to DLQ. Error: {e}", exc_info=True)
 
     async def _send_to_dlq_async(self, msg: Message, error: Exception):
         """
@@ -124,8 +108,8 @@ class BaseConsumer(ABC):
 
     async def run(self):
         """
-        The main consumer loop. Polls for messages, processes them, records metrics,
-        and commits offsets. Now supports both sync and async process_message handlers.
+        The main consumer loop. Polls for messages, processes them, handles errors,
+        and commits offsets.
         """
         self._initialize_consumer()
         loop = asyncio.get_running_loop()
@@ -162,22 +146,27 @@ class BaseConsumer(ABC):
 
                 token = correlation_id_var.set(corr_id)
                 
-                # --- UPDATED LOGIC to handle sync and async handlers ---
                 if inspect.iscoroutinefunction(self.process_message):
                     await self.process_message(msg)
                 else:
-                    # For backward compatibility with sync consumers
                     await loop.run_in_executor(
                         None,
-                        functools.partial(self.process_message, msg, loop)
+                        functools.partial(self.process_message, msg)
                     )
                 
                 self._consumer.commit(message=msg, asynchronous=False)
                 processed_successfully = True
 
+            except RetryableConsumerError as e:
+                # For transient errors, we log and do NOT commit, allowing Kafka to redeliver.
+                logger.warning(f"Retryable error occurred: {e}. Offset will not be committed.", exc_info=False)
+            
             except Exception as e:
-                logger.error(f"Unhandled exception in consumer loop for topic {self.topic}: {e}", exc_info=True)
+                # For terminal errors (poison pills), we send to DLQ and then commit.
+                logger.error(f"Terminal error processing message for topic {self.topic}: {e}", exc_info=True)
                 await self._send_to_dlq_async(msg, e)
+                self._consumer.commit(message=msg, asynchronous=False)
+
             finally:
                 duration = time.monotonic() - start_time
                 if self._metrics:
