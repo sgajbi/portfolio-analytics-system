@@ -36,7 +36,7 @@ class ValuationConsumer(BaseConsumer):
         wait=wait_fixed(3),
         stop=stop_after_attempt(5),
         before=before_log(logger, logging.INFO),
-        retry=retry_if_exception_type((DBAPIError, OperationalError)), # REFACTORED: Removed DataNotFoundError
+        retry=retry_if_exception_type((DBAPIError, OperationalError)),
         reraise=True
     )
     async def process_message(self, msg: Message):
@@ -140,7 +140,7 @@ class ValuationConsumer(BaseConsumer):
                             payload=completion_event.model_dump(mode='json'),
                             correlation_id=correlation_id
                         )
-                
+                        
                         await repo.update_job_status(event.portfolio_id, event.security_id, event.valuation_date, 'COMPLETE')
                         await idempotency_repo.mark_event_processed(event_id, event.portfolio_id, SERVICE_NAME, correlation_id)
                 
@@ -173,5 +173,11 @@ class ValuationConsumer(BaseConsumer):
                 async for db in get_async_db_session():
                     async with db.begin():
                         repo = ValuationRepository(db)
-                        await repo.update_job_status(event.portfolio_id, event.security_id, event.valuation_date, 'FAILED', failure_reason=str(e))
+                        await repo.update_job_status(
+                            event.portfolio_id,
+                            event.security_id,
+                            event.valuation_date,
+                            status='FAILED', # FIX: Use keyword argument for clarity
+                            failure_reason=str(e)
+                        )
             await self._send_to_dlq_async(msg, e)
