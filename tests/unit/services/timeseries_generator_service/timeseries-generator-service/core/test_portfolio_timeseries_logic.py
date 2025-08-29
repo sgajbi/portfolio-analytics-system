@@ -35,7 +35,7 @@ async def test_portfolio_logic_aggregates_correctly_with_epoch(mock_repo: AsyncM
     target_epoch = 2
     
     position_ts_list = [
-        PositionTimeseries(security_id="CASH_USD", bod_cashflow_portfolio=Decimal(-25))
+        PositionTimeseries(security_id="CASH_USD", bod_cashflow_portfolio=Decimal(-25), date=test_date)
     ]
     
     # Simulate snapshots from different epochs; only epoch 2 should be included
@@ -61,3 +61,41 @@ async def test_portfolio_logic_aggregates_correctly_with_epoch(mock_repo: AsyncM
     # ASSERT
     assert result.epoch == target_epoch
     assert result.eod_market_value == Decimal("60000") # 10000 + 50000
+
+# --- NEW TEST ---
+async def test_portfolio_logic_raises_error_if_fx_rate_is_missing(mock_repo: AsyncMock, sample_portfolio: Portfolio):
+    """
+    GIVEN a position in a foreign currency (EUR) for a USD-based portfolio
+    WHEN the required FX rate is not found in the database
+    THEN the logic should raise an FxRateNotFoundError.
+    """
+    # ARRANGE
+    test_date = date(2025, 8, 8)
+    
+    # Position timeseries for a EUR stock, requiring an FX rate for aggregation
+    position_ts_list = [
+        PositionTimeseries(
+            security_id="EUR_STOCK", 
+            bod_cashflow_portfolio=Decimal(100), 
+            date=test_date
+        )
+    ]
+
+    mock_repo.get_instruments_by_ids.return_value = [
+        Instrument(security_id="EUR_STOCK", currency="EUR")
+    ]
+    # Simulate the repository returning no FX rate
+    mock_repo.get_fx_rate.return_value = None
+    
+    # ACT & ASSERT
+    with pytest.raises(FxRateNotFoundError, match="Missing FX rate from EUR to USD"):
+        await PortfolioTimeseriesLogic.calculate_daily_record(
+            portfolio=sample_portfolio,
+            a_date=test_date,
+            epoch=1,
+            position_timeseries_list=position_ts_list,
+            repo=mock_repo
+        )
+    
+    # Verify the repository was actually called
+    mock_repo.get_fx_rate.assert_awaited_once_with("EUR", "USD", test_date)
