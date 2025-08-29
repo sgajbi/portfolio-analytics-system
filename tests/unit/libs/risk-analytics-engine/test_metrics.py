@@ -99,9 +99,11 @@ def test_calculate_var_and_es():
     var_cf = calculate_var(returns, confidence, "CORNISH_FISHER")
 
     # Assert
-    # Historical VaR is the 5th percentile. For 10 points, it's the first element.
-    assert var_hist == pytest.approx(5.0)
-    # ES is the average of returns worse than VaR. Here, only -5 is worse than -5.
+    # Historical VaR is the 5th percentile. Pandas interpolates between -5 and -2.
+    # The 0.05 quantile is -3.65. VaR is the positive loss, so 3.65.
+    assert var_hist == pytest.approx(3.65)
+    
+    # ES is the average of returns worse than VaR. Only -5 is worse than -3.65.
     assert es_hist == pytest.approx(5.0)
 
     # Gaussian VaR
