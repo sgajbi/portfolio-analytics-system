@@ -31,13 +31,14 @@ def setup_reprocessing_data(clean_db_module, e2e_api_client: E2EApiClient, poll_
     ]
     e2e_api_client.ingest("/ingest/transactions", {"transactions": transactions})
     
-    # 3. Poll until the position state is created, fully valued, and has the initial epoch (0)
+    # 3. FIX: Poll until the snapshot for the latest day is fully valued.
+    # This is the definitive indicator that the initial state is ready for the test.
     poll_db_until(
-        query="SELECT epoch, status FROM position_state WHERE portfolio_id = :pid AND security_id = :sid",
-        params={"pid": portfolio_id, "sid": security_id},
-        validation_func=lambda r: r is not None and r.epoch == 0 and r.status == 'CURRENT',
+        query="SELECT valuation_status FROM daily_position_snapshots WHERE portfolio_id = :pid AND security_id = :sid AND date = :date AND epoch = 0",
+        params={"pid": portfolio_id, "sid": security_id, "date": day3},
+        validation_func=lambda r: r is not None and r.valuation_status == 'VALUED_CURRENT',
         timeout=120,
-        fail_message="Initial position_state (epoch 0) was not created or did not become CURRENT."
+        fail_message="Initial snapshot for Day 3 was not created and valued in epoch 0."
     )
     
     return {"portfolio_id": portfolio_id, "security_id": security_id}
