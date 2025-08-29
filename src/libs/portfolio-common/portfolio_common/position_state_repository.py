@@ -45,11 +45,14 @@ class PositionStateRepository:
                 updated_at=func.now()
             )
             .execution_options(synchronize_session=None)
+            .returning(PositionState.portfolio_id)
         )
         
         result = await self.db.execute(stmt, updates)
-        # FIX: The IteratorResult object does not have .rowcount, but its underlying cursor does.
-        return result.cursor.rowcount
+        # By adding .returning(), the result is iterable. We can count the returned
+        # rows to get the number of updated records.
+        updated_rows = result.fetchall()
+        return len(updated_rows)
 
     @async_timed(repository="PositionStateRepository", method="get_or_create_state")
     async def get_or_create_state(self, portfolio_id: str, security_id: str) -> PositionState:
@@ -127,6 +130,8 @@ class PositionStateRepository:
                 watermark_date=new_watermark_date,
                 status='REPROCESSING' # A watermark reset always implies reprocessing is needed
             )
+            .returning(PositionState.portfolio_id)
         )
         result = await self.db.execute(stmt)
-        return result.rowcount
+        updated_rows = result.fetchall()
+        return len(updated_rows)
