@@ -119,7 +119,6 @@ async def test_scheduler_skips_jobs_for_keys_with_no_position_history(scheduler:
     # ASSERT
     mock_job_repo.upsert_job.assert_not_called()
 
-# --- NEW TEST ---
 async def test_scheduler_advances_watermarks(scheduler: ValuationScheduler, mock_dependencies: dict):
     """
     GIVEN reprocessing states that have new contiguous snapshots
@@ -131,7 +130,6 @@ async def test_scheduler_advances_watermarks(scheduler: ValuationScheduler, mock
     mock_state_repo = mock_dependencies["state_repo"]
     latest_business_date = date(2025, 8, 15)
 
-    # --- FIX: Explicitly set the 'status' for each test object ---
     lagging_states = [
         # This one is now complete
         PositionState(portfolio_id="P1", security_id="S1", watermark_date=date(2025, 8, 10), epoch=1, status='REPROCESSING'),
@@ -165,3 +163,45 @@ async def test_scheduler_advances_watermarks(scheduler: ValuationScheduler, mock
     update2 = next(u for u in updates_arg if u['portfolio_id'] == 'P2')
     assert update2['watermark_date'] == date(2025, 8, 12)
     assert update2['status'] == 'REPROCESSING'
+
+async def test_scheduler_dispatches_claimed_jobs(scheduler: ValuationScheduler, mock_kafka_producer: MagicMock):
+    """
+    GIVEN a list of claimed valuation jobs
+    WHEN the scheduler's _dispatch_jobs logic runs
+    THEN it should publish a correctly formed event for each job to Kafka.
+    """
+    # ARRANGE
+    claimed_jobs = [
+        PortfolioValuationJob(
+            portfolio_id="P1", security_id="S1", valuation_date=date(2025, 8, 11), 
+            epoch=1, correlation_id="corr-1"
+        ),
+        PortfolioValuationJob(
+            portfolio_id="P2", security_id="S2", valuation_date=date(2025, 8, 12), 
+            epoch=2, correlation_id="corr-2"
+        ),
+    ]
+
+    # ACT
+    await scheduler._dispatch_jobs(claimed_jobs)
+
+    # ASSERT
+    assert mock_kafka_producer.publish_message.call_count == 2
+    mock_kafka_producer.flush.assert_called_once_with(timeout=10)
+
+    # Inspect the first call to the producer
+    first_call_args = mock_kafka_producer.publish_message.call_args_list[0].kwargs
+    assert first_call_args['topic'] == KAFKA_VALUATION_REQUIRED_TOPIC
+    assert first_call_args['key'] == "P1" # Keyed by portfolio_id
+    
+    # Verify payload content
+    payload1 = first_call_args['value']
+    assert payload1['portfolio_id'] == "P1"
+    assert payload1['security_id'] == "S1"
+    assert payload1['valuation_date'] == "2025-08-11"
+    assert payload1['epoch'] == 1
+    assert payload1['correlation_id'] == "corr-1"
+    
+    # Verify headers
+    headers1 = dict(first_call_args['headers'])
+    assert headers1['correlation_id'] == b'corr-1'
