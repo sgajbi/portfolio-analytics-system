@@ -160,11 +160,9 @@ def test_transfer_in_strategy_creates_cost_lot(cost_calculator, mock_disposition
     assert call_args.quantity == Decimal("100")
     assert call_args.net_cost == Decimal("15000")
 
-# --- NEW FAILING TEST (TDD) ---
 def test_transfer_out_strategy_consumes_lot_without_pnl(cost_calculator, mock_disposition_engine):
     """
     Tests that a TRANSFER_OUT transaction consumes a cost lot but does not generate P&L.
-    This will fail with the DefaultStrategy.
     """
     # Arrange
     transfer_out_transaction = Transaction(
@@ -196,3 +194,40 @@ def test_transfer_out_strategy_consumes_lot_without_pnl(cost_calculator, mock_di
 
     # Crucially, it should NOT have calculated a realized gain/loss
     assert transfer_out_transaction.realized_gain_loss is None
+
+# --- NEW FAILING TEST ---
+def test_withdrawal_strategy_consumes_lot_without_pnl(cost_calculator, mock_disposition_engine):
+    """
+    Tests that a WITHDRAWAL transaction consumes a cash cost lot but does not generate P&L.
+    This will fail with the current DefaultStrategy mapping.
+    """
+    # Arrange
+    withdrawal_transaction = Transaction(
+        transaction_id="WITHDRAWAL_01",
+        portfolio_id="P1",
+        instrument_id="CASH_USD",
+        security_id="CASH_USD",
+        transaction_type="WITHDRAWAL",
+        transaction_date=datetime(2023, 2, 20),
+        quantity=Decimal("500"),
+        price=Decimal("1"),
+        gross_transaction_amount=Decimal("500"),
+        trade_currency="USD",
+        portfolio_base_currency="USD",
+        transaction_fx_rate=Decimal("1.0")
+    )
+    
+    # Simulate the disposition engine returning the cost of the withdrawn cash
+    mock_disposition_engine.consume_sell_quantity.return_value = (
+        Decimal("500"), Decimal("500"), Decimal("500"), None
+    )
+
+    # Act
+    cost_calculator.calculate_transaction_costs(withdrawal_transaction)
+
+    # Assert
+    # It should have called the disposition engine to "consume" the cash lot
+    mock_disposition_engine.consume_sell_quantity.assert_called_once_with(withdrawal_transaction)
+
+    # Crucially, it should NOT have calculated a realized gain/loss
+    assert withdrawal_transaction.realized_gain_loss is None
