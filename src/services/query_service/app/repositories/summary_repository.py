@@ -81,15 +81,14 @@ class SummaryRepository:
             select(Cashflow)
             .join(Cashflow.transaction)
             .options(contains_eager(Cashflow.transaction))
-            .join(PositionState, (PositionState.portfolio_id == Cashflow.portfolio_id))
             .where(
                 Cashflow.portfolio_id == portfolio_id,
                 Cashflow.cashflow_date.between(start_date, end_date),
                 Cashflow.epoch == func.coalesce(current_epoch_subq, 0)
             )
             .order_by(Cashflow.cashflow_date)
-        )
-        
+        )  
+
         result = await self.db.execute(stmt)
         return result.scalars().all()
 
