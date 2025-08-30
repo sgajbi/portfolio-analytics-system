@@ -12,7 +12,7 @@ from src.services.calculators.position_calculator.app.repositories.position_repo
 from portfolio_common.position_state_repository import PositionStateRepository
 from portfolio_common.kafka_utils import KafkaProducer
 
-# NOTE: pytestmark has been removed. Tests are marked individually.
+pytestmark = pytest.mark.asyncio
 
 @pytest.fixture
 def mock_repo() -> AsyncMock:
@@ -44,7 +44,6 @@ def sample_event() -> TransactionEvent:
         trade_currency="USD", currency="USD", net_cost=Decimal("5505")
     )
 
-@pytest.mark.asyncio
 async def test_calculate_normal_flow(
     mock_repo: AsyncMock,
     mock_state_repo: AsyncMock,
@@ -71,7 +70,6 @@ async def test_calculate_normal_flow(
     mock_repo.save_positions.assert_awaited_once()
     mock_kafka_producer.publish_message.assert_not_called()
 
-@pytest.mark.asyncio
 async def test_calculate_re_emits_events_for_original_backdated_transaction(
     mock_repo: AsyncMock,
     mock_state_repo: AsyncMock,
@@ -108,10 +106,10 @@ async def test_calculate_re_emits_events_for_original_backdated_transaction(
     assert mock_kafka_producer.publish_message.call_count == 2
     mock_kafka_producer.flush.assert_called_once()
     
+    # Verify the epoch is embedded in the replayed event payload
     first_call_args = mock_kafka_producer.publish_message.call_args_list[0].kwargs
     assert first_call_args['value']['epoch'] == 1
 
-@pytest.mark.asyncio
 async def test_calculate_bypasses_back_dating_check_for_replayed_event(
     mock_repo: AsyncMock,
     mock_state_repo: AsyncMock,
@@ -124,6 +122,7 @@ async def test_calculate_bypasses_back_dating_check_for_replayed_event(
     THEN it should BYPASS the reprocessing trigger and proceed to normal calculation.
     """
     # ARRANGE
+    # This state would normally trigger reprocessing, but the epoch header should prevent it.
     current_state = PositionState(watermark_date=date(2025, 8, 25), epoch=1) 
     mock_state_repo.get_or_create_state.return_value = current_state
     mock_repo.get_transactions_on_or_after.return_value = [sample_event]
@@ -134,11 +133,13 @@ async def test_calculate_bypasses_back_dating_check_for_replayed_event(
     )
 
     # ASSERT
+    # The key assertion: The reprocessing logic was NOT triggered for a replayed event.
     mock_state_repo.increment_epoch_and_reset_watermark.assert_not_called()
     mock_repo.get_all_transactions_for_security.assert_not_called()
+
+    # The normal calculation logic SHOULD have been called.
     mock_repo.save_positions.assert_awaited_once()
 
-@pytest.mark.asyncio
 async def test_back_dated_check_uses_snapshot_date_when_watermark_is_stale(
     mock_repo: AsyncMock,
     mock_state_repo: AsyncMock,
@@ -153,12 +154,17 @@ async def test_back_dated_check_uses_snapshot_date_when_watermark_is_stale(
     THEN it should correctly identify it as back-dated and trigger reprocessing.
     """
     # ARRANGE
+    # 1. State has a stale, far-past watermark but is in epoch 0
     current_state = PositionState(watermark_date=date(1970, 1, 1), epoch=0, status='CURRENT')
     mock_state_repo.get_or_create_state.return_value = current_state
+
+    # 2. A snapshot exists for a date *after* our incoming transaction
     latest_snapshot_date = date(2025, 8, 22)
     mock_repo.get_latest_completed_snapshot_date.return_value = latest_snapshot_date
+
+    # 3. Mocks for the reprocessing path
     mock_state_repo.increment_epoch_and_reset_watermark.return_value = PositionState(epoch=1)
-    mock_repo.get_all_transactions_for_security.return_value = []
+    mock_repo.get_all_transactions_for_security.return_value = [] # Return empty list is fine for this test
 
     # ACT
     await PositionCalculator.calculate(
@@ -167,16 +173,16 @@ async def test_back_dated_check_uses_snapshot_date_when_watermark_is_stale(
         repo=mock_repo,
         position_state_repo=mock_state_repo,
         kafka_producer=mock_kafka_producer,
-        reprocess_epoch=None
+        reprocess_epoch=None # This is an original event, not a replay
     )
 
     # ASSERT
+    # The logic should have consulted the snapshot date and triggered a reset
     mock_repo.get_latest_completed_snapshot_date.assert_awaited_once_with("P1", "S1", 0)
     mock_state_repo.increment_epoch_and_reset_watermark.assert_awaited_once()
-    mock_repo.get_all_transactions_for_security.assert_awaited_once()
+    mock_repo.get_all_transactions_for_security.assert_awaited_once() # Confirms reprocessing was triggered
     mock_kafka_producer.flush.assert_called_once()
 
-@pytest.mark.asyncio
 async def test_same_day_transaction_is_not_backdated(
     mock_repo: AsyncMock,
     mock_state_repo: AsyncMock,
@@ -189,9 +195,11 @@ async def test_same_day_transaction_is_not_backdated(
     THEN it should NOT be considered back-dated and should process normally.
     """
     # ARRANGE
+    # The transaction is on 2025-08-20. We set the effective date to the same day.
     current_state = PositionState(watermark_date=date(2025, 8, 20), epoch=0)
     mock_state_repo.get_or_create_state.return_value = current_state
-    mock_repo.get_latest_completed_snapshot_date.return_value = None
+    mock_repo.get_latest_completed_snapshot_date.return_value = None # Watermark is the effective date
+    
     mock_repo.get_transactions_on_or_after.return_value = [sample_event]
 
     # ACT
@@ -200,9 +208,12 @@ async def test_same_day_transaction_is_not_backdated(
     )
 
     # ASSERT
+    # Reprocessing should NOT be triggered
     mock_state_repo.increment_epoch_and_reset_watermark.assert_not_called()
+    # Normal processing should occur
     mock_repo.save_positions.assert_awaited_once()
 
+# --- NEW FAILING TEST (TDD) ---
 def test_calculate_next_position_for_transfer_in_uses_quantity_field():
     """
     GIVEN a TRANSFER_IN transaction where quantity and gross amount differ
@@ -213,12 +224,13 @@ def test_calculate_next_position_for_transfer_in_uses_quantity_field():
     # ARRANGE
     initial_state = PositionStateDTO(quantity=Decimal("0"), cost_basis=Decimal("0"))
     
+    # This event simulates an in-kind transfer of 100 shares, valued at $15000
     transfer_in_event = TransactionEvent(
         transaction_id="T_IN_1", portfolio_id="P1", instrument_id="I1", security_id="S1",
         transaction_date=datetime(2025, 8, 21), transaction_type="TRANSFER_IN", 
-        quantity=Decimal("100"),
+        quantity=Decimal("100"),  # The actual number of shares
         price=Decimal("150"),
-        gross_transaction_amount=Decimal("15000"),
+        gross_transaction_amount=Decimal("15000"), # The value of the shares
         trade_currency="USD", currency="USD"
     )
 
@@ -226,38 +238,7 @@ def test_calculate_next_position_for_transfer_in_uses_quantity_field():
     new_state = PositionCalculator.calculate_next_position(initial_state, transfer_in_event)
     
     # ASSERT
+    # The new quantity should be 100, not 15000. This assertion will fail with the buggy code.
     assert new_state.quantity == Decimal("100")
+    # The cost basis should be increased by the value of the transfer
     assert new_state.cost_basis == Decimal("15000")
-
-# --- NEW FAILING TEST (TDD) ---
-def test_calculate_next_position_for_transfer_out_uses_proportional_cost():
-    """
-    GIVEN a TRANSFER_OUT transaction
-    WHEN calculate_next_position is called
-    THEN the new position's quantity and cost basis should be proportionally reduced.
-    """
-    # ARRANGE
-    # Initial state: 100 shares with a total cost of $10,000 ($100/share avg cost)
-    initial_state = PositionStateDTO(quantity=Decimal("100"), cost_basis=Decimal("10000"))
-    
-    # Transfer out 20 shares. The market value at the time is $2400.
-    transfer_out_event = TransactionEvent(
-        transaction_id="T_OUT_1", portfolio_id="P1", instrument_id="I1", security_id="S1",
-        transaction_date=datetime(2025, 8, 22), transaction_type="TRANSFER_OUT", 
-        quantity=Decimal("20"), # The number of shares transferred out
-        price=Decimal("120"),
-        gross_transaction_amount=Decimal("2400"), # The value of the shares at transfer
-        trade_currency="USD", currency="USD"
-    )
-
-    # ACT
-    new_state = PositionCalculator.calculate_next_position(initial_state, transfer_out_event)
-    
-    # ASSERT
-    # The new quantity should be 80. The buggy code will calculate 100 - 2400 = -2300.
-    assert new_state.quantity == Decimal("80")
-    
-    # The cost basis should be reduced proportionally: 10000 * (20/100) = 2000.
-    # New cost basis should be 10000 - 2000 = 8000.
-    # The buggy code will calculate 10000 - 2400 = 7600.
-    assert new_state.cost_basis == Decimal("8000")

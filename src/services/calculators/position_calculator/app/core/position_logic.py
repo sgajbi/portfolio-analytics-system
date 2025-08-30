@@ -168,17 +168,21 @@ class PositionCalculator:
             cost_basis_local += transaction.gross_transaction_amount
         
         # --- THIS IS THE FIX ---
-        # Grouped logic for dispositions of securities
+        # Grouped logic for dispositions of securities (a transfer out is a disposition)
         elif txn_type in ["SELL", "TRANSFER_OUT"]:
             if quantity != Decimal(0):
-                proportion_sold = transaction.quantity / quantity
-                cogs_base = cost_basis * proportion_sold
-                cogs_local = cost_basis_local * proportion_sold
-                cost_basis -= cogs_base
-                cost_basis_local -= cogs_local
+                # Reduce cost basis proportionally to the quantity being removed
+                proportion_of_holding = transaction.quantity / quantity
+                cost_basis_reduction = cost_basis * proportion_of_holding
+                cost_basis_local_reduction = cost_basis_local * proportion_of_holding
+                
+                cost_basis -= cost_basis_reduction
+                cost_basis_local -= cost_basis_local_reduction
+            # Reduce the quantity
             quantity -= transaction.quantity
-        # Logic specifically for cash reductions
+        # Logic specifically for cash-only reductions from a cash position
         elif txn_type in ["FEE", "TAX", "WITHDRAWAL"]:
+            # This logic assumes it's operating on a cash position where quantity IS the amount
             quantity -= transaction.gross_transaction_amount
             cost_basis -= transaction.gross_transaction_amount
             cost_basis_local -= transaction.gross_transaction_amount
