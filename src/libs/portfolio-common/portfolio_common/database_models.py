@@ -116,6 +116,13 @@ class Instrument(Base):
     isin = Column(String, unique=True, nullable=False)
     currency = Column(String, nullable=False)
     product_type = Column(String, nullable=False)
+    # --- NEW COLUMNS (RFC 008) ---
+    asset_class = Column(String, nullable=True)
+    sector = Column(String, nullable=True)
+    country_of_risk = Column(String, nullable=True)
+    rating = Column(String, nullable=True)
+    maturity_date = Column(Date, nullable=True)
+    # --- END NEW COLUMNS ---
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
