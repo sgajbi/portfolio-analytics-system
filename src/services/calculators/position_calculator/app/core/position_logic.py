@@ -44,7 +44,6 @@ class PositionCalculator:
 
         current_state = await position_state_repo.get_or_create_state(portfolio_id, security_id)
         
-        # --- EPOCH FENCING ---
         message_epoch = reprocess_epoch if reprocess_epoch is not None else current_state.epoch
         if message_epoch < current_state.epoch:
             EPOCH_MISMATCH_DROPPED_TOTAL.labels(
@@ -62,8 +61,6 @@ class PositionCalculator:
             )
             return
 
-        # --- RFC CHANGE A: Harden the back-dated detector ---
-        # Determine the effective date of the last completed work for the current epoch.
         latest_snapshot_date = await repo.get_latest_completed_snapshot_date(
             portfolio_id, security_id, current_state.epoch
         )
@@ -72,7 +69,6 @@ class PositionCalculator:
             latest_snapshot_date if latest_snapshot_date else date(1970, 1, 1)
         )
         
-        # --- LOGIC FIX: Use strict less-than to avoid flagging same-day events ---
         is_backdated = transaction_date < effective_completed_date
         
         if is_backdated and reprocess_epoch is None:
@@ -96,7 +92,6 @@ class PositionCalculator:
             logger.info(f"Re-emitting {len(all_transactions)} transactions for Epoch {new_state.epoch}")
             for txn in all_transactions:
                 event_to_publish = TransactionEvent.model_validate(txn)
-                # --- FIX: Embed epoch in payload, remove headers ---
                 event_to_publish.epoch = new_state.epoch
                 kafka_producer.publish_message(
                     topic=KAFKA_PROCESSED_TRANSACTIONS_COMPLETED_TOPIC,
@@ -106,7 +101,6 @@ class PositionCalculator:
             kafka_producer.flush()
             return
 
-        # --- Normal Flow (for original and replayed events) ---
         await repo.delete_positions_from(portfolio_id, security_id, transaction_date, message_epoch)
         anchor_position = await repo.get_last_position_before(portfolio_id, security_id, transaction_date, message_epoch)
         transactions_to_replay = await repo.get_transactions_on_or_after(portfolio_id, security_id, transaction_date)
@@ -147,7 +141,7 @@ class PositionCalculator:
                 quantity=new_state.quantity,
                 cost_basis=new_state.cost_basis,
                 cost_basis_local=new_state.cost_basis_local,
-                epoch=epoch # Tag record with the current epoch
+                epoch=epoch
             )
             new_history_records.append(new_position_record)
             
@@ -169,12 +163,13 @@ class PositionCalculator:
             cost_basis += net_cost
             cost_basis_local += net_cost_local
         elif txn_type in ["DEPOSIT", "TRANSFER_IN"]:
-            # --- THIS IS THE FIX ---
-            quantity += transaction.quantity # Use the quantity field for shares
-            # --- END FIX ---
-            cost_basis += transaction.gross_transaction_amount # Cost basis is the value transferred in
+            quantity += transaction.quantity
+            cost_basis += transaction.gross_transaction_amount
             cost_basis_local += transaction.gross_transaction_amount
-        elif txn_type == "SELL":
+        
+        # --- THIS IS THE FIX ---
+        # Grouped logic for dispositions of securities
+        elif txn_type in ["SELL", "TRANSFER_OUT"]:
             if quantity != Decimal(0):
                 proportion_sold = transaction.quantity / quantity
                 cogs_base = cost_basis * proportion_sold
@@ -182,10 +177,13 @@ class PositionCalculator:
                 cost_basis -= cogs_base
                 cost_basis_local -= cogs_local
             quantity -= transaction.quantity
-        elif txn_type in ["FEE", "TAX", "TRANSFER_OUT", "WITHDRAWAL"]:
+        # Logic specifically for cash reductions
+        elif txn_type in ["FEE", "TAX", "WITHDRAWAL"]:
             quantity -= transaction.gross_transaction_amount
             cost_basis -= transaction.gross_transaction_amount
             cost_basis_local -= transaction.gross_transaction_amount
+        # --- END FIX ---
+        
         else:
             logger.debug(f"[CalculateNext] Txn type {txn_type} does not affect position quantity/cost.")
 

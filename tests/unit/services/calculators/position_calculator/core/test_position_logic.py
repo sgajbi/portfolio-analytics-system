@@ -203,7 +203,6 @@ async def test_same_day_transaction_is_not_backdated(
     mock_state_repo.increment_epoch_and_reset_watermark.assert_not_called()
     mock_repo.save_positions.assert_awaited_once()
 
-# --- NEW FAILING TEST (TDD) ---
 def test_calculate_next_position_for_transfer_in_uses_quantity_field():
     """
     GIVEN a TRANSFER_IN transaction where quantity and gross amount differ
@@ -229,3 +228,36 @@ def test_calculate_next_position_for_transfer_in_uses_quantity_field():
     # ASSERT
     assert new_state.quantity == Decimal("100")
     assert new_state.cost_basis == Decimal("15000")
+
+# --- NEW FAILING TEST (TDD) ---
+def test_calculate_next_position_for_transfer_out_uses_proportional_cost():
+    """
+    GIVEN a TRANSFER_OUT transaction
+    WHEN calculate_next_position is called
+    THEN the new position's quantity and cost basis should be proportionally reduced.
+    """
+    # ARRANGE
+    # Initial state: 100 shares with a total cost of $10,000 ($100/share avg cost)
+    initial_state = PositionStateDTO(quantity=Decimal("100"), cost_basis=Decimal("10000"))
+    
+    # Transfer out 20 shares. The market value at the time is $2400.
+    transfer_out_event = TransactionEvent(
+        transaction_id="T_OUT_1", portfolio_id="P1", instrument_id="I1", security_id="S1",
+        transaction_date=datetime(2025, 8, 22), transaction_type="TRANSFER_OUT", 
+        quantity=Decimal("20"), # The number of shares transferred out
+        price=Decimal("120"),
+        gross_transaction_amount=Decimal("2400"), # The value of the shares at transfer
+        trade_currency="USD", currency="USD"
+    )
+
+    # ACT
+    new_state = PositionCalculator.calculate_next_position(initial_state, transfer_out_event)
+    
+    # ASSERT
+    # The new quantity should be 80. The buggy code will calculate 100 - 2400 = -2300.
+    assert new_state.quantity == Decimal("80")
+    
+    # The cost basis should be reduced proportionally: 10000 * (20/100) = 2000.
+    # New cost basis should be 10000 - 2000 = 8000.
+    # The buggy code will calculate 10000 - 2400 = 7600.
+    assert new_state.cost_basis == Decimal("8000")

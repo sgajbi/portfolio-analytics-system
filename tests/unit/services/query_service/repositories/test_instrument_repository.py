@@ -10,24 +10,26 @@ pytestmark = pytest.mark.asyncio
 
 @pytest.fixture
 def mock_db_session() -> AsyncMock:
-    """Provides a mock SQLAlchemy AsyncSession with configurable results."""
-    # This is the top-level mock for the session dependency
+    """Provides a mock SQLAlchemy AsyncSession that can handle list and count queries."""
     session = AsyncMock(spec=AsyncSession)
 
-    # --- New Mocking Strategy ---
-    # This async function will be the side_effect for the `execute` method.
-    # It creates a fresh mock result object for each call.
-    async def execute_side_effect(statement):
-        mock_result = MagicMock()
-        if "count" in str(statement.compile()).lower():
-            # If it's a count query, configure the mock to return a scalar
-            mock_result.scalar.return_value = 5
-        else:
-            # If it's a select query, configure the chain to return a list
-            mock_result.scalars.return_value.all.return_value = [Instrument(), Instrument()]
-        return mock_result
+    # --- FINAL FIX: This fixture handles both query types ---
+    
+    # 1. Configure mock for the COUNT query path
+    mock_count_result = MagicMock()
+    mock_count_result.scalar.return_value = 5
 
-    # Assign the side_effect to an AsyncMock to allow awaiting AND assertions.
+    # 2. Configure mock for the LIST query path
+    mock_list_result = MagicMock()
+    mock_list_result.scalars.return_value.all.return_value = [Instrument(), Instrument()]
+
+    # 3. Use a side_effect to inspect the query and return the correct mock
+    async def execute_side_effect(statement):
+        if "count" in str(statement.compile()).lower():
+            return mock_count_result
+        return mock_list_result
+
+    # 4. Assign the side_effect to an AsyncMock to allow awaiting AND assertions
     session.execute = AsyncMock(side_effect=execute_side_effect)
     
     return session
