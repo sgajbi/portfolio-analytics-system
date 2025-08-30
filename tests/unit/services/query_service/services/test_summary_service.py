@@ -3,10 +3,14 @@ import pytest
 from unittest.mock import AsyncMock, patch
 from datetime import date, timedelta
 from decimal import Decimal
+from typing import List, Any, Dict
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.services.query_service.app.services.summary_service import SummaryService
-from src.services.query_service.app.dtos.summary_dto import SummaryRequest
+from src.services.query_service.app.dtos.summary_dto import (
+    SummaryRequest, SummaryResponse, ResponseScope, WealthSummary, PnlSummary,
+    IncomeSummary, ActivitySummary, AllocationSummary, AllocationGroup
+)
 from portfolio_common.database_models import Portfolio, DailyPositionSnapshot, Instrument, Cashflow, Transaction
 
 pytestmark = pytest.mark.asyncio
@@ -34,7 +38,6 @@ def mock_dependencies():
         (mock_snapshot_1, mock_instrument_1), (mock_snapshot_2, mock_instrument_2), (mock_snapshot_3, mock_instrument_3),
     ]
 
-    # Mock cashflows with nested transaction objects
     mock_summary_repo.get_cashflows_for_period.return_value = [
         Cashflow(classification="CASHFLOW_IN", amount=Decimal("10000"), transaction=Transaction(transaction_type="DEPOSIT")),
         Cashflow(classification="CASHFLOW_OUT", amount=Decimal("-2000"), transaction=Transaction(transaction_type="WITHDRAWAL")),
@@ -105,3 +108,49 @@ async def test_summary_service_calculates_all_sections(mock_dependencies):
     income = response.income_summary
     assert income.total_dividends == Decimal("500")
     assert income.total_interest == Decimal("150")
+
+# --- REVISED FAILING TEST (TDD) ---
+async def test_summary_service_calculates_maturity_bucket_from_as_of_date(mock_dependencies):
+    """
+    GIVEN a request with a historical as_of_date
+    WHEN the summary service calculates maturity buckets
+    THEN it should be relative to the as_of_date, not today.
+    """
+    # ARRANGE
+    service = mock_dependencies["service"]
+    mock_summary_repo = mock_dependencies["summary_repo"]
+    
+    # Set dates to expose the bug
+    historical_as_of_date = date(2024, 8, 30)
+    maturity_date = date(2025, 12, 31)
+
+    # Correct calculation: maturity_date (2025-12-31) - as_of_date (2024-08-30) is ~1.3 years.
+    # This should fall into the "1-3Y" bucket.
+    
+    # Buggy calculation: maturity_date (2025-12-31) - date.today() (2025-08-30) is ~4 months.
+    # This will incorrectly fall into the "0-1Y" bucket.
+
+    mock_snapshot = DailyPositionSnapshot(security_id="BOND_1", market_value=Decimal("1000"))
+    mock_instrument = Instrument(
+        security_id="BOND_1", product_type="Bond", asset_class="Fixed Income", 
+        maturity_date=maturity_date
+    )
+    mock_summary_repo.get_wealth_and_allocation_data.return_value = [(mock_snapshot, mock_instrument)]
+    
+    request = SummaryRequest.model_validate({
+        "as_of_date": historical_as_of_date.isoformat(),
+        "period": {"type": "YTD"},
+        "sections": ["ALLOCATION"],
+        "allocation_dimensions": ["MATURITY_BUCKET"]
+    })
+
+    # ACT
+    response = await service.get_portfolio_summary("P1", request)
+
+    # ASSERT
+    allocation = response.allocation
+    assert allocation is not None
+    assert allocation.by_maturity_bucket is not None
+    assert len(allocation.by_maturity_bucket) == 1
+    # This assertion will now fail because the buggy code will calculate "0-1Y"
+    assert allocation.by_maturity_bucket[0].group == "1-3Y"

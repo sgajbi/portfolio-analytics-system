@@ -16,7 +16,7 @@ from ..dtos.summary_dto import (
     AllocationSummary, AllocationGroup, AllocationDimension, SummarySection,
     PnlSummary, IncomeSummary, ActivitySummary
 )
-from portfolio_common.database_models import Portfolio, DailyPositionSnapshot, Instrument, Cashflow
+from portfolio_common.database_models import Portfolio, DailyPositionSnapshot, Instrument, Cashflow, Transaction
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +33,8 @@ class SummaryService:
         self,
         positions_data: List[Any],
         dimension: AllocationDimension,
-        total_market_value: Decimal
+        total_market_value: Decimal,
+        as_of_date: date # <-- FIX: Pass in the as_of_date
     ) -> List[AllocationGroup]:
         if total_market_value == 0: return []
         grouped_allocation: Dict[str, Decimal] = defaultdict(Decimal)
@@ -50,7 +51,9 @@ class SummaryService:
                 group_key = getattr(instrument, attribute_name) or "Unclassified"
             elif dimension == AllocationDimension.MATURITY_BUCKET:
                 if instrument.maturity_date and instrument.asset_class == 'Fixed Income':
-                    years_to_maturity = (instrument.maturity_date - date.today()).days / 365.25
+                    # --- THIS IS THE FIX ---
+                    years_to_maturity = (instrument.maturity_date - as_of_date).days / 365.25
+                    # --- END FIX ---
                     if years_to_maturity <= 1: group_key = '0-1Y'
                     elif years_to_maturity <= 3: group_key = '1-3Y'
                     elif years_to_maturity <= 5: group_key = '3-5Y'
@@ -97,7 +100,12 @@ class SummaryService:
             total_cash = sum(s.market_value or Decimal(0) for s, i in data["positions"] if i.product_type == 'Cash')
             wealth_summary = WealthSummary(total_market_value=total_mv, total_cash=total_cash)
         if SummarySection.ALLOCATION in request.sections and request.allocation_dimensions and data["positions"]:
-            allocation_dict = {f"by_{dim.value.lower()}": self._calculate_allocation_by_dimension(data["positions"], dim, wealth_summary.total_market_value) for dim in request.allocation_dimensions}
+            # --- FIX: Pass the as_of_date to the helper method ---
+            allocation_dict = {
+                f"by_{dim.value.lower()}": self._calculate_allocation_by_dimension(
+                    data["positions"], dim, wealth_summary.total_market_value, request.as_of_date
+                ) for dim in request.allocation_dimensions
+            }
             allocation_summary = AllocationSummary.model_validate(allocation_dict)
         if any(s in request.sections for s in [SummarySection.PNL, SummarySection.INCOME, SummarySection.ACTIVITY]):
             raw_cashflows: List[Cashflow] = data["cashflows"]
