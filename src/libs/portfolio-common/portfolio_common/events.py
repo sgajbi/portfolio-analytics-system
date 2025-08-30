@@ -64,6 +64,13 @@ class InstrumentEvent(BaseModel):
     isin: str
     currency: str = Field(..., alias="instrumentCurrency")
     product_type: str = Field(..., alias="productType")
+    # --- NEW FIELDS (RFC 008) ---
+    asset_class: Optional[str] = Field(None, alias="assetClass")
+    sector: Optional[str] = None
+    country_of_risk: Optional[str] = Field(None, alias="countryOfRisk")
+    rating: Optional[str] = None
+    maturity_date: Optional[date] = Field(None, alias="maturityDate")
+    # --- END NEW FIELDS ---
 
 class TransactionEvent(BaseModel):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
