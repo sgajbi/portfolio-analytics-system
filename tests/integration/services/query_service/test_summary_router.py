@@ -1,0 +1,90 @@
+# tests/integration/services/query_service/test_summary_router.py
+import pytest
+import pytest_asyncio
+import httpx
+from unittest.mock import AsyncMock
+from datetime import date
+from decimal import Decimal
+
+from src.services.query_service.app.main import app
+from src.services.query_service.app.services.summary_service import SummaryService
+from src.services.query_service.app.dtos.summary_dto import SummaryResponse, ResponseScope, WealthSummary
+
+pytestmark = pytest.mark.asyncio
+
+@pytest_asyncio.fixture
+async def async_test_client():
+    """Provides an httpx.AsyncClient for the query service app with mocked dependencies."""
+    mock_summary_service = AsyncMock(spec=SummaryService)
+    
+    # Define a default mock response
+    mock_response = SummaryResponse(
+        scope=ResponseScope(
+            portfolio_id="P1",
+            as_of_date=date(2025, 8, 29),
+            period_start_date=date(2025, 1, 1),
+            period_end_date=date(2025, 8, 29)
+        ),
+        wealth=WealthSummary(
+            total_market_value=Decimal("125000"),
+            total_cash=Decimal("25000")
+        )
+    )
+    mock_summary_service.get_portfolio_summary.return_value = mock_response
+
+    # Override the dependency using the get_summary_service function as the key
+    from src.services.query_service.app.routers.summary import get_summary_service
+    app.dependency_overrides[get_summary_service] = lambda: mock_summary_service
+    
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        yield client, mock_summary_service
+    
+    # Clean up the override
+    del app.dependency_overrides[get_summary_service]
+
+async def test_get_portfolio_summary_success(async_test_client):
+    """
+    GIVEN a valid request
+    WHEN the /summary endpoint is called
+    THEN it should return a 200 OK with the data from the service.
+    """
+    client, mock_service = async_test_client
+    portfolio_id = "P1"
+    request_payload = {
+        "as_of_date": "2025-08-29",
+        "period": {"type": "YTD"},
+        "sections": ["WEALTH"]
+    }
+
+    response = await client.post(f"/portfolios/{portfolio_id}/summary", json=request_payload)
+
+    assert response.status_code == 200
+    
+    response_data = response.json()
+    assert response_data["scope"]["portfolio_id"] == portfolio_id
+    assert response_data["wealth"]["total_market_value"] == "125000"
+    mock_service.get_portfolio_summary.assert_awaited_once()
+
+async def test_get_portfolio_summary_not_found(async_test_client):
+    """
+    GIVEN a request for a non-existent portfolio
+    WHEN the service raises a ValueError
+    THEN the endpoint should return a 404 Not Found.
+    """
+    client, mock_service = async_test_client
+    portfolio_id = "P_NOT_FOUND"
+    
+    # Configure the mock to raise the expected exception
+    mock_service.get_portfolio_summary.side_effect = ValueError(f"Portfolio {portfolio_id} not found")
+
+    request_payload = {
+        "as_of_date": "2025-08-29",
+        "period": {"type": "YTD"},
+        "sections": ["WEALTH"]
+    }
+    
+    response = await client.post(f"/portfolios/{portfolio_id}/summary", json=request_payload)
+    
+    assert response.status_code == 404
+    assert response.json()["detail"] == f"Portfolio {portfolio_id} not found"
