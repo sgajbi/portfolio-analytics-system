@@ -2,6 +2,7 @@
 import pytest
 from decimal import Decimal
 from .api_client import E2EApiClient
+from datetime import date, timedelta
 
 # --- Test Data Constants ---
 PORTFOLIO_ID = "E2E_SUM_PORT_01"
@@ -16,7 +17,7 @@ def setup_summary_data(clean_db_module, e2e_api_client: E2EApiClient, poll_db_un
     """
     A module-scoped fixture that ingests all necessary data for the summary E2E test.
     """
-    # 1. Ingest prerequisite data (Portfolio, Instruments with new fields)
+    # 1. Ingest prerequisite data
     e2e_api_client.ingest("/ingest/portfolios", {"portfolios": [{"portfolioId": PORTFOLIO_ID, "baseCurrency": "USD", "openDate": "2025-01-01", "cifId": "SUM_CIF", "status": "ACTIVE", "riskExposure":"a", "investmentTimeHorizon":"b", "portfolioType":"c", "bookingCenter":"d"}]})
     e2e_api_client.ingest("/ingest/instruments", {"instruments": [
         {"securityId": CASH_ID, "name": "US Dollar", "isin": "CASH_USD_ISIN", "instrumentCurrency": "USD", "productType": "Cash", "assetClass": "Cash"},
@@ -29,13 +30,16 @@ def setup_summary_data(clean_db_module, e2e_api_client: E2EApiClient, poll_db_un
     ]})
     e2e_api_client.ingest("/ingest/business-dates", {"business_dates": [{"businessDate": d} for d in [PERIOD_START, "2025-08-05", "2025-08-15", "2025-08-20", AS_OF_DATE]]})
 
-    # 2. Ingest transactions over the period
+    # 2. Ingest transactions over the period (with cash settlement legs)
     transactions = [
-        {"transaction_id": "SUM_DEPOSIT_01", "portfolio_id": PORTFOLIO_ID, "security_id": CASH_ID, "transaction_date": f"{PERIOD_START}T09:00:00Z", "transaction_type": "DEPOSIT", "quantity": 1000000, "price": 1, "gross_transaction_amount": 1000000},
-        {"transaction_id": "SUM_BUY_MSFT", "portfolio_id": PORTFOLIO_ID, "security_id": MSFT_ID, "transaction_date": "2025-08-05T10:00:00Z", "transaction_type": "BUY", "quantity": 1000, "price": 300, "gross_transaction_amount": 300000},
-        {"transaction_id": "SUM_BUY_ROG", "portfolio_id": PORTFOLIO_ID, "security_id": ROG_ID, "transaction_date": "2025-08-05T11:00:00Z", "transaction_type": "BUY", "quantity": 2000, "price": 250, "gross_transaction_amount": 500000, "trade_currency": "CHF", "currency": "CHF"},
-        {"transaction_id": "SUM_SELL_MSFT", "portfolio_id": PORTFOLIO_ID, "security_id": MSFT_ID, "transaction_date": "2025-08-15T10:00:00Z", "transaction_type": "SELL", "quantity": 200, "price": 320, "gross_transaction_amount": 64000},
-        {"transaction_id": "SUM_FEE_01", "portfolio_id": PORTFOLIO_ID, "security_id": CASH_ID, "transaction_date": "2025-08-20T10:00:00Z", "transaction_type": "FEE", "quantity": 1, "price": 50, "gross_transaction_amount": 50}
+        {"transaction_id": "SUM_DEPOSIT_01", "portfolio_id": PORTFOLIO_ID, "instrument_id": "CASH", "security_id": CASH_ID, "transaction_date": f"{PERIOD_START}T09:00:00Z", "transaction_type": "DEPOSIT", "quantity": 1000000, "price": 1, "gross_transaction_amount": 1000000, "trade_currency": "USD", "currency": "USD"},
+        {"transaction_id": "SUM_BUY_MSFT", "portfolio_id": PORTFOLIO_ID, "instrument_id": "MSFT", "security_id": MSFT_ID, "transaction_date": "2025-08-05T10:00:00Z", "transaction_type": "BUY", "quantity": 1000, "price": 300, "gross_transaction_amount": 300000, "trade_currency": "USD", "currency": "USD"},
+        {"transaction_id": "SUM_CASH_SETTLE_1", "portfolio_id": PORTFOLIO_ID, "instrument_id": "CASH", "security_id": CASH_ID, "transaction_date": "2025-08-05T10:00:00Z", "transaction_type": "SELL", "quantity": 300000, "price": 1, "gross_transaction_amount": 300000, "trade_currency": "USD", "currency": "USD"},
+        {"transaction_id": "SUM_BUY_ROG", "portfolio_id": PORTFOLIO_ID, "instrument_id": "ROG", "security_id": ROG_ID, "transaction_date": "2025-08-05T11:00:00Z", "transaction_type": "BUY", "quantity": 2000, "price": 250, "gross_transaction_amount": 500000, "trade_currency": "CHF", "currency": "CHF"},
+        {"transaction_id": "SUM_CASH_SETTLE_2", "portfolio_id": PORTFOLIO_ID, "instrument_id": "CASH", "security_id": CASH_ID, "transaction_date": "2025-08-05T11:00:00Z", "transaction_type": "SELL", "quantity": 550000, "price": 1, "gross_transaction_amount": 550000, "trade_currency": "USD", "currency": "USD"},
+        {"transaction_id": "SUM_SELL_MSFT", "portfolio_id": PORTFOLIO_ID, "instrument_id": "MSFT", "security_id": MSFT_ID, "transaction_date": "2025-08-15T10:00:00Z", "transaction_type": "SELL", "quantity": 200, "price": 320, "gross_transaction_amount": 64000, "trade_currency": "USD", "currency": "USD"},
+        {"transaction_id": "SUM_CASH_SETTLE_3", "portfolio_id": PORTFOLIO_ID, "instrument_id": "CASH", "security_id": CASH_ID, "transaction_date": "2025-08-15T10:00:00Z", "transaction_type": "BUY", "quantity": 64000, "price": 1, "gross_transaction_amount": 64000, "trade_currency": "USD", "currency": "USD"},
+        {"transaction_id": "SUM_FEE_01", "portfolio_id": PORTFOLIO_ID, "instrument_id": "CASH", "security_id": CASH_ID, "transaction_date": "2025-08-20T10:00:00Z", "transaction_type": "FEE", "quantity": 1, "price": 50, "gross_transaction_amount": 50, "trade_currency": "USD", "currency": "USD"}
     ]
     e2e_api_client.ingest("/ingest/transactions", {"transactions": transactions})
     
