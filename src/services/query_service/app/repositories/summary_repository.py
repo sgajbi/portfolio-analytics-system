@@ -6,7 +6,7 @@ from decimal import Decimal
 
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import aliased
+from sqlalchemy.orm import aliased, contains_eager
 from portfolio_common.database_models import DailyPositionSnapshot, PositionState, Instrument, Cashflow, Transaction
 from portfolio_common.utils import async_timed
 
@@ -24,7 +24,6 @@ class SummaryRepository:
         """
         Retrieves the single latest daily snapshot for each security in a given portfolio
         on or before the as_of_date, ensuring the snapshot belongs to the current epoch.
-        The result is joined with instrument data for allocation calculations.
         """
         ranked_snapshots_subq = select(
             DailyPositionSnapshot,
@@ -70,6 +69,7 @@ class SummaryRepository:
     ) -> List[Cashflow]:
         """
         Fetches all cashflow records for the specified period, filtered by the current epoch.
+        Eagerly loads the related Transaction to get the original transaction type.
         """
         current_epoch_subq = (
             select(func.max(PositionState.epoch))
@@ -79,6 +79,8 @@ class SummaryRepository:
 
         stmt = (
             select(Cashflow)
+            .join(Cashflow.transaction)
+            .options(contains_eager(Cashflow.transaction))
             .join(PositionState, (PositionState.portfolio_id == Cashflow.portfolio_id))
             .where(
                 Cashflow.portfolio_id == portfolio_id,
