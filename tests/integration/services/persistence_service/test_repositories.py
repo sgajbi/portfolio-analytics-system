@@ -1,8 +1,8 @@
 # services/persistence_service/tests/integration/test_repositories.py
 import pytest
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from portfolio_common.database_models import Instrument as DBInstrument, Transaction as DBTransaction, Portfolio
