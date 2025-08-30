@@ -1,8 +1,9 @@
-# RFC 008: Portfolio Summary & Analytics API
 
-  * **Status**: Approved
+### RFC 008: Portfolio Summary & Analytics API (Revised)
+
+  * **Status**: Proposed
   * **Date**: 2025-08-30
-  * **Services Affected**: `query-service`, `ingestion_service`, `persistence_service`, `portfolio-common`
+  * **Services Affected**: `query-service`, `ingestion_service`, `persistence_service`, `portfolio-common`, `position-calculator`, `cost-calculator-service`
 
 -----
 
@@ -136,25 +137,27 @@ A new `SummaryService` in the `query_service` will orchestrate all calculations.
 
   * **Wealth & Cash**: Calculated by summing the `market_value` from the single latest `daily_position_snapshot` for each security held on or before the `as_of_date`, filtered for the current `epoch`. Total Cash will be further filtered by `instrument.product_type = 'Cash'`.
 
-  * **P\&L, Income, Activity**:
+  * **P\&L, Income, Activity**: Aggregations based on `transactions` and `cashflows` tables for the specified period, filtered by the current `epoch`.
 
-      * `Realized P&L`: Sum of `realized_gain_loss` from the `transactions` table for transactions with a `transaction_date` within the specified period.
-      * `Unrealized P&L Change`: Calculated as `(MV_end - Cost_end) - (MV_start - Cost_start)`. This requires fetching the latest snapshots on/before the period start and end dates for the correct epochs.
-      * `Net New Money`: Sum of `amount` from `cashflows` where `is_portfolio_flow = True` and `classification` is `CASHFLOW_IN` or `CASHFLOW_OUT`, for the period and current epoch.
-      * `Income & Activity Summaries`: Aggregated by querying the `cashflows` table for the specified period and current `epoch`, filtering by `classification`.
+  * **Asset Allocation**: The service will calculate breakdowns by joining the latest `daily_position_snapshots` (for market values, filtered by `epoch` and `as_of_date`) with the enriched `instruments` table. Any instrument with a `NULL` value for a requested dimension will be grouped into an **"Unclassified"** category.
 
-  * **Asset Allocation**: The service will calculate breakdowns by joining the latest `daily_position_snapshots` (for market values, filtered by `epoch` and `as_of_date`) with the enriched `instruments` table. Any instrument with a `NULL` value for a requested dimension will be grouped into an **"Unclassified"** category. The size of this bucket should be monitored as a data quality metric.
+### 3.4. Refinement: Transaction & Calculation Logic
 
-    **Supported Allocation Dimensions:**
+To ensure data integrity across the system, the following logic for handling specific transaction types must be standardized across all relevant services.
 
-| Dimension | Applies To | Data Source / Logic |
-| :--- | :--- | :--- |
-| `ASSET_CLASS` | All | Sourced directly from `instrument.assetClass`. |
-| `CURRENCY` | All | Sourced from `instrument.currency`. |
-| `COUNTRY_OF_RISK` | All | Sourced from `instrument.country_of_risk`. |
-| `SECTOR` | `assetClass='Equity'` | Sourced from `instrument.sector`. |
-| `RATING` | `assetClass='Fixed Income'` | Sourced from `instrument.rating`. |
-| `MATURITY_BUCKET` | `assetClass='Fixed Income'` | Calculated on-the-fly: `instrument.maturity_date - as_of_date`. Mapped to buckets: '0-1Y', '1-3Y', '3-5Y', '5-10Y', '10Y+'. |
+  * **`position-calculator` (`position_logic.py`)**:
+
+      * **`TRANSFER_IN` & `DEPOSIT`**: Must increase position `quantity` by the transaction's `quantity` field and increase `cost_basis` by the `gross_transaction_amount`. Using `gross_transaction_amount` for both is incorrect and must be fixed.
+      * **`TRANSFER_OUT` & `WITHDRAWAL`**: Must decrease position `quantity` by the transaction's `quantity` field. The `cost_basis` must be reduced by the proportional FIFO cost of the shares being removed, not by the `gross_transaction_amount`.
+
+  * **`cost-calculator-service` (`cost_calculator.py`)**:
+
+      * **`TRANSFER_IN` & `DEPOSIT`**: Must be handled by a strategy that creates a new cost lot in the disposition engine, similar to a `BUY`. The current fallback to `DefaultStrategy` is incorrect.
+      * **`TRANSFER_OUT` & `WITHDRAWAL`**: Must be handled by a strategy that consumes cost lots from the disposition engine, similar to a `SELL`, but must **not** generate a `realized_gain_loss`. The current fallback to `DefaultStrategy` is incorrect.
+
+  * **`query_service` (`summary_service.py`)**:
+
+      * **`MATURITY_BUCKET` Calculation**: The logic must calculate time to maturity relative to the request's `as_of_date`, not `date.today()`.
 
 -----
 

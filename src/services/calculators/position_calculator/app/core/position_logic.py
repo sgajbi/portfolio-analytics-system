@@ -74,7 +74,6 @@ class PositionCalculator:
         
         # --- LOGIC FIX: Use strict less-than to avoid flagging same-day events ---
         is_backdated = transaction_date < effective_completed_date
-        # --- END LOGIC FIX ---
         
         if is_backdated and reprocess_epoch is None:
             logger.warning(
@@ -170,8 +169,10 @@ class PositionCalculator:
             cost_basis += net_cost
             cost_basis_local += net_cost_local
         elif txn_type in ["DEPOSIT", "TRANSFER_IN"]:
-            quantity += transaction.gross_transaction_amount
-            cost_basis += transaction.gross_transaction_amount
+            # --- THIS IS THE FIX ---
+            quantity += transaction.quantity # Use the quantity field for shares
+            # --- END FIX ---
+            cost_basis += transaction.gross_transaction_amount # Cost basis is the value transferred in
             cost_basis_local += transaction.gross_transaction_amount
         elif txn_type == "SELL":
             if quantity != Decimal(0):
