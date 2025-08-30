@@ -18,17 +18,19 @@ def mock_dependencies():
     mock_summary_repo = AsyncMock()
 
     mock_portfolio_repo.get_by_id.return_value = Portfolio(
-        portfolio_id="P1", open_date=date(2023, 1, 1)
+        portfolio_id="P1", open_date=date(2023, 1, 1),
+        base_currency="USD", risk_exposure="High", investment_time_horizon="Long",
+        portfolio_type="Discretionary", booking_center="SG", cif_id="CIF_TEST", status="ACTIVE"
     )
     
     # Mock data: A mix of stocks, bonds, and cash
-    mock_snapshot_1 = DailyPositionSnapshot(security_id="S1", product_type="Equity", market_value=Decimal("50000"))
+    mock_snapshot_1 = DailyPositionSnapshot(security_id="S1", market_value=Decimal("50000"))
     mock_instrument_1 = Instrument(security_id="S1", product_type="Equity", asset_class="Equity", sector="Technology")
 
-    mock_snapshot_2 = DailyPositionSnapshot(security_id="S2", product_type="Bond", market_value=Decimal("30000"))
+    mock_snapshot_2 = DailyPositionSnapshot(security_id="S2", market_value=Decimal("30000"))
     mock_instrument_2 = Instrument(security_id="S2", product_type="Bond", asset_class="Fixed Income", sector=None) # Unclassified sector
 
-    mock_snapshot_3 = DailyPositionSnapshot(security_id="S3", product_type="Cash", market_value=Decimal("20000"))
+    mock_snapshot_3 = DailyPositionSnapshot(security_id="S3", market_value=Decimal("20000"))
     mock_instrument_3 = Instrument(security_id="S3", product_type="Cash", asset_class="Cash")
     
     mock_summary_repo.get_wealth_and_allocation_data.return_value = [
