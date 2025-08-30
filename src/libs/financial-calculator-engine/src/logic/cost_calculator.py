@@ -56,6 +56,7 @@ class CashInflowStrategy:
         cash_buy_equivalent = transaction.model_copy()
         cash_buy_equivalent.quantity = transaction.gross_transaction_amount
         
+        
         disposition_engine.add_buy_lot(cash_buy_equivalent)
 
 class SecurityInflowStrategy:
@@ -118,10 +119,10 @@ class CostCalculator:
             TransactionType.DIVIDEND: IncomeStrategy(),
             TransactionType.DEPOSIT: CashInflowStrategy(),
             TransactionType.TRANSFER_IN: SecurityInflowStrategy(),
-            # --- NEW MAPPING ---
             TransactionType.TRANSFER_OUT: SecurityOutflowStrategy(),
-            # --- END NEW MAPPING ---
-            TransactionType.WITHDRAWAL: DefaultStrategy(),
+            # --- THIS IS THE FIX ---
+            TransactionType.WITHDRAWAL: SecurityOutflowStrategy(),
+            # --- END FIX ---
             TransactionType.FEE: DefaultStrategy(),
             TransactionType.OTHER: DefaultStrategy(),
         }
