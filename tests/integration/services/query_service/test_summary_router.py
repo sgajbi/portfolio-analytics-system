@@ -21,7 +21,17 @@ async def async_test_client():
     """Provides an httpx.AsyncClient for the query service app with mocked dependencies."""
     mock_summary_service = AsyncMock(spec=SummaryService)
     
-    # Define a default mock response with ALL sections populated
+    # --- THIS IS THE FIX ---
+    # The ActivitySummary DTO requires specific fields. The old ones were causing a validation error.
+    mock_activity_summary = ActivitySummary(
+        total_deposits=Decimal("10000"),
+        total_withdrawals=Decimal("-2000"),
+        total_transfers_in=Decimal("2000"),
+        total_transfers_out=Decimal("-500"),
+        total_fees=Decimal("-150")
+    )
+    # --- END FIX ---
+    
     mock_response = SummaryResponse(
         scope=ResponseScope(
             portfolio_id="P1",
@@ -43,11 +53,7 @@ async def async_test_client():
             total_dividends=Decimal("300"),
             total_interest=Decimal("50")
         ),
-        activitySummary=ActivitySummary(
-            total_inflows=Decimal("12000"),
-            total_outflows=Decimal("-2000"),
-            total_fees=Decimal("-150")
-        )
+        activitySummary=mock_activity_summary
     )
     mock_summary_service.get_portfolio_summary.return_value = mock_response
 

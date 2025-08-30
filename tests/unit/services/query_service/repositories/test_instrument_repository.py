@@ -14,28 +14,20 @@ def mock_db_session() -> AsyncMock:
     # This is the top-level mock for the session dependency
     session = AsyncMock(spec=AsyncSession)
 
-    # --- Mocks for the `select` query path ---
-    # This is the final list we want returned
-    mock_instrument_list = [Instrument(), Instrument()]
-    # This is the mock for the object returned by `.scalars()`
-    mock_scalars_obj = MagicMock()
-    mock_scalars_obj.all.return_value = mock_instrument_list
-    # This is the mock for the object returned by `execute()`
-    mock_list_result = MagicMock()
-    mock_list_result.scalars.return_value = mock_scalars_obj
-
-    # --- Mocks for the `count` query path ---
-    mock_count_result = MagicMock()
-    mock_count_result.scalar.return_value = 5
-
-    # This async function will be the side_effect for the `execute` method
+    # --- New Mocking Strategy ---
+    # This async function will be the side_effect for the `execute` method.
+    # It creates a fresh mock result object for each call.
     async def execute_side_effect(statement):
-        # `statement` is the actual SQLAlchemy statement object
+        mock_result = MagicMock()
         if "count" in str(statement.compile()).lower():
-            return mock_count_result
-        return mock_list_result
+            # If it's a count query, configure the mock to return a scalar
+            mock_result.scalar.return_value = 5
+        else:
+            # If it's a select query, configure the chain to return a list
+            mock_result.scalars.return_value.all.return_value = [Instrument(), Instrument()]
+        return mock_result
 
-    # CRITICAL: Assign the side_effect to an AsyncMock to allow awaiting AND assertions
+    # Assign the side_effect to an AsyncMock to allow awaiting AND assertions.
     session.execute = AsyncMock(side_effect=execute_side_effect)
     
     return session
