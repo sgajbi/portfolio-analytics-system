@@ -3,7 +3,7 @@ from decimal import Decimal
 from typing import Optional
 from portfolio_common.database_models import Cashflow
 from portfolio_common.events import TransactionEvent
-from .cashflow_config import CashflowRule, CashflowCalculationType
+from .cashflow_config import CashflowRule, CashflowCalculationType, CashflowClassification
 
 logger = logging.getLogger(__name__)
 
@@ -35,13 +35,25 @@ class CashflowLogic:
         elif rule.calc_type == CashflowCalculationType.MVT:
             amount = transaction.quantity * transaction.price
 
-        if rule.classification in [
-            "INVESTMENT_OUTFLOW", # e.g., BUY
-            "CASHFLOW_IN"         # e.g., DEPOSIT
-        ]:
+        # --- FIX: Corrected Sign Logic ---
+        # Convention: Inflows to the portfolio are positive, outflows are negative.
+        positive_classifications = [
+            CashflowClassification.INVESTMENT_INFLOW,  # From a SELL
+            CashflowClassification.INCOME,             # From DIVIDEND, INTEREST
+            CashflowClassification.CASHFLOW_IN         # From DEPOSIT
+        ]
+
+        if rule.classification in positive_classifications:
             amount = abs(amount)
-        else: # e.g., SELL, DIVIDEND, FEE, WITHDRAWAL
+        elif rule.classification == CashflowClassification.TRANSFER:
+            if transaction.transaction_type == "TRANSFER_IN":
+                amount = abs(amount)
+            else: # TRANSFER_OUT
+                amount = -abs(amount)
+        else:
+            # All other classifications are outflows (INVESTMENT_OUTFLOW, EXPENSE, CASHFLOW_OUT)
             amount = -abs(amount)
+        # --- END FIX ---
 
         # Create the Cashflow database object
         cashflow = Cashflow(
@@ -56,7 +68,7 @@ class CashflowLogic:
             calculation_type=rule.calc_type.value,
             is_position_flow=rule.is_position_flow,
             is_portfolio_flow=rule.is_portfolio_flow,
-            epoch=epoch or 0 # Assign the epoch, defaulting to 0
+            epoch=epoch or 0
         )
 
         logger.info(f"Calculated cashflow for txn {transaction.transaction_id}: Amount={amount}, Class='{rule.classification.value}'")

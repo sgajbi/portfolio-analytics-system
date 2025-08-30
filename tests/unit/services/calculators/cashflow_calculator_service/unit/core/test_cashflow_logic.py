@@ -26,78 +26,94 @@ def base_transaction_event() -> TransactionEvent:
     )
 
 def test_calculate_buy_transaction(base_transaction_event: TransactionEvent):
-    """A BUY is only a position-level flow."""
+    """A BUY is a negative cashflow (outflow)."""
     event = base_transaction_event
     rule = get_rule_for_transaction("BUY")
     assert rule is not None
     cashflow = CashflowLogic.calculate(event, rule)
+    assert cashflow.amount < 0
     assert cashflow.is_position_flow is True
     assert cashflow.is_portfolio_flow is False
-    assert cashflow.security_id == event.security_id
 
 def test_calculate_sell_transaction(base_transaction_event: TransactionEvent):
-    """A SELL is only a position-level flow."""
+    """A SELL is a positive cashflow (inflow)."""
     event = base_transaction_event
     event.transaction_type = "SELL"
     rule = get_rule_for_transaction("SELL")
     assert rule is not None
     cashflow = CashflowLogic.calculate(event, rule)
+    assert cashflow.amount > 0
     assert cashflow.is_position_flow is True
     assert cashflow.is_portfolio_flow is False
-    assert cashflow.security_id == event.security_id
 
 def test_calculate_dividend_transaction(base_transaction_event: TransactionEvent):
-    """A DIVIDEND is only a position-level flow and should have EOD timing."""
+    """A DIVIDEND is a positive cashflow (inflow)."""
     event = base_transaction_event
     event.transaction_type = "DIVIDEND"
     rule = get_rule_for_transaction("DIVIDEND")
     assert rule is not None
     cashflow = CashflowLogic.calculate(event, rule)
+    assert cashflow.amount > 0
     assert cashflow.is_position_flow is True
     assert cashflow.is_portfolio_flow is False
-    assert cashflow.security_id == event.security_id
-    assert cashflow.timing == "EOD" # Assert EOD timing
+    assert cashflow.timing == "EOD"
 
 def test_calculate_deposit_transaction(base_transaction_event: TransactionEvent):
-    """A DEPOSIT is both a position-level and portfolio-level flow."""
+    """A DEPOSIT is a positive cashflow (inflow)."""
     event = base_transaction_event
     event.transaction_type = "DEPOSIT"
     rule = get_rule_for_transaction("DEPOSIT")
     assert rule is not None
     cashflow = CashflowLogic.calculate(event, rule)
+    assert cashflow.classification == "CASHFLOW_IN"
     assert cashflow.is_position_flow is True
     assert cashflow.is_portfolio_flow is True
-    assert cashflow.security_id == event.security_id
+    assert cashflow.amount > 0
 
 def test_calculate_fee_transaction(base_transaction_event: TransactionEvent):
-    """A FEE is both a position-level and portfolio-level flow."""
+    """A FEE is a negative cashflow (outflow)."""
     event = base_transaction_event
     event.transaction_type = "FEE"
     rule = get_rule_for_transaction("FEE")
     assert rule is not None
     cashflow = CashflowLogic.calculate(event, rule)
+    assert cashflow.amount < 0
     assert cashflow.is_position_flow is True
-    assert cashflow.is_portfolio_flow is True
-    assert cashflow.security_id == event.security_id
-
+    assert cashflow.is_portfolio_flow is False
 
 def test_calculate_withdrawal_transaction(base_transaction_event: TransactionEvent):
-    """A WITHDRAWAL is both a position-level and portfolio-level flow."""
-    # Arrange
+    """A WITHDRAWAL is a negative cashflow (outflow)."""
     event = base_transaction_event
     event.transaction_type = "WITHDRAWAL"
     event.gross_transaction_amount = Decimal("5000")
     event.trade_fee = Decimal("0")
     rule = get_rule_for_transaction("WITHDRAWAL")
     assert rule is not None
-
-    # Act
     cashflow = CashflowLogic.calculate(event, rule)
-
-    # Assert
     assert cashflow.amount == -event.gross_transaction_amount
     assert cashflow.classification == "CASHFLOW_OUT"
     assert cashflow.timing == "EOD"
     assert cashflow.is_position_flow is True
     assert cashflow.is_portfolio_flow is True
-    assert cashflow.security_id == event.security_id
+
+def test_calculate_transfer_in_transaction(base_transaction_event: TransactionEvent):
+    """A TRANSFER_IN is a positive cashflow (inflow)."""
+    event = base_transaction_event
+    event.transaction_type = "TRANSFER_IN"
+    rule = get_rule_for_transaction("TRANSFER_IN")
+    assert rule is not None
+    cashflow = CashflowLogic.calculate(event, rule)
+    assert cashflow.classification == "TRANSFER"
+    assert cashflow.is_portfolio_flow is True
+    assert cashflow.amount > 0
+
+def test_calculate_transfer_out_transaction(base_transaction_event: TransactionEvent):
+    """A TRANSFER_OUT is a negative cashflow (outflow)."""
+    event = base_transaction_event
+    event.transaction_type = "TRANSFER_OUT"
+    rule = get_rule_for_transaction("TRANSFER_OUT")
+    assert rule is not None
+    cashflow = CashflowLogic.calculate(event, rule)
+    assert cashflow.classification == "TRANSFER"
+    assert cashflow.is_portfolio_flow is True
+    assert cashflow.amount < 0

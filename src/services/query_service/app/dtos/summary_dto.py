@@ -5,8 +5,10 @@ from pydantic import BaseModel, Field, ConfigDict
 from decimal import Decimal
 from enum import Enum
 
+# Reuse the well-defined period models from the performance DTOs for consistency
 from .performance_dto import PerformanceRequestPeriod
 
+# --- Enums for strong typing ---
 
 class SummarySection(str, Enum):
     WEALTH = "WEALTH"
@@ -23,6 +25,7 @@ class AllocationDimension(str, Enum):
     MATURITY_BUCKET = "MATURITY_BUCKET"
     RATING = "RATING"
 
+# --- Request DTOs ---
 
 class SummaryRequest(BaseModel):
     as_of_date: date
@@ -30,6 +33,7 @@ class SummaryRequest(BaseModel):
     sections: List[SummarySection]
     allocation_dimensions: Optional[List[AllocationDimension]] = Field(None)
 
+# --- Response DTOs ---
 
 class ResponseScope(BaseModel):
     portfolio_id: str
@@ -52,8 +56,10 @@ class IncomeSummary(BaseModel):
     total_interest: Decimal
 
 class ActivitySummary(BaseModel):
-    total_inflows: Decimal
-    total_outflows: Decimal
+    total_deposits: Decimal
+    total_withdrawals: Decimal
+    total_transfers_in: Decimal
+    total_transfers_out: Decimal
     total_fees: Decimal
 
 class AllocationGroup(BaseModel):

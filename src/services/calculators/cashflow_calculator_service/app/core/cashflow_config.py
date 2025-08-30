@@ -22,7 +22,8 @@ class CashflowClassification(str, Enum):
     EXPENSE = "EXPENSE"
     CASHFLOW_IN = "CASHFLOW_IN"
     CASHFLOW_OUT = "CASHFLOW_OUT"
-    INTERNAL = "INTERNAL" # For flows with no net external impact
+    INTERNAL = "INTERNAL"
+    TRANSFER = "TRANSFER"
 
 # --- Configuration Model ---
 
@@ -51,7 +52,7 @@ CASHFLOW_CONFIG: dict[str, CashflowRule] = {
     ),
     "DIVIDEND": CashflowRule(
         classification=CashflowClassification.INCOME,
-        timing=CashflowTiming.EOD, # <-- CHANGED FROM BOD TO EOD
+        timing=CashflowTiming.EOD,
         is_position_flow=True,
         is_portfolio_flow=False
     ),
@@ -59,22 +60,22 @@ CASHFLOW_CONFIG: dict[str, CashflowRule] = {
         classification=CashflowClassification.INCOME,
         timing=CashflowTiming.EOD,
         is_position_flow=True,
-        is_portfolio_flow=True
+        is_portfolio_flow=False
     ),
     "FEE": CashflowRule(
         classification=CashflowClassification.EXPENSE,
         timing=CashflowTiming.EOD,
         is_position_flow=True,
-        is_portfolio_flow=True
+        is_portfolio_flow=False
     ),
     "TAX": CashflowRule(
         classification=CashflowClassification.EXPENSE,
         timing=CashflowTiming.EOD,
         is_position_flow=True,
-        is_portfolio_flow=True
+        is_portfolio_flow=False
     ),
     "TRANSFER_IN": CashflowRule(
-        classification=CashflowClassification.CASHFLOW_IN,
+        classification=CashflowClassification.TRANSFER,
         timing=CashflowTiming.BOD,
         is_position_flow=True,
         is_portfolio_flow=True
@@ -86,7 +87,7 @@ CASHFLOW_CONFIG: dict[str, CashflowRule] = {
         is_portfolio_flow=True
     ),
     "TRANSFER_OUT": CashflowRule(
-        classification=CashflowClassification.CASHFLOW_OUT,
+        classification=CashflowClassification.TRANSFER,
         timing=CashflowTiming.EOD,
         is_position_flow=True,
         is_portfolio_flow=True
