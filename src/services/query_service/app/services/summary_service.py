@@ -1,5 +1,6 @@
 # src/services/query_service/app/services/summary_service.py
 import logging
+import asyncio
 from datetime import date
 from decimal import Decimal
 from typing import List, Any, Dict
@@ -12,9 +13,10 @@ from ..repositories.summary_repository import SummaryRepository
 from ..repositories.portfolio_repository import PortfolioRepository
 from ..dtos.summary_dto import (
     SummaryRequest, SummaryResponse, ResponseScope, WealthSummary,
-    AllocationSummary, AllocationGroup, AllocationDimension, SummarySection
+    AllocationSummary, AllocationGroup, AllocationDimension, SummarySection,
+    PnlSummary, IncomeSummary, ActivitySummary
 )
-from portfolio_common.database_models import DailyPositionSnapshot, Instrument
+from portfolio_common.database_models import Portfolio, DailyPositionSnapshot, Instrument
 
 logger = logging.getLogger(__name__)
 
@@ -53,8 +55,6 @@ class SummaryService:
             
             if attribute_name:
                 group_key = getattr(instrument, attribute_name) or "Unclassified"
-
-            # Special handling for maturity bucket
             elif dimension == AllocationDimension.MATURITY_BUCKET:
                 if instrument.maturity_date and instrument.asset_class == 'Fixed Income':
                     years_to_maturity = (instrument.maturity_date - date.today()).days / 365.25
@@ -64,7 +64,7 @@ class SummaryService:
                     elif years_to_maturity <= 10: group_key = '5-10Y'
                     else: group_key = '10Y+'
                 else:
-                    group_key = "N/A" # Not applicable if not a bond
+                    group_key = "N/A"
 
             grouped_allocation[group_key] += market_value
 
@@ -72,7 +72,7 @@ class SummaryService:
             AllocationGroup(
                 group=key,
                 market_value=value,
-                weight=float(value / total_market_value)
+                weight=round(float(value / total_market_value), 4) if total_market_value else 0
             ) for key, value in sorted(grouped_allocation.items())
         ]
 
@@ -82,60 +82,86 @@ class SummaryService:
         """
         Orchestrates the fetching and calculation of all requested summary sections.
         """
-        # 1. Get portfolio and resolve period
         portfolio = await self.portfolio_repo.get_by_id(portfolio_id)
         if not portfolio:
             raise ValueError(f"Portfolio {portfolio_id} not found")
 
-        period_name, start_date, end_date = resolve_period(
-            period_type=request.period.type,
-            name=request.period.name,
+        _, start_date, end_date = resolve_period(
+            period_type=request.period.type, name=request.period.name,
             from_date=getattr(request.period, 'from_date', None),
             to_date=getattr(request.period, 'to_date', None),
             year=getattr(request.period, 'year', None),
-            inception_date=portfolio.open_date,
-            as_of_date=request.as_of_date
+            inception_date=portfolio.open_date, as_of_date=request.as_of_date
         )
 
         scope = ResponseScope(
-            portfolio_id=portfolio_id,
-            as_of_date=request.as_of_date,
-            period_start_date=start_date,
-            period_end_date=end_date
+            portfolio_id=portfolio_id, as_of_date=request.as_of_date,
+            period_start_date=start_date, period_end_date=end_date
         )
 
-        # 2. Fetch primary data for wealth and allocation
-        positions_data = await self.summary_repo.get_wealth_and_allocation_data(
-            portfolio_id, request.as_of_date
-        )
+        # --- Concurrently fetch all required data ---
+        tasks = {
+            "positions": self.summary_repo.get_wealth_and_allocation_data(portfolio_id, request.as_of_date),
+            "cashflows": self.summary_repo.get_cashflow_summary_data(portfolio_id, start_date, end_date),
+            "realized_pnl": self.summary_repo.get_realized_pnl(portfolio_id, start_date, end_date),
+            "unrealized_pnl_start": self.summary_repo.get_total_unrealized_pnl(portfolio_id, start_date - timedelta(days=1)),
+            "unrealized_pnl_end": self.summary_repo.get_total_unrealized_pnl(portfolio_id, end_date),
+        }
+        
+        results = await asyncio.gather(*tasks.values())
+        data = dict(zip(tasks.keys(), results))
 
-        # 3. Initialize section variables
-        wealth_summary = None
-        allocation_summary = None
+        # --- Initialize all possible response sections to None ---
+        wealth_summary, pnl_summary, income_summary, activity_summary, allocation_summary = None, None, None, None, None
 
-        # 4. Calculate sections if requested
-        # Note: Allocation depends on wealth for total market value.
+        # --- Calculate Wealth and Allocation ---
         if SummarySection.WEALTH in request.sections or SummarySection.ALLOCATION in request.sections:
-            total_mv = sum(s.market_value or Decimal(0) for s, i in positions_data)
-            total_cash = sum(s.market_value or Decimal(0) for s, i in positions_data if i.product_type == 'Cash')
+            total_mv = sum(s.market_value or Decimal(0) for s, i in data["positions"])
+            total_cash = sum(s.market_value or Decimal(0) for s, i in data["positions"] if i.product_type == 'Cash')
             wealth_summary = WealthSummary(total_market_value=total_mv, total_cash=total_cash)
 
-        if SummarySection.ALLOCATION in request.sections and request.allocation_dimensions and positions_data:
+        if SummarySection.ALLOCATION in request.sections and request.allocation_dimensions and data["positions"]:
             allocation_dict = {}
             for dim in request.allocation_dimensions:
                 key = f"by_{dim.value.lower()}"
                 allocation_dict[key] = self._calculate_allocation_by_dimension(
-                    positions_data, dim, wealth_summary.total_market_value
+                    data["positions"], dim, wealth_summary.total_market_value
                 )
             allocation_summary = AllocationSummary.model_validate(allocation_dict)
 
-        # 5. Assemble response
+        # --- Calculate PNL, Income, and Activity from cashflow and transaction data ---
+        cashflows = data["cashflows"]
+        if SummarySection.INCOME in request.sections:
+            income_summary = IncomeSummary(
+                total_dividends=abs(cashflows.get("INCOME", Decimal(0))),
+                total_interest=abs(cashflows.get("INTEREST", Decimal(0)))
+            )
+        
+        if SummarySection.ACTIVITY in request.sections or SummarySection.PNL in request.sections:
+            inflows = cashflows.get("CASHFLOW_IN", Decimal(0))
+            outflows = cashflows.get("CASHFLOW_OUT", Decimal(0))
+            if SummarySection.ACTIVITY in request.sections:
+                activity_summary = ActivitySummary(
+                    total_inflows=inflows, total_outflows=outflows,
+                    total_fees=cashflows.get("EXPENSE", Decimal(0))
+                )
+
+        if SummarySection.PNL in request.sections:
+            unrealized_pnl_change = data["unrealized_pnl_end"] - data["unrealized_pnl_start"]
+            realized_pnl = data["realized_pnl"]
+            pnl_summary = PnlSummary(
+                net_new_money=inflows + outflows,
+                realized_pnl=realized_pnl,
+                unrealized_pnl_change=unrealized_pnl_change,
+                total_pnl=realized_pnl + unrealized_pnl_change
+            )
+
+        # --- Assemble final response from calculated sections ---
         return SummaryResponse(
             scope=scope,
             wealth=wealth_summary if SummarySection.WEALTH in request.sections else None,
-            allocation=allocation_summary,
-            # Placeholders for future steps
-            pnlSummary=None,
-            incomeSummary=None,
-            activitySummary=None,
+            pnlSummary=pnl_summary,
+            incomeSummary=income_summary,
+            activitySummary=activity_summary,
+            allocation=allocation_summary
         )
