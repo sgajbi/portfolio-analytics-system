@@ -93,7 +93,8 @@ class SummaryRepository:
         )
         
         result = await self.db.execute(stmt)
-        return {row.classification: row.total_amount for row in result}
+        # The result of a group by is a list of rows, not a mappings object
+        return {row[0]: row[1] for row in result.all()}
 
     @async_timed(repository="SummaryRepository", method="get_realized_pnl")
     async def get_realized_pnl(self, portfolio_id: str, start_date: date, end_date: date) -> Decimal:
@@ -110,6 +111,40 @@ class SummaryRepository:
                 func.date(Transaction.transaction_date).between(start_date, end_date),
                 Transaction.realized_gain_loss.is_not(None)
             )
+        )
+        
+        result = await self.db.execute(stmt)
+        return result.scalar_one_or_none() or Decimal(0)
+
+    @async_timed(repository="SummaryRepository", method="get_total_unrealized_pnl")
+    async def get_total_unrealized_pnl(self, portfolio_id: str, as_of_date: date) -> Decimal:
+        """
+        Calculates the total unrealized P&L for all positions in a portfolio
+        on a given date, based on the latest snapshots for the current epoch.
+        """
+        ranked_snapshots_subq = select(
+            DailyPositionSnapshot.unrealized_gain_loss,
+            DailyPositionSnapshot.quantity,
+            func.row_number().over(
+                partition_by=DailyPositionSnapshot.security_id,
+                order_by=[
+                    DailyPositionSnapshot.date.desc(),
+                    DailyPositionSnapshot.id.desc()
+                ]
+            ).label('rn')
+        ).join(
+            PositionState,
+            (DailyPositionSnapshot.portfolio_id == PositionState.portfolio_id) &
+            (DailyPositionSnapshot.security_id == PositionState.security_id) &
+            (DailyPositionSnapshot.epoch == PositionState.epoch)
+        ).filter(
+            DailyPositionSnapshot.portfolio_id == portfolio_id,
+            DailyPositionSnapshot.date <= as_of_date
+        ).subquery('ranked_snapshots')
+
+        stmt = select(func.sum(ranked_snapshots_subq.c.unrealized_gain_loss)).filter(
+            ranked_snapshots_subq.c.rn == 1,
+            ranked_snapshots_subq.c.quantity > 0 # Only sum for open positions
         )
         
         result = await self.db.execute(stmt)

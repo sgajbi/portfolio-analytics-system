@@ -14,10 +14,16 @@ def mock_db_session() -> AsyncMock:
     session = AsyncMock(spec=AsyncSession)
     mock_result = MagicMock()
     mock_result.all.return_value = [("snapshot_1", "instrument_1"), ("snapshot_2", "instrument_2")]
-    # Allow scalar results for P&L and mapping results for cashflows
     mock_result.scalar_one_or_none.return_value = 1234.56
     mock_result.mappings.return_value = [{"classification": "CASHFLOW_IN", "total_amount": 5000}]
-    session.execute = AsyncMock(return_value=mock_result)
+    
+    # FIX: Make .all() callable on the result of execute
+    # This is needed because the cashflow query now returns a list of rows
+    execute_result = MagicMock()
+    execute_result.all.return_value = [("CASHFLOW_IN", 5000)]
+    execute_result.scalar_one_or_none.return_value = 1234.56
+    session.execute = AsyncMock(return_value=execute_result)
+
     return session
 
 @pytest.fixture
@@ -89,3 +95,22 @@ async def test_get_realized_pnl_query(repository: SummaryRepository, mock_db_ses
     assert "FROM transactions" in compiled_query
     assert "WHERE transactions.portfolio_id = 'P1'" in compiled_query
     assert "date(transactions.transaction_date) BETWEEN '2025-01-01' AND '2025-08-29'" in compiled_query
+
+async def test_get_total_unrealized_pnl_query(repository: SummaryRepository, mock_db_session: AsyncMock):
+    """
+    GIVEN a portfolio_id and as_of_date
+    WHEN get_total_unrealized_pnl is called
+    THEN it should construct a query that sums unrealized_gain_loss from the latest snapshots.
+    """
+    # ACT
+    await repository.get_total_unrealized_pnl("P1", date(2025, 8, 29))
+
+    # ASSERT
+    executed_stmt = mock_db_session.execute.call_args[0][0]
+    compiled_query = str(executed_stmt.compile(compile_kwargs={"literal_binds": True}))
+
+    assert "SELECT sum(ranked_snapshots.unrealized_gain_loss)" in compiled_query
+    assert "FROM (SELECT daily_position_snapshots.unrealized_gain_loss" in compiled_query
+    assert "row_number() over" in compiled_query.lower()
+    assert "WHERE ranked_snapshots.rn = 1" in compiled_query
+    assert "ranked_snapshots.quantity > 0" in compiled_query
