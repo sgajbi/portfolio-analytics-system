@@ -47,6 +47,7 @@ async def test_get_wealth_and_allocation_data_query(repository: SummaryRepositor
     assert "JOIN instruments ON" in compiled_query
     assert "daily_position_snapshots.portfolio_id = 'P1'" in compiled_query
     assert "daily_position_snapshots.date <= '2025-08-29'" in compiled_query
-    assert "row_number() OVER (PARTITION BY daily_position_snapshots.security_id" in compiled_query.lower()
+    assert "row_number() over" in compiled_query.lower()
+    assert "partition by daily_position_snapshots.security_id" in compiled_query.lower()
     assert "WHERE ranked_snapshots.rn = 1" in compiled_query
     assert "ranked_snapshots.quantity > 0" in compiled_query
