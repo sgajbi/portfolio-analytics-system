@@ -109,26 +109,12 @@ async def test_summary_service_calculates_all_sections(mock_dependencies):
     assert income.total_dividends == Decimal("500")
     assert income.total_interest == Decimal("150")
 
-# --- REVISED FAILING TEST (TDD) ---
 async def test_summary_service_calculates_maturity_bucket_from_as_of_date(mock_dependencies):
-    """
-    GIVEN a request with a historical as_of_date
-    WHEN the summary service calculates maturity buckets
-    THEN it should be relative to the as_of_date, not today.
-    """
-    # ARRANGE
     service = mock_dependencies["service"]
     mock_summary_repo = mock_dependencies["summary_repo"]
     
-    # Set dates to expose the bug
     historical_as_of_date = date(2024, 8, 30)
     maturity_date = date(2025, 12, 31)
-
-    # Correct calculation: maturity_date (2025-12-31) - as_of_date (2024-08-30) is ~1.3 years.
-    # This should fall into the "1-3Y" bucket.
-    
-    # Buggy calculation: maturity_date (2025-12-31) - date.today() (2025-08-30) is ~4 months.
-    # This will incorrectly fall into the "0-1Y" bucket.
 
     mock_snapshot = DailyPositionSnapshot(security_id="BOND_1", market_value=Decimal("1000"))
     mock_instrument = Instrument(
@@ -144,13 +130,41 @@ async def test_summary_service_calculates_maturity_bucket_from_as_of_date(mock_d
         "allocation_dimensions": ["MATURITY_BUCKET"]
     })
 
-    # ACT
     response = await service.get_portfolio_summary("P1", request)
-
-    # ASSERT
     allocation = response.allocation
     assert allocation is not None
     assert allocation.by_maturity_bucket is not None
     assert len(allocation.by_maturity_bucket) == 1
-    # This assertion will now fail because the buggy code will calculate "0-1Y"
     assert allocation.by_maturity_bucket[0].group == "1-3Y"
+
+# --- NEW FAILING TEST (TDD) ---
+@patch('src.services.query_service.app.services.summary_service.UNCLASSIFIED_ALLOCATION_MARKET_VALUE')
+async def test_summary_service_sets_unclassified_metric(mock_gauge, mock_dependencies):
+    """
+    GIVEN a portfolio with an unclassified asset
+    WHEN the summary service calculates allocation
+    THEN it should set the Prometheus gauge with the value of the unclassified assets.
+    """
+    # ARRANGE
+    service = mock_dependencies["service"]
+    mock_summary_repo = mock_dependencies["summary_repo"]
+
+    # Mock data with one unclassified instrument (asset_class is None)
+    mock_snapshot = DailyPositionSnapshot(security_id="UNCLASS_1", market_value=Decimal("12345.67"))
+    mock_instrument = Instrument(security_id="UNCLASS_1", product_type="Other", asset_class=None)
+    mock_summary_repo.get_wealth_and_allocation_data.return_value = [(mock_snapshot, mock_instrument)]
+
+    request = SummaryRequest.model_validate({
+        "as_of_date": "2025-08-29",
+        "period": {"type": "YTD"},
+        "sections": ["ALLOCATION"],
+        "allocation_dimensions": ["ASSET_CLASS"]
+    })
+
+    # ACT
+    await service.get_portfolio_summary("P1", request)
+
+    # ASSERT
+    # Verify that the gauge's .set() method was called with the correct value
+    mock_gauge.labels.assert_called_once_with(portfolio_id="P1", dimension="ASSET_CLASS")
+    mock_gauge.labels.return_value.set.assert_called_once_with(12345.67)

@@ -17,6 +17,8 @@ from ..dtos.summary_dto import (
     PnlSummary, IncomeSummary, ActivitySummary
 )
 from portfolio_common.database_models import Portfolio, DailyPositionSnapshot, Instrument, Cashflow, Transaction
+# --- NEW IMPORT ---
+from portfolio_common.monitoring import UNCLASSIFIED_ALLOCATION_MARKET_VALUE
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +36,8 @@ class SummaryService:
         positions_data: List[Any],
         dimension: AllocationDimension,
         total_market_value: Decimal,
-        as_of_date: date # <-- FIX: Pass in the as_of_date
+        as_of_date: date,
+        portfolio_id: str # Pass portfolio_id for metric labels
     ) -> List[AllocationGroup]:
         if total_market_value == 0: return []
         grouped_allocation: Dict[str, Decimal] = defaultdict(Decimal)
@@ -51,9 +54,7 @@ class SummaryService:
                 group_key = getattr(instrument, attribute_name) or "Unclassified"
             elif dimension == AllocationDimension.MATURITY_BUCKET:
                 if instrument.maturity_date and instrument.asset_class == 'Fixed Income':
-                    # --- THIS IS THE FIX ---
                     years_to_maturity = (instrument.maturity_date - as_of_date).days / 365.25
-                    # --- END FIX ---
                     if years_to_maturity <= 1: group_key = '0-1Y'
                     elif years_to_maturity <= 3: group_key = '1-3Y'
                     elif years_to_maturity <= 5: group_key = '3-5Y'
@@ -61,6 +62,15 @@ class SummaryService:
                     else: group_key = '10Y+'
                 else: group_key = "N/A"
             grouped_allocation[group_key] += market_value
+        
+        # --- THIS IS THE FIX ---
+        unclassified_value = grouped_allocation.get("Unclassified", Decimal(0))
+        UNCLASSIFIED_ALLOCATION_MARKET_VALUE.labels(
+            portfolio_id=portfolio_id,
+            dimension=dimension.value
+        ).set(float(unclassified_value))
+        # --- END FIX ---
+
         return [
             AllocationGroup(
                 group=key, market_value=value,
@@ -100,10 +110,9 @@ class SummaryService:
             total_cash = sum(s.market_value or Decimal(0) for s, i in data["positions"] if i.product_type == 'Cash')
             wealth_summary = WealthSummary(total_market_value=total_mv, total_cash=total_cash)
         if SummarySection.ALLOCATION in request.sections and request.allocation_dimensions and data["positions"]:
-            # --- FIX: Pass the as_of_date to the helper method ---
             allocation_dict = {
                 f"by_{dim.value.lower()}": self._calculate_allocation_by_dimension(
-                    data["positions"], dim, wealth_summary.total_market_value, request.as_of_date
+                    data["positions"], dim, wealth_summary.total_market_value, request.as_of_date, portfolio_id
                 ) for dim in request.allocation_dimensions
             }
             allocation_summary = AllocationSummary.model_validate(allocation_dict)
