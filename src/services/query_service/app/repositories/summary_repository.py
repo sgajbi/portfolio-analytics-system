@@ -4,7 +4,7 @@ from datetime import date
 from typing import List, Any, Dict
 from decimal import Decimal
 
-from sqlalchemy import select, func
+from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased, contains_eager
 from portfolio_common.database_models import DailyPositionSnapshot, PositionState, Instrument, Cashflow, Transaction
@@ -68,26 +68,27 @@ class SummaryRepository:
         self, portfolio_id: str, start_date: date, end_date: date
     ) -> List[Cashflow]:
         """
-        Fetches all cashflow records for the specified period, filtered by the current epoch.
-        Eagerly loads the related Transaction to get the original transaction type.
+        Fetches all cashflow records for the specified period, fencing by the current epoch
+        per (portfolio_id, security_id) and eagerly loading the related Transaction.
         """
-        current_epoch_subq = (
-            select(func.max(PositionState.epoch))
-            .where(PositionState.portfolio_id == portfolio_id)
-            .scalar_subquery()
-        )
-
         stmt = (
             select(Cashflow)
             .join(Cashflow.transaction)
             .options(contains_eager(Cashflow.transaction))
+            .join(
+                PositionState,
+                and_(
+                    PositionState.portfolio_id == Cashflow.portfolio_id,
+                    PositionState.security_id == Cashflow.security_id,
+                    PositionState.epoch == Cashflow.epoch,
+                )
+            )
             .where(
                 Cashflow.portfolio_id == portfolio_id,
                 Cashflow.cashflow_date.between(start_date, end_date),
-                Cashflow.epoch == func.coalesce(current_epoch_subq, 0)
             )
             .order_by(Cashflow.cashflow_date)
-        )  
+        )
 
         result = await self.db.execute(stmt)
         return result.scalars().all()
