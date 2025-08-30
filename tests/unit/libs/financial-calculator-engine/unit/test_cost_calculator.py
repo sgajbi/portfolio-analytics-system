@@ -147,7 +147,7 @@ def test_sell_strategy_multi_lot_fifo():
         quantity=Decimal("100"), gross_transaction_amount=Decimal("1000"), trade_currency="USD",
         portfolio_base_currency="USD", transaction_fx_rate=Decimal("1.0")
     )
-    cost_calculator.calculate_transaction_costs(buy_txn_1) # This calculates net_cost=1000 and adds the lot.
+    cost_calculator.calculate_transaction_costs(buy_txn_1)
 
     buy_txn_2 = Transaction(
         transaction_id="BUY002", portfolio_id="P1", instrument_id="AAPL", security_id="S1",
@@ -155,7 +155,7 @@ def test_sell_strategy_multi_lot_fifo():
         quantity=Decimal("50"), gross_transaction_amount=Decimal("600"), trade_currency="USD",
         portfolio_base_currency="USD", transaction_fx_rate=Decimal("1.0")
     )
-    cost_calculator.calculate_transaction_costs(buy_txn_2) # This calculates net_cost=600 and adds the second lot.
+    cost_calculator.calculate_transaction_costs(buy_txn_2)
 
     sell_txn = Transaction(
         transaction_id="SELL001", portfolio_id="P1", instrument_id="AAPL", security_id="S1",
@@ -163,15 +163,12 @@ def test_sell_strategy_multi_lot_fifo():
         quantity=Decimal("120"), gross_transaction_amount=Decimal("1800"), trade_currency="USD",
         portfolio_base_currency="USD", transaction_fx_rate=Decimal("1.0")
     )
-    cost_calculator.calculate_transaction_costs(sell_txn) # This calculates the gain/loss.
+    cost_calculator.calculate_transaction_costs(sell_txn)
 
     # Assert: Verify the calculated realized gain and the state of the remaining lots.
-    # Cost of goods sold = (100 shares * $10) + (20 shares * $12) = 1000 + 240 = 1240
-    # Realized Gain/Loss = Net Proceeds - COGS = 1800 - 1240 = 560
     assert sell_txn.realized_gain_loss == Decimal("560")
     assert not error_reporter.has_errors()
 
-    # Assert that 30 shares from the second lot remain.
     remaining_quantity = disposition_engine.get_available_quantity("P1", "AAPL")
     assert remaining_quantity == Decimal("30")
 
@@ -195,11 +192,9 @@ def test_deposit_strategy_creates_cost_lot(cost_calculator, mock_disposition_eng
     assert deposit_transaction.net_cost == Decimal("10000")
     assert deposit_transaction.gross_cost == Decimal("10000")
     
-    # Verify that a cost lot was created
     mock_disposition_engine.add_buy_lot.assert_called_once()
     call_args = mock_disposition_engine.add_buy_lot.call_args[0][0]
     
-    # The quantity of the "lot" should be the amount of cash
     assert call_args.quantity == Decimal("10000")
 
 def test_dividend_transaction_has_zero_cost(cost_calculator, mock_disposition_engine):
@@ -227,8 +222,41 @@ def test_dividend_transaction_has_zero_cost(cost_calculator, mock_disposition_en
     cost_calculator.calculate_transaction_costs(dividend_transaction)
 
     # ASSERT
-    # Net cost should be None or 0, not the gross amount of the dividend.
     assert dividend_transaction.net_cost == Decimal("0")
     assert dividend_transaction.realized_gain_loss is None
-    # A dividend should not create a new cost lot.
     mock_disposition_engine.add_buy_lot.assert_not_called()
+
+# --- NEW FAILING TEST (TDD) ---
+def test_transfer_in_strategy_creates_cost_lot(cost_calculator, mock_disposition_engine):
+    """
+    Tests that a TRANSFER_IN transaction creates a cost lot in the disposition engine,
+    similar to a BUY or DEPOSIT. This will fail with the DefaultStrategy.
+    """
+    # Arrange
+    transfer_in_transaction = Transaction(
+        transaction_id="TRANSFER_IN_01",
+        portfolio_id="P1",
+        instrument_id="IBM",
+        security_id="S_IBM",
+        transaction_type="TRANSFER_IN", # Custom transaction type
+        transaction_date=datetime(2023, 2, 1),
+        quantity=Decimal("100"),
+        price=Decimal("150"),
+        gross_transaction_amount=Decimal("15000"),
+        trade_currency="USD",
+        portfolio_base_currency="USD",
+        transaction_fx_rate=Decimal("1.0")
+    )
+
+    # Act
+    cost_calculator.calculate_transaction_costs(transfer_in_transaction)
+
+    # Assert
+    # The transaction should have its cost calculated
+    assert transfer_in_transaction.net_cost == Decimal("15000")
+
+    # The disposition engine should have been told to create a lot for these shares
+    mock_disposition_engine.add_buy_lot.assert_called_once()
+    call_args = mock_disposition_engine.add_buy_lot.call_args[0][0]
+    assert call_args.quantity == Decimal("100")
+    assert call_args.net_cost == Decimal("15000")

@@ -59,6 +59,24 @@ class CashInflowStrategy:
         
         disposition_engine.add_buy_lot(cash_buy_equivalent)
 
+# --- NEW STRATEGY ---
+class SecurityInflowStrategy:
+    def calculate_costs(self, transaction: Transaction, disposition_engine: DispositionEngine, error_reporter: ErrorReporter) -> None:
+        """Treats security transfers-in like a BUY for cost lot creation, using gross amount as cost."""
+        transaction.gross_cost = transaction.gross_transaction_amount
+        # For a transfer, the net cost is its market value at the time. Fees are typically not involved.
+        transaction.net_cost_local = transaction.gross_transaction_amount
+        
+        fx_rate = transaction.transaction_fx_rate or Decimal(1)
+        transaction.net_cost = transaction.net_cost_local * fx_rate
+        
+        if transaction.quantity > Decimal(0):
+            try:
+                disposition_engine.add_buy_lot(transaction)
+            except ValueError as e:
+                error_reporter.add_error(transaction.transaction_id, str(e))
+# --- END NEW STRATEGY ---
+
 class IncomeStrategy:
     """New strategy for income events that do not affect cost basis."""
     def calculate_costs(self, transaction: Transaction, disposition_engine: DispositionEngine, error_reporter: ErrorReporter) -> None:
@@ -86,6 +104,9 @@ class CostCalculator:
             TransactionType.INTEREST: IncomeStrategy(),
             TransactionType.DIVIDEND: IncomeStrategy(),
             TransactionType.DEPOSIT: CashInflowStrategy(),
+            # --- NEW MAPPING ---
+            TransactionType.TRANSFER_IN: SecurityInflowStrategy(),
+            # --- END NEW MAPPING ---
             TransactionType.WITHDRAWAL: DefaultStrategy(),
             TransactionType.FEE: DefaultStrategy(),
             TransactionType.OTHER: DefaultStrategy(),
@@ -109,6 +130,10 @@ class CostCalculator:
         if not self._validate_fx(transaction):
             return
         try:
+            # Add TRANSFER_IN to the list of known types before attempting conversion
+            if transaction.transaction_type not in TransactionType.list():
+                self._error_reporter.add_error(transaction.transaction_id, f"Unknown transaction type '{transaction.transaction_type}'.")
+                return
             transaction_type_enum = TransactionType(transaction.transaction_type)
         except ValueError:
             self._error_reporter.add_error(transaction.transaction_id, f"Unknown transaction type '{transaction.transaction_type}'.")
