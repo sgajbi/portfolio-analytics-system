@@ -49,7 +49,6 @@ class SellStrategy:
 
 class CashInflowStrategy:
     def calculate_costs(self, transaction: Transaction, disposition_engine: DispositionEngine, error_reporter: ErrorReporter) -> None:
-        """Treats deposits/transfers-in like a BUY for cost lot creation purposes."""
         transaction.gross_cost = transaction.gross_transaction_amount
         transaction.net_cost_local = transaction.gross_transaction_amount
         fx_rate = transaction.transaction_fx_rate or Decimal(1)
@@ -59,12 +58,9 @@ class CashInflowStrategy:
         
         disposition_engine.add_buy_lot(cash_buy_equivalent)
 
-# --- NEW STRATEGY ---
 class SecurityInflowStrategy:
     def calculate_costs(self, transaction: Transaction, disposition_engine: DispositionEngine, error_reporter: ErrorReporter) -> None:
-        """Treats security transfers-in like a BUY for cost lot creation, using gross amount as cost."""
         transaction.gross_cost = transaction.gross_transaction_amount
-        # For a transfer, the net cost is its market value at the time. Fees are typically not involved.
         transaction.net_cost_local = transaction.gross_transaction_amount
         
         fx_rate = transaction.transaction_fx_rate or Decimal(1)
@@ -75,12 +71,29 @@ class SecurityInflowStrategy:
                 disposition_engine.add_buy_lot(transaction)
             except ValueError as e:
                 error_reporter.add_error(transaction.transaction_id, str(e))
+
+# --- NEW STRATEGY ---
+class SecurityOutflowStrategy:
+    def calculate_costs(self, transaction: Transaction, disposition_engine: DispositionEngine, error_reporter: ErrorReporter) -> None:
+        """Consumes a cost lot for a security transfer out, but does not realize a P&L."""
+        cogs_base, cogs_local, consumed_quantity, error_reason = disposition_engine.consume_sell_quantity(transaction)
+        
+        if error_reason:
+            error_reporter.add_error(transaction.transaction_id, error_reason)
+            return
+
+        if consumed_quantity > Decimal(0):
+            # Set cost fields based on the consumed lots for accurate position history
+            transaction.net_cost = -cogs_base
+            transaction.net_cost_local = -cogs_local
+            transaction.gross_cost = -cogs_base
+            # Ensure no P&L is realized for a transfer
+            transaction.realized_gain_loss = None
+            transaction.realized_gain_loss_local = None
 # --- END NEW STRATEGY ---
 
 class IncomeStrategy:
-    """New strategy for income events that do not affect cost basis."""
     def calculate_costs(self, transaction: Transaction, disposition_engine: DispositionEngine, error_reporter: ErrorReporter) -> None:
-        """Sets cost to zero, as income does not alter the cost basis of the holding."""
         transaction.net_cost = Decimal(0)
         transaction.net_cost_local = Decimal(0)
         transaction.gross_cost = Decimal(0)
@@ -104,8 +117,9 @@ class CostCalculator:
             TransactionType.INTEREST: IncomeStrategy(),
             TransactionType.DIVIDEND: IncomeStrategy(),
             TransactionType.DEPOSIT: CashInflowStrategy(),
-            # --- NEW MAPPING ---
             TransactionType.TRANSFER_IN: SecurityInflowStrategy(),
+            # --- NEW MAPPING ---
+            TransactionType.TRANSFER_OUT: SecurityOutflowStrategy(),
             # --- END NEW MAPPING ---
             TransactionType.WITHDRAWAL: DefaultStrategy(),
             TransactionType.FEE: DefaultStrategy(),
@@ -130,7 +144,6 @@ class CostCalculator:
         if not self._validate_fx(transaction):
             return
         try:
-            # Add TRANSFER_IN to the list of known types before attempting conversion
             if transaction.transaction_type not in TransactionType.list():
                 self._error_reporter.add_error(transaction.transaction_id, f"Unknown transaction type '{transaction.transaction_type}'.")
                 return
