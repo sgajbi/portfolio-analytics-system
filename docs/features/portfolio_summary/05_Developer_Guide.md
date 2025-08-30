@@ -97,6 +97,7 @@ curl -X 'POST' \
   "sections": [ "WEALTH", "ALLOCATION" ],
   "allocation_dimensions": [ "ASSET_CLASS", "SECTOR" ]
 }' | python -m json.tool
+
 ```
 
 You should receive a `200 OK` response. In the `allocation` section, note that for the `by_sector` breakdown, "Unclassified Stock" correctly falls into the "Unclassified" group.
