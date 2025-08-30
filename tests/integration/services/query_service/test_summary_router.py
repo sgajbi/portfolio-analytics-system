@@ -8,7 +8,11 @@ from decimal import Decimal
 
 from src.services.query_service.app.main import app
 from src.services.query_service.app.services.summary_service import SummaryService
-from src.services.query_service.app.dtos.summary_dto import SummaryResponse, ResponseScope, WealthSummary
+from src.services.query_service.app.dtos.summary_dto import (
+    SummaryResponse, ResponseScope, WealthSummary, PnlSummary,
+    IncomeSummary, ActivitySummary
+)
+from src.services.query_service.app.routers.summary import get_summary_service
 
 pytestmark = pytest.mark.asyncio
 
@@ -17,7 +21,7 @@ async def async_test_client():
     """Provides an httpx.AsyncClient for the query service app with mocked dependencies."""
     mock_summary_service = AsyncMock(spec=SummaryService)
     
-    # Define a default mock response
+    # Define a default mock response with ALL sections populated
     mock_response = SummaryResponse(
         scope=ResponseScope(
             portfolio_id="P1",
@@ -28,12 +32,26 @@ async def async_test_client():
         wealth=WealthSummary(
             total_market_value=Decimal("125000"),
             total_cash=Decimal("25000")
+        ),
+        pnlSummary=PnlSummary(
+            net_new_money=Decimal("10000"),
+            realized_pnl=Decimal("1500"),
+            unrealized_pnl_change=Decimal("5500"),
+            total_pnl=Decimal("7000")
+        ),
+        incomeSummary=IncomeSummary(
+            total_dividends=Decimal("300"),
+            total_interest=Decimal("50")
+        ),
+        activitySummary=ActivitySummary(
+            total_inflows=Decimal("12000"),
+            total_outflows=Decimal("-2000"),
+            total_fees=Decimal("-150")
         )
     )
     mock_summary_service.get_portfolio_summary.return_value = mock_response
 
-    # Override the dependency using the get_summary_service function as the key
-    from src.services.query_service.app.routers.summary import get_summary_service
+    # Override the dependency
     app.dependency_overrides[get_summary_service] = lambda: mock_summary_service
     
     transport = httpx.ASGITransport(app=app)
@@ -43,18 +61,18 @@ async def async_test_client():
     # Clean up the override
     del app.dependency_overrides[get_summary_service]
 
-async def test_get_portfolio_summary_success(async_test_client):
+async def test_get_portfolio_summary_success_all_sections(async_test_client):
     """
-    GIVEN a valid request
+    GIVEN a valid request for all sections
     WHEN the /summary endpoint is called
-    THEN it should return a 200 OK with the data from the service.
+    THEN it should return a 200 OK with the full data from the service.
     """
     client, mock_service = async_test_client
     portfolio_id = "P1"
     request_payload = {
         "as_of_date": "2025-08-29",
         "period": {"type": "YTD"},
-        "sections": ["WEALTH"]
+        "sections": ["WEALTH", "PNL", "INCOME", "ACTIVITY"]
     }
 
     response = await client.post(f"/portfolios/{portfolio_id}/summary", json=request_payload)
@@ -63,7 +81,13 @@ async def test_get_portfolio_summary_success(async_test_client):
     
     response_data = response.json()
     assert response_data["scope"]["portfolio_id"] == portfolio_id
+    
+    # Assert all sections are present and correct
     assert response_data["wealth"]["total_market_value"] == "125000"
+    assert response_data["pnlSummary"]["total_pnl"] == "7000"
+    assert response_data["incomeSummary"]["total_dividends"] == "300"
+    assert response_data["activitySummary"]["total_fees"] == "-150"
+
     mock_service.get_portfolio_summary.assert_awaited_once()
 
 async def test_get_portfolio_summary_not_found(async_test_client):
