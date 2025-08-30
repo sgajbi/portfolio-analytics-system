@@ -8,7 +8,6 @@ logger = logging.getLogger(__name__)
 # --------------------------------------------------------------------------------------
 # DB metrics (used by portfolio_common.utils.async_timed, etc.)
 # --------------------------------------------------------------------------------------
-# NOTE: utils.async_timed expects labels (repository, method). Keep this signature stable.
 DB_OPERATION_LATENCY_SECONDS = Histogram(
     "db_operation_latency_seconds",
     "Latency of database operations in seconds",
@@ -149,7 +148,7 @@ SCHEDULER_GAP_DAYS = Histogram(
     buckets=(1, 2, 5, 10, 30, 90, 365)
 )
 
-# --- NEW: Valuation Pipeline Metrics ---
+# --- Valuation Pipeline Metrics ---
 VALUATION_JOBS_CREATED_TOTAL = Counter(
     "valuation_jobs_created_total",
     "Total number of valuation jobs created by the scheduler.",
@@ -167,7 +166,6 @@ VALUATION_JOBS_FAILED_TOTAL = Counter(
     "Total number of valuation jobs that failed for terminal reasons (e.g., missing ref data).",
     labelnames=("portfolio_id", "security_id", "reason"),
 )
-# --- END NEW ---
 
 # --------------------------------------------------------------------------------------
 # Optional generic HTTP metrics (use across services if helpful)
@@ -188,3 +186,9 @@ HTTP_REQUEST_LATENCY_SECONDS = Histogram(
 def http_request_timer(service: str, method: str, path: str):
     """Context manager for timing an HTTP request handler."""
     return HTTP_REQUEST_LATENCY_SECONDS.labels(service, method, path).time()
+
+UNCLASSIFIED_ALLOCATION_MARKET_VALUE = Gauge(
+    "unclassified_allocation_market_value_total",
+    "Total market value of positions in the 'Unclassified' allocation bucket.",
+    ["portfolio_id", "dimension"]
+)
