@@ -27,6 +27,11 @@ RUN pip install -e /app/src/libs/portfolio-common
 COPY src/libs/performance-calculator-engine/ /app/src/libs/performance-calculator-engine/
 RUN pip install /app/src/libs/performance-calculator-engine
 
+# --- NEW: Install risk-analytics-engine ---
+COPY src/libs/risk-analytics-engine/ /app/src/libs/risk-analytics-engine/
+RUN pip install /app/src/libs/risk-analytics-engine
+# --- END NEW ---
+
 RUN pip install python-dateutil
 
 # Copy service and install
