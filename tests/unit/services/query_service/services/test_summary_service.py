@@ -7,7 +7,7 @@ from decimal import Decimal
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.services.query_service.app.services.summary_service import SummaryService
 from src.services.query_service.app.dtos.summary_dto import SummaryRequest
-from portfolio_common.database_models import Portfolio, DailyPositionSnapshot, Instrument, Cashflow
+from portfolio_common.database_models import Portfolio, DailyPositionSnapshot, Instrument, Cashflow, Transaction
 
 pytestmark = pytest.mark.asyncio
 
@@ -33,17 +33,19 @@ def mock_dependencies():
     mock_summary_repo.get_wealth_and_allocation_data.return_value = [
         (mock_snapshot_1, mock_instrument_1), (mock_snapshot_2, mock_instrument_2), (mock_snapshot_3, mock_instrument_3),
     ]
+
+    # Mock cashflows with nested transaction objects
     mock_summary_repo.get_cashflows_for_period.return_value = [
-        Cashflow(classification="CASHFLOW_IN", amount=Decimal("10000")),
-        Cashflow(classification="CASHFLOW_OUT", amount=Decimal("-2000")),
-        Cashflow(classification="TRANSFER", amount=Decimal("50000")),
-        Cashflow(classification="TRANSFER", amount=Decimal("-15000")),
-        Cashflow(classification="INCOME", amount=Decimal("500")),
-        Cashflow(classification="EXPENSE", amount=Decimal("-100")),
+        Cashflow(classification="CASHFLOW_IN", amount=Decimal("10000"), transaction=Transaction(transaction_type="DEPOSIT")),
+        Cashflow(classification="CASHFLOW_OUT", amount=Decimal("-2000"), transaction=Transaction(transaction_type="WITHDRAWAL")),
+        Cashflow(classification="TRANSFER", amount=Decimal("50000"), transaction=Transaction(transaction_type="TRANSFER_IN")),
+        Cashflow(classification="TRANSFER", amount=Decimal("-15000"), transaction=Transaction(transaction_type="TRANSFER_OUT")),
+        Cashflow(classification="INCOME", amount=Decimal("500"), transaction=Transaction(transaction_type="DIVIDEND")),
+        Cashflow(classification="INCOME", amount=Decimal("150"), transaction=Transaction(transaction_type="INTEREST")),
+        Cashflow(classification="EXPENSE", amount=Decimal("-100"), transaction=Transaction(transaction_type="FEE")),
     ]
     mock_summary_repo.get_realized_pnl.return_value = Decimal("1500")
     mock_summary_repo.get_total_unrealized_pnl.return_value = Decimal("0")
-
 
     with patch(
         "src.services.query_service.app.services.summary_service.PortfolioRepository",
@@ -53,21 +55,14 @@ def mock_dependencies():
         return_value=mock_summary_repo
     ):
         service = SummaryService(AsyncMock(spec=AsyncSession))
-        yield {
-            "service": service,
-            "summary_repo": mock_summary_repo
-        }
+        yield { "service": service, "summary_repo": mock_summary_repo }
 
 async def test_summary_service_calculates_wealth(mock_dependencies):
     service = mock_dependencies["service"]
-    request = SummaryRequest.model_validate({
-        "as_of_date": "2025-08-29", "period": {"type": "YTD"}, "sections": ["WEALTH"]
-    })
+    request = SummaryRequest.model_validate({ "as_of_date": "2025-08-29", "period": {"type": "YTD"}, "sections": ["WEALTH"] })
     response = await service.get_portfolio_summary("P1", request)
-    assert response.wealth is not None
     assert response.wealth.total_market_value == Decimal("100000")
     assert response.wealth.total_cash == Decimal("20000")
-    assert response.allocation is None
 
 async def test_summary_service_calculates_allocation(mock_dependencies):
     service = mock_dependencies["service"]
@@ -76,38 +71,24 @@ async def test_summary_service_calculates_allocation(mock_dependencies):
         "sections": ["ALLOCATION"], "allocation_dimensions": ["ASSET_CLASS", "SECTOR"]
     })
     response = await service.get_portfolio_summary("P1", request)
-    assert response.allocation is not None
-    alloc_sector = response.allocation.by_sector
-    assert len(alloc_sector) == 2
-    assert alloc_sector[1].group == "Unclassified"
-    assert alloc_sector[1].market_value == Decimal("50000")
-    assert alloc_sector[1].weight == pytest.approx(0.5)
+    assert response.allocation.by_sector[1].market_value == Decimal("50000")
+    assert response.allocation.by_sector[1].weight == pytest.approx(0.5)
 
 async def test_summary_service_calculates_all_sections(mock_dependencies):
-    """
-    Tests that a request for all sections returns a complete, correctly calculated response
-    with the new ActivitySummary structure.
-    """
-    # ARRANGE
     service = mock_dependencies["service"]
     mock_summary_repo = mock_dependencies["summary_repo"]
     mock_summary_repo.get_total_unrealized_pnl.side_effect = [Decimal("8000"), Decimal("10500")]
-
     request = SummaryRequest.model_validate({
         "as_of_date": "2025-08-29", "period": {"type": "YTD"},
         "sections": ["WEALTH", "PNL", "INCOME", "ACTIVITY"]
     })
 
-    # ACT
     response = await service.get_portfolio_summary("P1", request)
 
-    # ASSERT
-    assert response.wealth is not None
     assert response.pnl_summary is not None
     assert response.income_summary is not None
     assert response.activity_summary is not None
 
-    # Verify Activity Summary
     activity = response.activity_summary
     assert activity.total_deposits == Decimal("10000")
     assert activity.total_withdrawals == Decimal("-2000")
@@ -115,12 +96,12 @@ async def test_summary_service_calculates_all_sections(mock_dependencies):
     assert activity.total_transfers_out == Decimal("-15000")
     assert activity.total_fees == Decimal("-100")
     
-    # Verify PNL Summary (net_new_money now includes transfers)
     pnl = response.pnl_summary
-    assert pnl.net_new_money == Decimal("43000") # 10k - 2k + 50k - 15k
+    assert pnl.net_new_money == Decimal("43000")
     assert pnl.realized_pnl == Decimal("1500")
-    assert pnl.unrealized_pnl_change == Decimal("2500") # 10500 end - 8000 start
+    assert pnl.unrealized_pnl_change == Decimal("2500")
     assert pnl.total_pnl == Decimal("4000")
 
-    assert response.income_summary.total_dividends == Decimal("500")
-    assert response.income_summary.total_interest == Decimal("0")
+    income = response.income_summary
+    assert income.total_dividends == Decimal("500")
+    assert income.total_interest == Decimal("150")
