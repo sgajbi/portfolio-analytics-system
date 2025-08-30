@@ -24,7 +24,7 @@ def setup_summary_data(clean_db_module, e2e_api_client: E2EApiClient, poll_db_un
         {"securityId": MSFT_ID, "name": "Microsoft", "isin": "US_MSFT_SUM", "instrumentCurrency": "USD", "productType": "Equity", "assetClass": "Equity", "sector": "Technology", "countryOfRisk": "US"},
         {"securityId": IBM_ID, "name": "IBM", "isin": "US_IBM_SUM", "instrumentCurrency": "USD", "productType": "Equity", "assetClass": "Equity", "sector": "Technology", "countryOfRisk": "US"}
     ]})
-    all_dates = [PERIOD_START, "2025-08-05", "2025-08-10", "2025-08-15", "2025-08-20", "2025-08-22", "2025-08-26", "2025-08-27", AS_OF_DATE]
+    all_dates = ["2025-07-31", PERIOD_START, "2025-08-05", "2025-08-10", "2025-08-15", "2025-08-20", "2025-08-22", "2025-08-26", "2025-08-27", AS_OF_DATE]
     e2e_api_client.ingest("/ingest/business-dates", {"business_dates": [{"businessDate": d} for d in all_dates]})
 
     # 2. Ingest a comprehensive list of transactions
@@ -42,8 +42,8 @@ def setup_summary_data(clean_db_module, e2e_api_client: E2EApiClient, poll_db_un
         {"transaction_id": "SUM_TRANSFER_OUT_MSFT", "portfolio_id": PORTFOLIO_ID, "instrument_id": "MSFT", "security_id": MSFT_ID, "transaction_date": "2025-08-27T10:00:00Z", "transaction_type": "TRANSFER_OUT", "quantity": 50, "price": 330, "gross_transaction_amount": 16500, "trade_currency": "USD", "currency": "USD"}
     ]
     e2e_api_client.ingest("/ingest/transactions", {"transactions": transactions})
-
-    # 3. Ingest market prices for the as_of_date
+    
+    # 3. Ingest market prices
     e2e_api_client.ingest("/ingest/market-prices", {"market_prices": [
         {"securityId": MSFT_ID, "priceDate": AS_OF_DATE, "price": 340.0, "currency": "USD"},
         {"securityId": IBM_ID, "priceDate": AS_OF_DATE, "price": 155.0, "currency": "USD"},
@@ -77,11 +77,11 @@ def test_portfolio_summary_endpoint(setup_summary_data, e2e_api_client: E2EApiCl
     data = response.json()
     assert response.status_code == 200
 
-    # Expected Final State:
-    # Cash: 1M - 300k + 64k - 50 + 400 - 10k = 754,350
-    # MSFT: 1000 - 200 (sell) - 50 (xfer) = 750 shares
-    # IBM: 100 shares
-    # Wealth
+    # Expected Final State Calculations:
+    # Cash: 1M(dep) - 300k(buy) + 64k(sell) - 50(fee) + 400(div) - 10k(w/d) = 754,350
+    # MSFT shares: 1000(buy) - 200(sell) - 50(xfer) = 750
+    # IBM shares: 100(xfer)
+    # Wealth:
     # Cash MV = 754,350
     # MSFT MV = 750 * 340 = 255,000
     # IBM MV = 100 * 155 = 15,500
