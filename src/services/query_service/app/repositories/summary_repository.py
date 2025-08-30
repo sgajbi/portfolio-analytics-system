@@ -25,9 +25,6 @@ class SummaryRepository:
         Retrieves the single latest daily snapshot for each security in a given portfolio
         on or before the as_of_date, ensuring the snapshot belongs to the current epoch.
         The result is joined with instrument data for allocation calculations.
-
-        Returns a list of Row objects, each containing a DailyPositionSnapshot and its
-        corresponding Instrument.
         """
         ranked_snapshots_subq = select(
             DailyPositionSnapshot,
@@ -67,13 +64,12 @@ class SummaryRepository:
         logger.info(f"Found {len(data)} open positions for portfolio '{portfolio_id}' for summary as of {as_of_date}.")
         return data
 
-    @async_timed(repository="SummaryRepository", method="get_cashflow_summary_data")
-    async def get_cashflow_summary_data(
+    @async_timed(repository="SummaryRepository", method="get_cashflows_for_period")
+    async def get_cashflows_for_period(
         self, portfolio_id: str, start_date: date, end_date: date
-    ) -> Dict[str, Decimal]:
+    ) -> List[Cashflow]:
         """
-        Fetches aggregated cashflow data for the specified period, filtered by the current epoch.
-        This provides data for Net New Money, Income, and Activity summaries.
+        Fetches all cashflow records for the specified period, filtered by the current epoch.
         """
         current_epoch_subq = (
             select(func.max(PositionState.epoch))
@@ -82,27 +78,23 @@ class SummaryRepository:
         )
 
         stmt = (
-            select(Cashflow.classification, func.sum(Cashflow.amount).label("total_amount"))
+            select(Cashflow)
             .join(PositionState, (PositionState.portfolio_id == Cashflow.portfolio_id))
             .where(
                 Cashflow.portfolio_id == portfolio_id,
                 Cashflow.cashflow_date.between(start_date, end_date),
                 Cashflow.epoch == func.coalesce(current_epoch_subq, 0)
             )
-            .group_by(Cashflow.classification)
+            .order_by(Cashflow.cashflow_date)
         )
         
         result = await self.db.execute(stmt)
-        # The result of a group by is a list of rows, not a mappings object
-        return {row[0]: row[1] for row in result.all()}
+        return result.scalars().all()
 
     @async_timed(repository="SummaryRepository", method="get_realized_pnl")
     async def get_realized_pnl(self, portfolio_id: str, start_date: date, end_date: date) -> Decimal:
         """
         Calculates the total realized P&L for a portfolio over a given period.
-        Note: The transactions table is not versioned by epoch, as transactions are
-        considered immutable facts. Reprocessing recalculates downstream artifacts (like positions)
-        but does not alter the original transaction records.
         """
         stmt = (
             select(func.sum(Transaction.realized_gain_loss))
@@ -144,7 +136,7 @@ class SummaryRepository:
 
         stmt = select(func.sum(ranked_snapshots_subq.c.unrealized_gain_loss)).filter(
             ranked_snapshots_subq.c.rn == 1,
-            ranked_snapshots_subq.c.quantity > 0 # Only sum for open positions
+            ranked_snapshots_subq.c.quantity > 0
         )
         
         result = await self.db.execute(stmt)
