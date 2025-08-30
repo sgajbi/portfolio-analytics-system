@@ -64,13 +64,11 @@ class InstrumentEvent(BaseModel):
     isin: str
     currency: str = Field(..., alias="instrumentCurrency")
     product_type: str = Field(..., alias="productType")
-    # --- NEW FIELDS (RFC 008) ---
     asset_class: Optional[str] = Field(None, alias="assetClass")
     sector: Optional[str] = None
     country_of_risk: Optional[str] = Field(None, alias="countryOfRisk")
     rating: Optional[str] = None
     maturity_date: Optional[date] = Field(None, alias="maturityDate")
-    # --- END NEW FIELDS ---
 
 class TransactionEvent(BaseModel):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
@@ -86,7 +84,7 @@ class TransactionEvent(BaseModel):
     gross_transaction_amount: Decimal
     trade_currency: str
     currency: str
-    trade_fee: Decimal = Field(default=Decimal(0))
+    trade_fee: Optional[Decimal] = Field(default=Decimal(0))
     settlement_date: Optional[datetime] = None
     net_cost: Optional[Decimal] = None
     gross_cost: Optional[Decimal] = None
@@ -94,7 +92,6 @@ class TransactionEvent(BaseModel):
     transaction_fx_rate: Optional[Decimal] = None
     net_cost_local: Optional[Decimal] = None
     realized_gain_loss_local: Optional[Decimal] = None
-    # --- NEW FIELD ---
     epoch: Optional[int] = None
 
 class DailyPositionSnapshotPersistedEvent(BaseModel):
