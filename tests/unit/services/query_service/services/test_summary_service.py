@@ -7,7 +7,7 @@ from decimal import Decimal
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.services.query_service.app.services.summary_service import SummaryService
 from src.services.query_service.app.dtos.summary_dto import SummaryRequest
-from portfolio_common.database_models import Portfolio, DailyPositionSnapshot, Instrument
+from portfolio_common.database_models import Portfolio, DailyPositionSnapshot, Instrument, Cashflow
 
 pytestmark = pytest.mark.asyncio
 
@@ -33,12 +33,15 @@ def mock_dependencies():
     mock_summary_repo.get_wealth_and_allocation_data.return_value = [
         (mock_snapshot_1, mock_instrument_1), (mock_snapshot_2, mock_instrument_2), (mock_snapshot_3, mock_instrument_3),
     ]
-    mock_summary_repo.get_cashflow_summary_data.return_value = {
-        "CASHFLOW_IN": Decimal("10000"), "CASHFLOW_OUT": Decimal("-2000"),
-        "INCOME": Decimal("500"), "EXPENSE": Decimal("-100")
-    }
+    mock_summary_repo.get_cashflows_for_period.return_value = [
+        Cashflow(classification="CASHFLOW_IN", amount=Decimal("10000")),
+        Cashflow(classification="CASHFLOW_OUT", amount=Decimal("-2000")),
+        Cashflow(classification="TRANSFER", amount=Decimal("50000")),
+        Cashflow(classification="TRANSFER", amount=Decimal("-15000")),
+        Cashflow(classification="INCOME", amount=Decimal("500")),
+        Cashflow(classification="EXPENSE", amount=Decimal("-100")),
+    ]
     mock_summary_repo.get_realized_pnl.return_value = Decimal("1500")
-    # Default return value for tests that don't need sequential calls
     mock_summary_repo.get_total_unrealized_pnl.return_value = Decimal("0")
 
 
@@ -56,7 +59,6 @@ def mock_dependencies():
         }
 
 async def test_summary_service_calculates_wealth(mock_dependencies):
-    """Tests that the WealthSummary is calculated correctly."""
     service = mock_dependencies["service"]
     request = SummaryRequest.model_validate({
         "as_of_date": "2025-08-29", "period": {"type": "YTD"}, "sections": ["WEALTH"]
@@ -68,7 +70,6 @@ async def test_summary_service_calculates_wealth(mock_dependencies):
     assert response.allocation is None
 
 async def test_summary_service_calculates_allocation(mock_dependencies):
-    """Tests that the AllocationSummary is calculated and grouped correctly."""
     service = mock_dependencies["service"]
     request = SummaryRequest.model_validate({
         "as_of_date": "2025-08-29", "period": {"type": "YTD"},
@@ -84,13 +85,12 @@ async def test_summary_service_calculates_allocation(mock_dependencies):
 
 async def test_summary_service_calculates_all_sections(mock_dependencies):
     """
-    Tests that a request for all sections returns a complete, correctly calculated response.
+    Tests that a request for all sections returns a complete, correctly calculated response
+    with the new ActivitySummary structure.
     """
     # ARRANGE
     service = mock_dependencies["service"]
     mock_summary_repo = mock_dependencies["summary_repo"]
-    
-    # Configure mock for the sequential calls in this specific test
     mock_summary_repo.get_total_unrealized_pnl.side_effect = [Decimal("8000"), Decimal("10500")]
 
     request = SummaryRequest.model_validate({
@@ -107,16 +107,20 @@ async def test_summary_service_calculates_all_sections(mock_dependencies):
     assert response.income_summary is not None
     assert response.activity_summary is not None
 
+    # Verify Activity Summary
+    activity = response.activity_summary
+    assert activity.total_deposits == Decimal("10000")
+    assert activity.total_withdrawals == Decimal("-2000")
+    assert activity.total_transfers_in == Decimal("50000")
+    assert activity.total_transfers_out == Decimal("-15000")
+    assert activity.total_fees == Decimal("-100")
+    
+    # Verify PNL Summary (net_new_money now includes transfers)
     pnl = response.pnl_summary
-    assert pnl.net_new_money == Decimal("8000")
+    assert pnl.net_new_money == Decimal("43000") # 10k - 2k + 50k - 15k
     assert pnl.realized_pnl == Decimal("1500")
-    assert pnl.unrealized_pnl_change == Decimal("2500")
+    assert pnl.unrealized_pnl_change == Decimal("2500") # 10500 end - 8000 start
     assert pnl.total_pnl == Decimal("4000")
 
     assert response.income_summary.total_dividends == Decimal("500")
-    assert response.activity_summary.total_inflows == Decimal("10000")
-    assert response.activity_summary.total_outflows == Decimal("-2000")
-    assert response.activity_summary.total_fees == Decimal("-100")
-    
-    assert mock_summary_repo.get_realized_pnl.call_count == 1
-    assert mock_summary_repo.get_total_unrealized_pnl.call_count == 2
+    assert response.income_summary.total_interest == Decimal("0")

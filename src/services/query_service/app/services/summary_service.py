@@ -16,7 +16,7 @@ from ..dtos.summary_dto import (
     AllocationSummary, AllocationGroup, AllocationDimension, SummarySection,
     PnlSummary, IncomeSummary, ActivitySummary
 )
-from portfolio_common.database_models import Portfolio, DailyPositionSnapshot, Instrument
+from portfolio_common.database_models import Portfolio, DailyPositionSnapshot, Instrument, Cashflow
 
 logger = logging.getLogger(__name__)
 
@@ -99,10 +99,9 @@ class SummaryService:
             period_start_date=start_date, period_end_date=end_date
         )
 
-        # --- Concurrently fetch all required data ---
         tasks = {
             "positions": self.summary_repo.get_wealth_and_allocation_data(portfolio_id, request.as_of_date),
-            "cashflows": self.summary_repo.get_cashflow_summary_data(portfolio_id, start_date, end_date),
+            "cashflows": self.summary_repo.get_cashflows_for_period(portfolio_id, start_date, end_date),
             "realized_pnl": self.summary_repo.get_realized_pnl(portfolio_id, start_date, end_date),
             "unrealized_pnl_start": self.summary_repo.get_total_unrealized_pnl(portfolio_id, start_date - timedelta(days=1)),
             "unrealized_pnl_end": self.summary_repo.get_total_unrealized_pnl(portfolio_id, end_date),
@@ -111,10 +110,8 @@ class SummaryService:
         results = await asyncio.gather(*tasks.values())
         data = dict(zip(tasks.keys(), results))
 
-        # --- Initialize all possible response sections to None ---
         wealth_summary, pnl_summary, income_summary, activity_summary, allocation_summary = None, None, None, None, None
 
-        # --- Calculate Wealth and Allocation ---
         if SummarySection.WEALTH in request.sections or SummarySection.ALLOCATION in request.sections:
             total_mv = sum(s.market_value or Decimal(0) for s, i in data["positions"])
             total_cash = sum(s.market_value or Decimal(0) for s, i in data["positions"] if i.product_type == 'Cash')
@@ -129,33 +126,40 @@ class SummaryService:
                 )
             allocation_summary = AllocationSummary.model_validate(allocation_dict)
 
-        # --- Calculate PNL, Income, and Activity from cashflow and transaction data ---
-        cashflows = data["cashflows"]
-        if SummarySection.INCOME in request.sections:
-            # Note: A more granular classification might be needed in the future.
-            income_summary = IncomeSummary(
-                total_dividends=abs(cashflows.get("INCOME", Decimal(0))),
-                total_interest=abs(cashflows.get("INTEREST", Decimal(0)))
-            )
-        
-        if SummarySection.ACTIVITY in request.sections or SummarySection.PNL in request.sections:
-            inflows = cashflows.get("CASHFLOW_IN", Decimal(0))
-            outflows = cashflows.get("CASHFLOW_OUT", Decimal(0))
+        if any(s in request.sections for s in [SummarySection.PNL, SummarySection.INCOME, SummarySection.ACTIVITY]):
+            raw_cashflows: List[Cashflow] = data["cashflows"]
+            
+            total_deposits, total_withdrawals, total_transfers_in, total_transfers_out, total_fees, total_dividends, total_interest = (Decimal(0),)*7
+            
+            for cf in raw_cashflows:
+                if cf.classification == "CASHFLOW_IN": total_deposits += cf.amount
+                elif cf.classification == "CASHFLOW_OUT": total_withdrawals += cf.amount
+                elif cf.classification == "EXPENSE": total_fees += cf.amount
+                elif cf.classification == "INCOME": total_dividends += cf.amount
+                elif cf.classification == "INTEREST": total_interest += cf.amount
+                elif cf.classification == "TRANSFER":
+                    if cf.amount > 0: total_transfers_in += cf.amount
+                    else: total_transfers_out += cf.amount
+            
             if SummarySection.ACTIVITY in request.sections:
                 activity_summary = ActivitySummary(
-                    total_inflows=inflows, total_outflows=outflows,
-                    total_fees=cashflows.get("EXPENSE", Decimal(0))
+                    total_deposits=total_deposits, total_withdrawals=total_withdrawals,
+                    total_transfers_in=total_transfers_in, total_transfers_out=total_transfers_out,
+                    total_fees=total_fees
                 )
-
-        if SummarySection.PNL in request.sections:
-            unrealized_pnl_change = data["unrealized_pnl_end"] - data["unrealized_pnl_start"]
-            realized_pnl = data["realized_pnl"]
-            pnl_summary = PnlSummary(
-                net_new_money=inflows + outflows,
-                realized_pnl=realized_pnl,
-                unrealized_pnl_change=unrealized_pnl_change,
-                total_pnl=realized_pnl + unrealized_pnl_change
-            )
+            
+            if SummarySection.INCOME in request.sections:
+                income_summary = IncomeSummary(total_dividends=total_dividends, total_interest=total_interest)
+            
+            if SummarySection.PNL in request.sections:
+                net_new_money = total_deposits + total_withdrawals + total_transfers_in + total_transfers_out
+                unrealized_pnl_change = data["unrealized_pnl_end"] - data["unrealized_pnl_start"]
+                realized_pnl = data["realized_pnl"]
+                pnl_summary = PnlSummary(
+                    net_new_money=net_new_money, realized_pnl=realized_pnl,
+                    unrealized_pnl_change=unrealized_pnl_change,
+                    total_pnl=realized_pnl + unrealized_pnl_change
+                )
 
         return SummaryResponse(
             scope=scope,
