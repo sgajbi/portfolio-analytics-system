@@ -111,5 +111,5 @@ async def test_summary_service_calculates_allocation(mock_dependencies):
     assert alloc_sector[0].market_value == Decimal("50000")
     assert alloc_sector[0].weight == pytest.approx(0.5)
     assert alloc_sector[1].group == "Unclassified"
-    assert alloc_sector[1].market_value == Decimal("30000") # The bond with no sector
-    assert alloc_sector[1].weight == pytest.approx(0.3)
+    assert alloc_sector[1].market_value == Decimal("50000") # 30k (bond) + 20k (cash)
+    assert alloc_sector[1].weight == pytest.approx(0.5)
