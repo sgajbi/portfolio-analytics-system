@@ -1,0 +1,141 @@
+# src/services/query_service/app/services/summary_service.py
+import logging
+from datetime import date
+from decimal import Decimal
+from typing import List, Any, Dict
+from collections import defaultdict
+
+from sqlalchemy.ext.asyncio import AsyncSession
+from performance_calculator_engine.helpers import resolve_period
+
+from ..repositories.summary_repository import SummaryRepository
+from ..repositories.portfolio_repository import PortfolioRepository
+from ..dtos.summary_dto import (
+    SummaryRequest, SummaryResponse, ResponseScope, WealthSummary,
+    AllocationSummary, AllocationGroup, AllocationDimension, SummarySection
+)
+from portfolio_common.database_models import DailyPositionSnapshot, Instrument
+
+logger = logging.getLogger(__name__)
+
+class SummaryService:
+    """
+    Handles the business logic for creating a portfolio summary.
+    """
+    def __init__(self, db: AsyncSession):
+        self.db = db
+        self.summary_repo = SummaryRepository(db)
+        self.portfolio_repo = PortfolioRepository(db)
+
+    def _calculate_allocation_by_dimension(
+        self,
+        positions_data: List[Any],
+        dimension: AllocationDimension,
+        total_market_value: Decimal
+    ) -> List[AllocationGroup]:
+        """A helper to group positions and calculate allocation for a single dimension."""
+        if total_market_value == 0:
+            return []
+
+        grouped_allocation: Dict[str, Decimal] = defaultdict(Decimal)
+        dimension_map = {
+            AllocationDimension.ASSET_CLASS: 'asset_class',
+            AllocationDimension.CURRENCY: 'currency',
+            AllocationDimension.SECTOR: 'sector',
+            AllocationDimension.COUNTRY_OF_RISK: 'country_of_risk',
+            AllocationDimension.RATING: 'rating',
+        }
+        attribute_name = dimension_map.get(dimension)
+
+        for snapshot, instrument in positions_data:
+            market_value = snapshot.market_value or Decimal(0)
+            group_key = "Unclassified"
+            
+            if attribute_name:
+                group_key = getattr(instrument, attribute_name) or "Unclassified"
+
+            # Special handling for maturity bucket
+            elif dimension == AllocationDimension.MATURITY_BUCKET:
+                if instrument.maturity_date and instrument.asset_class == 'Fixed Income':
+                    years_to_maturity = (instrument.maturity_date - date.today()).days / 365.25
+                    if years_to_maturity <= 1: group_key = '0-1Y'
+                    elif years_to_maturity <= 3: group_key = '1-3Y'
+                    elif years_to_maturity <= 5: group_key = '3-5Y'
+                    elif years_to_maturity <= 10: group_key = '5-10Y'
+                    else: group_key = '10Y+'
+                else:
+                    group_key = "N/A" # Not applicable if not a bond
+
+            grouped_allocation[group_key] += market_value
+
+        return [
+            AllocationGroup(
+                group=key,
+                market_value=value,
+                weight=float(value / total_market_value)
+            ) for key, value in sorted(grouped_allocation.items())
+        ]
+
+    async def get_portfolio_summary(
+        self, portfolio_id: str, request: SummaryRequest
+    ) -> SummaryResponse:
+        """
+        Orchestrates the fetching and calculation of all requested summary sections.
+        """
+        # 1. Get portfolio and resolve period
+        portfolio = await self.portfolio_repo.get_by_id(portfolio_id)
+        if not portfolio:
+            raise ValueError(f"Portfolio {portfolio_id} not found")
+
+        period_name, start_date, end_date = resolve_period(
+            period_type=request.period.type,
+            name=request.period.name,
+            from_date=getattr(request.period, 'from_date', None),
+            to_date=getattr(request.period, 'to_date', None),
+            year=getattr(request.period, 'year', None),
+            inception_date=portfolio.open_date,
+            as_of_date=request.as_of_date
+        )
+
+        scope = ResponseScope(
+            portfolio_id=portfolio_id,
+            as_of_date=request.as_of_date,
+            period_start_date=start_date,
+            period_end_date=end_date
+        )
+
+        # 2. Fetch primary data for wealth and allocation
+        positions_data = await self.summary_repo.get_wealth_and_allocation_data(
+            portfolio_id, request.as_of_date
+        )
+
+        # 3. Initialize section variables
+        wealth_summary = None
+        allocation_summary = None
+
+        # 4. Calculate sections if requested
+        # Note: Allocation depends on wealth for total market value.
+        if SummarySection.WEALTH in request.sections or SummarySection.ALLOCATION in request.sections:
+            total_mv = sum(s.market_value or Decimal(0) for s, i in positions_data)
+            total_cash = sum(s.market_value or Decimal(0) for s, i in positions_data if i.product_type == 'Cash')
+            wealth_summary = WealthSummary(total_market_value=total_mv, total_cash=total_cash)
+
+        if SummarySection.ALLOCATION in request.sections and request.allocation_dimensions and positions_data:
+            allocation_dict = {}
+            for dim in request.allocation_dimensions:
+                key = f"by_{dim.value.lower()}"
+                allocation_dict[key] = self._calculate_allocation_by_dimension(
+                    positions_data, dim, wealth_summary.total_market_value
+                )
+            allocation_summary = AllocationSummary.model_validate(allocation_dict)
+
+        # 5. Assemble response
+        return SummaryResponse(
+            scope=scope,
+            wealth=wealth_summary if SummarySection.WEALTH in request.sections else None,
+            allocation=allocation_summary,
+            # Placeholders for future steps
+            pnlSummary=None,
+            incomeSummary=None,
+            activitySummary=None,
+        )
