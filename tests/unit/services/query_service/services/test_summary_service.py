@@ -38,8 +38,9 @@ def mock_dependencies():
         "INCOME": Decimal("500"), "EXPENSE": Decimal("-100")
     }
     mock_summary_repo.get_realized_pnl.return_value = Decimal("1500")
-    # Simulate unrealized P&L increasing by 2500 during the period
-    mock_summary_repo.get_total_unrealized_pnl.side_effect = [Decimal("8000"), Decimal("10500")] # Start, End
+    # Default return value for tests that don't need sequential calls
+    mock_summary_repo.get_total_unrealized_pnl.return_value = Decimal("0")
+
 
     with patch(
         "src.services.query_service.app.services.summary_service.PortfolioRepository",
@@ -88,6 +89,10 @@ async def test_summary_service_calculates_all_sections(mock_dependencies):
     # ARRANGE
     service = mock_dependencies["service"]
     mock_summary_repo = mock_dependencies["summary_repo"]
+    
+    # Configure mock for the sequential calls in this specific test
+    mock_summary_repo.get_total_unrealized_pnl.side_effect = [Decimal("8000"), Decimal("10500")]
+
     request = SummaryRequest.model_validate({
         "as_of_date": "2025-08-29", "period": {"type": "YTD"},
         "sections": ["WEALTH", "PNL", "INCOME", "ACTIVITY"]
@@ -97,25 +102,21 @@ async def test_summary_service_calculates_all_sections(mock_dependencies):
     response = await service.get_portfolio_summary("P1", request)
 
     # ASSERT
-    # Verify all sections are present
     assert response.wealth is not None
     assert response.pnl_summary is not None
     assert response.income_summary is not None
     assert response.activity_summary is not None
 
-    # Verify PNL Summary calculations
     pnl = response.pnl_summary
-    assert pnl.net_new_money == Decimal("8000") # 10000 in - 2000 out
+    assert pnl.net_new_money == Decimal("8000")
     assert pnl.realized_pnl == Decimal("1500")
-    assert pnl.unrealized_pnl_change == Decimal("2500") # 10500 end - 8000 start
-    assert pnl.total_pnl == Decimal("4000") # 1500 realized + 2500 unrealized change
+    assert pnl.unrealized_pnl_change == Decimal("2500")
+    assert pnl.total_pnl == Decimal("4000")
 
-    # Verify Income & Activity
-    assert response.income_summary.total_dividends == Decimal("500") # Uses "INCOME" for now
+    assert response.income_summary.total_dividends == Decimal("500")
     assert response.activity_summary.total_inflows == Decimal("10000")
     assert response.activity_summary.total_outflows == Decimal("-2000")
     assert response.activity_summary.total_fees == Decimal("-100")
     
-    # Verify correct calls to repo for PNL data
     assert mock_summary_repo.get_realized_pnl.call_count == 1
     assert mock_summary_repo.get_total_unrealized_pnl.call_count == 2

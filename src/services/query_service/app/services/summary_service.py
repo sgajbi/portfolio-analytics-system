@@ -1,7 +1,7 @@
 # src/services/query_service/app/services/summary_service.py
 import logging
 import asyncio
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from typing import List, Any, Dict
 from collections import defaultdict
@@ -132,6 +132,7 @@ class SummaryService:
         # --- Calculate PNL, Income, and Activity from cashflow and transaction data ---
         cashflows = data["cashflows"]
         if SummarySection.INCOME in request.sections:
+            # Note: A more granular classification might be needed in the future.
             income_summary = IncomeSummary(
                 total_dividends=abs(cashflows.get("INCOME", Decimal(0))),
                 total_interest=abs(cashflows.get("INTEREST", Decimal(0)))
@@ -156,7 +157,6 @@ class SummaryService:
                 total_pnl=realized_pnl + unrealized_pnl_change
             )
 
-        # --- Assemble final response from calculated sections ---
         return SummaryResponse(
             scope=scope,
             wealth=wealth_summary if SummarySection.WEALTH in request.sections else None,
