@@ -1,12 +1,13 @@
 # src/services/query_service/app/repositories/summary_repository.py
 import logging
 from datetime import date
-from typing import List, Any
+from typing import List, Any, Dict
+from decimal import Decimal
 
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
-from portfolio_common.database_models import DailyPositionSnapshot, PositionState, Instrument
+from portfolio_common.database_models import DailyPositionSnapshot, PositionState, Instrument, Cashflow, Transaction
 from portfolio_common.utils import async_timed
 
 logger = logging.getLogger(__name__)
@@ -28,8 +29,6 @@ class SummaryRepository:
         Returns a list of Row objects, each containing a DailyPositionSnapshot and its
         corresponding Instrument.
         """
-        # Subquery to rank snapshots within each security, but only for snapshots
-        # that match the current epoch defined in the position_state table.
         ranked_snapshots_subq = select(
             DailyPositionSnapshot,
             Instrument,
@@ -52,12 +51,9 @@ class SummaryRepository:
             DailyPositionSnapshot.date <= as_of_date
         ).subquery('ranked_snapshots')
 
-        # Use an alias to query from the subquery
         ranked_alias = aliased(DailyPositionSnapshot, ranked_snapshots_subq)
         instrument_alias = aliased(Instrument, ranked_snapshots_subq)
 
-        # Final query to select the top-ranked snapshot (rn=1) for each security
-        # and filter out any closed positions (quantity > 0).
         stmt = select(
             ranked_alias,
             instrument_alias
@@ -70,3 +66,51 @@ class SummaryRepository:
         data = results.all()
         logger.info(f"Found {len(data)} open positions for portfolio '{portfolio_id}' for summary as of {as_of_date}.")
         return data
+
+    @async_timed(repository="SummaryRepository", method="get_cashflow_summary_data")
+    async def get_cashflow_summary_data(
+        self, portfolio_id: str, start_date: date, end_date: date
+    ) -> Dict[str, Decimal]:
+        """
+        Fetches aggregated cashflow data for the specified period, filtered by the current epoch.
+        This provides data for Net New Money, Income, and Activity summaries.
+        """
+        current_epoch_subq = (
+            select(func.max(PositionState.epoch))
+            .where(PositionState.portfolio_id == portfolio_id)
+            .scalar_subquery()
+        )
+
+        stmt = (
+            select(Cashflow.classification, func.sum(Cashflow.amount).label("total_amount"))
+            .join(PositionState, (PositionState.portfolio_id == Cashflow.portfolio_id))
+            .where(
+                Cashflow.portfolio_id == portfolio_id,
+                Cashflow.cashflow_date.between(start_date, end_date),
+                Cashflow.epoch == func.coalesce(current_epoch_subq, 0)
+            )
+            .group_by(Cashflow.classification)
+        )
+        
+        result = await self.db.execute(stmt)
+        return {row.classification: row.total_amount for row in result}
+
+    @async_timed(repository="SummaryRepository", method="get_realized_pnl")
+    async def get_realized_pnl(self, portfolio_id: str, start_date: date, end_date: date) -> Decimal:
+        """
+        Calculates the total realized P&L for a portfolio over a given period.
+        Note: The transactions table is not versioned by epoch, as transactions are
+        considered immutable facts. Reprocessing recalculates downstream artifacts (like positions)
+        but does not alter the original transaction records.
+        """
+        stmt = (
+            select(func.sum(Transaction.realized_gain_loss))
+            .where(
+                Transaction.portfolio_id == portfolio_id,
+                func.date(Transaction.transaction_date).between(start_date, end_date),
+                Transaction.realized_gain_loss.is_not(None)
+            )
+        )
+        
+        result = await self.db.execute(stmt)
+        return result.scalar_one_or_none() or Decimal(0)
