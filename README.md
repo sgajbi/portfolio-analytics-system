@@ -1,3 +1,4 @@
+
 # Portfolio Analytics System
 
 [![Python Version](https://img.shields.io/badge/python-3.11-blue.svg)](https://www.python.org/downloads/release/python-3110/)
@@ -165,7 +166,8 @@ The system relies on a well-defined sequence of events published to Kafka topics
   - `POST /portfolios/{portfolio_id}/performance/mwr`: Calculates Money-Weighted Return (MWR) for a portfolio.
   - `POST /portfolios/{portfolio_id}/risk`: Calculates a suite of on-demand risk analytics.
   - `POST /portfolios/{portfolio_id}/summary`: Calculates a consolidated, on-demand summary of portfolio wealth, P\&L, and allocation.
-  - `POST /portfolios/{portfolio_id}/review`: **(NEW)** Generates a comprehensive, multi-section portfolio review report with a single API call.
+  - `POST /portfolios/{portfolio_id}/review`: Generates a comprehensive, multi-section portfolio review report with a single API call.
+  - `POST /portfolios/{portfolio_id}/concentration`: **(NEW)** Calculates on-demand concentration risk metrics (e.g., Issuer, Top-N Holdings, HHI).
   - `GET /health/ready`: Readiness probe (checks database connection).
 
 -----
@@ -335,3 +337,4 @@ This example demonstrates the full flow from ingesting data to querying the fina
     The script will print the final `positions` and `transactions` JSON responses to the console.
 
 <!-- end list -->
+ 
