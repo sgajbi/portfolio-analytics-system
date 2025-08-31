@@ -363,11 +363,16 @@ class ValuationRepository:
                 PortfolioValuationJob.status == 'PROCESSING',
                 PortfolioValuationJob.updated_at < stale_threshold
             )
-            .values(status='PENDING')
+            .values(
+                status='PENDING',
+                updated_at=func.now() # Also update the timestamp to avoid immediate re-claiming
+            )
+            .returning(PortfolioValuationJob.id) # Use RETURNING for a reliable count
         )
         
         result = await self.db.execute(stmt)
-        reset_count = result.rowcount
+        reset_ids = result.fetchall()
+        reset_count = len(reset_ids)
         
         if reset_count > 0:
             logger.warning(f"Reset {reset_count} stale valuation jobs from 'PROCESSING' to 'PENDING'.")
