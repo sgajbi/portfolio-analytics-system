@@ -9,7 +9,7 @@
 
 ## 1\. Summary (TL;DR)
 
-This RFC proposes the creation of a new, configurable endpoint, **`POST /portfolios/{portfolio_id}/positions-analytics`**, within the `query-service`. This endpoint will provide a comprehensive, on-the-fly analytical view of each individual position within a portfolio.
+This RFC approves the creation of a new, configurable endpoint, **`POST /portfolios/{portfolio_id}/positions-analytics`**, within the `query-service`. This endpoint will provide a comprehensive, on-the-fly analytical view of each individual position within a portfolio.
 
 The new feature will enrich each position with key metrics, including **performance (TWR), total income, held since date, and portfolio weight**, along with a full set of instrument reference data. All analytics will be calculated in both the instrument's local currency and the portfolio's base currency. The design reuses the existing `performance-calculator-engine`, adheres to the system's **epoch-aware** data consistency model, and follows the established architectural pattern of stateless, on-demand calculations.
 
@@ -17,7 +17,7 @@ The new feature will enrich each position with key metrics, including **performa
 
 ## 2\. Motivation
 
-While the system provides excellent portfolio-level analytics, advisors and clients require deeper insights into the individual drivers of performance and risk. Manually calculating these metrics is time-consuming and error-prone. This feature will empower users by:
+While the system provides excellent portfolio-level analytics, advisors and clients need deeper insights into the individual drivers of performance and risk. Manually calculating these metrics is time-consuming and error-prone. This feature will empower users by:
 
   * **Providing Actionable Insights**: Quickly identify top/bottom performers, significant income generators, and long-term holdings.
   * **Enhancing Client Conversations**: Answer specific client questions like, "How has this particular stock performed since we bought it?" with precise, data-driven answers.
@@ -33,7 +33,7 @@ The implementation will be logically contained within the `query-service` and wi
 
 A new endpoint will be created: **`POST /portfolios/{portfolio_id}/positions-analytics`**.
 
-We will use the `POST` method to accommodate a rich, JSON-based request body. This provides maximum flexibility for clients to request only the specific analytical sections they need, which is more scalable than using a large number of query parameters.
+We will use the `POST` method to allow for a rich, JSON-based request body. This provides maximum flexibility for clients to request only the specific analytical sections they need, which is more scalable than using a large number of query parameters.
 
 ### 3.2. New `PositionAnalyticsService`
 
@@ -54,32 +54,32 @@ This feature's reliability hinges on adhering to the system's epoch/watermark mo
 
 | Metric | Primary Data Source(s) | Calculation Strategy |
 | :--- | :--- | :--- |
-| **Base Position Data** | `daily_position_snapshots` | Use the existing `PositionRepository.get_latest_positions_by_portfolio` method. This provides the core data: quantity, market value (local and base), and cost basis (local and base) for each open position as of the request date. |
-| **Instrument Enrichment** | `instruments` | The `PositionRepository` method will be extended to join and retrieve all relevant fields from the `instruments` table, including `name`, `isin`, `asset_class`, `sector`, `country_of_risk`, and `currency`. |
-| **`held_since_date`** | `position_history` | This date will be derived dynamically by a new method in `PositionRepository`. The logic will find the most recent date where the position quantity was zero (or non-existent) for the current epoch; the `held_since_date` is the `transaction_date` of the first record *after* that point. If no such point exists, the date of the very first `position_history` record for the current epoch is used. |
-| **`total_income`** | `cashflows`, `fx_rates` | A new repository method will sum all records from the `cashflows` table where `security_id` matches the position and `classification` is `INCOME` since the `held_since_date`. This will be done twice: once summing the `amount` for the local currency total, and a second time converting each `amount` to the portfolio's base currency using the historical `fx_rates` for each `cashflow_date`. |
+| **Base Position & Valuation** | `daily_position_snapshots`, `instruments` | We will extend the existing `PositionRepository.get_latest_positions_by_portfolio` method to fetch all required instrument reference data in a single, efficient query. This provides the core data: quantity, market value (local and base), and cost basis (local and base). Unrealized P\&L is derived from these values. |
+| **`held_since_date`** | `position_history` | This date will be derived dynamically. We will query for the most recent date *before* the current holding period where the position quantity was zero. The `held_since_date` will be the date of the subsequent transaction that re-opened the position. If no such zero-quantity point exists, the date of the very first transaction will be used. |
+| **`total_income`** | `cashflows`, `fx_rates` | We will sum all records from the `cashflows` table where the `classification` is `INCOME` for the specific position since its `held_since_date`. The calculation will first be performed in the instrument's local currency. A second calculation will convert each cashflow amount to the portfolio's base currency using the FX rate from the respective `cashflow_date`. |
 | **`weight`** | `daily_position_snapshots` | Calculated as `position.market_value_base / portfolio_total_market_value_base`. The portfolio's total market value is the sum of `market_value_base` across all positions fetched in the initial step. |
-| **Performance (TWR)** | `position_timeseries`, `fx_rates` | We will create a new internal component to reuse the `performance-calculator-engine`. For each position and requested period (MTD, YTD, etc.): \<br\> 1. Fetch the corresponding data from the `position_timeseries` table, which is at the correct granularity. \<br\> 2. Instantiate `PerformanceCalculator` and calculate the return. This yields the performance in the **local currency**. \<br\> 3. To get the **base currency** return, fetch the daily FX rates for the period, apply them to the daily return series, and recalculate. This correctly captures the P\&L contribution from both asset price movement and currency fluctuations. |
+| **Performance (TWR)** | `position_timeseries`, `fx_rates` | We will reuse the `performance-calculator-engine`. For each position and requested period: \<br\> 1. Fetch the corresponding data from the `position_timeseries` table. \<br\> 2. Instantiate `PerformanceCalculator` and calculate the return. This yields the performance in the **local currency**. \<br\> 3. To get the **base currency** return, we will fetch the daily FX rates for the period, apply them to the daily return series, and run the calculation a second time. This correctly captures the P\&L contribution from FX movements. |
 
 -----
 
 ## 5\. API Schema Definition
 
-A new DTO file will be created: `src/services/query_service/app/dtos/position_analytics_dto.py`.
+A new DTO file will be created: `src/services/query_service/app/dtos/position_analytics_dto.py`. Pydantic models will use `camelCase` aliases to ensure the JSON payload adheres to web API best practices.
 
 #### **Request: `POST /portfolios/{portfolio_id}/positions-analytics`**
 
 ```json
 {
-  "as_of_date": "2025-08-31",
+  "asOfDate": "2025-08-31",
   "sections": [
     "BASE",
     "INSTRUMENT_DETAILS",
+    "VALUATION",
     "INCOME",
     "PERFORMANCE"
   ],
-  "performance_options": {
-    "periods": ["MTD", "YTD", "ONE_YEAR", "SI"]
+  "performanceOptions": {
+    "periods": ["MTD", "QTD", "YTD", "ONE_YEAR", "SI"]
   }
 }
 ```
@@ -88,45 +88,49 @@ A new DTO file will be created: `src/services/query_service/app/dtos/position_an
 
 ```json
 {
-  "portfolio_id": "E2E_REVIEW_01",
-  "as_of_date": "2025-08-31",
-  "total_market_value": 101270.00,
+  "portfolioId": "E2E_REVIEW_01",
+  "asOfDate": "2025-08-31",
+  "totalMarketValue": 101270.00,
   "positions": [
     {
-      "security_id": "SEC_AAPL",
+      "securityId": "SEC_AAPL",
       "quantity": 100.0,
-      "market_value": 16000.00,
       "weight": 0.158,
-      "held_since_date": "2025-08-20",
+      "heldSinceDate": "2025-08-20",
       
-      "instrument_details": {
+      "instrumentDetails": {
         "name": "Apple Inc.",
         "isin": "US_AAPL_REVIEW",
-        "asset_class": "Equity",
+        "assetClass": "Equity",
         "sector": "Technology",
-        "country_of_risk": "US",
+        "countryOfRisk": "US",
         "currency": "USD"
       },
 
-      "income": {
-        "local": {
-          "currency": "USD",
-          "amount": 120.00
+      "valuation": {
+        "marketValue": {
+          "local": {"amount": 16000.00, "currency": "USD"},
+          "base": {"amount": 16000.00, "currency": "USD"}
         },
-        "base": {
-          "currency": "USD",
-          "amount": 120.00
+        "costBasis": {
+          "local": {"amount": 15000.00, "currency": "USD"},
+          "base": {"amount": 15000.00, "currency": "USD"}
+        },
+        "unrealizedPnl": {
+          "local": {"amount": 1000.00, "currency": "USD"},
+          "base": {"amount": 1000.00, "currency": "USD"}
         }
       },
 
+      "income": {
+        "local": {"amount": 120.00, "currency": "USD"},
+        "base": {"amount": 120.00, "currency": "USD"}
+      },
+
       "performance": {
-        "MTD": {
-          "local_return": 5.25,
-          "base_return": 5.25
-        },
         "YTD": {
-          "local_return": 12.80,
-          "base_return": 12.80
+          "localReturn": 12.80,
+          "baseReturn": 12.80
         }
       }
     }
@@ -141,45 +145,18 @@ A new DTO file will be created: `src/services/query_service/app/dtos/position_an
 To monitor this new, high-value endpoint, the following will be implemented:
 
   * **Metrics**:
-      * `position_analytics_duration_seconds` (`Histogram`): Measures the end-to-end latency of a full API request, labeled by `portfolio_id`.
-      * `position_analytics_section_requested_total` (`Counter`): Tracks how often each section (`PERFORMANCE`, `INCOME`, etc.) is requested to monitor feature usage.
+      * `position_analytics_duration_seconds` (`Histogram`): Measures the end-to-end latency of a full API request.
+      * `position_analytics_section_requested_total` (`Counter`): Tracks how often each section (`PERFORMANCE`, `INCOME`) is requested to monitor feature usage.
   * **Logging**: The `PositionAnalyticsService` will emit structured logs tagged with `correlation_id`, `portfolio_id`, and the number of positions processed to provide a clear trace of each request.
 
 -----
 
-## 7\. Implementation Plan
+## 7\. Acceptance Criteria
 
-1.  **Phase 1: Foundation (DTOs, Service & Repository Layers)**:
-      * Create all DTOs for the request and response.
-      * Create the `PositionAnalyticsService` skeleton and the `POST /positions-analytics` router in `query_service`.
-      * Enhance `PositionRepository` to fetch the required base position and instrument data in a single, optimized query.
-2.  **Phase 2: Core Analytics (Income & Held Since Date)**:
-      * Implement the repository method and service logic to derive the `held_since_date`.
-      * Implement the repository method and service logic for the dual-currency `total_income` calculation.
-3.  **Phase 3: Performance Calculation**:
-      * Create a new repository method to fetch data from the `position_timeseries` table.
-      * Implement the service logic to call the `performance-calculator-engine` for both local and base currency returns.
-4.  **Phase 4: Testing & Observability**:
-      * Add the Prometheus metrics and structured logging.
-      * Add comprehensive unit tests for all new logic, integration tests for the endpoint, and a new end-to-end test to validate the entire pipeline.
-
------
-
-## 8\. Risks & Mitigations
-
-  * **Performance Risk**: Calculating performance for every position in a large portfolio could be slow.
-      * **Mitigation**: The use of `asyncio.gather` will parallelize the work. All database queries will be optimized and analyzed. If performance issues arise for very large portfolios, we can consider adding a caching layer in a future iteration.
-  * **Data Dependency Risk**: The accuracy of the analytics is highly dependent on the completeness of the upstream `position_timeseries` data.
-      * **Mitigation**: The API will fail gracefully. If the time-series data required for a calculation is missing, the corresponding section in the response (e.g., `performance`) will be `null`. This provides a clear signal of upstream data lag without failing the entire request.
-
------
-
-## 9\. Acceptance Criteria
-
-1.  The new `POST /portfolios/{portfolio_id}/positions-analytics` endpoint is implemented and functional.
+1.  A new `POST /portfolios/{portfolio_id}/positions-analytics` endpoint exists in the `query_service`.
 2.  The API response is configurable via the `sections` array in the request body.
-3.  All calculations are verifiably epoch-aware.
-4.  Performance and income are correctly calculated and returned in both local and portfolio base currencies.
+3.  All calculations are verifiably epoch-aware and consistent with other system analytics.
+4.  All monetary values (market value, cost basis, P\&L, income) and performance returns are correctly calculated and returned in both local and portfolio base currencies.
 5.  The `performance-calculator-engine` is reused for position-level TWR calculations.
-6.  The new feature is covered by unit, integration, and end-to-end tests.
+6.  The new feature is covered by comprehensive unit, integration, and end-to-end tests.
 7.  New Prometheus metrics for latency and feature usage are implemented.
