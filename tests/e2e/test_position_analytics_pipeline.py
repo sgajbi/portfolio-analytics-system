@@ -41,13 +41,13 @@ def setup_position_analytics_data(clean_db_module, e2e_api_client: E2EApiClient,
         {"securityId": SECURITY_ID, "priceDate": AS_OF_DATE, "price": 55.0, "currency": "EUR"}
     ]})
     
-    # 4. Poll until the final day's position timeseries is generated. THIS IS THE FIX.
+    # 4. Poll until the timeseries for ALL relevant days are generated.
     poll_db_until(
-        query="SELECT 1 FROM position_timeseries WHERE portfolio_id = :pid AND security_id = :sid AND date = :date",
-        params={"pid": PORTFOLIO_ID, "sid": SECURITY_ID, "date": AS_OF_DATE},
-        validation_func=lambda r: r is not None,
+        query="SELECT count(*) FROM position_timeseries WHERE portfolio_id = :pid AND security_id = :sid AND date IN :dates",
+        params={"pid": PORTFOLIO_ID, "sid": SECURITY_ID, "dates": tuple(dates)},
+        validation_func=lambda r: r is not None and r[0] == len(dates),
         timeout=180,
-        fail_message=f"Pipeline did not generate position_timeseries for {AS_OF_DATE}."
+        fail_message=f"Pipeline did not generate all {len(dates)} position_timeseries records."
     )
     return {"portfolio_id": PORTFOLIO_ID}
 
@@ -67,8 +67,7 @@ def test_position_analytics_pipeline(setup_position_analytics_data, e2e_api_clie
     }
 
     # ACT
-    import time
-    time.sleep(5)
+    # The short sleep is removed as the polling is now sufficient.
     response = e2e_api_client.post_query(api_url, request_payload)
     data = response.json()
 

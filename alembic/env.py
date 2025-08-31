@@ -38,7 +38,8 @@ if config.config_file_name:
 from portfolio_common.database_models import (
     Base, Transaction, TransactionCost, Instrument, MarketPrice, FxRate,
     PositionHistory, OutboxEvent, ProcessedEvent, DailyPositionSnapshot,
-    Cashflow, Portfolio, PortfolioAggregationJob, PortfolioTimeseries, PositionTimeseries
+    Cashflow, Portfolio, PortfolioAggregationJob, PortfolioTimeseries, PositionTimeseries,
+    InstrumentReprocessingState # <-- ADD NEW MODEL HERE
 )
 target_metadata = Base.metadata
 

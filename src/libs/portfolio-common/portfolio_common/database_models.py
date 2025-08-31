@@ -324,3 +324,16 @@ class PositionState(Base):
     status = Column(String, nullable=False, server_default='CURRENT', index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+class InstrumentReprocessingState(Base):
+    """
+    A state table to track back-dated price events for an instrument.
+    This acts as a trigger for the ValuationScheduler to find and update
+    all affected PositionState watermarks.
+    """
+    __tablename__ = 'instrument_reprocessing_state'
+
+    security_id = Column(String, primary_key=True)
+    earliest_impacted_date = Column(Date, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
