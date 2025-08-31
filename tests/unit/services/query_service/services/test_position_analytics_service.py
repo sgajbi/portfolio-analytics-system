@@ -7,7 +7,7 @@ from decimal import Decimal
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.services.query_service.app.services.position_analytics_service import PositionAnalyticsService
 from src.services.query_service.app.dtos.position_analytics_dto import PositionAnalyticsRequest, PositionAnalyticsSection
-from portfolio_common.database_models import DailyPositionSnapshot, Portfolio
+from portfolio_common.database_models import DailyPositionSnapshot, Portfolio, FxRate
 
 pytestmark = pytest.mark.asyncio
 
@@ -18,6 +18,7 @@ def mock_dependencies():
     mock_portfolio_repo = AsyncMock()
     mock_cashflow_repo = AsyncMock()
     mock_perf_repo = AsyncMock()
+    mock_fx_repo = AsyncMock() # Add mock for FxRateRepository
 
     # Configure mock return values
     mock_portfolio_repo.get_by_id.return_value = Portfolio(
@@ -39,8 +40,14 @@ def mock_dependencies():
     )]
     mock_position_repo.get_latest_positions_by_portfolio.return_value = repo_return_value
     mock_position_repo.get_held_since_date.return_value = date(2025, 3, 15)
-    mock_cashflow_repo.get_total_income_for_position.return_value = Decimal("125.50")
-    mock_perf_repo.get_position_timeseries_for_range.return_value = [] # Default to no perf data
+    
+    # FIX: This method no longer exists, but the new one returns a list of cashflows
+    mock_cashflow_repo.get_income_cashflows_for_position.return_value = []
+    
+    mock_perf_repo.get_position_timeseries_for_range.return_value = []
+    
+    # FIX: Add mock for fx_repo
+    mock_fx_repo.get_fx_rates.return_value = []
 
     with patch(
         "src.services.query_service.app.services.position_analytics_service.PositionRepository",
@@ -54,6 +61,9 @@ def mock_dependencies():
     ), patch(
         "src.services.query_service.app.services.position_analytics_service.PerformanceRepository",
         return_value=mock_perf_repo
+    ), patch( # Add patch for the new FxRateRepository dependency
+        "src.services.query_service.app.services.position_analytics_service.FxRateRepository",
+        return_value=mock_fx_repo
     ):
         service = PositionAnalyticsService(AsyncMock(spec=AsyncSession))
         yield { 
@@ -61,12 +71,13 @@ def mock_dependencies():
             "position_repo": mock_position_repo, 
             "portfolio_repo": mock_portfolio_repo,
             "cashflow_repo": mock_cashflow_repo,
-            "perf_repo": mock_perf_repo
+            "perf_repo": mock_perf_repo,
+            "fx_repo": mock_fx_repo
         }
 
 async def test_get_position_analytics_all_sections(mock_dependencies):
     """
-    GIVEN a request for all non-performance sections
+    GIVEN a request for all sections
     WHEN get_position_analytics is called
     THEN it should call all necessary repositories and map the data to the DTO.
     """
@@ -90,7 +101,10 @@ async def test_get_position_analytics_all_sections(mock_dependencies):
     # ASSERT
     mock_dependencies["position_repo"].get_latest_positions_by_portfolio.assert_awaited_once_with("P1")
     mock_dependencies["position_repo"].get_held_since_date.assert_awaited_once_with("P1", "SEC1", 1)
-    mock_dependencies["cashflow_repo"].get_total_income_for_position.assert_awaited_once()
+    
+    # --- FIX: Assert the correct repository method is called ---
+    mock_dependencies["cashflow_repo"].get_income_cashflows_for_position.assert_awaited_once()
+    
     mock_dependencies["perf_repo"].get_position_timeseries_for_range.assert_awaited_once()
     
     assert response.portfolio_id == "P1"
@@ -100,7 +114,7 @@ async def test_get_position_analytics_all_sections(mock_dependencies):
     
     assert position.held_since_date == date(2025, 3, 15)
     assert position.income is not None
-    assert position.income.amount == 125.50
+    assert position.income.local.amount == 0.0 # Mock returns empty list
     assert position.performance is not None
     assert "YTD" in position.performance
 
@@ -108,7 +122,7 @@ async def test_get_position_analytics_handles_no_positions(mock_dependencies):
     """
     GIVEN a portfolio with no open positions
     WHEN get_position_analytics is called
-    THEN it should return an empty but valid response.
+    THEN it should return a valid, empty response.
     """
     # ARRANGE
     service = mock_dependencies["service"]
