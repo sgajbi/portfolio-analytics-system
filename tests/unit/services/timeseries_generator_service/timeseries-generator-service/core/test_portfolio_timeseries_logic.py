@@ -62,7 +62,6 @@ async def test_portfolio_logic_aggregates_correctly_with_epoch(mock_repo: AsyncM
     assert result.epoch == target_epoch
     assert result.eod_market_value == Decimal("60000") # 10000 + 50000
 
-# --- NEW TEST ---
 async def test_portfolio_logic_raises_error_if_fx_rate_is_missing(mock_repo: AsyncMock, sample_portfolio: Portfolio):
     """
     GIVEN a position in a foreign currency (EUR) for a USD-based portfolio
@@ -99,3 +98,34 @@ async def test_portfolio_logic_raises_error_if_fx_rate_is_missing(mock_repo: Asy
     
     # Verify the repository was actually called
     mock_repo.get_fx_rate.assert_awaited_once_with("EUR", "USD", test_date)
+
+# --- NEW TEST ---
+async def test_portfolio_logic_handles_non_string_currency(mock_repo: AsyncMock, sample_portfolio: Portfolio):
+    """
+    GIVEN an Instrument record with a non-string currency value (e.g. from bad data)
+    WHEN the logic runs
+    THEN it should not raise an AttributeError and should correctly identify the mismatch.
+    """
+    # ARRANGE
+    test_date = date(2025, 8, 8)
+    position_ts_list = [PositionTimeseries(security_id="BAD_CURRENCY_STOCK", date=test_date)]
+    
+    # Simulate an instrument with a Decimal type for its currency
+    mock_instrument = Instrument(security_id="BAD_CURRENCY_STOCK", currency=Decimal("123"))
+    mock_repo.get_instruments_by_ids.return_value = [mock_instrument]
+    
+    # The expected behavior is an FxRateNotFoundError because '123' != 'USD'
+    mock_repo.get_fx_rate.return_value = None
+
+    # ACT & ASSERT
+    # The key assertion is that this does NOT raise an AttributeError.
+    # It correctly identifies a currency mismatch and tries to get an FX rate.
+    # Since the rate is not found, it correctly raises FxRateNotFoundError.
+    with pytest.raises(FxRateNotFoundError, match="Missing FX rate from 123 to USD"):
+        await PortfolioTimeseriesLogic.calculate_daily_record(
+            portfolio=sample_portfolio,
+            a_date=test_date,
+            epoch=1,
+            position_timeseries_list=position_ts_list,
+            repo=mock_repo
+        )
