@@ -7,7 +7,7 @@ from decimal import Decimal
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.services.query_service.app.services.position_analytics_service import PositionAnalyticsService
 from src.services.query_service.app.dtos.position_analytics_dto import PositionAnalyticsRequest, PositionAnalyticsSection
-from portfolio_common.database_models import DailyPositionSnapshot
+from portfolio_common.database_models import DailyPositionSnapshot, Portfolio
 
 pytestmark = pytest.mark.asyncio
 
@@ -15,6 +15,12 @@ pytestmark = pytest.mark.asyncio
 def mock_dependencies():
     """Mocks all repository dependencies for the PositionAnalyticsService."""
     mock_position_repo = AsyncMock()
+    mock_portfolio_repo = AsyncMock()
+
+    # Configure mock return values
+    mock_portfolio_repo.get_by_id.return_value = Portfolio(
+        portfolio_id="P1", base_currency="USD"
+    )
 
     # Define the rich data tuple that the repository now returns
     mock_snapshot = DailyPositionSnapshot(
@@ -35,9 +41,12 @@ def mock_dependencies():
     with patch(
         "src.services.query_service.app.services.position_analytics_service.PositionRepository",
         return_value=mock_position_repo
+    ), patch(
+        "src.services.query_service.app.services.position_analytics_service.PortfolioRepository",
+        return_value=mock_portfolio_repo
     ):
         service = PositionAnalyticsService(AsyncMock(spec=AsyncSession))
-        yield { "service": service, "position_repo": mock_position_repo }
+        yield { "service": service, "position_repo": mock_position_repo, "portfolio_repo": mock_portfolio_repo }
 
 async def test_get_position_analytics_base_sections(mock_dependencies):
     """
@@ -62,8 +71,8 @@ async def test_get_position_analytics_base_sections(mock_dependencies):
     # ASSERT
     mock_dependencies["position_repo"].get_latest_positions_by_portfolio.assert_awaited_once_with("P1")
     
-    assert response.portfolioId == "P1"
-    assert response.totalMarketValue == 12000.0
+    assert response.portfolio_id == "P1"
+    assert response.total_market_value == 12000.0
     assert len(response.positions) == 1
     
     position = response.positions[0]
@@ -84,6 +93,7 @@ async def test_get_position_analytics_base_sections(mock_dependencies):
     assert valuation.market_value.amount == 12000.0
     assert valuation.cost_basis.amount == 10000.0
     assert valuation.unrealized_pnl.amount == 2000.0
+    assert valuation.market_value.currency == "USD" # Verify correct currency
 
 async def test_get_position_analytics_handles_no_positions(mock_dependencies):
     """
@@ -100,6 +110,21 @@ async def test_get_position_analytics_handles_no_positions(mock_dependencies):
     response = await service.get_position_analytics("P_EMPTY", request)
 
     # ASSERT
-    assert response.portfolioId == "P_EMPTY"
-    assert response.totalMarketValue == 0.0
+    assert response.portfolio_id == "P_EMPTY"
+    assert response.total_market_value == 0.0
     assert response.positions == []
+
+async def test_get_position_analytics_portfolio_not_found(mock_dependencies):
+    """
+    GIVEN a request for a portfolio that does not exist
+    WHEN get_position_analytics is called
+    THEN it should raise a ValueError.
+    """
+    # ARRANGE
+    service = mock_dependencies["service"]
+    mock_dependencies["portfolio_repo"].get_by_id.return_value = None
+    request = PositionAnalyticsRequest(asOfDate=date(2025, 8, 31), sections=["BASE"])
+
+    # ACT & ASSERT
+    with pytest.raises(ValueError, match="Portfolio P_NOT_FOUND not found"):
+        await service.get_position_analytics("P_NOT_FOUND", request)

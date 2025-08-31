@@ -11,6 +11,7 @@ from ..dtos.position_analytics_dto import (
     PositionAnalyticsSection, MonetaryAmount, PositionValuation, PositionInstrumentDetails
 )
 from ..repositories.position_repository import PositionRepository
+from ..repositories.portfolio_repository import PortfolioRepository
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +22,7 @@ class PositionAnalyticsService:
     def __init__(self, db: AsyncSession):
         self.db = db
         self.position_repo = PositionRepository(db)
+        self.portfolio_repo = PortfolioRepository(db)
 
     async def get_position_analytics(
         self, portfolio_id: str, request: PositionAnalyticsRequest
@@ -30,14 +32,19 @@ class PositionAnalyticsService:
         """
         logger.info(f"Generating position analytics for portfolio {portfolio_id}")
 
+        # Fetch portfolio details to get base currency and validate existence
+        portfolio = await self.portfolio_repo.get_by_id(portfolio_id)
+        if not portfolio:
+            raise ValueError(f"Portfolio {portfolio_id} not found")
+
         # 1. Fetch all base position and instrument data in a single efficient query
         repo_results = await self.position_repo.get_latest_positions_by_portfolio(portfolio_id)
 
         if not repo_results:
             return PositionAnalyticsResponse(
-                portfolioId=portfolio_id,
-                asOfDate=request.as_of_date,
-                totalMarketValue=0.0,
+                portfolio_id=portfolio_id,
+                as_of_date=request.as_of_date,
+                total_market_value=0.0,
                 positions=[]
             )
 
@@ -81,24 +88,24 @@ class PositionAnalyticsService:
                 position.valuation = PositionValuation(
                     marketValue=MonetaryAmount(
                         amount=float(snapshot.market_value or 0),
-                        currency=portfolio_id # Placeholder for portfolio base currency
+                        currency=portfolio.base_currency
                     ),
                     costBasis=MonetaryAmount(
                         amount=float(snapshot.cost_basis or 0),
-                        currency=portfolio_id # Placeholder
+                        currency=portfolio.base_currency
                     ),
                     unrealizedPnl=MonetaryAmount(
                         amount=float(snapshot.unrealized_gain_loss or 0),
-                        currency=portfolio_id # Placeholder
+                        currency=portfolio.base_currency
                     )
                 )
             
             enriched_positions.append(position)
 
         return PositionAnalyticsResponse(
-            portfolioId=portfolio_id,
-            asOfDate=request.as_of_date,
-            totalMarketValue=float(total_market_value_base),
+            portfolio_id=portfolio_id,
+            as_of_date=request.as_of_date,
+            total_market_value=float(total_market_value_base),
             positions=enriched_positions
         )
 
