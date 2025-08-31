@@ -26,13 +26,9 @@ def setup_stale_job_data(db_engine):
         stale_time = now - timedelta(minutes=30)
         
         jobs = [
-            # 1. Stale and PROCESSING -> Should be reset to PENDING
             PortfolioValuationJob(portfolio_id="P1", security_id="S1", valuation_date=date(2025, 8, 1), status="PROCESSING", updated_at=stale_time),
-            # 2. Recent and PROCESSING -> Should NOT be touched
             PortfolioValuationJob(portfolio_id="P2", security_id="S2", valuation_date=date(2025, 8, 1), status="PROCESSING", updated_at=now),
-            # 3. Stale and PENDING -> Should NOT be touched
             PortfolioValuationJob(portfolio_id="P3", security_id="S3", valuation_date=date(2025, 8, 1), status="PENDING", updated_at=stale_time),
-            # 4. Stale and COMPLETE -> Should NOT be touched
             PortfolioValuationJob(portfolio_id="P4", security_id="S4", valuation_date=date(2025, 8, 1), status="COMPLETE", updated_at=stale_time),
         ]
         session.add_all(jobs)
@@ -41,11 +37,8 @@ def setup_stale_job_data(db_engine):
 @pytest.fixture(scope="function")
 def setup_holdings_data(db_engine):
     """
-    Sets up position snapshots for testing the holding lookup.
-    - P1 holds S1 on the target date.
-    - P2 sold S1 before the target date.
-    - P3 holds S1, but the last snapshot is after the target date (should not be found).
-    - P4 holds a different security, S2.
+    Sets up position history for testing the holding lookup. This fixture
+    populates the `position_history` table.
     """
     with Session(db_engine) as session:
         session.add_all([
@@ -54,7 +47,6 @@ def setup_holdings_data(db_engine):
             Portfolio(portfolio_id="P3", base_currency="USD", open_date=date(2024,1,1), risk_exposure="a", investment_time_horizon="b", portfolio_type="c", booking_center="d", cif_id="e", status="f"),
             Portfolio(portfolio_id="P4", base_currency="USD", open_date=date(2024,1,1), risk_exposure="a", investment_time_horizon="b", portfolio_type="c", booking_center="d", cif_id="e", status="f"),
         ])
-        # Add transactions as prerequisites for PositionHistory's foreign key
         session.add_all([
             Transaction(transaction_id="T1", portfolio_id="P1", instrument_id="I1", security_id="S1", transaction_date=datetime.now(), transaction_type="BUY", quantity=1, price=1, gross_transaction_amount=1, trade_currency="USD", currency="USD"),
             Transaction(transaction_id="T2", portfolio_id="P2", instrument_id="I1", security_id="S1", transaction_date=datetime.now(), transaction_type="BUY", quantity=1, price=1, gross_transaction_amount=1, trade_currency="USD", currency="USD"),
@@ -63,19 +55,38 @@ def setup_holdings_data(db_engine):
         ])
         session.flush()
 
-        # --- FIX: Add PositionHistory records ---
         history_records = [
-            # P1: Has a position before the date
             PositionHistory(transaction_id="T1", portfolio_id="P1", security_id="S1", position_date=date(2025, 8, 5), quantity=Decimal("100"), cost_basis=Decimal("1")),
-            # P2: Sold position before the date
             PositionHistory(transaction_id="T2", portfolio_id="P2", security_id="S1", position_date=date(2025, 8, 4), quantity=Decimal("100"), cost_basis=Decimal("1")),
             PositionHistory(transaction_id="T2", portfolio_id="P2", security_id="S1", position_date=date(2025, 8, 6), quantity=Decimal("0"), cost_basis=Decimal("0")),
-            # P3: Snapshot is after the target date
             PositionHistory(transaction_id="T3", portfolio_id="P3", security_id="S1", position_date=date(2025, 8, 15), quantity=Decimal("100"), cost_basis=Decimal("1")),
-            # P4: Holds a different security
             PositionHistory(transaction_id="T4", portfolio_id="P4", security_id="S2", position_date=date(2025, 8, 5), quantity=Decimal("100"), cost_basis=Decimal("1")),
         ]
         session.add_all(history_records)
+        session.commit()
+
+@pytest.fixture(scope="function")
+def setup_snapshot_data(db_engine):
+    """
+    Sets up position snapshots for testing snapshot-based lookups. This fixture
+    populates the `daily_position_snapshots` table.
+    """
+    with Session(db_engine) as session:
+        portfolios = [
+            Portfolio(portfolio_id=f"P{i}", base_currency="USD", open_date=date(2024,1,1), risk_exposure="a", investment_time_horizon="b", portfolio_type="c", booking_center="d", cif_id=f"e{i}", status="f")
+            for i in range(1, 5)
+        ]
+        session.add_all(portfolios)
+        session.flush()
+
+        snapshots = [
+            DailyPositionSnapshot(portfolio_id="P1", security_id="S1", date=date(2025, 8, 5), quantity=Decimal("100"), cost_basis=Decimal("1")),
+            DailyPositionSnapshot(portfolio_id="P2", security_id="S1", date=date(2025, 8, 4), quantity=Decimal("100"), cost_basis=Decimal("1")),
+            DailyPositionSnapshot(portfolio_id="P2", security_id="S1", date=date(2025, 8, 6), quantity=Decimal("0"), cost_basis=Decimal("0")),
+            DailyPositionSnapshot(portfolio_id="P3", security_id="S1", date=date(2025, 8, 15), quantity=Decimal("100"), cost_basis=Decimal("1")),
+            DailyPositionSnapshot(portfolio_id="P4", security_id="S2", date=date(2025, 8, 5), quantity=Decimal("100"), cost_basis=Decimal("1")),
+        ]
+        session.add_all(snapshots)
         session.commit()
 
 @pytest.fixture(scope="function")
@@ -95,7 +106,6 @@ def setup_price_data(db_engine):
 def setup_first_open_date_data(db_engine):
     """Sets up position history records for testing the first_open_date query."""
     with Session(db_engine) as session:
-        # Prerequisites
         session.add_all([
             Portfolio(portfolio_id="P1", base_currency="USD", open_date=date(2024,1,1), risk_exposure="a", investment_time_horizon="b", portfolio_type="c", booking_center="d", cif_id="e", status="f"),
             Portfolio(portfolio_id="P2", base_currency="USD", open_date=date(2024,1,1), risk_exposure="a", investment_time_horizon="b", portfolio_type="c", booking_center="d", cif_id="e", status="f"),
@@ -107,15 +117,10 @@ def setup_first_open_date_data(db_engine):
             Transaction(transaction_id="T4", portfolio_id="P2", instrument_id="I1", security_id="S1", transaction_date=date(2025,1,1), transaction_type="BUY", quantity=1, price=1, gross_transaction_amount=1, trade_currency="USD", currency="USD"),
         ])
         session.commit()
-
-        # Position History Records
         session.add_all([
-            # P1/S1: First open is 2025-03-15
             PositionHistory(transaction_id="T1", portfolio_id="P1", security_id="S1", position_date=date(2025, 3, 15), epoch=0, quantity=1, cost_basis=1),
             PositionHistory(transaction_id="T2", portfolio_id="P1", security_id="S1", position_date=date(2025, 4, 1), epoch=0, quantity=1, cost_basis=1),
-            # P1/S2: First open is 2025-02-10
             PositionHistory(transaction_id="T3", portfolio_id="P1", security_id="S2", position_date=date(2025, 2, 10), epoch=0, quantity=1, cost_basis=1),
-            # P2/S1: Has records in epoch 0 and a later one in epoch 1
             PositionHistory(transaction_id="T4", portfolio_id="P2", security_id="S1", position_date=date(2025, 5, 5), epoch=0, quantity=1, cost_basis=1),
             PositionHistory(transaction_id="T4", portfolio_id="P2", security_id="S1", position_date=date(2025, 6, 6), epoch=1, quantity=1, cost_basis=1),
         ])
@@ -131,25 +136,17 @@ async def session_factory(db_engine):
     yield factory
     await async_engine.dispose()
 
-async def test_get_all_open_positions(db_engine, clean_db, setup_holdings_data, async_db_session: AsyncSession):
+async def test_get_all_open_positions(db_engine, clean_db, setup_snapshot_data, async_db_session: AsyncSession):
     """
     GIVEN a database with various positions, some open and some closed
     WHEN get_all_open_positions is called
     THEN it should return only the (portfolio_id, security_id) pairs with a non-zero quantity.
     """
-    # ARRANGE
     repo = ValuationRepository(async_db_session)
-
-    # ACT
     open_positions = await repo.get_all_open_positions()
-
-    # ASSERT
-    # We expect P1/S1, P3/S1, and P4/S2 to be open. P2/S1 is closed (quantity is 0).
+    
     assert len(open_positions) == 3
-    
-    # Convert list of Row mappings to a set of tuples for easier comparison
     position_set = {(p['portfolio_id'], p['security_id']) for p in open_positions}
-    
     assert ("P1", "S1") in position_set
     assert ("P3", "S1") in position_set
     assert ("P4", "S2") in position_set
@@ -161,17 +158,10 @@ async def test_get_next_price_date(db_engine, clean_db, setup_price_data, async_
     WHEN get_next_price_date is called with a specific date
     THEN it should return the date of the very next price record.
     """
-    # ARRANGE
     repo = ValuationRepository(async_db_session)
-    
-    # ACT
-    # Find the next price after Aug 5th
     next_date = await repo.get_next_price_date(security_id="S1", after_date=date(2025, 8, 5))
-
-    # Find the next price after the last known price (should be None)
     no_next_date = await repo.get_next_price_date(security_id="S1", after_date=date(2025, 8, 10))
-
-    # ASSERT
+    
     assert next_date == date(2025, 8, 10)
     assert no_next_date is None
 
@@ -181,15 +171,12 @@ async def test_find_portfolios_holding_security_on_date(db_engine, clean_db, set
     WHEN find_portfolios_holding_security_on_date is called for 'S1' on a specific date
     THEN it should only return the portfolio that had a non-zero position on or before that date.
     """
-    # ARRANGE
     repo = ValuationRepository(async_db_session)
     target_date = date(2025, 8, 10)
     target_security = "S1"
-
-    # ACT
+    
     portfolio_ids = await repo.find_portfolios_holding_security_on_date(target_security, target_date)
-
-    # ASSERT
+    
     assert len(portfolio_ids) == 1
     assert portfolio_ids[0] == "P1"
 
@@ -199,26 +186,19 @@ async def test_find_and_reset_stale_jobs(clean_db, setup_stale_job_data, session
     WHEN find_and_reset_stale_jobs is called
     THEN it should only reset the single stale 'PROCESSING' job to 'PENDING'.
     """
-    # ARRANGE & ACT
     async with session_factory() as session:
         repo = ValuationRepository(session)
         reset_count = await repo.find_and_reset_stale_jobs(timeout_minutes=15)
         await session.commit()
     assert reset_count == 1
 
-    # ASSERT in a new, clean session
     async with session_factory() as session:
-        # Verify the stale PROCESSING job was reset
-        job1 = await session.get(PortfolioValuationJob, 1) # Assuming P1 is id=1
+        job1 = await session.get(PortfolioValuationJob, 1)
         assert job1.status == "PENDING"
-        
-        # Verify the other jobs were untouched
         job2 = await session.get(PortfolioValuationJob, 2)
         assert job2.status == "PROCESSING"
-        
         job3 = await session.get(PortfolioValuationJob, 3)
         assert job3.status == "PENDING"
-        
         job4 = await session.get(PortfolioValuationJob, 4)
         assert job4.status == "COMPLETE"
 
@@ -228,19 +208,11 @@ async def test_get_first_open_dates_for_keys(clean_db, setup_first_open_date_dat
     WHEN get_first_open_dates_for_keys is called
     THEN it should return a dictionary mapping each key to its earliest position_date.
     """
-    # ARRANGE
     repo = ValuationRepository(async_db_session)
-    keys_to_query = [
-        ("P1", "S1", 0),
-        ("P1", "S2", 0),
-        ("P2", "S1", 1),
-        ("P99", "S99", 0), # A key with no history
-    ]
-
-    # ACT
+    keys_to_query = [("P1", "S1", 0), ("P1", "S2", 0), ("P2", "S1", 1), ("P99", "S99", 0)]
+    
     first_open_dates = await repo.get_first_open_dates_for_keys(keys_to_query)
-
-    # ASSERT
+    
     assert len(first_open_dates) == 3
     assert first_open_dates[("P1", "S1", 0)] == date(2025, 3, 15)
     assert first_open_dates[("P1", "S2", 0)] == date(2025, 2, 10)
