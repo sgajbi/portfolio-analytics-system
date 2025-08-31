@@ -24,8 +24,8 @@ def mock_position_repo() -> AsyncMock:
         quantity=Decimal(100), cost_basis=Decimal(1000), 
         date=date(2025, 1, 1)
     )
-    # UPDATED: Return a 4-element tuple including the asset_class
-    repo.get_latest_positions_by_portfolio.return_value = [(mock_snapshot, "Test Instrument", "CURRENT", "Equity")]
+    # UPDATED: Return a 6-element tuple including the new issuer fields
+    repo.get_latest_positions_by_portfolio.return_value = [(mock_snapshot, "Test Instrument", "CURRENT", "Equity", "ISSUER_A", "PARENT_A")]
     return repo
 
 async def test_get_position_history(mock_position_repo: AsyncMock):
@@ -66,4 +66,4 @@ async def test_get_latest_positions(mock_position_repo: AsyncMock):
         assert response.positions[0].security_id == "S1"
         assert response.positions[0].instrument_name == "Test Instrument"
         assert response.positions[0].reprocessing_status == "CURRENT"
-        assert response.positions[0].asset_class == "Equity" # VERIFY: New field is mapped
+        assert response.positions[0].asset_class == "Equity"

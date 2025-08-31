@@ -19,21 +19,19 @@ def setup_test_data(db_engine):
     with Session(db_engine) as session:
         # Create prerequisite data
         portfolio = Portfolio(portfolio_id="POS_REPO_TEST_01", base_currency="USD", open_date=date(2024,1,1), risk_exposure="a", investment_time_horizon="b", portfolio_type="c", booking_center="d", cif_id="e", status="f")
-        instrument = Instrument(security_id="SEC_POS_TEST_01", name="TestSec", isin="XS123", currency="USD", product_type="Stock", asset_class="Equity") # ADDED: asset_class
+        instrument = Instrument(security_id="SEC_POS_TEST_01", name="TestSec", isin="XS123", currency="USD", product_type="Stock", asset_class="Equity", issuer_id="ISSUER_A", ultimate_parent_issuer_id="PARENT_A")
         session.add_all([portfolio, instrument])
         session.flush()
 
-        # --- NEW: Create the corresponding PositionState record ---
-        # The query now depends on this record existing to find the latest epoch.
+        # Create the corresponding PositionState record
         position_state = PositionState(
             portfolio_id="POS_REPO_TEST_01",
             security_id="SEC_POS_TEST_01",
-            epoch=0, # Snapshots will have default epoch of 0
+            epoch=0,
             watermark_date=date(2024, 1, 1),
             status='CURRENT'
         )
         session.add(position_state)
-        # --- END NEW ---
 
         # Create two snapshots for the same security on different days
         today = date.today()
@@ -41,11 +39,11 @@ def setup_test_data(db_engine):
 
         snapshot_yesterday = DailyPositionSnapshot(
             portfolio_id="POS_REPO_TEST_01", security_id="SEC_POS_TEST_01", date=yesterday,
-            quantity=Decimal("100"), cost_basis=Decimal("10000"), epoch=0 # Explicitly set epoch
+            quantity=Decimal("100"), cost_basis=Decimal("10000"), epoch=0
         )
         snapshot_today = DailyPositionSnapshot(
             portfolio_id="POS_REPO_TEST_01", security_id="SEC_POS_TEST_01", date=today,
-            quantity=Decimal("110"), cost_basis=Decimal("11000"), epoch=0 # Explicitly set epoch
+            quantity=Decimal("110"), cost_basis=Decimal("11000"), epoch=0
         )
         session.add_all([snapshot_yesterday, snapshot_today])
         session.commit()
@@ -57,7 +55,7 @@ async def test_get_latest_positions_by_portfolio(clean_db, setup_test_data, asyn
     """
     GIVEN a security with multiple historical daily snapshots in the database
     WHEN get_latest_positions_by_portfolio is called
-    THEN it should return only the single, most recent snapshot for that security.
+    THEN it should return only the single, most recent snapshot for that security, including issuer data.
     """
     # ARRANGE
     repo = PositionRepository(async_db_session)
@@ -69,8 +67,7 @@ async def test_get_latest_positions_by_portfolio(clean_db, setup_test_data, asyn
     # ASSERT
     assert len(latest_positions) == 1
 
-    # UPDATED: Unpack the new asset_class field
-    latest_snapshot, instrument_name, reprocessing_status, asset_class = latest_positions[0]
+    latest_snapshot, instrument_name, reprocessing_status, asset_class, issuer_id, parent_issuer_id = latest_positions[0]
     
     assert latest_snapshot.portfolio_id == portfolio_id
     assert latest_snapshot.security_id == "SEC_POS_TEST_01"
@@ -78,4 +75,6 @@ async def test_get_latest_positions_by_portfolio(clean_db, setup_test_data, asyn
     assert latest_snapshot.quantity == Decimal("110")
     assert instrument_name == "TestSec"
     assert reprocessing_status == "CURRENT"
-    assert asset_class == "Equity" # VERIFY: New field is returned
+    assert asset_class == "Equity"
+    assert issuer_id == "ISSUER_A"
+    assert parent_issuer_id == "PARENT_A"
