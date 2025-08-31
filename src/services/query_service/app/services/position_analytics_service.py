@@ -139,7 +139,6 @@ class PositionAnalyticsService:
 
         income_tasks = {}
         if PositionAnalyticsSection.INCOME in request.sections:
-            # FIX: Use get_income_cashflows_for_position for correct epoch-fencing
             income_tasks['income_cashflows'] = self.cashflow_repo.get_income_cashflows_for_position(
                 portfolio.portfolio_id, snapshot.security_id, position.held_since_date, request.as_of_date
             )
@@ -158,8 +157,11 @@ class PositionAnalyticsService:
                 fx_rates = {r.rate_date: r.rate for r in fx_rates_db}
                 
                 # Forward fill missing FX rates
-                filled_fx = pd.Series(fx_rates).reindex(pd.date_range(min_cf_date, request.as_of_date, freq='D')).ffill().to_dict()
-
+                ffill_series = pd.Series(fx_rates).reindex(pd.date_range(min_cf_date, request.as_of_date, freq='D')).ffill()
+                # --- THIS IS THE FIX ---
+                # Convert the pandas Timestamps in the index back to date objects for the dictionary keys.
+                filled_fx = {idx.date(): val for idx, val in ffill_series.items() if pd.notna(val)}
+                # --- END FIX ---
                 total_income_base = sum(cf.amount * filled_fx.get(cf.cashflow_date, Decimal(1)) for cf in cashflows)
 
             position.income = PositionValuationDetail(
