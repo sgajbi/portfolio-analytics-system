@@ -9,7 +9,6 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-005571?style=for-the-badge&logo=fastapi)](https://fastapi.tiangolo.com/)
 
 An event-driven, microservices-based platform for comprehensive portfolio analytics. Designed for scalability and reliability, this system ingests financial data, performs complex calculations, and exposes the results through a clean, scalable API. It features a deterministic reprocessing engine, idempotent consumers, and a reliable outbox pattern.
-
 ---
 ## Table of Contents
 
@@ -35,7 +34,8 @@ The system is architected around **Apache Kafka**, promoting a highly decoupled 
 To handle back-dated events reliably, the system uses an **epoch and watermark** model.
 
 -   A **key** is the combination of `(portfolio_id, security_id)`.
--   The **epoch** is an integer version number for the history of a key. All current data for a key shares the same epoch.
+-   The **epoch** is an integer version number for the history of a key.
+All current data for a key shares the same epoch.
 -   The **watermark** is a date indicating how far the system has successfully calculated for a key's current epoch.
 
 When a back-dated event (e.g., a transaction or price) arrives, the system increments the epoch for that key, resets its watermark to a point before the event, and deterministically rebuilds its history under the new epoch. **Epoch fencing** ensures that stray messages from an old epoch are safely discarded, preventing data corruption.
@@ -58,7 +58,7 @@ graph TD
         RawData((raw_events));
         PersistenceCompleted((persistence_completed));
         CalculationsCompleted((calculations_completed));
-    end
+end
 
     subgraph "Data Processing Pipeline"
         IngestionService -- Publishes --> RawData;
@@ -84,7 +84,7 @@ graph TD
 
     subgraph "Data Query Layer"
         QueryService -- Reads --> DB;
-    end
+end
 ````
 
 ## 2\. Core Services
@@ -165,7 +165,8 @@ The system relies on a well-defined sequence of events published to Kafka topics
   - `POST /portfolios/{portfolio_id}/performance`: Calculates Time-Weighted Return (TWR) for a portfolio.
   - `POST /portfolios/{portfolio_id}/performance/mwr`: Calculates Money-Weighted Return (MWR) for a portfolio.
   - `POST /portfolios/{portfolio_id}/risk`: Calculates a suite of on-demand risk analytics.
-  - **`POST /portfolios/{portfolio_id}/summary`**: Calculates a consolidated, on-demand summary of portfolio wealth, P\&L, and allocation.\*\*
+  - `POST /portfolios/{portfolio_id}/summary`: Calculates a consolidated, on-demand summary of portfolio wealth, P\&L, and allocation.
+  - `POST /portfolios/{portfolio_id}/review`: **(NEW)** Generates a comprehensive, multi-section portfolio review report with a single API call.
   - `GET /health/ready`: Readiness probe (checks database connection).
 
 -----
@@ -334,4 +335,3 @@ This example demonstrates the full flow from ingesting data to querying the fina
     The script will print the final `positions` and `transactions` JSON responses to the console.
 
 <!-- end list -->
- 
