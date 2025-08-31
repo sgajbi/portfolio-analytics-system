@@ -129,7 +129,6 @@ class ReviewService:
                 net_perf = results_map['performance_net']
                 gross_perf = results_map['performance_gross']
                 
-                # --- FIX: Only build the performance section if there is data ---
                 if net_perf and net_perf.summary:
                     combined_summary: Dict[str, ReviewPerformanceResult] = {}
                     for period_name, net_result in net_perf.summary.items():
@@ -148,7 +147,6 @@ class ReviewService:
             
             if 'risk' in results_map:
                 risk_data = results_map['risk']
-                # --- FIX: Only include risk analytics if there are results ---
                 if risk_data and risk_data.results:
                     response.risk_analytics = risk_data
                 else:

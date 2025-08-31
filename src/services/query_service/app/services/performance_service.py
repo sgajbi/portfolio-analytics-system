@@ -74,6 +74,11 @@ class PerformanceService:
         max_date = max(p[2] for p in resolved_periods)
 
         timeseries_data = await self.repo.get_portfolio_timeseries_for_range(portfolio_id=portfolio_id, start_date=min_date, end_date=max_date)
+        
+        # --- FIX: If no timeseries data exists for the entire range, return immediately ---
+        if not timeseries_data:
+            return PerformanceResponse(scope=request.scope, summary={}, breakdowns=None)
+        
         timeseries_dicts = self._convert_timeseries_to_dict(timeseries_data)
         
         summary: Dict[str, PerformanceResult] = {}
@@ -122,8 +127,6 @@ class PerformanceService:
         """Reusable function to calculate performance for any breakdown type."""
         breakdown_results = []
         
-        # The main results_df already contains the correctly linked daily returns.
-        # For daily breakdowns, we just need to format them.
         if breakdown_type == "DAILY":
             for index, row in results_df.iterrows():
                 day_return = float(row[DAILY_ROR_PCT])
@@ -151,7 +154,6 @@ class PerformanceService:
                 breakdown_results.append(PerformanceResult.model_validate(result_data))
             return breakdown_results
 
-        # For other breakdown types, we must resample and recalculate.
         df_for_resample = results_df.copy()
         df_for_resample[DATE] = pd.to_datetime(df_for_resample[DATE])
         df_for_resample.set_index(DATE, inplace=True)
