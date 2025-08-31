@@ -70,9 +70,11 @@ class PositionRepository:
         ranked_snapshots_subq = select(
             DailyPositionSnapshot,
             Instrument.name.label("instrument_name"),
+            Instrument.isin,
+            Instrument.currency,
             Instrument.asset_class,
-            Instrument.issuer_id,
-            Instrument.ultimate_parent_issuer_id,
+            Instrument.sector,
+            Instrument.country_of_risk,
             PositionState.status.label("reprocessing_status"),
             func.row_number().over(
                 partition_by=DailyPositionSnapshot.security_id,
@@ -100,9 +102,11 @@ class PositionRepository:
             ranked_alias,
             ranked_snapshots_subq.c.instrument_name,
             ranked_snapshots_subq.c.reprocessing_status,
+            ranked_snapshots_subq.c.isin,
+            ranked_snapshots_subq.c.currency,
             ranked_snapshots_subq.c.asset_class,
-            ranked_snapshots_subq.c.issuer_id,
-            ranked_snapshots_subq.c.ultimate_parent_issuer_id
+            ranked_snapshots_subq.c.sector,
+            ranked_snapshots_subq.c.country_of_risk
         ).filter(
             ranked_snapshots_subq.c.rn == 1,
             ranked_alias.quantity > 0

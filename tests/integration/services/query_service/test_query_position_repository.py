@@ -19,7 +19,11 @@ def setup_test_data(db_engine):
     with Session(db_engine) as session:
         # Create prerequisite data
         portfolio = Portfolio(portfolio_id="POS_REPO_TEST_01", base_currency="USD", open_date=date(2024,1,1), risk_exposure="a", investment_time_horizon="b", portfolio_type="c", booking_center="d", cif_id="e", status="f")
-        instrument = Instrument(security_id="SEC_POS_TEST_01", name="TestSec", isin="XS123", currency="USD", product_type="Stock", asset_class="Equity", issuer_id="ISSUER_A", ultimate_parent_issuer_id="PARENT_A")
+        instrument = Instrument(
+            security_id="SEC_POS_TEST_01", name="TestSec", isin="XS1234567890",
+            currency="USD", product_type="Stock", asset_class="Equity",
+            sector="Technology", country_of_risk="US"
+        )
         session.add_all([portfolio, instrument])
         session.flush()
 
@@ -55,7 +59,7 @@ async def test_get_latest_positions_by_portfolio(clean_db, setup_test_data, asyn
     """
     GIVEN a security with multiple historical daily snapshots in the database
     WHEN get_latest_positions_by_portfolio is called
-    THEN it should return only the single, most recent snapshot for that security, including issuer data.
+    THEN it should return only the single, most recent snapshot for that security, including all instrument data.
     """
     # ARRANGE
     repo = PositionRepository(async_db_session)
@@ -67,7 +71,11 @@ async def test_get_latest_positions_by_portfolio(clean_db, setup_test_data, asyn
     # ASSERT
     assert len(latest_positions) == 1
 
-    latest_snapshot, instrument_name, reprocessing_status, asset_class, issuer_id, parent_issuer_id = latest_positions[0]
+    # Unpack all the returned columns
+    (
+        latest_snapshot, instrument_name, reprocessing_status, isin,
+        currency, asset_class, sector, country_of_risk
+    ) = latest_positions[0]
     
     assert latest_snapshot.portfolio_id == portfolio_id
     assert latest_snapshot.security_id == "SEC_POS_TEST_01"
@@ -76,5 +84,7 @@ async def test_get_latest_positions_by_portfolio(clean_db, setup_test_data, asyn
     assert instrument_name == "TestSec"
     assert reprocessing_status == "CURRENT"
     assert asset_class == "Equity"
-    assert issuer_id == "ISSUER_A"
-    assert parent_issuer_id == "PARENT_A"
+    assert isin == "XS1234567890"
+    assert currency == "USD"
+    assert sector == "Technology"
+    assert country_of_risk == "US"
