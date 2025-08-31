@@ -28,6 +28,7 @@ async def async_test_client(mock_kafka_producer: MagicMock):
     app.dependency_overrides[get_kafka_producer] = override_get_kafka_producer
     
     # --- THIS IS THE FIX ---
+    # Use ASGITransport for in-process testing instead of making real network calls.
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
     # --- END FIX ---
