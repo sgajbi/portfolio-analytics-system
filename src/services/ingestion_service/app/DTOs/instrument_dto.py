@@ -6,7 +6,7 @@ from datetime import date
 class Instrument(BaseModel):
     """
     Represents a single financial instrument.
-    """
+"""
     security_id: str = Field(..., alias="securityId", description="Unique identifier for the security.")
     name: str = Field(..., description="Full name of the instrument.")
     isin: str = Field(..., description="International Securities Identification Number.")
@@ -17,6 +17,8 @@ class Instrument(BaseModel):
     country_of_risk: Optional[str] = Field(None, alias="countryOfRisk", description="The country of primary risk exposure.")
     rating: Optional[str] = Field(None, description="Credit rating for fixed income instruments (e.g., 'AAA').")
     maturity_date: Optional[date] = Field(None, alias="maturityDate", description="Maturity date for fixed income instruments.")
+    issuer_id: Optional[str] = Field(None, alias="issuerId", description="Identifier for the direct issuer of the security.")
+    ultimate_parent_issuer_id: Optional[str] = Field(None, alias="ultimateParentIssuerId", description="Identifier for the ultimate parent of the issuer.")
 
     model_config = ConfigDict(
         populate_by_name=True,
@@ -31,7 +33,9 @@ class Instrument(BaseModel):
                 "sector": "Financials",
                 "countryOfRisk": "GB",
                 "rating": "BB+",
-                "maturityDate": None
+                "maturityDate": None,
+                "issuerId": "ISSUER_BARC",
+                "ultimateParentIssuerId": "ULTIMATE_BARC"
             }
         }
     )

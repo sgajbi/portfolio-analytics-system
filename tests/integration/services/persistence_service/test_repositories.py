@@ -11,9 +11,6 @@ from portfolio_common.events import InstrumentEvent, TransactionEvent
 from src.services.persistence_service.app.repositories.instrument_repository import InstrumentRepository
 from src.services.persistence_service.app.repositories.transaction_db_repo import TransactionDBRepository
 
-# Mark all tests in this file as async
-pytestmark = pytest.mark.asyncio
-
 
 # --- Fixtures for reusable data ---
 @pytest.fixture
@@ -101,26 +98,23 @@ async def test_instrument_repository_upsert_no_change_on_identical_event(clean_d
     count_in_db = result.scalar()
     assert count_in_db == 1
 
-# --- NEW TEST (RFC 008) ---
-async def test_instrument_repository_upserts_with_new_allocation_fields(clean_db, async_db_session: AsyncSession):
+# --- NEW TEST (RFC 016) ---
+async def test_instrument_repository_upserts_with_new_issuer_fields(clean_db, async_db_session: AsyncSession):
     """
-    GIVEN an InstrumentEvent populated with the new asset allocation fields
+    GIVEN an InstrumentEvent populated with the new issuer fields
     WHEN the create_or_update_instrument method is called
     THEN it should correctly persist all the new fields in the database.
     """
     # ARRANGE
     repo = InstrumentRepository(async_db_session)
     event_with_new_fields = InstrumentEvent(
-        securityId="SEC_TEST_ALLOCATION",
-        name="Allocation Test Instrument",
-        isin="XS_ALLOCATION_TEST",
+        securityId="SEC_TEST_ISSUER",
+        name="Issuer Test Instrument",
+        isin="XS_ISSUER_TEST",
         instrumentCurrency="USD",
-        productType="Bond",
-        assetClass="Fixed Income",
-        sector="Government",
-        countryOfRisk="US",
-        rating="AAA",
-        maturityDate=date(2045, 12, 31)
+        productType="Note",
+        issuerId="ISSUER_ABC",
+        ultimateParentIssuerId="ULTIMATE_XYZ"
     )
 
     # ACT
@@ -128,17 +122,13 @@ async def test_instrument_repository_upserts_with_new_allocation_fields(clean_db
     await async_db_session.commit()
 
     # ASSERT
-    stmt = select(DBInstrument).where(DBInstrument.security_id == "SEC_TEST_ALLOCATION")
+    stmt = select(DBInstrument).where(DBInstrument.security_id == "SEC_TEST_ISSUER")
     result = await async_db_session.execute(stmt)
     persisted_instrument = result.scalar_one_or_none()
 
     assert persisted_instrument is not None
-    assert persisted_instrument.security_id == "SEC_TEST_ALLOCATION"
-    assert persisted_instrument.asset_class == "Fixed Income"
-    assert persisted_instrument.sector == "Government"
-    assert persisted_instrument.country_of_risk == "US"
-    assert persisted_instrument.rating == "AAA"
-    assert persisted_instrument.maturity_date == date(2045, 12, 31)
+    assert persisted_instrument.issuer_id == "ISSUER_ABC"
+    assert persisted_instrument.ultimate_parent_issuer_id == "ULTIMATE_XYZ"
 
 
 # --- Test for TransactionDBRepository (Now Async) ---

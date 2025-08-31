@@ -69,6 +69,8 @@ class InstrumentEvent(BaseModel):
     country_of_risk: Optional[str] = Field(None, alias="countryOfRisk")
     rating: Optional[str] = None
     maturity_date: Optional[date] = Field(None, alias="maturityDate")
+    issuer_id: Optional[str] = Field(None, alias="issuerId")
+    ultimate_parent_issuer_id: Optional[str] = Field(None, alias="ultimateParentIssuerId")
 
 class TransactionEvent(BaseModel):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)

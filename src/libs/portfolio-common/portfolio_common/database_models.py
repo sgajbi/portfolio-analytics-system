@@ -116,12 +116,15 @@ class Instrument(Base):
     isin = Column(String, unique=True, nullable=False)
     currency = Column(String, nullable=False)
     product_type = Column(String, nullable=False)
-    # --- NEW COLUMNS (RFC 008) ---
+    # --- Allocation Fields (RFC 008) ---
     asset_class = Column(String, nullable=True)
     sector = Column(String, nullable=True)
     country_of_risk = Column(String, nullable=True)
     rating = Column(String, nullable=True)
     maturity_date = Column(Date, nullable=True)
+    # --- Issuer Fields (RFC 016) ---
+    issuer_id = Column(String, nullable=True, index=True)
+    ultimate_parent_issuer_id = Column(String, nullable=True, index=True)
     # --- END NEW COLUMNS ---
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
@@ -182,9 +185,7 @@ class Cashflow(Base):
     portfolio_id = Column(String, ForeignKey('portfolios.portfolio_id'), index=True, nullable=False)
     security_id = Column(String, index=True, nullable=True)
     cashflow_date = Column(Date, index=True, nullable=False)
-    # --- NEW COLUMN ---
     epoch = Column(Integer, nullable=False, default=0, server_default='0')
-    # --- END NEW COLUMN ---
     amount = Column(Numeric(18, 10), nullable=False)
     currency = Column(String(3), nullable=False)
     classification = Column(String, nullable=False)
@@ -291,7 +292,7 @@ class PortfolioValuationJob(Base):
     Tracks portfolio-security-date combinations that require valuation.
     This table acts as a stateful, idempotent work set to trigger valuation calculations,
     preventing race conditions from multiple upstream events.
-    """
+"""
     __tablename__ = 'portfolio_valuation_jobs'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -301,10 +302,8 @@ class PortfolioValuationJob(Base):
     epoch = Column(Integer, nullable=False, default=0, server_default='0')
     status = Column(String, nullable=False, default='PENDING', index=True)
     correlation_id = Column(String, nullable=True)
-    # --- NEW COLUMNS ---
     failure_reason = Column(Text, nullable=True)
     attempt_count = Column(Integer, nullable=False, default=0, server_default='0')
-    # --- END NEW COLUMNS ---
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
