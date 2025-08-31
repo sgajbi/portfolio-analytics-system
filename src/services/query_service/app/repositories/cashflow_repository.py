@@ -39,16 +39,16 @@ class CashflowRepository:
         result = await self.db.execute(stmt)
         return result.all()
 
-    @async_timed(repository="CashflowRepository", method="get_total_income_for_position")
-    async def get_total_income_for_position(
+    @async_timed(repository="CashflowRepository", method="get_income_cashflows_for_position")
+    async def get_income_cashflows_for_position(
         self, portfolio_id: str, security_id: str, start_date: date, end_date: date
-    ) -> Decimal:
+    ) -> List[Cashflow]:
         """
-        Calculates the total income for a single position within a date range,
-        ensuring data is from the correct epoch.
+        Retrieves all income-classified cashflow records for a single position
+        within a date range, ensuring data is from the correct epoch.
         """
         stmt = (
-            select(func.sum(Cashflow.amount))
+            select(Cashflow)
             .join(
                 PositionState,
                 and_(
@@ -65,4 +65,4 @@ class CashflowRepository:
             )
         )
         result = await self.db.execute(stmt)
-        return result.scalar_one_or_none() or Decimal(0)
+        return result.scalars().all()

@@ -22,11 +22,16 @@ class PositionInstrumentDetails(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True)
 
+class PositionValuationDetail(BaseModel):
+    """Represents a single valuation metric (e.g., market value) in local and base currency."""
+    local: MonetaryAmount
+    base: MonetaryAmount
+
 class PositionValuation(BaseModel):
     """Represents the valuation details of a position."""
-    market_value: MonetaryAmount = Field(..., alias="marketValue")
-    cost_basis: MonetaryAmount = Field(..., alias="costBasis")
-    unrealized_pnl: MonetaryAmount = Field(..., alias="unrealizedPnl")
+    market_value: PositionValuationDetail = Field(..., alias="marketValue")
+    cost_basis: PositionValuationDetail = Field(..., alias="costBasis")
+    unrealized_pnl: PositionValuationDetail = Field(..., alias="unrealizedPnl")
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -48,7 +53,7 @@ class EnrichedPosition(BaseModel):
     
     instrument_details: Optional[PositionInstrumentDetails] = Field(None, alias="instrumentDetails")
     valuation: Optional[PositionValuation] = None
-    income: Optional[MonetaryAmount] = None
+    income: Optional[PositionValuationDetail] = None
     performance: Optional[Dict[str, PositionPerformance]] = None
 
     model_config = ConfigDict(populate_by_name=True)
