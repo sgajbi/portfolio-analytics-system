@@ -237,7 +237,7 @@ def test_calculate_next_position_for_transfer_in_uses_quantity_field():
     new_state = PositionCalculator.calculate_next_position(initial_state, transfer_in_event)
     
     # ASSERT
-    # The new quantity should be 100, not 15000. This assertion will fail with the buggy code.
+    # This assertion now passes with the corrected logic.
     assert new_state.quantity == Decimal("100")
     # The cost basis should be increased by the value of the transfer
     assert new_state.cost_basis == Decimal("15000")

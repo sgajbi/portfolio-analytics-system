@@ -159,35 +159,38 @@ class PositionCalculator:
         net_cost = transaction.net_cost if transaction.net_cost is not None else Decimal(0)
         net_cost_local = transaction.net_cost_local if transaction.net_cost_local is not None else Decimal(0)
 
+        # --- THIS IS THE FIX ---
+        # Refactored logic to handle each transaction type correctly and distinctly.
         if txn_type == "BUY":
             quantity += transaction.quantity
             cost_basis += net_cost
             cost_basis_local += net_cost_local
-        elif txn_type in ["DEPOSIT", "TRANSFER_IN"]:
-            quantity += transaction.quantity
-            cost_basis += transaction.gross_transaction_amount
-            cost_basis_local += transaction.gross_transaction_amount
         
-        # --- THIS IS THE FIX ---
-        # Grouped logic for dispositions of securities (a transfer out is a disposition)
-        elif txn_type in ["SELL", "TRANSFER_OUT"]:
-            if quantity != Decimal(0):
-                # Reduce cost basis proportionally to the quantity being removed
+        elif txn_type in ["SELL", "TRANSFER_OUT"]: # Dispositions of securities
+            if not quantity.is_zero():
                 proportion_of_holding = transaction.quantity / quantity
                 cost_basis_reduction = cost_basis * proportion_of_holding
                 cost_basis_local_reduction = cost_basis_local * proportion_of_holding
                 
                 cost_basis -= cost_basis_reduction
                 cost_basis_local -= cost_basis_local_reduction
-            # Reduce the quantity
+            
             quantity -= transaction.quantity
-        # Logic specifically for cash-only reductions from a cash position
-        elif txn_type in ["FEE", "TAX", "WITHDRAWAL"]:
-            # This logic assumes it's operating on a cash position where quantity IS the amount
+
+        elif txn_type == "DEPOSIT":
+            quantity += transaction.gross_transaction_amount
+            cost_basis += transaction.gross_transaction_amount
+            cost_basis_local += transaction.gross_transaction_amount
+
+        elif txn_type == "TRANSFER_IN": 
+            quantity += transaction.quantity
+            cost_basis += transaction.gross_transaction_amount 
+            cost_basis_local += transaction.gross_transaction_amount
+        
+        elif txn_type in ["FEE", "TAX", "WITHDRAWAL"]: 
             quantity -= transaction.gross_transaction_amount
             cost_basis -= transaction.gross_transaction_amount
             cost_basis_local -= transaction.gross_transaction_amount
-        # --- END FIX ---
         
         else:
             logger.debug(f"[CalculateNext] Txn type {txn_type} does not affect position quantity/cost.")
