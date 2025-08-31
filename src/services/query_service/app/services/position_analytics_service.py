@@ -22,6 +22,10 @@ from ..repositories.fx_rate_repository import FxRateRepository
 from performance_calculator_engine.helpers import resolve_period
 from performance_calculator_engine.calculator import PerformanceCalculator
 from performance_calculator_engine.constants import FINAL_CUMULATIVE_ROR_PCT
+from portfolio_common.monitoring import (
+    POSITION_ANALYTICS_DURATION_SECONDS,
+    POSITION_ANALYTICS_SECTION_REQUESTED_TOTAL,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -135,6 +139,7 @@ class PositionAnalyticsService:
 
         income_tasks = {}
         if PositionAnalyticsSection.INCOME in request.sections:
+            # FIX: Use get_income_cashflows_for_position for correct epoch-fencing
             income_tasks['income_cashflows'] = self.cashflow_repo.get_income_cashflows_for_position(
                 portfolio.portfolio_id, snapshot.security_id, position.held_since_date, request.as_of_date
             )
@@ -188,26 +193,36 @@ class PositionAnalyticsService:
     async def get_position_analytics(
         self, portfolio_id: str, request: PositionAnalyticsRequest
     ) -> PositionAnalyticsResponse:
-        portfolio = await self.portfolio_repo.get_by_id(portfolio_id)
-        if not portfolio:
-            raise ValueError(f"Portfolio {portfolio_id} not found")
-
-        repo_results = await self.position_repo.get_latest_positions_by_portfolio(portfolio_id)
-
-        if not repo_results:
-            return PositionAnalyticsResponse(
-                portfolio_id=portfolio_id, as_of_date=request.as_of_date, total_market_value=0.0, positions=[]
+        with POSITION_ANALYTICS_DURATION_SECONDS.labels(portfolio_id=portfolio_id).time():
+            logger.info(
+                "Starting position analytics generation for portfolio %s",
+                portfolio_id,
+                extra={"sections": [s.value for s in request.sections]},
             )
-        total_market_value_base = sum(pos.market_value or Decimal(0) for pos, *_ in repo_results)
-        enrichment_coroutines = [self._enrich_position(portfolio, total_market_value_base, row, request) for row in repo_results]
-        enriched_positions = await asyncio.gather(*enrichment_coroutines)
+            for section in request.sections:
+                POSITION_ANALYTICS_SECTION_REQUESTED_TOTAL.labels(section_name=section.value).inc()
 
-        return PositionAnalyticsResponse(
-            portfolio_id=portfolio_id,
-            as_of_date=request.as_of_date,
-            total_market_value=float(total_market_value_base),
-            positions=enriched_positions
-        )
+            portfolio = await self.portfolio_repo.get_by_id(portfolio_id)
+            if not portfolio:
+                raise ValueError(f"Portfolio {portfolio_id} not found")
+
+            repo_results = await self.position_repo.get_latest_positions_by_portfolio(portfolio_id)
+
+            if not repo_results:
+                return PositionAnalyticsResponse(
+                    portfolio_id=portfolio_id, as_of_date=request.as_of_date, total_market_value=0.0, positions=[]
+                )
+            total_market_value_base = sum(pos.market_value or Decimal(0) for pos, *_ in repo_results)
+            enrichment_coroutines = [self._enrich_position(portfolio, total_market_value_base, row, request) for row in repo_results]
+            enriched_positions = await asyncio.gather(*enrichment_coroutines)
+
+            logger.info("Successfully generated position analytics for portfolio %s", portfolio_id)
+            return PositionAnalyticsResponse(
+                portfolio_id=portfolio_id,
+                as_of_date=request.as_of_date,
+                total_market_value=float(total_market_value_base),
+                positions=enriched_positions
+            )
 
 def get_position_analytics_service(db: AsyncSession = Depends(get_async_db_session)) -> PositionAnalyticsService:
     return PositionAnalyticsService(db)
