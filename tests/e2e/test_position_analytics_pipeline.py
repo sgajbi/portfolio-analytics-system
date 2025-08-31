@@ -41,13 +41,13 @@ def setup_position_analytics_data(clean_db_module, e2e_api_client: E2EApiClient,
         {"securityId": SECURITY_ID, "priceDate": AS_OF_DATE, "price": 55.0, "currency": "EUR"}
     ]})
     
-    # 4. Poll until the final day's timeseries is generated
+    # 4. Poll until the final day's position timeseries is generated. THIS IS THE FIX.
     poll_db_until(
-        query="SELECT 1 FROM portfolio_timeseries WHERE portfolio_id = :pid AND date = :date",
-        params={"pid": PORTFOLIO_ID, "date": AS_OF_DATE},
+        query="SELECT 1 FROM position_timeseries WHERE portfolio_id = :pid AND security_id = :sid AND date = :date",
+        params={"pid": PORTFOLIO_ID, "sid": SECURITY_ID, "date": AS_OF_DATE},
         validation_func=lambda r: r is not None,
         timeout=180,
-        fail_message=f"Pipeline did not generate portfolio_timeseries for {AS_OF_DATE}."
+        fail_message=f"Pipeline did not generate position_timeseries for {AS_OF_DATE}."
     )
     return {"portfolio_id": PORTFOLIO_ID}
 
@@ -95,9 +95,6 @@ def test_position_analytics_pipeline(setup_position_analytics_data, e2e_api_clie
     
     # Assert Performance section
     # The Time-Weighted Return (TWR) is calculated by linking daily returns.
-    # Day 1 (Aug 20) Return = (5200 / 5000) - 1 = 4.0%
-    # Day 2 (Aug 21) Return = (5300 - 5200 - 75) / 5200 = 0.48%
-    # ... linking through to Day 5 ...
-    # Final TWR is ~8.49%, not the 11.5% from a simple return calculation.
+    # The correct TWR for this period is ~8.49%.
     performance = position["performance"]["SI"]
     assert performance["localReturn"] == pytest.approx(8.49, abs=1e-2)
