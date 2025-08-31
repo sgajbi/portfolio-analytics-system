@@ -28,13 +28,33 @@ def repository(mock_db_session: AsyncMock) -> InstrumentRepository:
     """Provides an instance of the repository with a mock session."""
     return InstrumentRepository(mock_db_session)
 
+async def test_get_by_security_ids(repository: InstrumentRepository, mock_db_session: AsyncMock):
+    """
+    GIVEN a list of security IDs
+    WHEN get_by_security_ids is called
+    THEN it should construct a SELECT statement with a WHERE...IN clause.
+    """
+    # ARRANGE
+    mock_result = mock_db_session.execute.return_value
+    mock_result.scalars.return_value.all.return_value = []
+    security_ids = ["SEC1", "SEC2"]
+
+    # ACT
+    await repository.get_by_security_ids(security_ids)
+
+    # ASSERT
+    mock_db_session.execute.assert_awaited_once()
+    executed_stmt = mock_db_session.execute.call_args[0][0]
+    compiled_query = str(executed_stmt.compile(compile_kwargs={"literal_binds": True}))
+    assert "WHERE instruments.security_id IN ('SEC1', 'SEC2')" in compiled_query
+
 async def test_get_instruments_no_filters(repository: InstrumentRepository, mock_db_session: AsyncMock):
     """
     GIVEN no filters
     WHEN get_instruments is called
     THEN it should construct a SELECT statement without a WHERE clause.
     """
-    # ARRANGE: Configure the synchronous mock result for this test
+    # ARRANGE: Explicitly configure the mock's return value for this test
     mock_result = mock_db_session.execute.return_value
     mock_result.scalars.return_value.all.return_value = [
         MagicMock(spec=Instrument), MagicMock(spec=Instrument)

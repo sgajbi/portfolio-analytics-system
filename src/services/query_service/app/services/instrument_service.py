@@ -1,6 +1,6 @@
 # services/query-service/app/services/instrument_service.py
 import logging
-from typing import Optional
+from typing import Optional, List
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..repositories.instrument_repository import InstrumentRepository
@@ -15,6 +15,14 @@ class InstrumentService:
     def __init__(self, db: AsyncSession):
         self.db = db
         self.repo = InstrumentRepository(db)
+
+    async def get_instruments_by_ids(self, security_ids: List[str]) -> List[InstrumentRecord]:
+        """Retrieves a list of instruments for a given list of security IDs."""
+        if not security_ids:
+            return []
+        logger.info(f"Fetching details for {len(security_ids)} instruments.")
+        db_results = await self.repo.get_by_security_ids(security_ids)
+        return [InstrumentRecord.model_validate(row, from_attributes=True) for row in db_results]
 
     async def get_instruments(
         self,
@@ -40,7 +48,7 @@ class InstrumentService:
             product_type=product_type
         )
         
-        instruments = [InstrumentRecord.model_validate(row) for row in db_results]
+        instruments = [InstrumentRecord.model_validate(row, from_attributes=True) for row in db_results]
         
         return PaginatedInstrumentResponse(
             total=total_count,

@@ -11,7 +11,7 @@ from ..dtos.review_dto import (
 )
 from ..dtos.summary_dto import SummaryRequest, AllocationDimension
 from ..dtos.performance_dto import PerformanceRequest, StandardPeriod as PerfStandardPeriod
-from ..dtos.risk_dto import RiskRequest, RiskPeriodResult
+from ..dtos.risk_dto import RiskRequest
 from ..dtos.instrument_dto import InstrumentRecord
 
 from .portfolio_service import PortfolioService
@@ -20,6 +20,7 @@ from .performance_service import PerformanceService
 from .risk_service import RiskService
 from .position_service import PositionService
 from .transaction_service import TransactionService
+from .instrument_service import InstrumentService
 
 from portfolio_common.monitoring import REVIEW_GENERATION_DURATION_SECONDS
 
@@ -37,6 +38,7 @@ class ReviewService:
         self.risk_service = RiskService(db)
         self.position_service = PositionService(db)
         self.transaction_service = TransactionService(db)
+        self.instrument_service = InstrumentService(db)
 
     @REVIEW_GENERATION_DURATION_SECONDS.labels(portfolio_id=...).time()
     async def get_portfolio_review(
@@ -120,28 +122,38 @@ class ReviewService:
                 }
 
         if 'performance_net' in results_map:
-            response.performance = results_map['performance_net'] # Base response is NET
-            gross_returns = results_map['performance_gross']
-            # Manually merge gross results into the response if needed, for now this is simplified.
+            response.performance = results_map['performance_net']
             
         if 'risk' in results_map:
             response.risk_analytics = results_map['risk']
+        
+        # --- NEW: Robust Grouping Logic ---
+        if 'holdings' in results_map or 'transactions' in results_map:
+            # 1. Collect all unique security IDs from both results
+            sec_ids = set()
+            if 'holdings' in results_map:
+                sec_ids.update(p.security_id for p in results_map['holdings'].positions)
+            if 'transactions' in results_map:
+                sec_ids.update(t.security_id for t in results_map['transactions'].transactions)
+            
+            # 2. Fetch all instrument details in a single batch call
+            instruments = await self.instrument_service.get_instruments_by_ids(list(sec_ids))
+            asset_class_map = {inst.security_id: inst.asset_class for inst in instruments}
 
-        if 'holdings' in results_map:
-            holdings_by_asset_class = defaultdict(list)
-            # This is a temporary solution for getting asset class. A proper solution
-            # would join the instrument data in the position query.
-            for pos in results_map['holdings'].positions:
-                # Simplified asset class determination
-                asset_class = "Cash" if "CASH" in pos.security_id else "Equity/Other"
-                holdings_by_asset_class[asset_class].append(pos)
-            response.holdings = HoldingsSection(holdingsByAssetClass=holdings_by_asset_class)
-
-        if 'transactions' in results_map:
-            txns_by_asset_class = defaultdict(list)
-            for txn in results_map['transactions'].transactions:
-                asset_class = "Cash" if "CASH" in txn.security_id else "Equity/Other"
-                txns_by_asset_class[asset_class].append(txn)
-            response.transactions = TransactionsSection(transactionsByAssetClass=txns_by_asset_class)
+            # 3. Group holdings using the fetched asset class data
+            if 'holdings' in results_map:
+                holdings_by_asset_class = defaultdict(list)
+                for pos in results_map['holdings'].positions:
+                    asset_class = asset_class_map.get(pos.security_id) or "Unclassified"
+                    holdings_by_asset_class[asset_class].append(pos)
+                response.holdings = HoldingsSection(holdingsByAssetClass=holdings_by_asset_class)
+            
+            # 4. Group transactions using the same asset class data
+            if 'transactions' in results_map:
+                txns_by_asset_class = defaultdict(list)
+                for txn in results_map['transactions'].transactions:
+                    asset_class = asset_class_map.get(txn.security_id) or "Unclassified"
+                    txns_by_asset_class[asset_class].append(txn)
+                response.transactions = TransactionsSection(transactionsByAssetClass=txns_by_asset_class)
 
         return response
