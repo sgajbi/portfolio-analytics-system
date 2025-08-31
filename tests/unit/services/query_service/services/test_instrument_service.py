@@ -38,8 +38,9 @@ async def test_get_instruments_by_ids(mock_instrument_repo: AsyncMock):
     THEN it should call the repository and return a list of DTOs.
     """
     # ARRANGE
+    # FIX: Use a valid Python module path (dots instead of slashes) for the patch.
     with patch(
-        "src/services/query_service/app/services/instrument_service.InstrumentRepository",
+        "src.services.query_service.app.services.instrument_service.InstrumentRepository",
         return_value=mock_instrument_repo
     ):
         service = InstrumentService(AsyncMock(spec=AsyncSession))
@@ -61,8 +62,9 @@ async def test_get_instruments(mock_instrument_repo: AsyncMock):
     AND correctly map the results to the paginated response DTO.
     """
     # ARRANGE
+    # FIX: Use a valid Python module path (dots instead of slashes) for the patch.
     with patch(
-        "src.services.query_service/app/services/instrument_service.InstrumentRepository",
+        "src.services.query_service.app.services.instrument_service.InstrumentRepository",
         return_value=mock_instrument_repo
     ):
         mock_db_session = AsyncMock(spec=AsyncSession)
