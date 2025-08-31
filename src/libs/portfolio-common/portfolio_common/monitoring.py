@@ -192,3 +192,11 @@ UNCLASSIFIED_ALLOCATION_MARKET_VALUE = Gauge(
     "Total market value of positions in the 'Unclassified' allocation bucket.",
     ["portfolio_id", "dimension"]
 )
+
+# --- NEW METRIC FOR REVIEW API ---
+REVIEW_GENERATION_DURATION_SECONDS = Histogram(
+    "review_generation_duration_seconds",
+    "Time taken to generate a full portfolio review report.",
+    labelnames=("portfolio_id",),
+    buckets=(0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0),
+)
