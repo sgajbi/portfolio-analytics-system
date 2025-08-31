@@ -4,7 +4,7 @@ import asyncio
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import Depends
 from decimal import Decimal
-from typing import Any, List, Dict
+from typing import Any, List, Optional, Dict
 import pandas as pd
 from datetime import date
 
