@@ -61,8 +61,8 @@ def test_cashflow_pipeline(setup_cashflow_data, db_engine):
     
     amount, currency, classification, timing, is_pos_flow, is_port_flow, calc_type = result
     
-    # FIX: A BUY is a positive inflow to the position. Expected amount = (Gross Amount + Fee)
-    expected_amount = Decimal("1005.50")
+    # Expected amount = -(Gross Amount + Fee) = -(1000 + 5.50) = -1005.50
+    expected_amount = Decimal("-1005.50")
 
     assert amount.compare(expected_amount) == 0
     assert currency == "USD"
