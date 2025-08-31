@@ -5,7 +5,7 @@ from datetime import date, timedelta
 import asyncio
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from portfolio_common.database_models import PortfolioValuationJob, PositionState
+from portfolio_common.database_models import PortfolioValuationJob, PositionState, InstrumentReprocessingState
 from portfolio_common.kafka_utils import KafkaProducer
 from portfolio_common.config import KAFKA_VALUATION_REQUIRED_TOPIC
 from services.calculators.position_valuation_calculator.app.core.valuation_scheduler import ValuationScheduler
@@ -205,3 +205,41 @@ async def test_scheduler_dispatches_claimed_jobs(scheduler: ValuationScheduler, 
     # Verify headers
     headers1 = dict(first_call_args['headers'])
     assert headers1['correlation_id'] == b'corr-1'
+
+# --- NEW TEST ---
+async def test_scheduler_processes_instrument_triggers(scheduler: ValuationScheduler, mock_dependencies: dict):
+    """
+    GIVEN an instrument reprocessing trigger in the database
+    WHEN the scheduler runs _process_instrument_level_triggers
+    THEN it should find affected portfolios, reset their watermarks, and delete the trigger.
+    """
+    # ARRANGE
+    mock_repo = mock_dependencies["repo"]
+    mock_state_repo = mock_dependencies["state_repo"]
+    
+    trigger_date = date(2025, 8, 5)
+    triggers = [
+        InstrumentReprocessingState(security_id="S1", earliest_impacted_date=trigger_date)
+    ]
+    
+    mock_repo.get_instrument_reprocessing_triggers.return_value = triggers
+    mock_repo.find_portfolios_for_security.return_value = ["P1", "P2"]
+
+    # ACT
+    await scheduler._process_instrument_level_triggers(AsyncMock())
+
+    # ASSERT
+    # 1. Verify it checked for triggers
+    mock_repo.get_instrument_reprocessing_triggers.assert_awaited_once()
+
+    # 2. Verify it found the affected portfolios
+    mock_repo.find_portfolios_for_security.assert_awaited_once_with("S1")
+    
+    # 3. Verify it reset the watermarks correctly
+    mock_state_repo.update_watermarks_if_older.assert_awaited_once()
+    call_args = mock_state_repo.update_watermarks_if_older.call_args.kwargs
+    assert call_args['keys'] == [("P1", "S1"), ("P2", "S1")]
+    assert call_args['new_watermark_date'] == trigger_date - timedelta(days=1)
+    
+    # 4. Verify it consumed and deleted the trigger
+    mock_repo.delete_instrument_reprocessing_triggers.assert_awaited_once_with(["S1"])
