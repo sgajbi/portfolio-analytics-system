@@ -7,7 +7,7 @@ from prometheus_fastapi_instrumentator import Instrumentator
 
 from portfolio_common.logging_utils import setup_logging, correlation_id_var, generate_correlation_id
 from portfolio_common.health import create_health_router
-from .routers import positions, transactions, instruments, prices, fx_rates, portfolios, performance, risk, summary
+from .routers import positions, transactions, instruments, prices, fx_rates, portfolios, performance, risk, summary, review
 
 SERVICE_PREFIX = "QRY"
 setup_logging()
@@ -40,6 +40,7 @@ async def add_correlation_id_middleware(request: Request, call_next):
     correlation_id = request.headers.get('X-Correlation-ID')
     if not correlation_id:
         correlation_id = generate_correlation_id(SERVICE_PREFIX)
+    
     token = correlation_id_var.set(correlation_id)
     response = await call_next(request)
     response.headers['X-Correlation-ID'] = correlation_id
@@ -79,3 +80,4 @@ app.include_router(fx_rates.router)
 app.include_router(performance.router)
 app.include_router(risk.router)
 app.include_router(summary.router)
+app.include_router(review.router)

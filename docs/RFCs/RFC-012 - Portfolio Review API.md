@@ -1,62 +1,65 @@
-### RFC 012: Portfolio Review API
+### **RFC 012: Portfolio Review API**
 
-  * **Status**: Proposed
-  * **Date**: 2025-08-30
+  * **Status**: **Final** (was: Proposed)
+  * **Date**: 2025-08-31
+  * **Lead**: Gemini Architect
   * **Services Affected**: `query-service`
-  * **Related RFCs**: [RFC 007](https://www.google.com/search?q=docs/RFCs/RFC%2520007%2520-%2520Risk%2520Analytics%2520APIs%2520\(Volatility,%2520Drawdown,%2520Sharpe,%2520Sortino,%2520Beta,%2520VaR\).md), [RFC 008](https://www.google.com/search?q=docs/RFCs/RFC%2520008%2520-%2520Portfolio%2520Summary%2520%26%2520Analytics%2520API.md)
+  * **Related RFCs**: RFC 007, RFC 008
 
 -----
 
 ## 1\. Summary (TL;DR)
 
-This RFC proposes a new `POST /portfolios/{portfolio_id}/review` endpoint in the `query-service` to generate a comprehensive, multi-section portfolio review report from a single API call. The API is designed for simplicity, accepting a list of desired sections and returning a pre-configured, detailed JSON payload.
+This RFC is approved. We will implement a new, consolidated `POST /portfolios/{portfolio_id}/review` endpoint within the `query-service`. This endpoint will act as a server-side orchestrator, generating a comprehensive, multi-section portfolio review report from a single API call.
 
-It will orchestrate existing services to aggregate data for sections such as **Overview, Allocation, Performance, Risk Analytics, Holdings, and Transactions**. This approach simplifies client application logic, reduces network requests, and ensures all report data is calculated consistently against the same portfolio state and active data epoch.
-
------
-
-## 2\. Motivation
-
-Client advisors require a consolidated, at-a-glance report to review portfolio status with their clients. The current system would necessitate multiple, independent API calls to endpoints like `/summary` and `/performance`, forcing the client application to manage the orchestration and data merging. This is inefficient and can lead to data inconsistencies between sections.
-
-By creating a single `/review` endpoint, we achieve:
-
-  * **Client Simplicity**: Front-end applications only need to make one call to get all data required for a report.
-  * **Efficiency**: Backend services can fetch and calculate all necessary data in parallel, minimizing database queries and network overhead.
-  * **Data Consistency**: All sections of the report are guaranteed to be generated from the same underlying data and active **epoch** version, providing an atomic and consistent snapshot of the portfolio.
+This approach solves the inefficiency and potential for data inconsistency inherent in client-side aggregation. By performing the orchestration on the backend within a single request scope, we can **guarantee that all sections of the report (Performance, Risk, Allocation, etc.) are calculated against the exact same atomic snapshot of the portfolio's active data version (epoch)**, which is the feature's most critical requirement.
 
 -----
 
-## 3\. Architectural Placement
+## 2\. Decision
 
-This new API functionality will be implemented within the existing **`query-service`**.
-
-This decision is based on the following rationale:
-
-  * **Service Reuse**: The API is primarily an orchestrator that aggregates data from services already present within the `query-service`, including `SummaryService`, `PerformanceService`, `RiskService`, `PositionService`, and `TransactionService`. Placing the logic here allows for direct, in-process function calls, which is significantly more performant and less complex than inter-service network calls.
-  * **Architectural Consistency**: The `query-service` is the system's designated read and analytics API. This new endpoint is a natural extension of its existing responsibilities.
-  * **Future Scalability**: While this synchronous API belongs in `query-service`, any future requirement for large-scale, asynchronous batch report generation would justify a new, separate `reporting-service`. Such a service would act as a client to `query-service`, calling this new `/review` endpoint to generate its reports.
+[cite\_start]We will implement a new `ReviewService` within the `query-service`[cite: 2355]. This service will orchestrate calls to existing internal services (`SummaryService`, `PerformanceService`, `RiskService`, etc.) to construct a standardized report. The API will be intentionally simple, accepting only a list of desired sections and returning a pre-configured, non-customizable JSON payload suitable for populating a client-facing report.
 
 -----
 
-## 4\. Proposed Changes
+## 3\. Architectural Consequences
 
-### 4.1. New `ReviewService` Orchestrator
+### **Pros**:
 
-A new `ReviewService` will be created at `src/services/query_service/app/services/review_service.py`. This service will not contain any new financial logic. Instead, it will orchestrate parallel calls to existing services using `asyncio.gather` to fetch all the required data efficiently. It will then transform and assemble this data into the final `PortfolioReviewResponse` DTO.
+  * **Guaranteed Data Consistency**: This is the most significant benefit. [cite\_start]The `ReviewService` will fetch all underlying data by joining with the `position_state` table to filter for the **current, active `epoch`** for each security[cite: 2222, 2274]. This provides an atomic, point-in-time snapshot, ensuring that performance, risk, and allocation figures are perfectly aligned and free from race conditions with ongoing reprocessing flows.
+  * **Client Simplicity**: Shifts orchestration logic from the client to the backend. [cite\_start]A front-end application only needs to make one API call to populate an entire multi-faceted review screen, drastically reducing complexity and the number of network round-trips[cite: 2354].
+  * [cite\_start]**Backend Efficiency**: By using `asyncio.gather`, the `ReviewService` can execute data fetching and calculations for all sections in parallel, minimizing overall latency compared to sequential client-side calls[cite: 2356].
+  * **Centralized Business Logic**: The server defines what constitutes a "standard" portfolio review (e.g., which performance periods, which risk metrics). This ensures a consistent analytical experience for all users and simplifies client implementations.
 
-### 4.2. API Endpoint
+### **Cons / Trade-offs**:
 
-  * **Method**: `POST`
-  * **Path**: `/portfolios/{portfolio_id}/review`
+  * **Single Point of Failure**: As an aggregator, the `/review` endpoint's success is dependent on the success of all its sub-service calls. A failure in any single component (e.g., `RiskService`) will cause the entire endpoint to fail. This is an acceptable trade-off for the guarantee of data consistency.
+  * [cite\_start]**Static Configuration (v1)**: The report structure (e.g., performance periods) is intentionally static for v1 to reduce complexity[cite: 2358]. Future iterations could introduce more configurability if required.
 
-### 4.3. API Contract
+-----
+
+## 4\. High-Level Design
+
+### 4.1. Orchestration within `query-service`
+
+The new `ReviewService` will be the orchestrator. It will **not** contain any new financial logic itself. Instead, it will:
+
+1.  Receive the `PortfolioReviewRequest`.
+2.  Instantiate the other required services (`SummaryService`, `PerformanceService`, `RiskService`, etc.).
+3.  [cite\_start]Execute all data aggregation and calculation calls concurrently using `asyncio.gather`[cite: 2356].
+4.  Assemble the results from each service into the final `PortfolioReviewResponse` DTO.
+
+### 4.2. The Consistency Guarantee
+
+[cite\_start]To ensure atomic consistency, the `ReviewService` and all underlying repository methods it calls will strictly adhere to the system's **Epoch/Watermark** model[cite: 2049]. [cite\_start]Every query that fetches versioned data (e.g., from `daily_position_snapshots`, `portfolio_timeseries`) **must** join with `position_state` and filter on `table.epoch = position_state.epoch`[cite: 2222, 2274]. This correctly fences off any stale data from prior, incomplete reprocessing flows and is the cornerstone of this feature's reliability.
+
+-----
+
+## 5\. API Contract
 
 New DTOs will be defined in `src/services/query_service/app/dtos/review_dto.py`.
 
-#### Request Body
-
-The request body is intentionally simple, requiring only the `as_of_date` and a list of sections to include.
+### Request Body
 
 ```json
 {
@@ -73,109 +76,52 @@ The request body is intentionally simple, requiring only the `as_of_date` and a 
 }
 ```
 
-#### Response Body
+### Response Body Structure & Data Sources
 
-The response is a detailed JSON object with a top-level key for each requested section. The configuration within each section is static and handled by the server.
-
-##### Response Structure & Data Sources
-
-  * **`overview`**: Combines data from `SummaryService` (total wealth, P\&L) and `PortfolioService` (risk profile, portfolio type). The P\&L figures correspond to the Year-to-Date (YTD) period relative to the `as_of_date`.
-  * **`allocation`**: Includes breakdowns for **all available allocation types** as defined in `RFC 008`. This includes `by_asset_class`, `by_sector`, `by_currency`, `by_country_of_risk`, `by_rating`, and `by_maturity_bucket`. This data is generated by the `SummaryService`.
-  * **`performance`**: Provides a static set of periods: **MTD, QTD, YTD, 1-Year, 3-Year, and Since Inception**. It includes both cumulative and (where applicable) annualized returns, calculated on both a **NET** and **GROSS** basis. It also includes a monthly breakdown of returns for the last 12 months to facilitate graphing. This data is generated by the `PerformanceService`.
-  * **`risk_analytics`**: Provides a standard set of key risk metrics (e.g., Volatility, Sharpe Ratio) for **YTD** and **3-Year** periods. This data is generated by the `RiskService`.
-  * **`income_and_activity`**: Shows a summary of cashflows for the YTD period, sourced from the `SummaryService`.
-  * **`holdings`**: A list of all current portfolio holdings, sourced from `PositionService`. The list is **grouped by asset class**.
-  * **`transactions`**: A list of recent transactions for the YTD period, sourced from `TransactionService`. The list is **grouped by asset class**.
-
-##### Example Response Payload
-
-```json
-{
-  "portfolio_id": "PORTF12345",
-  "as_of_date": "2025-08-30",
-  "overview": {
-    "total_market_value": 1250000.50,
-    "total_cash": 50000.25,
-    "risk_profile": "Growth",
-    "portfolio_type": "Discretionary",
-    "pnl_summary": {
-      "realized_pnl_ytd": 5230.10,
-      "unrealized_pnl_change_ytd": 12345.67,
-      "total_income_ytd": 970.50
-    }
-  },
-  "allocation": {
-    "by_asset_class": [
-      { "group": "Equity", "market_value": 900000.00, "weight": 0.72 },
-      { "group": "Fixed Income", "market_value": 300000.25, "weight": 0.24 }
-    ],
-    "by_sector": [
-      // ...
-    ]
-  },
-  "performance": {
-    "net_returns": {
-      "cumulative": { "mtd": 0.015, "qtd": 0.042, "ytd": 0.0825, "one_year": 0.12, "three_year": 0.35, "since_inception": 0.55 },
-      "annualized": { "three_year": 0.105, "since_inception": 0.095 }
-    },
-    "gross_returns": {
-      "cumulative": { "mtd": 0.016, "qtd": 0.044, "ytd": 0.0855, "one_year": 0.124, "three_year": 0.36, "since_inception": 0.56 },
-      "annualized": { "three_year": 0.108, "since_inception": 0.098 }
-    },
-    "one_year_breakdown": [
-      { "period": "2024-09", "monthly_return_net": 0.012 },
-      { "period": "2024-10", "monthly_return_net": -0.005 }
-    ]
-  },
-  "risk_analytics": {
-    "ytd": { "volatility": 0.158, "sharpe_ratio": 1.37 },
-    "three_year": { "volatility": 0.182, "sharpe_ratio": 0.95 }
-  },
-  "income_and_activity": {
-     "income_summary_ytd": { "total_dividends": 850.00, "total_interest": 120.50 },
-     "activity_summary_ytd": { "total_inflows": 15000.00, "total_outflows": -5000.00, "total_fees": -75.50 }
-  },
-  "holdings": {
-    "Equity": [
-      { "security_id": "SEC_AAPL", "instrument_name": "Apple Inc.", "quantity": 100, "market_value": 15000.00, "weight": 0.012, "unrealized_pnl": 2500.00 }
-    ],
-    "Fixed Income": [
-      { "security_id": "SEC_BOND", "instrument_name": "US Treasury Bond", "quantity": 10, "market_value": 9800.00, "weight": 0.008, "unrealized_pnl": 300.00 }
-    ]
-  },
-  "transactions": {
-    "Equity": [
-      { "transaction_date": "2025-08-25", "security_id": "SEC_AAPL", "type": "BUY", "quantity": 10, "amount": 1500.00 }
-    ],
-    "Cash": [
-      { "transaction_date": "2025-08-20", "security_id": "CASH_USD", "type": "DEPOSIT", "quantity": 10000, "amount": 10000.00 }
-    ]
-  }
-}
-```
+  * [cite\_start]**`overview`**: Data from `SummaryService` and `PortfolioService`[cite: 2357].
+  * [cite\_start]**`allocation`**: All available breakdowns from `SummaryService`[cite: 2357].
+  * [cite\_start]**`performance`**: A static set of periods (MTD, QTD, YTD, 1Y, 3Y, SI) with cumulative and annualized returns (NET & GROSS), plus a 12-month breakdown, generated by `PerformanceService`[cite: 2358].
+  * [cite\_start]**`risk_analytics`**: Key metrics for YTD and 3-Year periods, generated by `RiskService`[cite: 2358].
+  * [cite\_start]**`income_and_activity`**: YTD summary from `SummaryService`[cite: 2358].
+  * [cite\_start]**`holdings`**: Current holdings, grouped by asset class, from `PositionService`[cite: 2358].
+  * [cite\_start]**`transactions`**: Recent transactions (YTD), grouped by asset class, from `TransactionService`[cite: 2359].
 
 -----
 
-## 5\. Implementation Plan
+## 6\. Observability
+
+To monitor this new, high-value endpoint, the following will be implemented:
+
+  * **Metrics**: A new Prometheus `Histogram` named `review_generation_duration_seconds` will be added to the `ReviewService` to track the overall latency of the end-to-end orchestration.
+  * **Logging**: The `ReviewService` will emit structured logs at the beginning and end of each request, including the `portfolio_id` and total duration. It will also log the duration of each parallel sub-service call to easily identify bottlenecks. All logs will be tagged with the request's `correlation_id`.
+
+-----
+
+## 7\. Implementation Plan
 
 1.  **Phase 1: DTOs and Scaffolding**:
 
-      * Create `review_dto.py` in `src/services/query_service/app/dtos/` with the final `PortfolioReviewRequest` and `PortfolioReviewResponse` models.
-      * Create `review_service.py` and `review.py` (router) in the appropriate directories within `query-service`.
+      * [cite\_start]Create `review_dto.py`, `review_service.py`, and the router in `routers/review.py` within the `query_service`[cite: 2363].
       * Wire the new router into `main.py`.
 
-2.  **Phase 2: Data Aggregation**:
+2.  **Phase 2: Orchestration & Data Aggregation**:
 
-      * In `ReviewService`, implement the parallel `asyncio.gather` calls to `SummaryService`, `PerformanceService`, `RiskService`, `PositionService`, and `TransactionService`.
-      * Construct the static, pre-configured request objects for each sub-service call (e.g., the list of periods for the performance request).
+      * [cite\_start]Implement the `asyncio.gather` calls in `ReviewService` to orchestrate the existing services (`SummaryService`, `PerformanceService`, etc.)[cite: 2363].
+      * Construct the static, pre-configured request objects required for each sub-service call.
 
-3.  **Phase 3: Response Assembly**:
+3.  **Phase 3: Response Assembly & Transformation**:
 
-      * Implement the logic to map the results from the sub-services into the final `PortfolioReviewResponse` DTO.
-      * Implement the grouping transformation for the holdings and transactions lists based on their `asset_class`.
+      * [cite\_start]Implement the logic to map the results from the sub-services into the final `PortfolioReviewResponse` DTO[cite: 2363].
+      * Implement the server-side grouping logic for holdings and transactions by `asset_class`.
 
-4.  **Phase 4: Testing**:
+4.  **Phase 4: Observability & Testing**:
 
-      * Add comprehensive unit tests for `ReviewService`, focusing on the data transformation and grouping logic.
-      * Add an integration test for the `POST /portfolios/{portfolio_id}/review` endpoint to verify the request/response contract.
-      * Add a new end-to-end test in `tests/e2e/` that ingests a full set of data and validates the final, complex JSON response from the API.
+      * Add the `review_generation_duration_seconds` Prometheus metric and structured logging.
+      * [cite\_start]Add comprehensive unit tests for the `ReviewService`, integration tests for the endpoint, and a new end-to-end test to validate the entire flow and the final, complex JSON payload[cite: 2364].
+
+-----
+
+## 8\. Alternatives Considered
+
+  * **Client-Side Aggregation**: We explicitly rejected this approach. [cite\_start]It would require multiple network calls, making it less efficient and, more importantly, unable to guarantee that all data is fetched from the same atomic data version (epoch), potentially leading to inconsistent reports[cite: 2354].
+  * **New `reporting-service`**: Creating a new microservice was deemed unnecessary complexity for this synchronous, on-demand API. The logic is purely orchestration of existing components within the `query-service`, so placing it there is the most performant and architecturally consistent solution. [cite\_start]A separate service would be justified for asynchronous, large-scale batch report generation, but that is not the current requirement[cite: 2356].
