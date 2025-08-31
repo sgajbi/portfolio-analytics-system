@@ -2,7 +2,9 @@
 import pytest
 from decimal import Decimal
 from .api_client import E2EApiClient
+from datetime import date, timedelta
 
+# --- Test Data Constants ---
 PORTFOLIO_ID = "E2E_REVIEW_01"
 AS_OF_DATE = "2025-08-30"
 
@@ -23,10 +25,10 @@ def setup_review_data(clean_db_module, e2e_api_client: E2EApiClient, poll_db_unt
 
     # 2. Ingest transactions to build a history
     transactions = [
-        {"transaction_id": "REVIEW_DEPOSIT_01", "portfolio_id": PORTFOLIO_ID, "security_id": "CASH_USD", "transaction_date": "2025-08-20T09:00:00Z", "transaction_type": "DEPOSIT", "quantity": 100000, "price": 1, "gross_transaction_amount": 100000, "trade_currency": "USD", "currency": "USD"},
-        {"transaction_id": "REVIEW_BUY_AAPL", "portfolio_id": PORTFOLIO_ID, "security_id": "SEC_AAPL", "transaction_date": "2025-08-20T10:00:00Z", "transaction_type": "BUY", "quantity": 100, "price": 150, "gross_transaction_amount": 15000, "trade_currency": "USD", "currency": "USD"},
-        {"transaction_id": "REVIEW_BUY_BOND", "portfolio_id": PORTFOLIO_ID, "security_id": "SEC_BOND", "transaction_date": "2025-08-20T11:00:00Z", "transaction_type": "BUY", "quantity": 10, "price": 980, "gross_transaction_amount": 9800, "trade_currency": "USD", "currency": "USD"},
-        {"transaction_id": "REVIEW_DIV_AAPL", "portfolio_id": PORTFOLIO_ID, "security_id": "SEC_AAPL", "transaction_date": "2025-08-25T10:00:00Z", "transaction_type": "DIVIDEND", "quantity": 0, "price": 0, "gross_transaction_amount": 120, "trade_currency": "USD", "currency": "USD"}
+        {"transaction_id": "REVIEW_DEPOSIT_01", "portfolio_id": PORTFOLIO_ID, "instrument_id": "CASH_USD", "security_id": "CASH_USD", "transaction_date": "2025-08-20T09:00:00Z", "transaction_type": "DEPOSIT", "quantity": 100000, "price": 1, "gross_transaction_amount": 100000, "trade_currency": "USD", "currency": "USD"},
+        {"transaction_id": "REVIEW_BUY_AAPL", "portfolio_id": PORTFOLIO_ID, "instrument_id": "AAPL", "security_id": "SEC_AAPL", "transaction_date": "2025-08-20T10:00:00Z", "transaction_type": "BUY", "quantity": 100, "price": 150, "gross_transaction_amount": 15000, "trade_currency": "USD", "currency": "USD"},
+        {"transaction_id": "REVIEW_BUY_BOND", "portfolio_id": PORTFOLIO_ID, "instrument_id": "UST", "security_id": "SEC_BOND", "transaction_date": "2025-08-20T11:00:00Z", "transaction_type": "BUY", "quantity": 10, "price": 980, "gross_transaction_amount": 9800, "trade_currency": "USD", "currency": "USD"},
+        {"transaction_id": "REVIEW_DIV_AAPL", "portfolio_id": PORTFOLIO_ID, "instrument_id": "AAPL", "security_id": "SEC_AAPL", "transaction_date": "2025-08-25T10:00:00Z", "transaction_type": "DIVIDEND", "quantity": 0, "price": 0, "gross_transaction_amount": 120, "trade_currency": "USD", "currency": "USD"}
     ]
     e2e_api_client.ingest("/ingest/transactions", {"transactions": transactions})
     
@@ -72,10 +74,10 @@ def test_portfolio_review_endpoint(setup_review_data, e2e_api_client: E2EApiClie
     # Expected MV = (100 * 160) + (10 * 995) + (100000 - 15000 - 9800 + 120) = 16000 + 9950 + 75320 = 101270
     # Expected U-PNL = (16000 - 15000) + (9950 - 9800) = 1000 + 150 = 1150
     overview = data["overview"]
-    assert Decimal(overview["total_market_value"]).quantize(Decimal("0.01")) == Decimal("101270.00")
-    assert Decimal(overview["total_cash"]).quantize(Decimal("0.01")) == Decimal("75320.00")
+    assert Decimal(str(overview["total_market_value"])).quantize(Decimal("0.01")) == Decimal("101270.00")
+    assert Decimal(str(overview["total_cash"])).quantize(Decimal("0.01")) == Decimal("75320.00")
     assert overview["risk_profile"] == "Growth"
-    assert Decimal(overview["pnl_summary"]["total_pnl"]).quantize(Decimal("0.01")) == Decimal("1150.00")
+    assert Decimal(str(overview["pnl_summary"]["total_pnl"])).quantize(Decimal("0.01")) == Decimal("1150.00")
 
     # --- Assert Holdings Section ---
     holdings = data["holdings"]["holdingsByAssetClass"]
@@ -87,9 +89,9 @@ def test_portfolio_review_endpoint(setup_review_data, e2e_api_client: E2EApiClie
 
     # --- Assert Transactions Section ---
     transactions = data["transactions"]["transactionsByAssetClass"]
-    assert "Equity/Other" in transactions
+    assert "Equity" in transactions
     assert "Cash" in transactions
-    txn_ids = {t["transaction_id"] for t in transactions["Equity/Other"]}
-    assert "REVIEW_BUY_AAPL" in txn_ids
-    assert "REVIEW_BUY_BOND" in txn_ids
-    assert "REVIEW_DIV_AAPL" in txn_ids
+    txn_ids_equity = {t["transaction_id"] for t in transactions["Equity"]}
+    assert "REVIEW_BUY_AAPL" in txn_ids_equity
+    assert "REVIEW_BUY_BOND" in txn_ids_equity
+    assert "REVIEW_DIV_AAPL" in txn_ids_equity
