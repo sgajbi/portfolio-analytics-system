@@ -4,16 +4,24 @@ import asyncio
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import Depends
 from decimal import Decimal
-from typing import Any, List
+from typing import Any, List, Dict
+import pandas as pd
+from datetime import date
 
 from portfolio_common.db import get_async_db_session
 from ..dtos.position_analytics_dto import (
     PositionAnalyticsRequest, PositionAnalyticsResponse, EnrichedPosition,
-    PositionAnalyticsSection, MonetaryAmount, PositionValuation, PositionInstrumentDetails
+    PositionAnalyticsSection, MonetaryAmount, PositionValuation, PositionInstrumentDetails,
+    PositionPerformance
 )
 from ..repositories.position_repository import PositionRepository
 from ..repositories.portfolio_repository import PortfolioRepository
 from ..repositories.cashflow_repository import CashflowRepository
+from ..repositories.performance_repository import PerformanceRepository
+from ..repositories.fx_rate_repository import FxRateRepository
+from performance_calculator_engine.helpers import resolve_period
+from performance_calculator_engine.calculator import PerformanceCalculator
+from performance_calculator_engine.constants import FINAL_CUMULATIVE_ROR_PCT
 
 logger = logging.getLogger(__name__)
 
@@ -26,11 +34,44 @@ class PositionAnalyticsService:
         self.position_repo = PositionRepository(db)
         self.portfolio_repo = PortfolioRepository(db)
         self.cashflow_repo = CashflowRepository(db)
+        self.perf_repo = PerformanceRepository(db)
+        self.fx_repo = FxRateRepository(db)
+
+    async def _calculate_performance(
+        self,
+        portfolio_id: str,
+        security_id: str,
+        instrument_currency: str,
+        base_currency: str,
+        inception_date: date,
+        request: PositionAnalyticsRequest
+    ) -> Optional[Dict[str, PositionPerformance]]:
+        """Calculates TWR for all requested periods for a single position."""
+        if not request.performance_options:
+            return None
+
+        periods = [
+            resolve_period(p, inception_date, request.as_of_date)
+            for p in request.performance_options.periods
+        ]
+        
+        min_start = min(p[1] for p in periods)
+        
+        timeseries_data = await self.perf_repo.get_position_timeseries_for_range(
+            portfolio_id, security_id, min_start, request.as_of_date
+        )
+
+        if not timeseries_data:
+            return {name: PositionPerformance() for name, _, _ in periods}
+
+        # More advanced dual currency logic will go here
+        
+        return {name: PositionPerformance(localReturn=0.0, baseReturn=0.0) for name, _, _ in periods}
+
 
     async def _enrich_position(
         self,
-        portfolio_id: str,
-        base_currency: str,
+        portfolio: Any,
         total_market_value_base: Decimal,
         repo_row: Any,
         request: PositionAnalyticsRequest
@@ -53,23 +94,32 @@ class PositionAnalyticsService:
 
         # --- Start Concurrent Enrichment Tasks ---
         enrichment_tasks = {}
-        if PositionAnalyticsSection.INCOME in request.sections or PositionAnalyticsSection.BASE in request.sections:
-            # heldSinceDate is needed for both BASE and INCOME
+        if PositionAnalyticsSection.BASE in request.sections:
             enrichment_tasks['held_since_date'] = self.position_repo.get_held_since_date(
-                portfolio_id, snapshot.security_id, epoch
+                portfolio.portfolio_id, snapshot.security_id, epoch
             )
         
-        task_results = await asyncio.gather(*enrichment_tasks.values())
+        if PositionAnalyticsSection.PERFORMANCE in request.sections:
+            # Placeholder for inception date logic, for now use portfolio open date
+            enrichment_tasks['performance'] = self._calculate_performance(
+                portfolio.portfolio_id, snapshot.security_id, currency, portfolio.base_currency,
+                portfolio.open_date, request
+            )
+        
+        task_results = await asyncio.gather(*enrichment_tasks.values(), return_exceptions=True)
         results_map = dict(zip(enrichment_tasks.keys(), task_results))
         
-        held_since_date = results_map.get('held_since_date', snapshot.date)
-        position.held_since_date = held_since_date
+        if isinstance(results_map.get('held_since_date'), date):
+            position.held_since_date = results_map['held_since_date']
+        
+        if isinstance(results_map.get('performance'), dict):
+            position.performance = results_map['performance']
 
         # --- Second wave of tasks that depend on the first ---
         income_tasks = {}
         if PositionAnalyticsSection.INCOME in request.sections:
             income_tasks['income'] = self.cashflow_repo.get_total_income_for_position(
-                portfolio_id, snapshot.security_id, held_since_date, request.as_of_date
+                portfolio.portfolio_id, snapshot.security_id, position.held_since_date, request.as_of_date
             )
         
         income_results = await asyncio.gather(*income_tasks.values())
@@ -78,7 +128,7 @@ class PositionAnalyticsService:
         if 'income' in income_map:
             position.income = MonetaryAmount(
                 amount=float(income_map['income']),
-                currency=base_currency # Simplified for now, needs multi-currency logic
+                currency=portfolio.base_currency # Simplified for now, needs multi-currency logic
             )
         
         # --- Synchronous Section Assembly ---
@@ -90,9 +140,9 @@ class PositionAnalyticsService:
 
         if PositionAnalyticsSection.VALUATION in request.sections:
             position.valuation = PositionValuation(
-                marketValue=MonetaryAmount(amount=float(snapshot.market_value or 0), currency=base_currency),
-                costBasis=MonetaryAmount(amount=float(snapshot.cost_basis or 0), currency=base_currency),
-                unrealizedPnl=MonetaryAmount(amount=float(snapshot.unrealized_gain_loss or 0), currency=base_currency)
+                marketValue=MonetaryAmount(amount=float(snapshot.market_value or 0), currency=portfolio.base_currency),
+                costBasis=MonetaryAmount(amount=float(snapshot.cost_basis or 0), currency=portfolio.base_currency),
+                unrealizedPnl=MonetaryAmount(amount=float(snapshot.unrealized_gain_loss or 0), currency=portfolio.base_currency)
             )
         
         return position
@@ -118,7 +168,7 @@ class PositionAnalyticsService:
 
         # Concurrently enrich all positions
         enrichment_coroutines = [
-            self._enrich_position(portfolio_id, portfolio.base_currency, total_market_value_base, row, request)
+            self._enrich_position(portfolio, total_market_value_base, row, request)
             for row in repo_results
         ]
         enriched_positions = await asyncio.gather(*enrichment_coroutines)

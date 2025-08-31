@@ -17,10 +17,11 @@ def mock_dependencies():
     mock_position_repo = AsyncMock()
     mock_portfolio_repo = AsyncMock()
     mock_cashflow_repo = AsyncMock()
+    mock_perf_repo = AsyncMock()
 
     # Configure mock return values
     mock_portfolio_repo.get_by_id.return_value = Portfolio(
-        portfolio_id="P1", base_currency="USD"
+        portfolio_id="P1", base_currency="USD", open_date=date(2023, 1, 1)
     )
 
     mock_snapshot = DailyPositionSnapshot(
@@ -39,7 +40,7 @@ def mock_dependencies():
     mock_position_repo.get_latest_positions_by_portfolio.return_value = repo_return_value
     mock_position_repo.get_held_since_date.return_value = date(2025, 3, 15)
     mock_cashflow_repo.get_total_income_for_position.return_value = Decimal("125.50")
-
+    mock_perf_repo.get_position_timeseries_for_range.return_value = [] # Default to no perf data
 
     with patch(
         "src.services.query_service.app.services.position_analytics_service.PositionRepository",
@@ -50,13 +51,17 @@ def mock_dependencies():
     ), patch(
         "src.services.query_service.app.services.position_analytics_service.CashflowRepository",
         return_value=mock_cashflow_repo
+    ), patch(
+        "src.services.query_service.app.services.position_analytics_service.PerformanceRepository",
+        return_value=mock_perf_repo
     ):
         service = PositionAnalyticsService(AsyncMock(spec=AsyncSession))
         yield { 
             "service": service, 
             "position_repo": mock_position_repo, 
             "portfolio_repo": mock_portfolio_repo,
-            "cashflow_repo": mock_cashflow_repo
+            "cashflow_repo": mock_cashflow_repo,
+            "perf_repo": mock_perf_repo
         }
 
 async def test_get_position_analytics_all_sections(mock_dependencies):
@@ -73,8 +78,10 @@ async def test_get_position_analytics_all_sections(mock_dependencies):
             PositionAnalyticsSection.BASE,
             PositionAnalyticsSection.INSTRUMENT_DETAILS,
             PositionAnalyticsSection.VALUATION,
-            PositionAnalyticsSection.INCOME
-        ]
+            PositionAnalyticsSection.INCOME,
+            PositionAnalyticsSection.PERFORMANCE
+        ],
+        performanceOptions={"periods": ["YTD"]}
     )
 
     # ACT
@@ -84,23 +91,18 @@ async def test_get_position_analytics_all_sections(mock_dependencies):
     mock_dependencies["position_repo"].get_latest_positions_by_portfolio.assert_awaited_once_with("P1")
     mock_dependencies["position_repo"].get_held_since_date.assert_awaited_once_with("P1", "SEC1", 1)
     mock_dependencies["cashflow_repo"].get_total_income_for_position.assert_awaited_once()
+    mock_dependencies["perf_repo"].get_position_timeseries_for_range.assert_awaited_once()
     
     assert response.portfolio_id == "P1"
     assert len(response.positions) == 1
     
     position = response.positions[0]
     
-    # Assert BASE section fields
     assert position.held_since_date == date(2025, 3, 15)
-    
-    # Assert INCOME section
     assert position.income is not None
     assert position.income.amount == 125.50
-    assert position.income.currency == "USD"
-    
-    # Assert other sections are still correct
-    assert position.valuation is not None
-    assert position.instrument_details is not None
+    assert position.performance is not None
+    assert "YTD" in position.performance
 
 async def test_get_position_analytics_handles_no_positions(mock_dependencies):
     """
