@@ -12,7 +12,7 @@ pytestmark = pytest.mark.asyncio
 def mock_db_session() -> AsyncMock:
     """Provides a mock SQLAlchemy AsyncSession."""
     session = AsyncMock()
-    # FIX: Configure .add() as a synchronous MagicMock, not an AsyncMock
+    # FIX: Configure .add() as a synchronous MagicMock on the async mock instance
     session.add = MagicMock()
     return session
 
