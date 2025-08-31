@@ -11,13 +11,14 @@ class Position(BaseModel):
     quantity: Decimal
     instrument_name: str
     position_date: date
+    asset_class: Optional[str] = None # ADDED: New field for direct asset class info
     
     cost_basis: Decimal
     
     cost_basis_local: Optional[Decimal] = None
     
     valuation: Optional[ValuationData] = None
-    reprocessing_status: Optional[str] = None # ADDED: New field for reprocessing status
+    reprocessing_status: Optional[str] = None
     
     model_config = ConfigDict(from_attributes=True)
 
@@ -40,7 +41,7 @@ class PositionHistoryRecord(BaseModel):
     cost_basis_local: Optional[Decimal] = Field(None, description="The total cost basis in the instrument's local currency.")
 
     valuation: Optional[ValuationData] = None
-    reprocessing_status: Optional[str] = None # ADDED: New field for reprocessing status
+    reprocessing_status: Optional[str] = None
     
     model_config = ConfigDict(
         from_attributes=True

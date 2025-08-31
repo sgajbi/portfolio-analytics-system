@@ -127,33 +127,26 @@ class ReviewService:
         if 'risk' in results_map:
             response.risk_analytics = results_map['risk']
         
-        # --- NEW: Robust Grouping Logic ---
-        if 'holdings' in results_map or 'transactions' in results_map:
-            # 1. Collect all unique security IDs from both results
-            sec_ids = set()
+        # --- REFACTORED GROUPING LOGIC ---
+        if ReviewSection.HOLDINGS in request.sections:
+            holdings_by_asset_class = defaultdict(list)
             if 'holdings' in results_map:
-                sec_ids.update(p.security_id for p in results_map['holdings'].positions)
-            if 'transactions' in results_map:
-                sec_ids.update(t.security_id for t in results_map['transactions'].transactions)
-            
-            # 2. Fetch all instrument details in a single batch call
-            instruments = await self.instrument_service.get_instruments_by_ids(list(sec_ids))
-            asset_class_map = {inst.security_id: inst.asset_class for inst in instruments}
-
-            # 3. Group holdings using the fetched asset class data
-            if 'holdings' in results_map:
-                holdings_by_asset_class = defaultdict(list)
                 for pos in results_map['holdings'].positions:
-                    asset_class = asset_class_map.get(pos.security_id) or "Unclassified"
+                    asset_class = pos.asset_class or "Unclassified"
                     holdings_by_asset_class[asset_class].append(pos)
-                response.holdings = HoldingsSection(holdingsByAssetClass=holdings_by_asset_class)
-            
-            # 4. Group transactions using the same asset class data
+            response.holdings = HoldingsSection(holdingsByAssetClass=holdings_by_asset_class)
+        
+        if ReviewSection.TRANSACTIONS in request.sections:
+            txns_by_asset_class = defaultdict(list)
             if 'transactions' in results_map:
-                txns_by_asset_class = defaultdict(list)
+                # For transactions, we still need to fetch instrument details
+                sec_ids = {t.security_id for t in results_map['transactions'].transactions}
+                instruments = await self.instrument_service.get_instruments_by_ids(list(sec_ids))
+                asset_class_map = {inst.security_id: inst.asset_class for inst in instruments}
+                
                 for txn in results_map['transactions'].transactions:
                     asset_class = asset_class_map.get(txn.security_id) or "Unclassified"
                     txns_by_asset_class[asset_class].append(txn)
-                response.transactions = TransactionsSection(transactionsByAssetClass=txns_by_asset_class)
+            response.transactions = TransactionsSection(transactionsByAssetClass=txns_by_asset_class)
 
         return response

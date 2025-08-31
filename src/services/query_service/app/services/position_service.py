@@ -43,7 +43,6 @@ class PositionService:
         )
         
         positions = []
-        # UPDATED: Unpack the new reprocessing_status field from the row
         for position_history_obj, reprocessing_status in db_results:
             record = PositionHistoryRecord(
                 position_date=position_history_obj.position_date,
@@ -52,7 +51,7 @@ class PositionService:
                 cost_basis=position_history_obj.cost_basis,
                 cost_basis_local=position_history_obj.cost_basis_local,
                 valuation=None,
-                reprocessing_status=reprocessing_status # ADDED: Map the status to the DTO
+                reprocessing_status=reprocessing_status
             )
             positions.append(record)
         
@@ -71,8 +70,8 @@ class PositionService:
         db_results = await self.repo.get_latest_positions_by_portfolio(portfolio_id)
         
         positions = []
-        # UPDATED: Unpack the new reprocessing_status field
-        for pos_snapshot, instrument_name, reprocessing_status in db_results:
+        # UPDATED: Unpack the new asset_class field
+        for pos_snapshot, instrument_name, reprocessing_status, asset_class in db_results:
             valuation_dto = ValuationData(
                 market_price=pos_snapshot.market_price,
                 market_value=pos_snapshot.market_value,
@@ -87,8 +86,9 @@ class PositionService:
                 cost_basis_local=pos_snapshot.cost_basis_local,
                 instrument_name=instrument_name or "N/A",
                 position_date=pos_snapshot.date,
+                asset_class=asset_class, # ADDED: Map asset_class to the DTO
                 valuation=valuation_dto,
-                reprocessing_status=reprocessing_status # ADDED: Map the status to the DTO
+                reprocessing_status=reprocessing_status
             )
             positions.append(position_dto)
         

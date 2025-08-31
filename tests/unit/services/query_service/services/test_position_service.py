@@ -16,7 +16,6 @@ def mock_position_repo() -> AsyncMock:
     """Provides a mock PositionRepository."""
     repo = AsyncMock(spec=PositionRepository)
     
-    # UPDATED: Return a tuple of (PositionHistory, status)
     mock_history_obj = PositionHistory(transaction_id="T1", position_date=date(2025,1,1), quantity=1, cost_basis=1, cost_basis_local=1)
     repo.get_position_history_by_security.return_value = [(mock_history_obj, "CURRENT")]
     
@@ -25,8 +24,8 @@ def mock_position_repo() -> AsyncMock:
         quantity=Decimal(100), cost_basis=Decimal(1000), 
         date=date(2025, 1, 1)
     )
-    # UPDATED: Return a 3-element tuple including the status
-    repo.get_latest_positions_by_portfolio.return_value = [(mock_snapshot, "Test Instrument", "CURRENT")]
+    # UPDATED: Return a 4-element tuple including the asset_class
+    repo.get_latest_positions_by_portfolio.return_value = [(mock_snapshot, "Test Instrument", "CURRENT", "Equity")]
     return repo
 
 async def test_get_position_history(mock_position_repo: AsyncMock):
@@ -46,8 +45,8 @@ async def test_get_position_history(mock_position_repo: AsyncMock):
         mock_position_repo.get_position_history_by_security.assert_awaited_once_with(**params)
         assert len(response.positions) == 1
         assert response.positions[0].transaction_id == "T1"
-        assert response.positions[0].valuation is None # Verify valuation is correctly set to None
-        assert response.positions[0].reprocessing_status == "CURRENT" # VERIFY: New status field is mapped
+        assert response.positions[0].valuation is None 
+        assert response.positions[0].reprocessing_status == "CURRENT"
 
 async def test_get_latest_positions(mock_position_repo: AsyncMock):
     """Tests the latest portfolio positions service method."""
@@ -62,9 +61,9 @@ async def test_get_latest_positions(mock_position_repo: AsyncMock):
         response = await service.get_portfolio_positions(portfolio_id="P1")
 
         # ASSERT
-        # FIX: Assert with a positional argument to match the implementation
         mock_position_repo.get_latest_positions_by_portfolio.assert_awaited_once_with("P1")
         assert len(response.positions) == 1
         assert response.positions[0].security_id == "S1"
         assert response.positions[0].instrument_name == "Test Instrument"
-        assert response.positions[0].reprocessing_status == "CURRENT" # VERIFY: New status field is mapped
+        assert response.positions[0].reprocessing_status == "CURRENT"
+        assert response.positions[0].asset_class == "Equity" # VERIFY: New field is mapped

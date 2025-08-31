@@ -32,7 +32,7 @@ class PositionRepository:
         stmt = (
             select(
                 PositionHistory,
-                PositionState.status.label("reprocessing_status") # ADDED: Fetch the status
+                PositionState.status.label("reprocessing_status")
             )
             .join(
                 PositionState,
@@ -70,7 +70,8 @@ class PositionRepository:
         ranked_snapshots_subq = select(
             DailyPositionSnapshot,
             Instrument.name.label("instrument_name"),
-            PositionState.status.label("reprocessing_status"), # ADDED: Fetch the status
+            Instrument.asset_class, # ADDED: Select the asset_class directly
+            PositionState.status.label("reprocessing_status"),
             func.row_number().over(
                 partition_by=DailyPositionSnapshot.security_id,
                 order_by=[
@@ -96,7 +97,8 @@ class PositionRepository:
         stmt = select(
             ranked_alias,
             ranked_snapshots_subq.c.instrument_name,
-            ranked_snapshots_subq.c.reprocessing_status # ADDED: Select the status
+            ranked_snapshots_subq.c.reprocessing_status,
+            ranked_snapshots_subq.c.asset_class # ADDED: Select asset_class from the subquery
         ).filter(
             ranked_snapshots_subq.c.rn == 1,
             ranked_alias.quantity > 0

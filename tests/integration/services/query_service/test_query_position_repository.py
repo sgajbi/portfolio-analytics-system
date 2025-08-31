@@ -6,7 +6,6 @@ from decimal import Decimal
 # Use the synchronous engine for test setup, as it's simpler.
 from sqlalchemy.orm import Session
 from sqlalchemy.ext.asyncio import AsyncSession
-# --- UPDATED IMPORT ---
 from portfolio_common.database_models import Portfolio, Instrument, DailyPositionSnapshot, PositionState
 
 # CORRECTED IMPORT: Now points to the query_service's repository
@@ -20,7 +19,7 @@ def setup_test_data(db_engine):
     with Session(db_engine) as session:
         # Create prerequisite data
         portfolio = Portfolio(portfolio_id="POS_REPO_TEST_01", base_currency="USD", open_date=date(2024,1,1), risk_exposure="a", investment_time_horizon="b", portfolio_type="c", booking_center="d", cif_id="e", status="f")
-        instrument = Instrument(security_id="SEC_POS_TEST_01", name="TestSec", isin="XS123", currency="USD", product_type="Stock")
+        instrument = Instrument(security_id="SEC_POS_TEST_01", name="TestSec", isin="XS123", currency="USD", product_type="Stock", asset_class="Equity") # ADDED: asset_class
         session.add_all([portfolio, instrument])
         session.flush()
 
@@ -70,13 +69,13 @@ async def test_get_latest_positions_by_portfolio(clean_db, setup_test_data, asyn
     # ASSERT
     assert len(latest_positions) == 1
 
-    # The result is a Row object, where the first element is the snapshot
-    # The second element is the instrument name from the joined table.
-    latest_snapshot, instrument_name, reprocessing_status = latest_positions[0]
+    # UPDATED: Unpack the new asset_class field
+    latest_snapshot, instrument_name, reprocessing_status, asset_class = latest_positions[0]
     
     assert latest_snapshot.portfolio_id == portfolio_id
     assert latest_snapshot.security_id == "SEC_POS_TEST_01"
     assert latest_snapshot.date == setup_test_data["today"]
     assert latest_snapshot.quantity == Decimal("110")
     assert instrument_name == "TestSec"
-    assert reprocessing_status == "CURRENT" # VERIFY: New status field is returned correctly
+    assert reprocessing_status == "CURRENT"
+    assert asset_class == "Equity" # VERIFY: New field is returned
