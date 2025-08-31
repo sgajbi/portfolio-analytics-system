@@ -22,7 +22,7 @@ def get_review_service(db: AsyncSession = Depends(get_async_db_session)) -> Revi
     "/{portfolio_id}/review",
     response_model=PortfolioReviewResponse,
     response_model_by_alias=True,
-    response_model_exclude_none=True,
+    # REMOVED: response_model_exclude_none=True
     summary="Generate a Comprehensive Portfolio Review Report"
 )
 async def get_portfolio_review(
