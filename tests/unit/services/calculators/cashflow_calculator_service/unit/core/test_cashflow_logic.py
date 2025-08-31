@@ -79,7 +79,7 @@ def test_calculate_fee_transaction(base_transaction_event: TransactionEvent):
     cashflow = CashflowLogic.calculate(event, rule)
     assert cashflow.amount < 0
     assert cashflow.is_position_flow is True
-    assert cashflow.is_portfolio_flow is False
+    assert cashflow.is_portfolio_flow is True
 
 def test_calculate_withdrawal_transaction(base_transaction_event: TransactionEvent):
     """A WITHDRAWAL is a negative cashflow (outflow)."""
