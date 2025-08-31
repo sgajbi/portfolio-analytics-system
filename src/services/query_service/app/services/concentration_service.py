@@ -8,7 +8,7 @@ from fastapi import Depends
 
 from portfolio_common.db import get_async_db_session
 from ..dtos.concentration_dto import (
-    ConcentrationRequest, ConcentrationResponse, ResponseScope, ResponseSummary,
+    ConcentrationRequest, ConcentrationResponse, ResponseSummary,
     BulkConcentration, IssuerConcentration, IssuerExposure
 )
 
