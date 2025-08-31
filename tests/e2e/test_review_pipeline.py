@@ -26,9 +26,21 @@ def setup_review_data(clean_db_module, e2e_api_client: E2EApiClient, poll_db_unt
     # 2. Ingest transactions to build a history
     transactions = [
         {"transaction_id": "REVIEW_DEPOSIT_01", "portfolio_id": PORTFOLIO_ID, "instrument_id": "CASH_USD", "security_id": "CASH_USD", "transaction_date": "2025-08-20T09:00:00Z", "transaction_type": "DEPOSIT", "quantity": 100000, "price": 1, "gross_transaction_amount": 100000, "trade_currency": "USD", "currency": "USD"},
+        
+        # Apple Purchase
         {"transaction_id": "REVIEW_BUY_AAPL", "portfolio_id": PORTFOLIO_ID, "instrument_id": "AAPL", "security_id": "SEC_AAPL", "transaction_date": "2025-08-20T10:00:00Z", "transaction_type": "BUY", "quantity": 100, "price": 150, "gross_transaction_amount": 15000, "trade_currency": "USD", "currency": "USD"},
+        # --- FIX: Add corresponding cash settlement for Apple purchase ---
+        {"transaction_id": "REVIEW_CASH_SETTLE_AAPL", "portfolio_id": PORTFOLIO_ID, "instrument_id": "CASH_USD", "security_id": "CASH_USD", "transaction_date": "2025-08-20T10:00:00Z", "transaction_type": "SELL", "quantity": 15000, "price": 1, "gross_transaction_amount": 15000, "trade_currency": "USD", "currency": "USD"},
+        
+        # Bond Purchase
         {"transaction_id": "REVIEW_BUY_BOND", "portfolio_id": PORTFOLIO_ID, "instrument_id": "UST", "security_id": "SEC_BOND", "transaction_date": "2025-08-20T11:00:00Z", "transaction_type": "BUY", "quantity": 10, "price": 980, "gross_transaction_amount": 9800, "trade_currency": "USD", "currency": "USD"},
-        {"transaction_id": "REVIEW_DIV_AAPL", "portfolio_id": PORTFOLIO_ID, "instrument_id": "AAPL", "security_id": "SEC_AAPL", "transaction_date": "2025-08-25T10:00:00Z", "transaction_type": "DIVIDEND", "quantity": 0, "price": 0, "gross_transaction_amount": 120, "trade_currency": "USD", "currency": "USD"}
+        # --- FIX: Add corresponding cash settlement for Bond purchase ---
+        {"transaction_id": "REVIEW_CASH_SETTLE_BOND", "portfolio_id": PORTFOLIO_ID, "instrument_id": "CASH_USD", "security_id": "CASH_USD", "transaction_date": "2025-08-20T11:00:00Z", "transaction_type": "SELL", "quantity": 9800, "price": 1, "gross_transaction_amount": 9800, "trade_currency": "USD", "currency": "USD"},
+
+        # Dividend Payment
+        {"transaction_id": "REVIEW_DIV_AAPL", "portfolio_id": PORTFOLIO_ID, "instrument_id": "AAPL", "security_id": "SEC_AAPL", "transaction_date": "2025-08-25T10:00:00Z", "transaction_type": "DIVIDEND", "quantity": 0, "price": 0, "gross_transaction_amount": 120, "trade_currency": "USD", "currency": "USD"},
+        # --- FIX: Add corresponding cash settlement for Dividend payment ---
+        {"transaction_id": "REVIEW_CASH_SETTLE_DIV", "portfolio_id": PORTFOLIO_ID, "instrument_id": "CASH_USD", "security_id": "CASH_USD", "transaction_date": "2025-08-25T10:00:00Z", "transaction_type": "BUY", "quantity": 120, "price": 1, "gross_transaction_amount": 120, "trade_currency": "USD", "currency": "USD"}
     ]
     e2e_api_client.ingest("/ingest/transactions", {"transactions": transactions})
     
