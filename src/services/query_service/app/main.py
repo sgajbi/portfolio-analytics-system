@@ -7,7 +7,10 @@ from prometheus_fastapi_instrumentator import Instrumentator
 
 from portfolio_common.logging_utils import setup_logging, correlation_id_var, generate_correlation_id
 from portfolio_common.health import create_health_router
-from .routers import positions, transactions, instruments, prices, fx_rates, portfolios, performance, risk, summary, review, concentration
+from .routers import (
+    positions, transactions, instruments, prices, fx_rates, portfolios,
+    performance, risk, summary, review, concentration, positions_analytics
+)
 
 SERVICE_PREFIX = "QRY"
 setup_logging()
@@ -82,3 +85,4 @@ app.include_router(risk.router)
 app.include_router(summary.router)
 app.include_router(review.router)
 app.include_router(concentration.router)
+app.include_router(positions_analytics.router)
