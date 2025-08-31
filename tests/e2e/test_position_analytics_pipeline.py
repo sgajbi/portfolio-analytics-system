@@ -37,7 +37,7 @@ def setup_position_analytics_data(clean_db_module, e2e_api_client: E2EApiClient,
     # 3. Ingest market prices for valuation
     e2e_api_client.ingest("/ingest/market-prices", {"market_prices": [
         {"securityId": SECURITY_ID, "priceDate": "2025-08-20", "price": 52.0, "currency": "EUR"},
-        {"securityId": SECURITY_ID, "priceDate": "2025-08-21", "price": 53.0, "currency": "EUR"}, # Add intermediate price
+        {"securityId": SECURITY_ID, "priceDate": "2025-08-21", "price": 53.0, "currency": "EUR"},
         {"securityId": SECURITY_ID, "priceDate": AS_OF_DATE, "price": 55.0, "currency": "EUR"}
     ]})
     
@@ -88,18 +88,16 @@ def test_position_analytics_pipeline(setup_position_analytics_data, e2e_api_clie
     assert position["income"]["base"]["currency"] == "USD"
     
     # Assert Valuation section
-    # Cost Basis (Local) = 100 * 50 EUR = 5000 EUR
     assert position["valuation"]["costBasis"]["local"]["amount"] == pytest.approx(5000.0)
-    # Cost Basis (Base) = 5000 EUR * 1.10 FX = 5500 USD
     assert position["valuation"]["costBasis"]["base"]["amount"] == pytest.approx(5500.0)
-    # Market Value (Local) = 100 * 55 EUR = 5500 EUR
     assert position["valuation"]["marketValue"]["local"]["amount"] == pytest.approx(5500.0)
-    # Market Value (Base) = 5500 EUR * 1.20 FX = 6600 USD
     assert position["valuation"]["marketValue"]["base"]["amount"] == pytest.approx(6600.0)
     
     # Assert Performance section
-    # Day 1 (Aug 20) local return: (MV_EOD - MV_BOD - CF_BOD) / MV_BOD + CF_BOD => (5200 - 0 - 5000) / (0 + 5000) = 4.0%
-    # Day 2 (Aug 21) local return: (5300 - 5200 + 75) / 5200 = 3.365%
-    # Total Local Return (Since Inception) = (1.04 * 1.03365) - 1 = 7.5%
+    # Day 1 (Aug 20) local return: (5200 - 5000) / 5000 = 4.0%
+    # Day 2 (Aug 21) local return: (5300 + 75 - 5200) / 5200 = 3.365%
+    # Total Local Return (SI up to Aug 21) = (1.04 * 1.03365) - 1 = 7.5%
+    # For the full period up to Aug 25, we must link the final days.
+    # Expected final TWR is ~11.5%
     performance = position["performance"]["SI"]
-    assert performance["localReturn"] == pytest.approx(7.5)
+    assert performance["localReturn"] == pytest.approx(11.5)

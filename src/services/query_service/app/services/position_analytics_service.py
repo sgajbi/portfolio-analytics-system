@@ -55,7 +55,7 @@ class PositionAnalyticsService:
         if not request.performance_options:
             return None
 
-        periods = [resolve_period(p.value, inception_date, request.as_of_date) for p in request.performance_options.periods]
+        periods = [resolve_period(p, inception_date, request.as_of_date) for p in request.performance_options.periods]
         min_start = min(p[1] for p in periods) if periods else request.as_of_date
         
         timeseries_data = await self.perf_repo.get_position_timeseries_for_range(
@@ -73,28 +73,27 @@ class PositionAnalyticsService:
                 results[name] = PositionPerformance()
                 continue
             
-            # 1. Calculate Local Currency Return
             config = { "metric_basis": "NET", "period_type": "EXPLICIT", "performance_start_date": inception_date.isoformat(), "report_start_date": start_date.isoformat(), "report_end_date": end_date.isoformat() }
             calculator = PerformanceCalculator(config=config)
             df_local = calculator.calculate_performance(period_ts_data)
             local_return = float(df_local.iloc[-1][FINAL_CUMULATIVE_ROR_PCT]) if not df_local.empty else None
 
-            # 2. Calculate Base Currency Return
             base_return = local_return
             if instrument_currency != base_currency:
                 fx_rates_db = await self.fx_repo.get_fx_rates(instrument_currency, base_currency, start_date, end_date)
                 if fx_rates_db:
                     fx_series = pd.Series({r.rate_date: r.rate for r in fx_rates_db}).astype(float)
                     df_local['date_dt'] = pd.to_datetime(df_local['date'])
-                    df_local = pd.merge(df_local, fx_series.rename('fx_rate'), left_on='date_dt', right_index=True, how='left').ffill()
+                    df_merged = pd.merge(df_local, fx_series.rename('fx_rate'), left_on='date_dt', right_index=True, how='left').ffill()
                     
-                    df_base = df_local.copy()
-                    for col in ['bod_market_value', 'eod_market_value', 'bod_cashflow', 'eod_cashflow', 'fees']:
-                        df_base[col] = df_base[col] * df_base['fx_rate']
-                    
-                    base_ts_dicts = df_base.to_dict('records')
-                    df_base_result = calculator.calculate_performance(base_ts_dicts)
-                    base_return = float(df_base_result.iloc[-1][FINAL_CUMULATIVE_ROR_PCT]) if not df_base_result.empty else local_return
+                    if 'fx_rate' in df_merged.columns and not df_merged['fx_rate'].isnull().all():
+                        df_base = df_merged.copy()
+                        for col in ['bod_market_value', 'eod_market_value', 'bod_cashflow', 'eod_cashflow']:
+                            df_base[col] = df_base[col] * df_base['fx_rate']
+                        
+                        base_ts_dicts = df_base.to_dict('records')
+                        df_base_result = calculator.calculate_performance(base_ts_dicts)
+                        base_return = float(df_base_result.iloc[-1][FINAL_CUMULATIVE_ROR_PCT]) if not df_base_result.empty else local_return
             
             results[name] = PositionPerformance(localReturn=local_return, baseReturn=base_return)
             
@@ -117,7 +116,7 @@ class PositionAnalyticsService:
         )
 
         enrichment_tasks = {}
-        if PositionAnalyticsSection.BASE in request.sections:
+        if PositionAnalyticsSection.BASE in request.sections or PositionAnalyticsSection.INCOME in request.sections:
             enrichment_tasks['held_since_date'] = self.position_repo.get_held_since_date(portfolio.portfolio_id, snapshot.security_id, epoch)
         
         if PositionAnalyticsSection.PERFORMANCE in request.sections:
@@ -146,11 +145,18 @@ class PositionAnalyticsService:
         if 'income_cashflows' in income_map:
             cashflows = income_map['income_cashflows']
             total_income_local = sum(cf.amount for cf in cashflows)
-            total_income_base = total_income_local # Default
-            if currency != portfolio.base_currency:
-                fx_rates = {r.rate_date: r.rate for r in await self.fx_repo.get_fx_rates(currency, portfolio.base_currency, position.held_since_date, request.as_of_date)}
-                total_income_base = sum(cf.amount * fx_rates.get(cf.cashflow_date, Decimal(1)) for cf in cashflows)
             
+            total_income_base = total_income_local
+            if currency != portfolio.base_currency and cashflows:
+                min_cf_date = min(cf.cashflow_date for cf in cashflows)
+                fx_rates_db = await self.fx_repo.get_fx_rates(currency, portfolio.base_currency, min_cf_date, request.as_of_date)
+                fx_rates = {r.rate_date: r.rate for r in fx_rates_db}
+                
+                # Forward fill missing FX rates
+                filled_fx = pd.Series(fx_rates).reindex(pd.date_range(min_cf_date, request.as_of_date, freq='D')).ffill().to_dict()
+
+                total_income_base = sum(cf.amount * filled_fx.get(cf.cashflow_date, Decimal(1)) for cf in cashflows)
+
             position.income = PositionValuationDetail(
                 local=MonetaryAmount(amount=float(total_income_local), currency=currency),
                 base=MonetaryAmount(amount=float(total_income_base), currency=portfolio.base_currency)
@@ -197,8 +203,10 @@ class PositionAnalyticsService:
         enriched_positions = await asyncio.gather(*enrichment_coroutines)
 
         return PositionAnalyticsResponse(
-            portfolio_id=portfolio_id, as_of_date=request.as_of_date,
-            total_market_value=float(total_market_value_base), positions=enriched_positions
+            portfolio_id=portfolio_id,
+            as_of_date=request.as_of_date,
+            total_market_value=float(total_market_value_base),
+            positions=enriched_positions
         )
 
 def get_position_analytics_service(db: AsyncSession = Depends(get_async_db_session)) -> PositionAnalyticsService:
