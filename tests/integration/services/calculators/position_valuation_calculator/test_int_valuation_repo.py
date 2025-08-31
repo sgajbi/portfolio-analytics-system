@@ -54,20 +54,27 @@ def setup_holdings_data(db_engine):
             Portfolio(portfolio_id="P3", base_currency="USD", open_date=date(2024,1,1), risk_exposure="a", investment_time_horizon="b", portfolio_type="c", booking_center="d", cif_id="e", status="f"),
             Portfolio(portfolio_id="P4", base_currency="USD", open_date=date(2024,1,1), risk_exposure="a", investment_time_horizon="b", portfolio_type="c", booking_center="d", cif_id="e", status="f"),
         ])
+        session.add_all([
+            Transaction(transaction_id="T1", portfolio_id="P1", instrument_id="I1", security_id="S1", transaction_date=datetime.now(), transaction_type="BUY", quantity=1, price=1, gross_transaction_amount=1, trade_currency="USD", currency="USD"),
+            Transaction(transaction_id="T2", portfolio_id="P2", instrument_id="I1", security_id="S1", transaction_date=datetime.now(), transaction_type="BUY", quantity=1, price=1, gross_transaction_amount=1, trade_currency="USD", currency="USD"),
+            Transaction(transaction_id="T3", portfolio_id="P3", instrument_id="I1", security_id="S1", transaction_date=datetime.now(), transaction_type="BUY", quantity=1, price=1, gross_transaction_amount=1, trade_currency="USD", currency="USD"),
+            Transaction(transaction_id="T4", portfolio_id="P4", instrument_id="I2", security_id="S2", transaction_date=datetime.now(), transaction_type="BUY", quantity=1, price=1, gross_transaction_amount=1, trade_currency="USD", currency="USD"),
+        ])
         session.flush()
 
-        snapshots = [
+        # --- FIX: Add PositionHistory records ---
+        history_records = [
             # P1: Has a position before the date
-            DailyPositionSnapshot(portfolio_id="P1", security_id="S1", date=date(2025, 8, 5), quantity=Decimal("100"), cost_basis=Decimal("1")),
+            PositionHistory(transaction_id="T1", portfolio_id="P1", security_id="S1", position_date=date(2025, 8, 5), quantity=Decimal("100"), cost_basis=Decimal("1")),
             # P2: Sold position before the date
-            DailyPositionSnapshot(portfolio_id="P2", security_id="S1", date=date(2025, 8, 4), quantity=Decimal("100"), cost_basis=Decimal("1")),
-            DailyPositionSnapshot(portfolio_id="P2", security_id="S1", date=date(2025, 8, 6), quantity=Decimal("0"), cost_basis=Decimal("0")),
+            PositionHistory(transaction_id="T2", portfolio_id="P2", security_id="S1", position_date=date(2025, 8, 4), quantity=Decimal("100"), cost_basis=Decimal("1")),
+            PositionHistory(transaction_id="T2", portfolio_id="P2", security_id="S1", position_date=date(2025, 8, 6), quantity=Decimal("0"), cost_basis=Decimal("0")),
             # P3: Snapshot is after the target date
-            DailyPositionSnapshot(portfolio_id="P3", security_id="S1", date=date(2025, 8, 15), quantity=Decimal("100"), cost_basis=Decimal("1")),
+            PositionHistory(transaction_id="T3", portfolio_id="P3", security_id="S1", position_date=date(2025, 8, 15), quantity=Decimal("100"), cost_basis=Decimal("1")),
             # P4: Holds a different security
-            DailyPositionSnapshot(portfolio_id="P4", security_id="S2", date=date(2025, 8, 5), quantity=Decimal("100"), cost_basis=Decimal("1")),
+            PositionHistory(transaction_id="T4", portfolio_id="P4", security_id="S2", position_date=date(2025, 8, 5), quantity=Decimal("100"), cost_basis=Decimal("1")),
         ]
-        session.add_all(snapshots)
+        session.add_all(history_records)
         session.commit()
 
 @pytest.fixture(scope="function")
@@ -196,7 +203,7 @@ async def test_find_and_reset_stale_jobs(clean_db, setup_stale_job_data, session
         repo = ValuationRepository(session)
         reset_count = await repo.find_and_reset_stale_jobs(timeout_minutes=15)
         await session.commit()
-        assert reset_count == 1
+    assert reset_count == 1
 
     # ASSERT in a new, clean session
     async with session_factory() as session:
