@@ -76,7 +76,7 @@ async def test_get_position_analytics_base_sections(mock_dependencies):
     assert len(response.positions) == 1
     
     position = response.positions[0]
-    assert position.securityId == "SEC1"
+    assert position.security_id == "SEC1"
     assert position.quantity == 100.0
     assert position.weight == 1.0 # Only one position
 
