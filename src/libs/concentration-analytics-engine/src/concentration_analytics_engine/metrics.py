@@ -48,3 +48,58 @@ def calculate_bulk_concentration(
         "top_n_weights": top_n_weights,
         "hhi": hhi,
     }
+
+
+def calculate_issuer_concentration(
+    positions_df: pd.DataFrame, top_n: int
+) -> List[Dict]:
+    """
+    Calculates issuer concentration by grouping positions by their ultimate parent issuer.
+
+    Args:
+        positions_df: DataFrame with 'market_value', 'ultimate_parent_issuer_id', and 'issuer_name'.
+        top_n: The number of top issuer exposures to return.
+
+    Returns:
+        A list of dictionaries representing the top N issuer exposures.
+    """
+    if positions_df.empty:
+        return []
+
+    required_columns = ["market_value", "ultimate_parent_issuer_id", "issuer_name"]
+    if not all(col in positions_df.columns for col in required_columns):
+        raise ValueError(f"Input DataFrame is missing required columns for issuer concentration: {required_columns}")
+
+    df = positions_df.copy()
+    df["ultimate_parent_issuer_id"] = df["ultimate_parent_issuer_id"].fillna("UNCLASSIFIED")
+    df["issuer_name"] = df["issuer_name"].fillna("Unclassified")
+
+    total_market_value = df["market_value"].sum()
+    if total_market_value == Decimal("0"):
+        return []
+
+    issuer_exposure = (
+        df.groupby("ultimate_parent_issuer_id")
+        .agg(
+            exposure=("market_value", "sum"),
+            issuer_name=("issuer_name", "first"),
+        )
+        .reset_index()
+    )
+
+    issuer_exposure["weight"] = issuer_exposure["exposure"] / total_market_value
+
+    top_exposures = issuer_exposure.sort_values(
+        by="exposure", ascending=False
+    ).head(top_n)
+
+    result = [
+        {
+            "issuer_name": row["issuer_name"],
+            "exposure": float(row["exposure"]),
+            "weight": float(row["weight"]),
+        }
+        for index, row in top_exposures.iterrows()
+    ]
+
+    return result
