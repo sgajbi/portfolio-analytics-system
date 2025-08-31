@@ -11,6 +11,9 @@ from portfolio_common.events import InstrumentEvent, TransactionEvent
 from src.services.persistence_service.app.repositories.instrument_repository import InstrumentRepository
 from src.services.persistence_service.app.repositories.transaction_db_repo import TransactionDBRepository
 
+# Mark all tests in this file as async
+pytestmark = pytest.mark.asyncio
+
 
 # --- Fixtures for reusable data ---
 @pytest.fixture
