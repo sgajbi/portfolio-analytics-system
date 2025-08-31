@@ -7,7 +7,7 @@ from datetime import date
 
 from src.services.query_service.app.main import app
 from src.services.query_service.app.services.concentration_service import get_concentration_service, ConcentrationService
-from src.services.query_service.app.dtos.concentration_dto import ConcentrationResponse, ResponseScope, ResponseSummary
+from src.services.query_service.app.dtos.concentration_dto import ConcentrationResponse, ConcentrationRequestScope, ResponseSummary
 
 pytestmark = pytest.mark.asyncio
 
@@ -18,7 +18,7 @@ async def async_test_client():
     
     mock_service = AsyncMock(spec=ConcentrationService)
     mock_response = ConcentrationResponse(
-        scope=ResponseScope(
+        scope=ConcentrationRequestScope(
             as_of_date=date(2025, 8, 31),
             reporting_currency="USD"
         ),
