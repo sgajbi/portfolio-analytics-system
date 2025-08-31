@@ -119,8 +119,8 @@ class CostCalculator:
             TransactionType.DIVIDEND: IncomeStrategy(),
             TransactionType.DEPOSIT: CashInflowStrategy(),
             TransactionType.TRANSFER_IN: SecurityInflowStrategy(),
-            TransactionType.TRANSFER_OUT: SecurityOutflowStrategy(),
             # --- THIS IS THE FIX ---
+            TransactionType.TRANSFER_OUT: SecurityOutflowStrategy(),
             TransactionType.WITHDRAWAL: SecurityOutflowStrategy(),
             # --- END FIX ---
             TransactionType.FEE: DefaultStrategy(),
