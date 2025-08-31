@@ -3,7 +3,7 @@ import logging
 from datetime import date
 from typing import List, Any, Optional
 
-from sqlalchemy import select, func
+from sqlalchemy import select, func, text
 from sqlalchemy.orm import aliased
 from sqlalchemy.ext.asyncio import AsyncSession
 from portfolio_common.database_models import PositionHistory, Instrument, DailyPositionSnapshot, PositionState
@@ -17,6 +17,44 @@ class PositionRepository:
     """
     def __init__(self, db: AsyncSession):
         self.db = db
+
+    async def get_held_since_date(self, portfolio_id: str, security_id: str, epoch: int) -> Optional[date]:
+        """
+        Finds the 'held since date' for a position in a given epoch.
+        This is the start of the current continuous holding period.
+        """
+        # This CTE finds the most recent date the position quantity was zero or non-existent.
+        # It acts as a "break point" in the holding history.
+        last_zero_date_cte = (
+            select(
+                func.max(PositionHistory.position_date).label("last_zero_date")
+            )
+            .where(
+                PositionHistory.portfolio_id == portfolio_id,
+                PositionHistory.security_id == security_id,
+                PositionHistory.epoch == epoch,
+                PositionHistory.quantity == 0
+            )
+            .cte("last_zero_date")
+        )
+
+        # This query finds the date of the first transaction *after* that last zero point.
+        # If no zero point exists, it finds the overall first transaction date.
+        stmt = (
+            select(func.min(PositionHistory.position_date))
+            .select_from(PositionHistory)
+            .join(last_zero_date_cte, text("1=1"), isouter=True) # Cross join or outer join to ensure it's available
+            .where(
+                PositionHistory.portfolio_id == portfolio_id,
+                PositionHistory.security_id == security_id,
+                PositionHistory.epoch == epoch,
+                PositionHistory.position_date > func.coalesce(last_zero_date_cte.c.last_zero_date, date.min)
+            )
+        )
+        
+        result = await self.db.execute(stmt)
+        return result.scalar_one_or_none()
+
 
     async def get_position_history_by_security(
         self,
@@ -69,6 +107,7 @@ class PositionRepository:
         # that match the current epoch defined in the position_state table.
         ranked_snapshots_subq = select(
             DailyPositionSnapshot,
+            PositionState.epoch,
             Instrument.name.label("instrument_name"),
             Instrument.isin,
             Instrument.currency,
@@ -106,7 +145,8 @@ class PositionRepository:
             ranked_snapshots_subq.c.currency,
             ranked_snapshots_subq.c.asset_class,
             ranked_snapshots_subq.c.sector,
-            ranked_snapshots_subq.c.country_of_risk
+            ranked_snapshots_subq.c.country_of_risk,
+            ranked_snapshots_subq.c.epoch
         ).filter(
             ranked_snapshots_subq.c.rn == 1,
             ranked_alias.quantity > 0

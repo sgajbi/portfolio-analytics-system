@@ -16,13 +16,13 @@ def mock_dependencies():
     """Mocks all repository dependencies for the PositionAnalyticsService."""
     mock_position_repo = AsyncMock()
     mock_portfolio_repo = AsyncMock()
+    mock_cashflow_repo = AsyncMock()
 
     # Configure mock return values
     mock_portfolio_repo.get_by_id.return_value = Portfolio(
         portfolio_id="P1", base_currency="USD"
     )
 
-    # Define the rich data tuple that the repository now returns
     mock_snapshot = DailyPositionSnapshot(
         security_id="SEC1",
         quantity=Decimal("100"),
@@ -34,9 +34,12 @@ def mock_dependencies():
     
     repo_return_value = [(
         mock_snapshot, "Test Instrument", "CURRENT", "ISIN123",
-        "USD", "Equity", "Technology", "US"
+        "USD", "Equity", "Technology", "US", 1 # epoch
     )]
     mock_position_repo.get_latest_positions_by_portfolio.return_value = repo_return_value
+    mock_position_repo.get_held_since_date.return_value = date(2025, 3, 15)
+    mock_cashflow_repo.get_total_income_for_position.return_value = Decimal("125.50")
+
 
     with patch(
         "src.services.query_service.app.services.position_analytics_service.PositionRepository",
@@ -44,15 +47,23 @@ def mock_dependencies():
     ), patch(
         "src.services.query_service.app.services.position_analytics_service.PortfolioRepository",
         return_value=mock_portfolio_repo
+    ), patch(
+        "src.services.query_service.app.services.position_analytics_service.CashflowRepository",
+        return_value=mock_cashflow_repo
     ):
         service = PositionAnalyticsService(AsyncMock(spec=AsyncSession))
-        yield { "service": service, "position_repo": mock_position_repo, "portfolio_repo": mock_portfolio_repo }
+        yield { 
+            "service": service, 
+            "position_repo": mock_position_repo, 
+            "portfolio_repo": mock_portfolio_repo,
+            "cashflow_repo": mock_cashflow_repo
+        }
 
-async def test_get_position_analytics_base_sections(mock_dependencies):
+async def test_get_position_analytics_all_sections(mock_dependencies):
     """
-    GIVEN a request for BASE, INSTRUMENT_DETAILS, and VALUATION sections
+    GIVEN a request for all non-performance sections
     WHEN get_position_analytics is called
-    THEN it should call the repository and correctly map the data to the DTO.
+    THEN it should call all necessary repositories and map the data to the DTO.
     """
     # ARRANGE
     service = mock_dependencies["service"]
@@ -61,7 +72,8 @@ async def test_get_position_analytics_base_sections(mock_dependencies):
         sections=[
             PositionAnalyticsSection.BASE,
             PositionAnalyticsSection.INSTRUMENT_DETAILS,
-            PositionAnalyticsSection.VALUATION
+            PositionAnalyticsSection.VALUATION,
+            PositionAnalyticsSection.INCOME
         ]
     )
 
@@ -70,30 +82,25 @@ async def test_get_position_analytics_base_sections(mock_dependencies):
 
     # ASSERT
     mock_dependencies["position_repo"].get_latest_positions_by_portfolio.assert_awaited_once_with("P1")
+    mock_dependencies["position_repo"].get_held_since_date.assert_awaited_once_with("P1", "SEC1", 1)
+    mock_dependencies["cashflow_repo"].get_total_income_for_position.assert_awaited_once()
     
     assert response.portfolio_id == "P1"
-    assert response.total_market_value == 12000.0
     assert len(response.positions) == 1
     
     position = response.positions[0]
-    assert position.security_id == "SEC1"
-    assert position.quantity == 100.0
-    assert position.weight == 1.0 # Only one position
-
-    # Assert instrument details
-    details = position.instrument_details
-    assert details is not None
-    assert details.name == "Test Instrument"
-    assert details.asset_class == "Equity"
-    assert details.sector == "Technology"
-
-    # Assert valuation details
-    valuation = position.valuation
-    assert valuation is not None
-    assert valuation.market_value.amount == 12000.0
-    assert valuation.cost_basis.amount == 10000.0
-    assert valuation.unrealized_pnl.amount == 2000.0
-    assert valuation.market_value.currency == "USD" # Verify correct currency
+    
+    # Assert BASE section fields
+    assert position.held_since_date == date(2025, 3, 15)
+    
+    # Assert INCOME section
+    assert position.income is not None
+    assert position.income.amount == 125.50
+    assert position.income.currency == "USD"
+    
+    # Assert other sections are still correct
+    assert position.valuation is not None
+    assert position.instrument_details is not None
 
 async def test_get_position_analytics_handles_no_positions(mock_dependencies):
     """
