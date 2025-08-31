@@ -5,9 +5,9 @@ from datetime import date, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from portfolio_common.events import MarketPricePersistedEvent
-from portfolio_common.position_state_repository import PositionStateRepository
 from services.calculators.position_valuation_calculator.app.consumers.price_event_consumer import PriceEventConsumer
 from services.calculators.position_valuation_calculator.app.repositories.valuation_repository import ValuationRepository
+from services.calculators.position_valuation_calculator.app.repositories.instrument_reprocessing_state_repository import InstrumentReprocessingStateRepository
 from portfolio_common.idempotency_repository import IdempotencyRepository
 
 pytestmark = pytest.mark.asyncio
@@ -48,9 +48,9 @@ def mock_kafka_message(mock_event: MarketPricePersistedEvent) -> MagicMock:
 @pytest.fixture
 def mock_dependencies():
     """A fixture to patch all external dependencies for the consumer test."""
-    mock_repo = AsyncMock(spec=ValuationRepository)
+    mock_valuation_repo = AsyncMock(spec=ValuationRepository)
     mock_idempotency_repo = AsyncMock(spec=IdempotencyRepository)
-    mock_position_state_repo = AsyncMock(spec=PositionStateRepository)
+    mock_reprocessing_repo = AsyncMock(spec=InstrumentReprocessingStateRepository)
     
     mock_db_session = AsyncMock(spec=AsyncSession)
     mock_transaction = AsyncMock()
@@ -62,19 +62,19 @@ def mock_dependencies():
     with patch(
         "services.calculators.position_valuation_calculator.app.consumers.price_event_consumer.get_async_db_session", new=get_session_gen
     ), patch(
-        "services.calculators.position_valuation_calculator.app.consumers.price_event_consumer.ValuationRepository", return_value=mock_repo
+        "services.calculators.position_valuation_calculator.app.consumers.price_event_consumer.ValuationRepository", return_value=mock_valuation_repo
     ), patch(
         "services.calculators.position_valuation_calculator.app.consumers.price_event_consumer.IdempotencyRepository", return_value=mock_idempotency_repo
     ), patch(
-        "services.calculators.position_valuation_calculator.app.consumers.price_event_consumer.PositionStateRepository", return_value=mock_position_state_repo
+        "services.calculators.position_valuation_calculator.app.consumers.price_event_consumer.InstrumentReprocessingStateRepository", return_value=mock_reprocessing_repo
     ):
         yield {
-            "repo": mock_repo,
+            "valuation_repo": mock_valuation_repo,
             "idempotency_repo": mock_idempotency_repo,
-            "position_state_repo": mock_position_state_repo
+            "reprocessing_repo": mock_reprocessing_repo
         }
 
-async def test_backdated_price_resets_watermark(
+async def test_backdated_price_flags_instrument_for_reprocessing(
     consumer: PriceEventConsumer,
     mock_kafka_message: MagicMock,
     mock_event: MarketPricePersistedEvent,
@@ -83,30 +83,28 @@ async def test_backdated_price_resets_watermark(
     """
     GIVEN a back-dated market price event
     WHEN the message is processed
-    THEN it should reset the watermark for each affected portfolio.
+    THEN it should flag the instrument by calling the reprocessing state repository.
     """
     # ARRANGE
-    mock_repo = mock_dependencies["repo"]
-    mock_position_state_repo = mock_dependencies["position_state_repo"]
+    mock_valuation_repo = mock_dependencies["valuation_repo"]
+    mock_reprocessing_repo = mock_dependencies["reprocessing_repo"]
     mock_idempotency_repo = mock_dependencies["idempotency_repo"]
 
     mock_idempotency_repo.is_event_processed.return_value = False
-    mock_repo.find_portfolios_holding_security_on_date.return_value = ["PORT_01", "PORT_02"]
-    # Simulate a back-dated event by setting latest business date AFTER the price date
-    mock_repo.get_latest_business_date.return_value = mock_event.price_date + timedelta(days=5)
+    # Simulate a back-dated event
+    mock_valuation_repo.get_latest_business_date.return_value = mock_event.price_date + timedelta(days=5)
     
     # ACT
     await consumer.process_message(mock_kafka_message)
 
     # ASSERT
-    mock_position_state_repo.update_watermarks_if_older.assert_awaited_once()
-    call_args = mock_position_state_repo.update_watermarks_if_older.call_args.kwargs
-    
-    expected_keys = [("PORT_01", mock_event.security_id), ("PORT_02", mock_event.security_id)]
-    assert call_args['keys'] == expected_keys
-    assert call_args['new_watermark_date'] == mock_event.price_date - timedelta(days=1)
+    mock_reprocessing_repo.upsert_state.assert_awaited_once_with(
+        security_id=mock_event.security_id,
+        price_date=mock_event.price_date
+    )
+    mock_idempotency_repo.mark_event_processed.assert_awaited_once()
 
-async def test_current_price_does_not_reset_watermark(
+async def test_current_price_does_not_flag_instrument(
     consumer: PriceEventConsumer,
     mock_kafka_message: MagicMock,
     mock_event: MarketPricePersistedEvent,
@@ -115,20 +113,20 @@ async def test_current_price_does_not_reset_watermark(
     """
     GIVEN a current-day market price event
     WHEN the message is processed
-    THEN it should NOT attempt to reset any watermarks.
+    THEN it should NOT flag the instrument for reprocessing.
     """
     # ARRANGE
-    mock_repo = mock_dependencies["repo"]
-    mock_position_state_repo = mock_dependencies["position_state_repo"]
+    mock_valuation_repo = mock_dependencies["valuation_repo"]
+    mock_reprocessing_repo = mock_dependencies["reprocessing_repo"]
     mock_idempotency_repo = mock_dependencies["idempotency_repo"]
 
     mock_idempotency_repo.is_event_processed.return_value = False
     # Simulate a current event
-    mock_repo.get_latest_business_date.return_value = mock_event.price_date
+    mock_valuation_repo.get_latest_business_date.return_value = mock_event.price_date
     
     # ACT
     await consumer.process_message(mock_kafka_message)
 
     # ASSERT
-    mock_position_state_repo.update_watermarks_if_older.assert_not_called()
-    mock_repo.find_portfolios_holding_security_on_date.assert_not_called()
+    mock_reprocessing_repo.upsert_state.assert_not_called()
+    mock_idempotency_repo.mark_event_processed.assert_awaited_once()
