@@ -45,11 +45,9 @@ class ReviewService:
         self, portfolio_id: str, request: PortfolioReviewRequest
     ) -> PortfolioReviewResponse:
         
-        # FIX: Use a 'with' statement for the timer to correctly apply labels at runtime.
         with REVIEW_GENERATION_DURATION_SECONDS.labels(portfolio_id=portfolio_id).time():
             logger.info(f"Generating review for portfolio {portfolio_id}")
             
-            # This will fail fast if the portfolio doesn't exist.
             portfolio_details = await self.portfolio_service.get_portfolio_by_id(portfolio_id)
             if not portfolio_details:
                 raise ValueError(f"Portfolio {portfolio_id} not found")
@@ -101,7 +99,6 @@ class ReviewService:
             results = await asyncio.gather(*tasks.values(), return_exceptions=True)
             results_map = dict(zip(tasks.keys(), results))
             
-            # Check for any failures in the gathered results
             for task_name, result in results_map.items():
                 if isinstance(result, Exception):
                     logger.error(f"Sub-service call '{task_name}' failed during review generation.", exc_info=result)
@@ -114,8 +111,8 @@ class ReviewService:
                 summary_data = results_map['summary']
                 if ReviewSection.OVERVIEW in request.sections:
                     response.overview = OverviewSection(
-                        total_market_value=summary_data.wealth.total_market_value,
-                        total_cash=summary_data.wealth.total_cash,
+                        total_market_value=summary_data.wealth.total_market_value if summary_data.wealth else 0.0,
+                        total_cash=summary_data.wealth.total_cash if summary_data.wealth else 0.0,
                         risk_profile=portfolio_details.risk_exposure,
                         portfolio_type=portfolio_details.portfolio_type,
                         pnl_summary=summary_data.pnl_summary
@@ -131,21 +128,31 @@ class ReviewService:
             if 'performance_net' in results_map:
                 net_perf = results_map['performance_net']
                 gross_perf = results_map['performance_gross']
-                combined_summary: Dict[str, ReviewPerformanceResult] = {}
-                for period_name, net_result in net_perf.summary.items():
-                    gross_result = gross_perf.summary.get(period_name)
-                    combined_summary[period_name] = ReviewPerformanceResult(
-                        start_date=net_result.start_date,
-                        end_date=net_result.end_date,
-                        net_cumulative_return=net_result.cumulative_return,
-                        net_annualized_return=net_result.annualized_return,
-                        gross_cumulative_return=gross_result.cumulative_return if gross_result else None,
-                        gross_annualized_return=gross_result.annualized_return if gross_result else None
-                    )
-                response.performance = ReviewPerformanceSection(summary=combined_summary)
                 
+                # --- FIX: Only build the performance section if there is data ---
+                if net_perf and net_perf.summary:
+                    combined_summary: Dict[str, ReviewPerformanceResult] = {}
+                    for period_name, net_result in net_perf.summary.items():
+                        gross_result = gross_perf.summary.get(period_name) if gross_perf else None
+                        combined_summary[period_name] = ReviewPerformanceResult(
+                            start_date=net_result.start_date,
+                            end_date=net_result.end_date,
+                            net_cumulative_return=net_result.cumulative_return,
+                            net_annualized_return=net_result.annualized_return,
+                            gross_cumulative_return=gross_result.cumulative_return if gross_result else None,
+                            gross_annualized_return=gross_result.annualized_return if gross_result else None
+                        )
+                    response.performance = ReviewPerformanceSection(summary=combined_summary)
+                else:
+                    response.performance = None
+            
             if 'risk' in results_map:
-                response.risk_analytics = results_map['risk']
+                risk_data = results_map['risk']
+                # --- FIX: Only include risk analytics if there are results ---
+                if risk_data and risk_data.results:
+                    response.risk_analytics = risk_data
+                else:
+                    response.risk_analytics = None
             
             if ReviewSection.HOLDINGS in request.sections:
                 holdings_by_asset_class = defaultdict(list)
