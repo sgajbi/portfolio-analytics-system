@@ -28,9 +28,9 @@ def setup_concentration_data(clean_db_module, e2e_api_client: E2EApiClient, poll
 
     # 2. Ingest transactions to create positions
     transactions = [
-        {"transaction_id": "CONC_BUY_A", "portfolio_id": PORTFOLIO_ID, "security_id": SEC_A_ID, "transaction_date": f"{AS_OF_DATE}T10:00:00Z", "transaction_type": "BUY", "quantity": 100, "price": 1, "gross_transaction_amount": 100, "trade_currency": "USD", "currency": "USD"},
-        {"transaction_id": "CONC_BUY_B", "portfolio_id": PORTFOLIO_ID, "security_id": SEC_B_ID, "transaction_date": f"{AS_OF_DATE}T10:00:00Z", "transaction_type": "BUY", "quantity": 100, "price": 1, "gross_transaction_amount": 100, "trade_currency": "USD", "currency": "USD"},
-        {"transaction_id": "CONC_BUY_C", "portfolio_id": PORTFOLIO_ID, "security_id": SEC_C_ID, "transaction_date": f"{AS_OF_DATE}T10:00:00Z", "transaction_type": "BUY", "quantity": 100, "price": 1, "gross_transaction_amount": 100, "trade_currency": "USD", "currency": "USD"}
+        {"transaction_id": "CONC_BUY_A", "portfolio_id": PORTFOLIO_ID, "instrument_id": "CONC_A_TICKER", "security_id": SEC_A_ID, "transaction_date": f"{AS_OF_DATE}T10:00:00Z", "transaction_type": "BUY", "quantity": 100, "price": 1, "gross_transaction_amount": 100, "trade_currency": "USD", "currency": "USD"},
+        {"transaction_id": "CONC_BUY_B", "portfolio_id": PORTFOLIO_ID, "instrument_id": "CONC_B_TICKER", "security_id": SEC_B_ID, "transaction_date": f"{AS_OF_DATE}T10:00:00Z", "transaction_type": "BUY", "quantity": 100, "price": 1, "gross_transaction_amount": 100, "trade_currency": "USD", "currency": "USD"},
+        {"transaction_id": "CONC_BUY_C", "portfolio_id": PORTFOLIO_ID, "instrument_id": "CONC_C_TICKER", "security_id": SEC_C_ID, "transaction_date": f"{AS_OF_DATE}T10:00:00Z", "transaction_type": "BUY", "quantity": 100, "price": 1, "gross_transaction_amount": 100, "trade_currency": "USD", "currency": "USD"}
     ]
     e2e_api_client.ingest("/ingest/transactions", {"transactions": transactions})
     
