@@ -8,14 +8,14 @@ from fastapi import Depends
 
 from portfolio_common.db import get_async_db_session
 from ..dtos.concentration_dto import (
-    ConcentrationRequest, ConcentrationResponse, ResponseSummary,
-    BulkConcentration, IssuerConcentration
+    ConcentrationRequest, ConcentrationResponse, ResponseScope, ResponseSummary,
+    BulkConcentration, IssuerConcentration, IssuerExposure
 )
 
 # Import the repositories and the new engine
 from ..repositories.portfolio_repository import PortfolioRepository
 from ..repositories.position_repository import PositionRepository
-from concentration_analytics_engine.metrics import calculate_bulk_concentration
+from concentration_analytics_engine.metrics import calculate_bulk_concentration, calculate_issuer_concentration
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +36,6 @@ class ConcentrationService:
         if not portfolio:
             raise ValueError(f"Portfolio {portfolio_id} not found")
 
-        # Fetch all latest positions for the portfolio, respecting the epoch model
         positions_data = await self.position_repo.get_latest_positions_by_portfolio(portfolio_id)
         
         # Handle the edge case of a portfolio with no positions
@@ -48,16 +47,21 @@ class ConcentrationService:
                     top_n_weights={str(n): 0.0 for n in request.options.bulk_top_n},
                     single_position_weight=0.0,
                     hhi=0.0
-                )
+                ) if "BULK" in request.metrics else None,
+                issuer_concentration=IssuerConcentration(top_exposures=[]) if "ISSUER" in request.metrics else None,
             )
 
-        # Prepare data for the calculation engine
+        # Prepare data for the calculation engines
         positions_list = [
             {
                 "security_id": pos.security_id,
-                "market_value": pos.market_value or Decimal("0")
+                "market_value": pos.market_value or Decimal("0"),
+                "instrument_name": name,
+                "issuer_id": issuer_id,
+                "ultimate_parent_issuer_id": parent_issuer_id,
+                "issuer_name": name # Use instrument name as a proxy for issuer name for now
             }
-            for pos, name, status, asset_class in positions_data
+            for pos, name, status, asset_class, issuer_id, parent_issuer_id in positions_data
         ]
         positions_df = pd.DataFrame(positions_list)
         total_market_value = positions_df["market_value"].sum()
@@ -73,9 +77,14 @@ class ConcentrationService:
             )
             bulk_concentration_result = BulkConcentration(**bulk_metrics)
         
-        # (Placeholder for ISSUER logic in a future step)
+        # Calculate ISSUER metrics if requested
         if "ISSUER" in request.metrics:
-            issuer_concentration_result = None # Not implemented yet
+            issuer_metrics = calculate_issuer_concentration(
+                positions_df, request.options.issuer_top_n
+            )
+            issuer_concentration_result = IssuerConcentration(
+                top_exposures=[IssuerExposure(**item) for item in issuer_metrics]
+            )
 
         return ConcentrationResponse(
             scope=request.scope,

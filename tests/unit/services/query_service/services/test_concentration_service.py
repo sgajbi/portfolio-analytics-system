@@ -23,12 +23,12 @@ def mock_dependencies():
     )
 
     # Mock the return value of get_latest_positions_by_portfolio
-    # It returns a list of tuples: (DailyPositionSnapshot, instrument_name, status, asset_class)
-    mock_snapshot_1 = DailyPositionSnapshot(security_id="S1", market_value=Decimal("60000"))
-    mock_snapshot_2 = DailyPositionSnapshot(security_id="S2", market_value=Decimal("40000"))
+    # It returns a list of 6-item tuples
+    mock_snapshot_1 = DailyPositionSnapshot(security_id="S1_JPM", market_value=Decimal("60000"))
+    mock_snapshot_2 = DailyPositionSnapshot(security_id="S2_MSFT", market_value=Decimal("40000"))
     mock_position_repo.get_latest_positions_by_portfolio.return_value = [
-        (mock_snapshot_1, "Stock A", "CURRENT", "Equity"),
-        (mock_snapshot_2, "Stock B", "CURRENT", "Equity"),
+        (mock_snapshot_1, "JPM Bond", "CURRENT", "Fixed Income", "JPM_ISSUER", "JPM_PARENT"),
+        (mock_snapshot_2, "Microsoft Stock", "CURRENT", "Equity", "MSFT_ISSUER", "MSFT_PARENT"),
     ]
 
     with patch(
@@ -42,7 +42,7 @@ def mock_dependencies():
         yield { "service": service, "position_repo": mock_position_repo }
 
 
-async def test_calculate_concentration_happy_path(mock_dependencies):
+async def test_calculate_bulk_concentration(mock_dependencies):
     """
     GIVEN a valid request for BULK concentration
     WHEN the service is called with a portfolio that has positions
@@ -74,6 +74,37 @@ async def test_calculate_concentration_happy_path(mock_dependencies):
     assert bulk.top_n_weights["1"] == pytest.approx(0.6)
 
 
+async def test_calculate_issuer_concentration(mock_dependencies):
+    """
+    GIVEN a valid request for ISSUER concentration
+    WHEN the service is called
+    THEN it should return a response with correctly calculated issuer metrics.
+    """
+    # ARRANGE
+    service = mock_dependencies["service"]
+    request = ConcentrationRequest.model_validate({
+        "scope": {"as_of_date": "2025-08-31"},
+        "metrics": ["ISSUER"],
+        "options": {"issuer_top_n": 5}
+    })
+
+    # ACT
+    response = await service.calculate_concentration("P1", request)
+
+    # ASSERT
+    assert response.issuer_concentration is not None
+    top_exposures = response.issuer_concentration.top_exposures
+    assert len(top_exposures) == 2
+
+    jpm_exposure = next(item for item in top_exposures if item.issuer_name == "JPM Bond")
+    msft_exposure = next(item for item in top_exposures if item.issuer_name == "Microsoft Stock")
+
+    assert jpm_exposure.exposure == pytest.approx(60000.0)
+    assert jpm_exposure.weight == pytest.approx(0.6)
+    assert msft_exposure.exposure == pytest.approx(40000.0)
+    assert msft_exposure.weight == pytest.approx(0.4)
+
+
 async def test_calculate_concentration_for_empty_portfolio(mock_dependencies):
     """
     GIVEN a valid request
@@ -87,7 +118,7 @@ async def test_calculate_concentration_for_empty_portfolio(mock_dependencies):
 
     request = ConcentrationRequest.model_validate({
         "scope": {"as_of_date": "2025-08-31"},
-        "metrics": ["BULK"]
+        "metrics": ["BULK", "ISSUER"]
     })
 
     # ACT
@@ -97,4 +128,4 @@ async def test_calculate_concentration_for_empty_portfolio(mock_dependencies):
     assert response.summary.portfolio_market_value == 0.0
     assert response.summary.findings == []
     assert response.bulk_concentration.single_position_weight == 0.0
-    assert response.bulk_concentration.hhi == 0.0
+    assert response.issuer_concentration.top_exposures == []
