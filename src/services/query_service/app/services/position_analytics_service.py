@@ -4,6 +4,7 @@ import asyncio
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import Depends
 from decimal import Decimal
+from typing import Any, List
 
 from portfolio_common.db import get_async_db_session
 from ..dtos.position_analytics_dto import (
@@ -47,7 +48,7 @@ class PositionAnalyticsService:
             securityId=snapshot.security_id,
             quantity=float(snapshot.quantity),
             weight=float(market_value_base / total_market_value_base) if total_market_value_base else 0.0,
-            heldSinceDate=snapshot.date # Default, will be overwritten
+            heldSinceDate=snapshot.date # Placeholder: To be implemented in next PR
         )
 
         # --- Start Concurrent Enrichment Tasks ---
