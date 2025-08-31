@@ -3,13 +3,14 @@ import logging
 import asyncio
 from sqlalchemy.ext.asyncio import AsyncSession
 from collections import defaultdict
-from datetime import date, timedelta
+from datetime import date
 
 from ..dtos.review_dto import (
     PortfolioReviewRequest, PortfolioReviewResponse, ReviewSection, OverviewSection,
-    HoldingsSection, TransactionsSection
+    HoldingsSection, TransactionsSection, ReviewPerformanceSection, ReviewPerformanceResult,
+    IncomeAndActivitySection
 )
-from ..dtos.summary_dto import SummaryRequest, AllocationDimension
+from ..dtos.summary_dto import SummaryRequest, SummarySection as SummarySubSection, AllocationDimension
 from ..dtos.performance_dto import PerformanceRequest, StandardPeriod as PerfStandardPeriod
 from ..dtos.risk_dto import RiskRequest
 from ..dtos.instrument_dto import InstrumentRecord
@@ -40,44 +41,44 @@ class ReviewService:
         self.transaction_service = TransactionService(db)
         self.instrument_service = InstrumentService(db)
 
-    @REVIEW_GENERATION_DURATION_SECONDS.labels(portfolio_id=...).time()
+    @REVIEW_GENERATION_DURATION_SECONDS.time()
     async def get_portfolio_review(
         self, portfolio_id: str, request: PortfolioReviewRequest
     ) -> PortfolioReviewResponse:
         
-        REVIEW_GENERATION_DURATION_SECONDS.labels(portfolio_id=portfolio_id)
         logger.info(f"Generating review for portfolio {portfolio_id}")
+        
+        # This will fail fast if the portfolio doesn't exist.
+        portfolio_details = await self.portfolio_service.get_portfolio_by_id(portfolio_id)
+        if not portfolio_details:
+             raise ValueError(f"Portfolio {portfolio_id} not found")
 
         tasks = {}
-        ytd_period = {"type": "YTD"}
         as_of_date = request.as_of_date
+        ytd_period = {"type": "YTD"}
 
+        # --- Task Creation ---
         if ReviewSection.OVERVIEW in request.sections or \
            ReviewSection.ALLOCATION in request.sections or \
            ReviewSection.INCOME_AND_ACTIVITY in request.sections:
             summary_req = SummaryRequest(
                 as_of_date=as_of_date,
                 period=ytd_period,
-                sections=["WEALTH", "PNL", "INCOME", "ACTIVITY", "ALLOCATION"],
+                sections=list(SummarySubSection),
                 allocation_dimensions=list(AllocationDimension)
             )
             tasks['summary'] = self.summary_service.get_portfolio_summary(portfolio_id, summary_req)
-            tasks['portfolio_details'] = self.portfolio_service.get_portfolio_by_id(portfolio_id)
 
         if ReviewSection.PERFORMANCE in request.sections:
-            perf_req = PerformanceRequest(
-                scope={"as_of_date": as_of_date, "net_or_gross": "NET"},
-                periods=[
-                    PerfStandardPeriod(type="MTD"), PerfStandardPeriod(type="QTD"),
-                    PerfStandardPeriod(type="YTD"), PerfStandardPeriod(type="THREE_YEAR"),
-                    PerfStandardPeriod(type="SI", name="Since Inception")
-                ],
-                options={"include_annualized": True, "include_cumulative": True}
-            )
-            tasks['performance_net'] = self.performance_service.calculate_performance(portfolio_id, perf_req)
-            
-            perf_req.scope.net_or_gross = "GROSS"
-            tasks['performance_gross'] = self.performance_service.calculate_performance(portfolio_id, perf_req)
+            perf_periods = [
+                PerfStandardPeriod(type="MTD"), PerfStandardPeriod(type="QTD"),
+                PerfStandardPeriod(type="YTD"), PerfStandardPeriod(type="THREE_YEAR"),
+                PerfStandardPeriod(type="SI", name="Since Inception")
+            ]
+            net_perf_req = PerformanceRequest(scope={"as_of_date": as_of_date, "net_or_gross": "NET"}, periods=perf_periods)
+            gross_perf_req = PerformanceRequest(scope={"as_of_date": as_of_date, "net_or_gross": "GROSS"}, periods=perf_periods)
+            tasks['performance_net'] = self.performance_service.calculate_performance(portfolio_id, net_perf_req)
+            tasks['performance_gross'] = self.performance_service.calculate_performance(portfolio_id, gross_perf_req)
 
         if ReviewSection.RISK_ANALYTICS in request.sections:
             risk_req = RiskRequest(
@@ -96,15 +97,20 @@ class ReviewService:
                 portfolio_id, skip=0, limit=1000, start_date=ytd_start_date, end_date=as_of_date
             )
         
-        results = await asyncio.gather(*tasks.values())
+        results = await asyncio.gather(*tasks.values(), return_exceptions=True)
         results_map = dict(zip(tasks.keys(), results))
+        
+        # Check for any failures in the gathered results
+        for task_name, result in results_map.items():
+            if isinstance(result, Exception):
+                logger.error(f"Sub-service call '{task_name}' failed during review generation.", exc_info=result)
+                raise result
 
-        # --- Assemble Response ---
+        # --- Response Assembly ---
         response = PortfolioReviewResponse(portfolio_id=portfolio_id, as_of_date=as_of_date)
 
         if 'summary' in results_map:
             summary_data = results_map['summary']
-            portfolio_details = results_map['portfolio_details']
             if ReviewSection.OVERVIEW in request.sections:
                 response.overview = OverviewSection(
                     total_market_value=summary_data.wealth.total_market_value,
@@ -116,18 +122,30 @@ class ReviewService:
             if ReviewSection.ALLOCATION in request.sections:
                 response.allocation = summary_data.allocation
             if ReviewSection.INCOME_AND_ACTIVITY in request.sections:
-                response.income_and_activity = {
-                    "income_summary_ytd": summary_data.income_summary,
-                    "activity_summary_ytd": summary_data.activity_summary
-                }
+                response.income_and_activity = IncomeAndActivitySection(
+                    income_summary_ytd=summary_data.income_summary.model_dump(),
+                    activity_summary_ytd=summary_data.activity_summary.model_dump()
+                )
 
         if 'performance_net' in results_map:
-            response.performance = results_map['performance_net']
+            net_perf = results_map['performance_net']
+            gross_perf = results_map['performance_gross']
+            combined_summary: Dict[str, ReviewPerformanceResult] = {}
+            for period_name, net_result in net_perf.summary.items():
+                gross_result = gross_perf.summary.get(period_name)
+                combined_summary[period_name] = ReviewPerformanceResult(
+                    start_date=net_result.start_date,
+                    end_date=net_result.end_date,
+                    net_cumulative_return=net_result.cumulative_return,
+                    net_annualized_return=net_result.annualized_return,
+                    gross_cumulative_return=gross_result.cumulative_return if gross_result else None,
+                    gross_annualized_return=gross_result.annualized_return if gross_result else None
+                )
+            response.performance = ReviewPerformanceSection(summary=combined_summary)
             
         if 'risk' in results_map:
             response.risk_analytics = results_map['risk']
         
-        # --- REFACTORED GROUPING LOGIC ---
         if ReviewSection.HOLDINGS in request.sections:
             holdings_by_asset_class = defaultdict(list)
             if 'holdings' in results_map:
@@ -138,8 +156,7 @@ class ReviewService:
         
         if ReviewSection.TRANSACTIONS in request.sections:
             txns_by_asset_class = defaultdict(list)
-            if 'transactions' in results_map:
-                # For transactions, we still need to fetch instrument details
+            if 'transactions' in results_map and results_map['transactions'].transactions:
                 sec_ids = {t.security_id for t in results_map['transactions'].transactions}
                 instruments = await self.instrument_service.get_instruments_by_ids(list(sec_ids))
                 asset_class_map = {inst.security_id: inst.asset_class for inst in instruments}
@@ -148,5 +165,6 @@ class ReviewService:
                     asset_class = asset_class_map.get(txn.security_id) or "Unclassified"
                     txns_by_asset_class[asset_class].append(txn)
             response.transactions = TransactionsSection(transactionsByAssetClass=txns_by_asset_class)
-
+            
+        logger.info(f"Successfully generated review for portfolio {portfolio_id}")
         return response

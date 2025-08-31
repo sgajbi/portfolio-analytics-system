@@ -1,11 +1,11 @@
 # src/services/query_service/app/dtos/review_dto.py
 from datetime import date
 from typing import List, Optional, Dict
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from enum import Enum
 
-from .summary_dto import WealthSummary, PnlSummary, IncomeSummary, ActivitySummary, AllocationSummary
-from .performance_dto import PerformanceResponse
+from .summary_dto import PnlSummary, AllocationSummary
+from .performance_dto import PerformanceResult
 from .position_dto import Position
 from .transaction_dto import TransactionRecord
 from .risk_dto import RiskResponse
@@ -36,16 +36,39 @@ class HoldingsSection(BaseModel):
 class TransactionsSection(BaseModel):
     transactions_by_asset_class: Dict[str, List[TransactionRecord]] = Field(..., alias="transactionsByAssetClass")
 
+# --- NEW: DTOs to handle NET & GROSS Performance ---
+class ReviewPerformanceResult(BaseModel):
+    """A DTO to hold both NET and GROSS returns for a single period."""
+    start_date: date
+    end_date: date
+    net_cumulative_return: Optional[float] = None
+    net_annualized_return: Optional[float] = None
+    gross_cumulative_return: Optional[float] = None
+    gross_annualized_return: Optional[float] = None
+    attributes: Optional[Dict] = None # Keeping attributes generic for simplicity
+
+class ReviewPerformanceSection(BaseModel):
+    """The complete performance section for the review response."""
+    summary: Dict[str, ReviewPerformanceResult]
+
+class IncomeAndActivitySection(BaseModel):
+    """Consolidates the YTD income and activity summaries."""
+    income_summary_ytd: Dict
+    activity_summary_ytd: Dict
+# --- END NEW ---
+
 class PortfolioReviewResponse(BaseModel):
     portfolio_id: str
     as_of_date: date
     overview: Optional[OverviewSection] = None
     allocation: Optional[AllocationSummary] = None
-    performance: Optional[PerformanceResponse] = None
+    performance: Optional[ReviewPerformanceSection] = None
     risk_analytics: Optional[RiskResponse] = Field(None, alias="riskAnalytics")
-    income_and_activity: Optional[Dict[str, IncomeSummary | ActivitySummary]] = Field(None, alias="incomeAndActivity")
+    income_and_activity: Optional[IncomeAndActivitySection] = Field(None, alias="incomeAndActivity")
     holdings: Optional[HoldingsSection] = None
     transactions: Optional[TransactionsSection] = None
 
-    class Config:
-        populate_by_name = True
+    model_config = ConfigDict(
+        populate_by_name=True,
+        arbitrary_types_allowed=True
+    )
