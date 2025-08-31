@@ -48,7 +48,7 @@ class PositionAnalyticsService:
             securityId=snapshot.security_id,
             quantity=float(snapshot.quantity),
             weight=float(market_value_base / total_market_value_base) if total_market_value_base else 0.0,
-            heldSinceDate=snapshot.date # Placeholder: To be implemented in next PR
+            held_since_date=snapshot.date # Placeholder: To be implemented in next PR
         )
 
         # --- Start Concurrent Enrichment Tasks ---
@@ -63,7 +63,7 @@ class PositionAnalyticsService:
         results_map = dict(zip(enrichment_tasks.keys(), task_results))
         
         held_since_date = results_map.get('held_since_date', snapshot.date)
-        position.heldSinceDate = held_since_date
+        position.held_since_date = held_since_date
 
         # --- Second wave of tasks that depend on the first ---
         income_tasks = {}
