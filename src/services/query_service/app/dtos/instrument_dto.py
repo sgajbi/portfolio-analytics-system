@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field, ConfigDict
-from typing import List
+from typing import List, Optional
 
 class InstrumentRecord(BaseModel):
     """
@@ -10,6 +10,7 @@ class InstrumentRecord(BaseModel):
     isin: str
     currency: str
     product_type: str
+    asset_class: Optional[str] = None
     
     model_config = ConfigDict(
         from_attributes=True
