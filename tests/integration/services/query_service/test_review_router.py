@@ -2,7 +2,7 @@
 import pytest
 import pytest_asyncio
 import httpx
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 from datetime import date
 
 from src.services.query_service.app.main import app
@@ -15,13 +15,19 @@ pytestmark = pytest.mark.asyncio
 @pytest_asyncio.fixture
 async def async_test_client():
     """Provides an httpx.AsyncClient with the ReviewService dependency mocked."""
-    mock_review_service = AsyncMock(spec=ReviewService)
+    # --- THIS IS THE FIX ---
+    # The service class itself is not async, but its method is.
+    # We use a synchronous MagicMock for the service instance and
+    # an AsyncMock specifically for the async method.
+    mock_review_service = MagicMock(spec=ReviewService)
     
     mock_response = PortfolioReviewResponse(
         portfolio_id="P1_MOCK",
         as_of_date=date(2025, 8, 30)
     )
-    mock_review_service.get_portfolio_review.return_value = mock_response
+    # Configure the method as an async mock with a specific return value.
+    mock_review_service.get_portfolio_review = AsyncMock(return_value=mock_response)
+    # --- END FIX ---
 
     app.dependency_overrides[get_review_service] = lambda: mock_review_service
     
@@ -62,6 +68,7 @@ async def test_get_portfolio_review_not_found(async_test_client):
     client, mock_service = async_test_client
     portfolio_id = "P_NOT_FOUND"
     
+    # Configure the mock to raise the expected exception
     mock_service.get_portfolio_review.side_effect = ValueError(f"Portfolio {portfolio_id} not found")
 
     request_payload = {
