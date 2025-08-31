@@ -4,7 +4,6 @@ from datetime import date, datetime, timedelta, timezone
 from typing import List, Optional, Dict, Tuple
 from sqlalchemy import select, func, distinct, exists, text, update, delete, tuple_, cast
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import aliased
 from sqlalchemy.sql.expression import lateral
 from sqlalchemy.types import Date
@@ -12,7 +11,7 @@ from sqlalchemy.types import Date
 from portfolio_common.database_models import (
     PositionHistory, MarketPrice, DailyPositionSnapshot, FxRate, Instrument, Portfolio,
     PortfolioValuationJob, Transaction, BusinessDate, PortfolioTimeseries, PositionTimeseries,
-    PositionState
+    PositionState, InstrumentReprocessingState
 )
 from portfolio_common.utils import async_timed
 
@@ -24,6 +23,38 @@ class ValuationRepository:
     """
     def __init__(self, db: AsyncSession):
         self.db = db
+
+    # --- NEW METHODS ---
+    @async_timed(repository="ValuationRepository", method="get_instrument_reprocessing_triggers")
+    async def get_instrument_reprocessing_triggers(self, batch_size: int) -> List[InstrumentReprocessingState]:
+        """Fetches the oldest pending instrument reprocessing triggers."""
+        stmt = (
+            select(InstrumentReprocessingState)
+            .order_by(InstrumentReprocessingState.updated_at.asc())
+            .limit(batch_size)
+        )
+        result = await self.db.execute(stmt)
+        return result.scalars().all()
+
+    @async_timed(repository="ValuationRepository", method="find_portfolios_for_security")
+    async def find_portfolios_for_security(self, security_id: str) -> List[str]:
+        """Finds all unique portfolio_ids that have a PositionState record for a given security."""
+        stmt = (
+            select(PositionState.portfolio_id)
+            .where(PositionState.security_id == security_id)
+            .distinct()
+        )
+        result = await self.db.execute(stmt)
+        return result.scalars().all()
+
+    @async_timed(repository="ValuationRepository", method="delete_instrument_reprocessing_triggers")
+    async def delete_instrument_reprocessing_triggers(self, security_ids: List[str]) -> None:
+        """Deletes instrument reprocessing triggers by their security IDs."""
+        if not security_ids:
+            return
+        stmt = delete(InstrumentReprocessingState).where(InstrumentReprocessingState.security_id.in_(security_ids))
+        await self.db.execute(stmt)
+    # --- END NEW METHODS ---
 
     @async_timed(repository="ValuationRepository", method="get_portfolios_by_ids")
     async def get_portfolios_by_ids(self, portfolio_ids: List[str]) -> List[Portfolio]:
@@ -131,27 +162,27 @@ class ValuationRepository:
     async def find_portfolios_holding_security_on_date(self, security_id: str, a_date: date) -> List[str]:
         """
         Finds all unique portfolio_ids that had a non-zero position in a given
-        security, based on the latest snapshot on or before the given price date.
+        security, based on the latest position_history on or before the given price date.
         """
-        latest_snapshot_subquery = (
+        latest_history_subquery = (
             select(
-                DailyPositionSnapshot.portfolio_id,
-                DailyPositionSnapshot.quantity,
+                PositionHistory.portfolio_id,
+                PositionHistory.quantity,
                 func.row_number().over(
-                    partition_by=DailyPositionSnapshot.portfolio_id,
-                    order_by=DailyPositionSnapshot.date.desc(),
+                    partition_by=PositionHistory.portfolio_id,
+                    order_by=[PositionHistory.position_date.desc(), PositionHistory.id.desc()],
                 ).label("rn")
             )
             .where(
-                DailyPositionSnapshot.security_id == security_id,
-                DailyPositionSnapshot.date <= a_date
+                PositionHistory.security_id == security_id,
+                PositionHistory.position_date <= a_date
             )
             .subquery()
         )
 
-        stmt = select(latest_snapshot_subquery.c.portfolio_id).where(
-            latest_snapshot_subquery.c.rn == 1,
-            latest_snapshot_subquery.c.quantity > 0
+        stmt = select(latest_history_subquery.c.portfolio_id).where(
+            latest_history_subquery.c.rn == 1,
+            latest_history_subquery.c.quantity > 0
         )
 
         result = await self.db.execute(stmt)

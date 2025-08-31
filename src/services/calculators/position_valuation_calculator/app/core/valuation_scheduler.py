@@ -40,6 +40,43 @@ class ValuationScheduler:
         logger.info("Valuation scheduler shutdown signal received.")
         self._running = False
 
+    async def _process_instrument_level_triggers(self, db):
+        """
+        Processes triggers from back-dated price events, fanning out the
+        watermark reset to all affected portfolio positions.
+        """
+        repo = ValuationRepository(db)
+        position_state_repo = PositionStateRepository(db)
+
+        triggers = await repo.get_instrument_reprocessing_triggers(self._batch_size)
+        if not triggers:
+            return
+
+        logger.info(f"Found {len(triggers)} instrument-level reprocessing triggers.")
+        processed_security_ids = []
+
+        for trigger in triggers:
+            affected_portfolios = await repo.find_portfolios_for_security(trigger.security_id)
+            if not affected_portfolios:
+                logger.info(f"No portfolios found for security {trigger.security_id}, skipping watermark reset.")
+                processed_security_ids.append(trigger.security_id)
+                continue
+
+            keys_to_update = [(p_id, trigger.security_id) for p_id in affected_portfolios]
+            new_watermark = trigger.earliest_impacted_date - timedelta(days=1)
+
+            updated_count = await position_state_repo.update_watermarks_if_older(
+                keys=keys_to_update,
+                new_watermark_date=new_watermark
+            )
+            logger.info(f"Reset {updated_count} position state watermarks for security {trigger.security_id}.")
+            processed_security_ids.append(trigger.security_id)
+
+        if processed_security_ids:
+            await repo.delete_instrument_reprocessing_triggers(processed_security_ids)
+            logger.info(f"Consumed and deleted {len(processed_security_ids)} instrument-level triggers.")
+
+
     async def _advance_watermarks(self, db):
         """
         Checks all lagging keys, finds how far their snapshots are contiguous,
@@ -100,6 +137,7 @@ class ValuationScheduler:
         job_repo = ValuationJobRepository(db)
         
         latest_business_date = await repo.get_latest_business_date()
+        
         if not latest_business_date:
             logger.debug("Scheduler: No business dates found, skipping backfill job creation.")
             return
@@ -156,6 +194,7 @@ class ValuationScheduler:
     
     async def _dispatch_jobs(self, jobs: List[PortfolioValuationJob]):
         """Publishes a batch of claimed jobs to Kafka."""
+        
         if not jobs:
             return
         
@@ -187,6 +226,8 @@ class ValuationScheduler:
                 async for db in get_async_db_session():
                     async with db.begin():
                         repo = ValuationRepository(db)
+                        
+                        await self._process_instrument_level_triggers(db) # <-- NEW LOGIC
                         
                         await repo.find_and_reset_stale_jobs()
                         await self._create_backfill_jobs(db)
