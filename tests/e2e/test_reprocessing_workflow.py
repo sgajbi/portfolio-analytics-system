@@ -90,5 +90,5 @@ def test_back_dated_transaction_triggers_reprocessing_and_corrects_state(
     assert len(data["positions"]) == 1
     position = data["positions"][0]
     
-    assert Decimal(position["quantity"]).quantize(Decimal("0.01")) == Decimal("110.00")
-    assert Decimal(position["cost_basis"]).quantize(Decimal("0.01")) == Decimal("23000.00")
+    assert position["quantity"] == pytest.approx(110.00)
+    assert position["cost_basis"] == pytest.approx(23000.00)

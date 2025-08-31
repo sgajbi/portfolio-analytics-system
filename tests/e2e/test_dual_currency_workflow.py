@@ -54,13 +54,13 @@ def test_realized_pnl_dual_currency(setup_dual_currency_data, e2e_api_client: E2
 
     # ASSERT
     # Local P&L (EUR): (40 * 170) - (40 * 150) = 800 EUR
-    assert Decimal(sell_tx["realized_gain_loss_local"]).quantize(Decimal("0.01")) == Decimal("800.00")
+    assert sell_tx["realized_gain_loss_local"] == pytest.approx(800.00)
     
     # Base P&L (USD): (Proceeds in USD) - (Cost in USD)
     # Proceeds: 6800 EUR * 1.20 (sell date FX) = 8160 USD
     # Cost: (40 * 150 EUR) * 1.10 (buy date FX) = 6600 USD
     # P&L: 8160 - 6600 = 1560 USD
-    assert Decimal(sell_tx["realized_gain_loss"]).quantize(Decimal("0.01")) == Decimal("1560.00")
+    assert sell_tx["realized_gain_loss"] == pytest.approx(1560.00)
 
 def test_unrealized_pnl_dual_currency(setup_dual_currency_data, e2e_api_client: E2EApiClient):
     """
@@ -79,18 +79,18 @@ def test_unrealized_pnl_dual_currency(setup_dual_currency_data, e2e_api_client: 
     # ASSERT
     # Cost Basis (60 shares):
     # Local: 60 * 150 EUR = 9000 EUR
-    assert Decimal(position["cost_basis_local"]).quantize(Decimal("0.01")) == Decimal("9000.00")
+    assert position["cost_basis_local"] == pytest.approx(9000.00)
     # Base: 9000 EUR * 1.10 (buy date FX) = 9900 USD
-    assert Decimal(position["cost_basis"]).quantize(Decimal("0.01")) == Decimal("9900.00")
+    assert position["cost_basis"] == pytest.approx(9900.00)
 
     # Valuation (60 shares @ 180 EUR/share):
     # Local: 60 * 180 EUR = 10800 EUR
-    assert Decimal(valuation["market_value_local"]).quantize(Decimal("0.01")) == Decimal("10800.00")
+    assert valuation["market_value_local"] == pytest.approx(10800.00)
     # Base: 10800 EUR * 1.20 (sell date FX) = 12960 USD
-    assert Decimal(valuation["market_value"]).quantize(Decimal("0.01")) == Decimal("12960.00")
+    assert valuation["market_value"] == pytest.approx(12960.00)
 
     # Unrealized P&L:
     # Local: 10800 (MV) - 9000 (Cost) = 1800 EUR
-    assert Decimal(valuation["unrealized_gain_loss_local"]).quantize(Decimal("0.01")) == Decimal("1800.00")
+    assert valuation["unrealized_gain_loss_local"] == pytest.approx(1800.00)
     # Base: 12960 (MV) - 9900 (Cost) = 3060 USD
-    assert Decimal(valuation["unrealized_gain_loss"]).quantize(Decimal("0.01")) == Decimal("3060.00")
+    assert valuation["unrealized_gain_loss"] == pytest.approx(3060.00)

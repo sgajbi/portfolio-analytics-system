@@ -15,18 +15,18 @@ class TransactionRecord(BaseModel):
     transaction_type: str
     instrument_id: str
     security_id: str
-    quantity: Decimal
-    price: Decimal
-    gross_transaction_amount: Decimal
+    quantity: float
+    price: float
+    gross_transaction_amount: float
     currency: str
 
-    net_cost: Optional[Decimal] = None
-    realized_gain_loss: Optional[Decimal] = None
+    net_cost: Optional[float] = None
+    realized_gain_loss: Optional[float] = None
     
-    net_cost_local: Optional[Decimal] = None
-    realized_gain_loss_local: Optional[Decimal] = None
+    net_cost_local: Optional[float] = None
+    realized_gain_loss_local: Optional[float] = None
     
-    transaction_fx_rate: Optional[Decimal] = None
+    transaction_fx_rate: Optional[float] = None
     cashflow: Optional[CashflowRecord] = None
     
     model_config = ConfigDict(

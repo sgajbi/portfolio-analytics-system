@@ -86,24 +86,24 @@ def test_portfolio_summary_endpoint(setup_summary_data, e2e_api_client: E2EApiCl
     # MSFT MV = 750 * 340 = 255,000
     # IBM MV = 100 * 155 = 15,500
     # Total MV = 754350 + 255000 + 15500 = 1,024,850
-    assert Decimal(data["wealth"]["total_market_value"]).quantize(Decimal("0.01")) == Decimal("1024850.00")
-    assert Decimal(data["wealth"]["total_cash"]).quantize(Decimal("0.01")) == Decimal("754350.00")
+    assert data["wealth"]["total_market_value"] == pytest.approx(1024850.00)
+    assert data["wealth"]["total_cash"] == pytest.approx(754350.00)
 
     # Activity & Income
     activity = data["activitySummary"]
-    assert Decimal(activity["total_deposits"]).quantize(Decimal("0.01")) == Decimal("1000000.00")
-    assert Decimal(activity["total_withdrawals"]).quantize(Decimal("0.01")) == Decimal("-10000.00")
-    assert Decimal(activity["total_transfers_in"]).quantize(Decimal("0.01")) == Decimal("15000.00")
-    assert Decimal(activity["total_transfers_out"]).quantize(Decimal("0.01")) == Decimal("-16500.00")
-    assert Decimal(activity["total_fees"]).quantize(Decimal("0.01")) == Decimal("-50.00")
-    assert Decimal(data["incomeSummary"]["total_dividends"]).quantize(Decimal("0.01")) == Decimal("400.00")
+    assert activity["total_deposits"] == pytest.approx(1000000.00)
+    assert activity["total_withdrawals"] == pytest.approx(-10000.00)
+    assert activity["total_transfers_in"] == pytest.approx(15000.00)
+    assert activity["total_transfers_out"] == pytest.approx(-16500.00)
+    assert activity["total_fees"] == pytest.approx(-50.00)
+    assert data["incomeSummary"]["total_dividends"] == pytest.approx(400.00)
     
     # P&L
     # Realized P&L = 200 * (320 - 300) = 4000
     # U-PNL start = 0
     # U-PNL end: MSFT=750*(340-300)=30000. IBM=100*(155-150)=500. Total=30500
     pnl = data["pnlSummary"]
-    assert Decimal(pnl["net_new_money"]).quantize(Decimal("0.01")) == Decimal("988500.00")
-    assert Decimal(pnl["realized_pnl"]).quantize(Decimal("0.01")) == Decimal("4000.00")
-    assert Decimal(pnl["unrealized_pnl_change"]).quantize(Decimal("0.01")) == Decimal("30500.00")
-    assert Decimal(pnl["total_pnl"]).quantize(Decimal("0.01")) == Decimal("34500.00")
+    assert pnl["net_new_money"] == pytest.approx(988500.00)
+    assert pnl["realized_pnl"] == pytest.approx(4000.00)
+    assert pnl["unrealized_pnl_change"] == pytest.approx(30500.00)
+    assert pnl["total_pnl"] == pytest.approx(34500.00)

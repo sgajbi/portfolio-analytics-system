@@ -60,12 +60,12 @@ def test_full_valuation_pipeline(setup_valuation_data, e2e_api_client: E2EApiCli
     valuation = position["valuation"]
 
     assert position["security_id"] == "SEC_E2E_VAL"
-    assert position["quantity"] == "10.0000000000"
-    assert position["cost_basis"] == "1000.0000000000"
+    assert position["quantity"] == 10.0
+    assert position["cost_basis"] == 1000.0
     
-    assert valuation["market_price"] == "110.0000000000"
+    assert valuation["market_price"] == 110.0
     # Expected market_value = 10 shares * 110/share = 1100
-    assert valuation["market_value"] == "1100.0000000000"
+    assert valuation["market_value"] == 1100.0
     
     # Expected unrealized_gain_loss = 1100 (MV) - 1000 (Cost) = 100
-    assert Decimal(valuation["unrealized_gain_loss"]).quantize(Decimal("0.01")) == Decimal("100.00")
+    assert valuation["unrealized_gain_loss"] == pytest.approx(100.0)

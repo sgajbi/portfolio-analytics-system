@@ -8,14 +8,14 @@ from .valuation_dto import ValuationData
 
 class Position(BaseModel):
     security_id: str
-    quantity: Decimal
+    quantity: float
     instrument_name: str
     position_date: date
     asset_class: Optional[str] = None # ADDED: New field for direct asset class info
     
-    cost_basis: Decimal
+    cost_basis: float
     
-    cost_basis_local: Optional[Decimal] = None
+    cost_basis_local: Optional[float] = None
     
     valuation: Optional[ValuationData] = None
     reprocessing_status: Optional[str] = None
@@ -34,11 +34,11 @@ class PositionHistoryRecord(BaseModel):
     """
     position_date: date = Field(..., description="The date of this position snapshot.")
     transaction_id: str = Field(..., description="The ID of the transaction that created this position state.")
-    quantity: Decimal = Field(..., description="The number of shares held as of this record.")
+    quantity: float = Field(..., description="The number of shares held as of this record.")
     
-    cost_basis: Decimal = Field(..., description="The total cost basis of the holding as of this record.")
+    cost_basis: float = Field(..., description="The total cost basis of the holding as of this record.")
     
-    cost_basis_local: Optional[Decimal] = Field(None, description="The total cost basis in the instrument's local currency.")
+    cost_basis_local: Optional[float] = Field(None, description="The total cost basis in the instrument's local currency.")
 
     valuation: Optional[ValuationData] = None
     reprocessing_status: Optional[str] = None

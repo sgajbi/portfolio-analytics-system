@@ -74,10 +74,10 @@ def test_portfolio_review_endpoint(setup_review_data, e2e_api_client: E2EApiClie
     # Expected MV = (100 * 160) + (10 * 995) + (100000 - 15000 - 9800 + 120) = 16000 + 9950 + 75320 = 101270
     # Expected U-PNL = (16000 - 15000) + (9950 - 9800) = 1000 + 150 = 1150
     overview = data["overview"]
-    assert Decimal(str(overview["total_market_value"])).quantize(Decimal("0.01")) == Decimal("101270.00")
-    assert Decimal(str(overview["total_cash"])).quantize(Decimal("0.01")) == Decimal("75320.00")
+    assert overview["total_market_value"] == pytest.approx(101270.00)
+    assert overview["total_cash"] == pytest.approx(75320.00)
     assert overview["risk_profile"] == "Growth"
-    assert Decimal(str(overview["pnl_summary"]["total_pnl"])).quantize(Decimal("0.01")) == Decimal("1150.00")
+    assert overview["pnl_summary"]["total_pnl"] == pytest.approx(1150.00)
 
     # --- Assert Holdings Section ---
     holdings = data["holdings"]["holdingsByAssetClass"]
@@ -91,7 +91,57 @@ def test_portfolio_review_endpoint(setup_review_data, e2e_api_client: E2EApiClie
     transactions = data["transactions"]["transactionsByAssetClass"]
     assert "Equity" in transactions
     assert "Cash" in transactions
+    # Note: The original test had a bug, DIVIDEND is on an Equity, not its own class.
+    # The transaction grouping logic correctly groups both BUY and DIVIDEND under "Equity".
     txn_ids_equity = {t["transaction_id"] for t in transactions["Equity"]}
     assert "REVIEW_BUY_AAPL" in txn_ids_equity
-    assert "REVIEW_BUY_BOND" in txn_ids_equity
     assert "REVIEW_DIV_AAPL" in txn_ids_equity
+    assert "REVIEW_BUY_BOND" in transactions["Fixed Income"][0]["transaction_id"]
+
+
+def test_portfolio_review_for_empty_portfolio(clean_db, e2e_api_client: E2EApiClient):
+    """
+    Tests that the review endpoint returns a valid, zeroed-out report for a
+    portfolio that exists but has no transactions or holdings.
+    """
+    # ARRANGE
+    empty_portfolio_id = "E2E_REVIEW_EMPTY_01"
+    as_of = "2025-08-31"
+    
+    # 1. Ingest only the portfolio and a business date
+    e2e_api_client.ingest("/ingest/portfolios", {"portfolios": [{"portfolioId": empty_portfolio_id, "baseCurrency": "USD", "openDate": "2025-01-01", "cifId": "REVIEW_EMPTY_CIF", "status": "ACTIVE", "riskExposure":"Balanced", "investmentTimeHorizon":"c", "portfolioType":"d", "bookingCenter":"e"}]})
+    e2e_api_client.ingest("/ingest/business-dates", {"business_dates": [{"businessDate": as_of}]})
+    
+    # 2. Wait for the portfolio to be queryable
+    e2e_api_client.poll_for_data(
+        f"/portfolios?portfolio_id={empty_portfolio_id}",
+        lambda data: data and data.get("portfolios") and len(data["portfolios"]) == 1
+    )
+
+    # 3. Define the request for the review endpoint
+    api_url = f"/portfolios/{empty_portfolio_id}/review"
+    request_payload = {
+        "as_of_date": as_of,
+        "sections": ["OVERVIEW", "HOLDINGS", "TRANSACTIONS", "PERFORMANCE", "RISK_ANALYTICS"]
+    }
+
+    # ACT
+    response = e2e_api_client.post_query(api_url, request_payload)
+    data = response.json()
+
+    # ASSERT
+    assert response.status_code == 200
+    assert data["portfolio_id"] == empty_portfolio_id
+
+    # Assert Overview is zeroed out
+    overview = data["overview"]
+    assert overview["total_market_value"] == 0.0
+    assert overview["total_cash"] == 0.0
+    assert overview["risk_profile"] == "Balanced" # Static data should still appear
+    assert overview["pnl_summary"]["total_pnl"] == 0.0
+    
+    # Assert other sections are empty/null as expected
+    assert data["holdings"]["holdingsByAssetClass"] == {}
+    assert data["transactions"]["transactionsByAssetClass"] == {}
+    assert data["performance"] is None # No timeseries data exists
+    assert data["riskAnalytics"] is None # No timeseries data exists

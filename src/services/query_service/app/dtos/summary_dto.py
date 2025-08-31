@@ -42,29 +42,29 @@ class ResponseScope(BaseModel):
     period_end_date: date
 
 class WealthSummary(BaseModel):
-    total_market_value: Decimal
-    total_cash: Decimal
+    total_market_value: float
+    total_cash: float
 
 class PnlSummary(BaseModel):
-    net_new_money: Decimal
-    realized_pnl: Decimal
-    unrealized_pnl_change: Decimal
-    total_pnl: Decimal
+    net_new_money: float
+    realized_pnl: float
+    unrealized_pnl_change: float
+    total_pnl: float
 
 class IncomeSummary(BaseModel):
-    total_dividends: Decimal
-    total_interest: Decimal
+    total_dividends: float
+    total_interest: float
 
 class ActivitySummary(BaseModel):
-    total_deposits: Decimal
-    total_withdrawals: Decimal
-    total_transfers_in: Decimal
-    total_transfers_out: Decimal
-    total_fees: Decimal
+    total_deposits: float
+    total_withdrawals: float
+    total_transfers_in: float
+    total_transfers_out: float
+    total_fees: float
 
 class AllocationGroup(BaseModel):
     group: str
-    market_value: Decimal
+    market_value: float
     weight: float # Weight is a percentage (0.0 to 1.0), float is appropriate
 
 class AllocationSummary(BaseModel):
