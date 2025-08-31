@@ -21,8 +21,6 @@ async def async_test_client():
     """Provides an httpx.AsyncClient for the query service app with mocked dependencies."""
     mock_summary_service = AsyncMock(spec=SummaryService)
     
-    # --- THIS IS THE FIX ---
-    # The ActivitySummary DTO requires specific fields. The old ones were causing a validation error.
     mock_activity_summary = ActivitySummary(
         total_deposits=Decimal("10000"),
         total_withdrawals=Decimal("-2000"),
@@ -30,7 +28,6 @@ async def async_test_client():
         total_transfers_out=Decimal("-500"),
         total_fees=Decimal("-150")
     )
-    # --- END FIX ---
     
     mock_response = SummaryResponse(
         scope=ResponseScope(
@@ -88,11 +85,12 @@ async def test_get_portfolio_summary_success_all_sections(async_test_client):
     response_data = response.json()
     assert response_data["scope"]["portfolio_id"] == portfolio_id
     
-    # Assert all sections are present and correct
-    assert response_data["wealth"]["total_market_value"] == "125000"
-    assert response_data["pnlSummary"]["total_pnl"] == "7000"
-    assert response_data["incomeSummary"]["total_dividends"] == "300"
-    assert response_data["activitySummary"]["total_fees"] == "-150"
+    # --- FIX: Assert against floats instead of strings ---
+    assert response_data["wealth"]["total_market_value"] == pytest.approx(125000.0)
+    assert response_data["pnlSummary"]["total_pnl"] == pytest.approx(7000.0)
+    assert response_data["incomeSummary"]["total_dividends"] == pytest.approx(300.0)
+    assert response_data["activitySummary"]["total_fees"] == pytest.approx(-150.0)
+    # --- END FIX ---
 
     mock_service.get_portfolio_summary.assert_awaited_once()
 
