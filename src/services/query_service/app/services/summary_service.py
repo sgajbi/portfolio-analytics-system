@@ -17,7 +17,6 @@ from ..dtos.summary_dto import (
     PnlSummary, IncomeSummary, ActivitySummary
 )
 from portfolio_common.database_models import Portfolio, DailyPositionSnapshot, Instrument, Cashflow, Transaction
-# --- NEW IMPORT ---
 from portfolio_common.monitoring import UNCLASSIFIED_ALLOCATION_MARKET_VALUE
 
 logger = logging.getLogger(__name__)
@@ -37,9 +36,11 @@ class SummaryService:
         dimension: AllocationDimension,
         total_market_value: Decimal,
         as_of_date: date,
-        portfolio_id: str # Pass portfolio_id for metric labels
+        portfolio_id: str
     ) -> List[AllocationGroup]:
-        if total_market_value == 0: return []
+        if not total_market_value or total_market_value.is_zero():
+            return []
+            
         grouped_allocation: Dict[str, Decimal] = defaultdict(Decimal)
         dimension_map = {
             AllocationDimension.ASSET_CLASS: 'asset_class', AllocationDimension.CURRENCY: 'currency',
@@ -63,18 +64,17 @@ class SummaryService:
                 else: group_key = "N/A"
             grouped_allocation[group_key] += market_value
         
-        # --- THIS IS THE FIX ---
         unclassified_value = grouped_allocation.get("Unclassified", Decimal(0))
         UNCLASSIFIED_ALLOCATION_MARKET_VALUE.labels(
             portfolio_id=portfolio_id,
             dimension=dimension.value
         ).set(float(unclassified_value))
-        # --- END FIX ---
 
         return [
             AllocationGroup(
-                group=key, market_value=value,
-                weight=round(float(value / total_market_value), 4) if total_market_value else 0
+                group=key, 
+                market_value=value, # Pydantic will convert Decimal to float
+                weight=round(float(value / total_market_value), 4)
             ) for key, value in sorted(grouped_allocation.items())
         ]
 
@@ -105,17 +105,24 @@ class SummaryService:
         
         wealth_summary, pnl_summary, income_summary, activity_summary, allocation_summary = None, None, None, None, None
 
-        if SummarySection.WEALTH in request.sections or SummarySection.ALLOCATION in request.sections:
+        # --- FIX: Refactored logic to use Decimal for internal calculations ---
+        total_mv = Decimal(0)
+        if any(s in request.sections for s in [SummarySection.WEALTH, SummarySection.ALLOCATION]):
             total_mv = sum(s.market_value or Decimal(0) for s, i in data["positions"])
+
+        if SummarySection.WEALTH in request.sections:
             total_cash = sum(s.market_value or Decimal(0) for s, i in data["positions"] if i.product_type == 'Cash')
             wealth_summary = WealthSummary(total_market_value=total_mv, total_cash=total_cash)
+
         if SummarySection.ALLOCATION in request.sections and request.allocation_dimensions and data["positions"]:
             allocation_dict = {
                 f"by_{dim.value.lower()}": self._calculate_allocation_by_dimension(
-                    data["positions"], dim, wealth_summary.total_market_value, request.as_of_date, portfolio_id
+                    data["positions"], dim, total_mv, request.as_of_date, portfolio_id
                 ) for dim in request.allocation_dimensions
             }
             allocation_summary = AllocationSummary.model_validate(allocation_dict)
+        # --- END FIX ---
+
         if any(s in request.sections for s in [SummarySection.PNL, SummarySection.INCOME, SummarySection.ACTIVITY]):
             raw_cashflows: List[Cashflow] = data["cashflows"]
             
