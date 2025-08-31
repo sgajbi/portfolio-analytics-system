@@ -12,7 +12,8 @@ from src.services.calculators.position_calculator.app.repositories.position_repo
 from portfolio_common.position_state_repository import PositionStateRepository
 from portfolio_common.kafka_utils import KafkaProducer
 
-pytestmark = pytest.mark.asyncio
+# FIX: Remove the module-level pytestmark to resolve the warning.
+# pytestmark = pytest.mark.asyncio
 
 @pytest.fixture
 def mock_repo() -> AsyncMock:
@@ -44,6 +45,7 @@ def sample_event() -> TransactionEvent:
         trade_currency="USD", currency="USD", net_cost=Decimal("5505")
     )
 
+@pytest.mark.asyncio
 async def test_calculate_normal_flow(
     mock_repo: AsyncMock,
     mock_state_repo: AsyncMock,
@@ -70,6 +72,7 @@ async def test_calculate_normal_flow(
     mock_repo.save_positions.assert_awaited_once()
     mock_kafka_producer.publish_message.assert_not_called()
 
+@pytest.mark.asyncio
 async def test_calculate_re_emits_events_for_original_backdated_transaction(
     mock_repo: AsyncMock,
     mock_state_repo: AsyncMock,
@@ -110,6 +113,7 @@ async def test_calculate_re_emits_events_for_original_backdated_transaction(
     first_call_args = mock_kafka_producer.publish_message.call_args_list[0].kwargs
     assert first_call_args['value']['epoch'] == 1
 
+@pytest.mark.asyncio
 async def test_calculate_bypasses_back_dating_check_for_replayed_event(
     mock_repo: AsyncMock,
     mock_state_repo: AsyncMock,
@@ -140,6 +144,7 @@ async def test_calculate_bypasses_back_dating_check_for_replayed_event(
     # The normal calculation logic SHOULD have been called.
     mock_repo.save_positions.assert_awaited_once()
 
+@pytest.mark.asyncio
 async def test_back_dated_check_uses_snapshot_date_when_watermark_is_stale(
     mock_repo: AsyncMock,
     mock_state_repo: AsyncMock,
@@ -183,6 +188,7 @@ async def test_back_dated_check_uses_snapshot_date_when_watermark_is_stale(
     mock_repo.get_all_transactions_for_security.assert_awaited_once() # Confirms reprocessing was triggered
     mock_kafka_producer.flush.assert_called_once()
 
+@pytest.mark.asyncio
 async def test_same_day_transaction_is_not_backdated(
     mock_repo: AsyncMock,
     mock_state_repo: AsyncMock,
