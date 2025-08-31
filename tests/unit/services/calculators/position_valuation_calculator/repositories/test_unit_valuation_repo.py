@@ -1,10 +1,13 @@
 # tests/unit/services/calculators/position-valuation-calculator/repositories/test_valuation_repository.py
 import pytest
+import pytest_asyncio
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
 from sqlalchemy.orm import Session
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
+
 from portfolio_common.database_models import PortfolioValuationJob, DailyPositionSnapshot, Portfolio, MarketPrice, PositionHistory, Transaction
 from src.services.calculators.position_valuation_calculator.app.repositories.valuation_repository import ValuationRepository
 
@@ -12,10 +15,17 @@ pytestmark = pytest.mark.asyncio
 
 @pytest.fixture(scope="function")
 def setup_stale_job_data(db_engine):
-    # This fixture is not used by the failing test but is kept for other tests in the file.
+    """
+    Sets up a variety of valuation jobs in the database:
+    - One recent 'PROCESSING' job (should not be reset).
+    - One stale 'PROCESSING' job (should be reset).
+    - One stale 'PENDING' job (should not be reset).
+    - One stale 'COMPLETE' job (should not be reset).
+    """
     with Session(db_engine) as session:
         now = datetime.now(timezone.utc)
         stale_time = now - timedelta(minutes=30)
+        
         jobs = [
             PortfolioValuationJob(portfolio_id="P1", security_id="S1", valuation_date=date(2025, 8, 1), status="PROCESSING", updated_at=stale_time),
             PortfolioValuationJob(portfolio_id="P2", security_id="S2", valuation_date=date(2025, 8, 1), status="PROCESSING", updated_at=now),
@@ -98,6 +108,7 @@ def setup_first_open_date_data(db_engine):
 
 @pytest_asyncio.fixture(scope="function")
 async def session_factory(db_engine):
+    """Provides a factory for creating new, isolated AsyncSessions for the test."""
     sync_url = db_engine.url
     async_url = sync_url.render_as_string(hide_password=False).replace("postgresql://", "postgresql+asyncpg://")
     async_engine = create_async_engine(async_url)
