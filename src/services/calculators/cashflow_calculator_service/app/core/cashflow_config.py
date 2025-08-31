@@ -66,7 +66,7 @@ CASHFLOW_CONFIG: dict[str, CashflowRule] = {
         classification=CashflowClassification.EXPENSE,
         timing=CashflowTiming.EOD,
         is_position_flow=True,
-        is_portfolio_flow=False
+        is_portfolio_flow=True # <-- THIS IS THE FIX
     ),
     "TAX": CashflowRule(
         classification=CashflowClassification.EXPENSE,
