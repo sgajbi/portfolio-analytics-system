@@ -54,6 +54,7 @@ def setup_holdings_data(db_engine):
             Portfolio(portfolio_id="P3", base_currency="USD", open_date=date(2024,1,1), risk_exposure="a", investment_time_horizon="b", portfolio_type="c", booking_center="d", cif_id="e", status="f"),
             Portfolio(portfolio_id="P4", base_currency="USD", open_date=date(2024,1,1), risk_exposure="a", investment_time_horizon="b", portfolio_type="c", booking_center="d", cif_id="e", status="f"),
         ])
+        # Add transactions as prerequisites for PositionHistory's foreign key
         session.add_all([
             Transaction(transaction_id="T1", portfolio_id="P1", instrument_id="I1", security_id="S1", transaction_date=datetime.now(), transaction_type="BUY", quantity=1, price=1, gross_transaction_amount=1, trade_currency="USD", currency="USD"),
             Transaction(transaction_id="T2", portfolio_id="P2", instrument_id="I1", security_id="S1", transaction_date=datetime.now(), transaction_type="BUY", quantity=1, price=1, gross_transaction_amount=1, trade_currency="USD", currency="USD"),
