@@ -48,7 +48,7 @@ class PositionAnalyticsService:
             securityId=snapshot.security_id,
             quantity=float(snapshot.quantity),
             weight=float(market_value_base / total_market_value_base) if total_market_value_base else 0.0,
-            held_since_date=snapshot.date # Placeholder: To be implemented in next PR
+            held_since_date=snapshot.date # Default, will be overwritten
         )
 
         # --- Start Concurrent Enrichment Tasks ---

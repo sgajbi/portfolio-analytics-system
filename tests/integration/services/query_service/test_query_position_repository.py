@@ -74,7 +74,7 @@ async def test_get_latest_positions_by_portfolio(clean_db, setup_test_data, asyn
     # Unpack all the returned columns
     (
         latest_snapshot, instrument_name, reprocessing_status, isin,
-        currency, asset_class, sector, country_of_risk
+        currency, asset_class, sector, country_of_risk, epoch
     ) = latest_positions[0]
     
     assert latest_snapshot.portfolio_id == portfolio_id
@@ -88,3 +88,4 @@ async def test_get_latest_positions_by_portfolio(clean_db, setup_test_data, asyn
     assert currency == "USD"
     assert sector == "Technology"
     assert country_of_risk == "US"
+    assert epoch == 0
