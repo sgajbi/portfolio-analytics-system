@@ -6,7 +6,7 @@ from decimal import Decimal
 # Use the synchronous engine for test setup, as it's simpler.
 from sqlalchemy.orm import Session
 from sqlalchemy.ext.asyncio import AsyncSession
-from portfolio_common.database_models import Portfolio, Instrument, DailyPositionSnapshot, PositionState
+from portfolio_common.database_models import Portfolio, Instrument, DailyPositionSnapshot, PositionState, Transaction, PositionHistory
 
 # CORRECTED IMPORT: Now points to the query_service's repository
 from src.services.query_service.app.repositories.position_repository import PositionRepository
@@ -54,6 +54,28 @@ def setup_test_data(db_engine):
     
     return {"today": today, "yesterday": yesterday}
 
+@pytest.fixture(scope="function")
+def setup_held_since_data(db_engine):
+    """Sets up a broken holding period (BUY -> SELL -> BUY) for a security."""
+    portfolio_id = "HELD_SINCE_P1"
+    security_id = "HELD_SINCE_S1"
+    with Session(db_engine) as session:
+        # Prerequisites
+        session.add(Portfolio(portfolio_id=portfolio_id, base_currency="USD", open_date=date(2024,1,1), risk_exposure="a", investment_time_horizon="b", portfolio_type="c", booking_center="d", cif_id="e", status="f"))
+        session.add(Transaction(transaction_id="T1", portfolio_id=portfolio_id, security_id=security_id, instrument_id="I1", transaction_date=date(2025,1,1), transaction_type="BUY", quantity=1, price=1, gross_transaction_amount=1, trade_currency="USD", currency="USD"))
+        session.add(Transaction(transaction_id="T2", portfolio_id=portfolio_id, security_id=security_id, instrument_id="I1", transaction_date=date(2025,1,1), transaction_type="BUY", quantity=1, price=1, gross_transaction_amount=1, trade_currency="USD", currency="USD"))
+        session.add(Transaction(transaction_id="T3", portfolio_id=portfolio_id, security_id=security_id, instrument_id="I1", transaction_date=date(2025,1,1), transaction_type="BUY", quantity=1, price=1, gross_transaction_amount=1, trade_currency="USD", currency="USD"))
+        session.commit()
+
+        # History: Buy on Mar 1, Sell on Mar 15 (quantity -> 0), Buy again on Apr 1
+        history = [
+            PositionHistory(portfolio_id=portfolio_id, security_id=security_id, transaction_id="T1", epoch=0, position_date=date(2025, 3, 1), quantity=Decimal("100"), cost_basis=Decimal("1000")),
+            PositionHistory(portfolio_id=portfolio_id, security_id=security_id, transaction_id="T2", epoch=0, position_date=date(2025, 3, 15), quantity=Decimal("0"), cost_basis=Decimal("0")),
+            PositionHistory(portfolio_id=portfolio_id, security_id=security_id, transaction_id="T3", epoch=0, position_date=date(2025, 4, 1), quantity=Decimal("50"), cost_basis=Decimal("550")),
+        ]
+        session.add_all(history)
+        session.commit()
+
 
 async def test_get_latest_positions_by_portfolio(clean_db, setup_test_data, async_db_session: AsyncSession):
     """
@@ -89,3 +111,21 @@ async def test_get_latest_positions_by_portfolio(clean_db, setup_test_data, asyn
     assert sector == "Technology"
     assert country_of_risk == "US"
     assert epoch == 0
+
+async def test_get_held_since_date(clean_db, setup_held_since_data, async_db_session: AsyncSession):
+    """
+    GIVEN a position history with a period of zero quantity
+    WHEN get_held_since_date is called
+    THEN it should return the date of the first transaction that re-opened the position.
+    """
+    # ARRANGE
+    repo = PositionRepository(async_db_session)
+    portfolio_id = "HELD_SINCE_P1"
+    security_id = "HELD_SINCE_S1"
+
+    # ACT
+    held_since = await repo.get_held_since_date(portfolio_id, security_id, 0)
+
+    # ASSERT
+    # The last zero quantity was on Mar 15. The next transaction was on Apr 1.
+    assert held_since == date(2025, 4, 1)
