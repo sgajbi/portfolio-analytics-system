@@ -61,6 +61,7 @@ class PositionCalculator:
             )
             return
 
+        
         latest_snapshot_date = await repo.get_latest_completed_snapshot_date(
             portfolio_id, security_id, current_state.epoch
         )

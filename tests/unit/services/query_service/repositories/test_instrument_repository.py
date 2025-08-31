@@ -10,27 +10,16 @@ pytestmark = pytest.mark.asyncio
 
 @pytest.fixture
 def mock_db_session() -> AsyncMock:
-    """Provides a mock SQLAlchemy AsyncSession that can handle list and count queries."""
+    """
+    Provides a mock SQLAlchemy AsyncSession where 'execute' returns a synchronous MagicMock.
+    This correctly simulates the SQLAlchemy 2.0 async API.
+    """
     session = AsyncMock(spec=AsyncSession)
-
-    # --- FINAL FIX: This fixture handles both query types ---
     
-    # 1. Configure mock for the COUNT query path
-    mock_count_result = MagicMock()
-    mock_count_result.scalar.return_value = 5
-
-    # 2. Configure mock for the LIST query path
-    mock_list_result = MagicMock()
-    mock_list_result.scalars.return_value.all.return_value = [Instrument(), Instrument()]
-
-    # 3. Use a side_effect to inspect the query and return the correct mock
-    async def execute_side_effect(statement):
-        if "count" in str(statement.compile()).lower():
-            return mock_count_result
-        return mock_list_result
-
-    # 4. Assign the side_effect to an AsyncMock to allow awaiting AND assertions
-    session.execute = AsyncMock(side_effect=execute_side_effect)
+    # The result of awaiting execute() should be a synchronous mock,
+    # because the SQLAlchemy Result object has synchronous methods like .scalars() and .scalar().
+    mock_result = MagicMock()
+    session.execute.return_value = mock_result
     
     return session
 
@@ -45,6 +34,12 @@ async def test_get_instruments_no_filters(repository: InstrumentRepository, mock
     WHEN get_instruments is called
     THEN it should construct a SELECT statement without a WHERE clause.
     """
+    # ARRANGE: Configure the synchronous mock result for this test
+    mock_result = mock_db_session.execute.return_value
+    mock_result.scalars.return_value.all.return_value = [
+        MagicMock(spec=Instrument), MagicMock(spec=Instrument)
+    ]
+    
     # ACT
     instruments = await repository.get_instruments(skip=0, limit=100)
 
@@ -60,6 +55,10 @@ async def test_get_instruments_pagination(repository: InstrumentRepository, mock
     WHEN get_instruments is called
     THEN the generated query should include OFFSET and LIMIT clauses.
     """
+    # ARRANGE
+    mock_result = mock_db_session.execute.return_value
+    mock_result.scalars.return_value.all.return_value = []
+
     # ACT
     await repository.get_instruments(skip=10, limit=50)
 
@@ -76,6 +75,10 @@ async def test_get_instruments_with_filters(repository: InstrumentRepository, mo
     WHEN get_instruments is called
     THEN the generated query should include corresponding WHERE clauses.
     """
+    # ARRANGE
+    mock_result = mock_db_session.execute.return_value
+    mock_result.scalars.return_value.all.return_value = []
+
     # ACT
     await repository.get_instruments(skip=0, limit=100, security_id="SEC1", product_type="Equity")
 
@@ -92,6 +95,10 @@ async def test_get_instruments_count(repository: InstrumentRepository, mock_db_s
     WHEN get_instruments_count is called
     THEN it should return the scalar value from the executed query.
     """
+    # ARRANGE
+    mock_result = mock_db_session.execute.return_value
+    mock_result.scalar.return_value = 5
+
     # ACT
     count = await repository.get_instruments_count(product_type="Bond")
 

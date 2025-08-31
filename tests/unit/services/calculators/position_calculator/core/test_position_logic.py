@@ -213,7 +213,6 @@ async def test_same_day_transaction_is_not_backdated(
     # Normal processing should occur
     mock_repo.save_positions.assert_awaited_once()
 
-# --- NEW FAILING TEST (TDD) ---
 def test_calculate_next_position_for_transfer_in_uses_quantity_field():
     """
     GIVEN a TRANSFER_IN transaction where quantity and gross amount differ
