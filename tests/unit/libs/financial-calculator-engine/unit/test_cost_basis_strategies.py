@@ -48,7 +48,7 @@ def test_average_cost_simple_disposition(avco_strategy: AverageCostBasisStrategy
     # Act: Consume a partial sell
     sell_quantity = Decimal("50")
     total_matched_cost_base, total_matched_cost_local, consumed_quantity, error = avco_strategy.consume_sell_quantity(
-        portfolio_id="P1", instrument_id="AVCO_STOCK", required_quantity=sell_quantity
+        portfolio_id="P1", instrument_id="AVCO_STOCK", sell_quantity=sell_quantity
     )
 
     # Assert the results of the disposition
@@ -59,6 +59,48 @@ def test_average_cost_simple_disposition(avco_strategy: AverageCostBasisStrategy
 
     # Assert the final state
     assert avco_strategy.get_available_quantity("P1", "AVCO_STOCK") == Decimal("150")
+
+def test_average_cost_dual_currency(avco_strategy: AverageCostBasisStrategy):
+    """
+    Tests AVCO with a USD portfolio trading a EUR stock with changing FX rates.
+    """
+    # ARRANGE
+    # Buy 1: 100 shares @ €10/share, FX=1.10. Cost: €1000 local, $1100 base.
+    buy1 = Transaction(
+        transaction_id="AVCO_BUY_1", portfolio_id="P_USD", instrument_id="EUR_STOCK", security_id="S_EUR",
+        transaction_type="BUY", transaction_date=datetime(2023, 1, 1), quantity=Decimal("100"),
+        net_cost_local=Decimal("1000"), net_cost=Decimal("1100"), trade_currency="EUR", portfolio_base_currency="USD"
+    )
+    # Buy 2: 100 shares @ €12/share, FX=1.15. Cost: €1200 local, $1380 base.
+    buy2 = Transaction(
+        transaction_id="AVCO_BUY_2", portfolio_id="P_USD", instrument_id="EUR_STOCK", security_id="S_EUR",
+        transaction_type="BUY", transaction_date=datetime(2023, 1, 5), quantity=Decimal("100"),
+        net_cost_local=Decimal("1200"), net_cost=Decimal("1380"), trade_currency="EUR", portfolio_base_currency="USD"
+    )
+    
+    avco_strategy.add_buy_lot(buy1)
+    avco_strategy.add_buy_lot(buy2)
+
+    # State after buys: 200 shares, €2200 local cost, $2480 base cost.
+    # Avg Cost: €11.00 local, $12.40 base.
+    assert avco_strategy.get_available_quantity("P_USD", "EUR_STOCK") == Decimal("200")
+
+    # ACT: Sell 50 shares
+    cogs_base, cogs_local, consumed_qty, error = avco_strategy.consume_sell_quantity(
+        portfolio_id="P_USD", instrument_id="EUR_STOCK", sell_quantity=Decimal("50")
+    )
+
+    # ASSERT
+    assert error is None
+    assert consumed_qty == Decimal("50")
+    # COGS Local: 50 * €11.00 = €550
+    assert cogs_local == pytest.approx(Decimal("550"))
+    # COGS Base: 50 * $12.40 = $620
+    assert cogs_base == pytest.approx(Decimal("620"))
+
+    # Assert final state
+    final_qty = avco_strategy.get_available_quantity("P_USD", "EUR_STOCK")
+    assert final_qty == Decimal("150")
 
 # --- Tests for FIFOBasisStrategy ---
 
@@ -140,7 +182,6 @@ def test_fifo_consume_sell_insufficient_quantity(fifo_strategy: FIFOBasisStrateg
     # Assert
     assert cost_base == Decimal("0")
     assert consumed_qty == Decimal("0")
-    # FIX: Corrected assertion to match the actual error message format
     assert error == "Sell quantity (101) exceeds available holdings (100)."
     assert fifo_strategy.get_available_quantity("P1", "FIFO_STOCK") == Decimal("100")
 
@@ -177,5 +218,3 @@ def test_fifo_multi_lot_disposition(fifo_strategy: FIFOBasisStrategy):
     lot_key = ("P1", "FIFO_STOCK")
     assert len(fifo_strategy._open_lots[lot_key]) == 1
     assert fifo_strategy._open_lots[lot_key][0].remaining_quantity == Decimal("30")
-
-

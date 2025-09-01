@@ -83,34 +83,45 @@ class FIFOBasisStrategy:
 
 class AverageCostBasisStrategy(CostBasisStrategy):
     """
-    Implements the Average Cost (AVCO) method for tracking cost basis.
-    NOTE: This strategy is not fully updated for dual-currency and should not be used.
+    Implements the Average Cost (AVCO) method for tracking cost basis,
+    with full support for dual-currency calculations.
     """
     def __init__(self):
-        self._holdings: Dict[Tuple[str, str], Dict[str, Decimal]] = defaultdict(lambda: {'total_qty': Decimal(0), 'total_cost': Decimal(0)})
+        self._holdings: Dict[Tuple[str, str], Dict[str, Decimal]] = defaultdict(
+            lambda: {'total_qty': Decimal(0), 'total_cost_local': Decimal(0), 'total_cost_base': Decimal(0)}
+        )
         logger.debug("AverageCostBasisStrategy initialized.")
 
     def add_buy_lot(self, transaction: Transaction):
+        if transaction.net_cost is None or transaction.net_cost_local is None:
+            raise ValueError(f"Buy transaction {transaction.transaction_id} must have net_cost and net_cost_local calculated.")
+            
         key = (transaction.portfolio_id, transaction.instrument_id)
         self._holdings[key]['total_qty'] += transaction.quantity
-        self._holdings[key]['total_cost'] += transaction.net_cost
+        self._holdings[key]['total_cost_local'] += transaction.net_cost_local
+        self._holdings[key]['total_cost_base'] += transaction.net_cost
 
     def consume_sell_quantity(self, portfolio_id: str, instrument_id: str, required_quantity: Decimal) -> Tuple[Decimal, Decimal, Decimal, Optional[str]]:
         key = (portfolio_id, instrument_id)
-        total_qty = self._holdings[key]['total_qty']
-        total_cost = self._holdings[key]['total_cost']
+        holding = self._holdings[key]
+        total_qty = holding['total_qty']
 
         if required_quantity > total_qty:
             return (Decimal(0), Decimal(0), Decimal(0), f"Sell quantity ({required_quantity}) exceeds available average cost holdings ({total_qty}).")
-        if total_qty == Decimal(0):
+        if total_qty.is_zero():
             return (Decimal(0), Decimal(0), Decimal(0), "No holdings to sell against (Average Cost method).")
 
-        average_cost_per_share = total_cost / total_qty
-        matched_cost = required_quantity * average_cost_per_share
-        self._holdings[key]['total_qty'] -= required_quantity
-        self._holdings[key]['total_cost'] -= matched_cost
+        avg_cost_per_share_local = holding['total_cost_local'] / total_qty
+        avg_cost_per_share_base = holding['total_cost_base'] / total_qty
+
+        cogs_local = required_quantity * avg_cost_per_share_local
+        cogs_base = required_quantity * avg_cost_per_share_base
         
-        return matched_cost, matched_cost, required_quantity, None
+        holding['total_qty'] -= required_quantity
+        holding['total_cost_local'] -= cogs_local
+        holding['total_cost_base'] -= cogs_base
+        
+        return cogs_base, cogs_local, required_quantity, None
 
     def get_available_quantity(self, portfolio_id: str, instrument_id: str) -> Decimal:
         key = (portfolio_id, instrument_id)
