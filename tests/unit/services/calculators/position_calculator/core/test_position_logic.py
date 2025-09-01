@@ -60,7 +60,10 @@ async def test_calculate_discards_stale_epoch_event(
     """
     # ARRANGE
     mock_fencer_instance = mock_fencer_class.return_value
-    mock_fencer_instance.check.return_value = False # Simulate a stale event
+    # --- THIS IS THE FIX ---
+    # The mocked method must be an awaitable that returns a boolean.
+    mock_fencer_instance.check = AsyncMock(return_value=False)
+    # --- END FIX ---
 
     # ACT
     await PositionCalculator.calculate(
@@ -89,7 +92,9 @@ async def test_calculate_normal_flow(
     """
     # ARRANGE
     mock_fencer_instance = mock_fencer_class.return_value
-    mock_fencer_instance.check.return_value = True
+    # --- THIS IS THE FIX ---
+    mock_fencer_instance.check = AsyncMock(return_value=True)
+    # --- END FIX ---
 
     # Simulate a state where the transaction is not backdated
     mock_state_repo.get_or_create_state.return_value = PositionState(watermark_date=date(2025, 8, 19), epoch=1)
@@ -122,7 +127,9 @@ async def test_calculate_re_emits_events_for_original_backdated_transaction(
     """
     # ARRANGE
     mock_fencer_instance = mock_fencer_class.return_value
-    mock_fencer_instance.check.return_value = True
+    # --- THIS IS THE FIX ---
+    mock_fencer_instance.check = AsyncMock(return_value=True)
+    # --- END FIX ---
 
     # This event is an original ingestion, so its epoch is not yet set.
     sample_event.epoch = None
