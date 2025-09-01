@@ -18,7 +18,6 @@ from portfolio_common.outbox_repository import OutboxRepository
 from portfolio_common.config import KAFKA_PROCESSED_TRANSACTIONS_COMPLETED_TOPIC
 from portfolio_common.database_models import Portfolio
 
-# IMPORTANT: Import all necessary components from the engine
 from engine.transaction_processor import TransactionProcessor
 from logic.parser import TransactionParser
 from logic.sorter import TransactionSorter
@@ -183,7 +182,6 @@ class CostCalculatorConsumer(BaseConsumer):
                         
                         full_event_to_publish = TransactionEvent.model_validate(updated_txn)
 
-                        # --- FIX: Propagate epoch from incoming event to outgoing event ---
                         if event.epoch is not None:
                             full_event_to_publish.epoch = event.epoch
 

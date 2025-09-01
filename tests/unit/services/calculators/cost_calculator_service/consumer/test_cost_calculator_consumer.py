@@ -9,7 +9,7 @@ from decimal import Decimal
 from sqlalchemy.ext.asyncio import AsyncSession
 from portfolio_common.events import TransactionEvent
 from portfolio_common.database_models import Transaction as DBTransaction, Portfolio
-from src.services.calculators.cost_calculator_service.app.consumer import CostCalculatorConsumer
+from src.services.calculators.cost_calculator_service.app.consumer import CostCalculatorConsumer, PortfolioNotFoundError
 from src.services.calculators.cost_calculator_service.app.repository import CostCalculatorRepository
 from portfolio_common.idempotency_repository import IdempotencyRepository
 from portfolio_common.outbox_repository import OutboxRepository
@@ -119,7 +119,7 @@ async def test_consumer_integration_with_engine(cost_calculator_consumer: CostCa
         data.pop('portfolio_base_currency', None)
         data.pop('fees', None)
         data.pop('accrued_interest', None)
-        data.pop('epoch', None) # Pop epoch as it's not a DB column here
+        data.pop('epoch', None)
         data.pop('net_transaction_amount', None)
         data.pop('average_price', None)
         data.pop('error_reason', None)
@@ -178,7 +178,6 @@ async def test_consumer_propagates_epoch_field(
     mock_idempotency_repo = mock_dependencies["idempotency_repo"]
     mock_outbox_repo = mock_dependencies["outbox_repo"]
     
-    # Set the epoch on the incoming event
     incoming_event_dict = mock_buy_kafka_message.value().decode('utf-8')
     incoming_event_dict = json.loads(incoming_event_dict)
     incoming_event_dict['epoch'] = 2
@@ -189,8 +188,6 @@ async def test_consumer_propagates_epoch_field(
     mock_repo.get_portfolio.return_value = Portfolio(base_currency="USD", portfolio_id="PORT_COST_01")
     mock_repo.get_fx_rate.return_value = None
     
-    # Simulate the update returning a DB object that can be validated by Pydantic
-    # --- FIX: Added 'average_price' and 'error_reason' to the exclude set ---
     exclude_fields = {
         'portfolio_base_currency', 'fees', 'accrued_interest', 'epoch', 
         'net_transaction_amount', 'average_price', 'error_reason'
@@ -206,3 +203,29 @@ async def test_consumer_propagates_epoch_field(
     mock_outbox_repo.create_outbox_event.assert_called_once()
     outbound_payload = mock_outbox_repo.create_outbox_event.call_args.kwargs['payload']
     assert outbound_payload['epoch'] == 2
+
+async def test_consumer_retries_when_portfolio_not_found(
+    cost_calculator_consumer: CostCalculatorConsumer, mock_buy_kafka_message: MagicMock, mock_dependencies
+):
+    """
+    GIVEN a transaction message
+    WHEN the corresponding portfolio is not found on the first attempt
+    THEN the consumer should raise PortfolioNotFoundError to trigger a retry.
+    """
+    # ARRANGE
+    mock_repo = mock_dependencies["repo"]
+    mock_idempotency_repo = mock_dependencies["idempotency_repo"]
+    
+    mock_idempotency_repo.is_event_processed.return_value = False
+    # Simulate portfolio not found
+    mock_repo.get_portfolio.return_value = None
+
+    # ACT & ASSERT
+    with pytest.raises(PortfolioNotFoundError):
+        await cost_calculator_consumer.process_message(mock_buy_kafka_message)
+
+    # --- FIX: Verify it was awaited, not how many times ---
+    mock_repo.get_portfolio.assert_awaited()
+    assert mock_repo.get_portfolio.await_count > 1
+    # --- END FIX ---
+    mock_repo.get_transaction_history.assert_not_called()
