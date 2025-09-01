@@ -28,6 +28,7 @@ class PortfolioEvent(BaseModel):
     is_leverage_allowed: bool = Field(False, alias="isLeverageAllowed")
     advisor_id: Optional[str] = Field(None, alias="advisorId")
     status: str
+    cost_basis_method: Optional[str] = Field("FIFO", alias="costBasisMethod")
 
 class FxRateEvent(BaseModel):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)

@@ -19,6 +19,7 @@ class Portfolio(BaseModel):
     is_leverage_allowed: bool = Field(False, alias="isLeverageAllowed")
     advisor_id: Optional[str] = Field(None, alias="advisorId")
     status: str
+    cost_basis_method: Optional[str] = Field("FIFO", alias="costBasisMethod")
 
     model_config = ConfigDict(
         populate_by_name=True,
@@ -32,7 +33,8 @@ class Portfolio(BaseModel):
                 "portfolioType": "Discretionary",
                 "bookingCenter": "Singapore",
                 "cifId": "CIF_12345",
-                "status": "Active"
+                "status": "Active",
+                "costBasisMethod": "AVCO"
             }
         }
     )

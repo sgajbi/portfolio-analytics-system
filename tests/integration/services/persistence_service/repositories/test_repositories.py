@@ -6,10 +6,11 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from portfolio_common.database_models import Instrument as DBInstrument, Transaction as DBTransaction, Portfolio
-from portfolio_common.events import InstrumentEvent, TransactionEvent
+from portfolio_common.events import InstrumentEvent, TransactionEvent, PortfolioEvent
 
 from src.services.persistence_service.app.repositories.instrument_repository import InstrumentRepository
 from src.services.persistence_service.app.repositories.transaction_db_repo import TransactionDBRepository
+from src.services.persistence_service.app.repositories.portfolio_repository import PortfolioRepository
 
 # Mark all tests in this file as async
 pytestmark = pytest.mark.asyncio
@@ -133,6 +134,39 @@ async def test_instrument_repository_upserts_with_new_issuer_fields(clean_db, as
     assert persisted_instrument.issuer_id == "ISSUER_ABC"
     assert persisted_instrument.ultimate_parent_issuer_id == "ULTIMATE_XYZ"
 
+# --- NEW TEST (RFC 021) ---
+async def test_portfolio_repository_persists_cost_basis_method(clean_db, async_db_session: AsyncSession):
+    """
+    GIVEN a PortfolioEvent with the new cost_basis_method field set to AVCO
+    WHEN the create_or_update_portfolio method is called
+    THEN it should correctly persist the new field in the database.
+    """
+    # ARRANGE
+    repo = PortfolioRepository(async_db_session)
+    event = PortfolioEvent(
+        portfolioId="PORT_AVCO_TEST_01",
+        baseCurrency="USD",
+        openDate=date(2025, 1, 1),
+        cifId="CIF_AVCO_1",
+        status="ACTIVE",
+        riskExposure="High",
+        investmentTimeHorizon="Long",
+        portfolioType="Discretionary",
+        bookingCenter="SG",
+        costBasisMethod="AVCO"  # Explicitly set the new field
+    )
+
+    # ACT
+    await repo.create_or_update_portfolio(event)
+    await async_db_session.commit()
+
+    # ASSERT
+    stmt = select(Portfolio).where(Portfolio.portfolio_id == "PORT_AVCO_TEST_01")
+    result = await async_db_session.execute(stmt)
+    persisted_portfolio = result.scalar_one_or_none()
+
+    assert persisted_portfolio is not None
+    assert persisted_portfolio.cost_basis_method == "AVCO"
 
 # --- Test for TransactionDBRepository (Now Async) ---
 async def test_transaction_repository_is_idempotent(clean_db, async_db_session: AsyncSession):

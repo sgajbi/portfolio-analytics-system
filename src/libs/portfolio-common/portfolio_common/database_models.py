@@ -14,7 +14,6 @@ class BusinessDate(Base):
     __tablename__ = 'business_dates'
 
     
-    # The business date itself is the primary key.
     date = Column(Date, primary_key=True, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
@@ -35,6 +34,7 @@ class Portfolio(Base):
     is_leverage_allowed = Column(Boolean, default=False, nullable=False)
     advisor_id = Column(String, nullable=True)
     status = Column(String, nullable=False)
+    cost_basis_method = Column(String, server_default='FIFO', nullable=True) # <-- NEW FIELD
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
@@ -116,16 +116,13 @@ class Instrument(Base):
     isin = Column(String, unique=True, nullable=False)
     currency = Column(String, nullable=False)
     product_type = Column(String, nullable=False)
-    # --- Allocation Fields (RFC 008) ---
     asset_class = Column(String, nullable=True)
     sector = Column(String, nullable=True)
     country_of_risk = Column(String, nullable=True)
     rating = Column(String, nullable=True)
     maturity_date = Column(Date, nullable=True)
-    # --- Issuer Fields (RFC 016) ---
     issuer_id = Column(String, nullable=True, index=True)
     ultimate_parent_issuer_id = Column(String, nullable=True, index=True)
-    # --- END NEW COLUMNS ---
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
