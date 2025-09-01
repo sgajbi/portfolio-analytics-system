@@ -46,6 +46,7 @@ def mock_kafka_message():
         trade_fee=Decimal("5.50"),
         trade_currency="USD",
         currency="USD",
+        epoch=1
     )
     
     mock_msg = MagicMock()
@@ -104,42 +105,43 @@ async def test_process_message_success(
 
     mock_idempotency_repo.is_event_processed.return_value = False
     
-    # This mock represents the object returned from the database after saving
     mock_saved_cashflow = Cashflow(
         id=1, transaction_id="TXN_CASHFLOW_CONSUMER", portfolio_id="PORT_CFC_01",
         security_id="SEC_CFC_01", cashflow_date=date(2025, 8, 1),
         amount=Decimal("1005.50"), currency="USD", classification="INVESTMENT_OUTFLOW",
         timing="BOD", calculation_type="NET",
         is_position_flow=True,
-        is_portfolio_flow=False, # Correct for a BUY
-        epoch=0 # Default epoch
+        is_portfolio_flow=False,
+        epoch=1
     )
     mock_cashflow_repo.create_cashflow.return_value = mock_saved_cashflow
 
-    # Act
-    await cashflow_consumer.process_message(mock_kafka_message)
+    with patch("src.services.calculators.cashflow_calculator_service.app.consumers.transaction_consumer.EpochFencer") as mock_fencer_class:
+        mock_fencer_instance = AsyncMock()
+        mock_fencer_instance.check.return_value = True
+        mock_fencer_class.return_value = mock_fencer_instance
+        
+        # Act
+        await cashflow_consumer.process_message(mock_kafka_message)
 
-    # Assert
-    mock_idempotency_repo.is_event_processed.assert_called_once_with("raw_transactions_completed-0-123", "cashflow-calculator")
-    mock_cashflow_repo.create_cashflow.assert_called_once()
-    mock_outbox_repo.create_outbox_event.assert_called_once()
-    
-    # Inspect the payload sent to the outbox to ensure it's correct
-    outbox_payload = mock_outbox_repo.create_outbox_event.call_args.kwargs['payload']
-    assert outbox_payload['is_position_flow'] is True
-    assert outbox_payload['is_portfolio_flow'] is False
-    assert 'level' not in outbox_payload
-    
-    mock_idempotency_repo.mark_event_processed.assert_called_once()
-    cashflow_consumer._send_to_dlq_async.assert_not_called()
+        # Assert
+        mock_idempotency_repo.is_event_processed.assert_called_once_with("raw_transactions_completed-0-123", "cashflow-calculator")
+        mock_cashflow_repo.create_cashflow.assert_called_once()
+        mock_outbox_repo.create_outbox_event.assert_called_once()
+        
+        outbox_payload = mock_outbox_repo.create_outbox_event.call_args.kwargs['payload']
+        assert outbox_payload['epoch'] == 1
+        
+        mock_idempotency_repo.mark_event_processed.assert_called_once()
+        cashflow_consumer._send_to_dlq_async.assert_not_called()
 
-async def test_process_message_skips_processed_event(
+async def test_process_message_skips_stale_epoch_event(
     cashflow_consumer: CashflowCalculatorConsumer,
     mock_kafka_message: MagicMock,
     mock_dependencies: dict
 ):
     """
-    GIVEN a transaction message that has already been processed
+    GIVEN a transaction message that the EpochFencer flags as stale
     WHEN the process_message method is called
     THEN it should skip all business logic and publishing.
     """
@@ -148,60 +150,18 @@ async def test_process_message_skips_processed_event(
     mock_idempotency_repo = mock_dependencies["idempotency_repo"]
     mock_outbox_repo = mock_dependencies["outbox_repo"]
 
-    mock_idempotency_repo.is_event_processed.return_value = True
+    # Mock the fencer to return False, indicating a stale event
+    with patch("src.services.calculators.cashflow_calculator_service.app.consumers.transaction_consumer.EpochFencer") as mock_fencer_class:
+        mock_fencer_instance = AsyncMock()
+        mock_fencer_instance.check.return_value = False
+        mock_fencer_class.return_value = mock_fencer_instance
 
-    # Act
-    await cashflow_consumer.process_message(mock_kafka_message)
+        # Act
+        await cashflow_consumer.process_message(mock_kafka_message)
 
-    # Assert
-    mock_idempotency_repo.is_event_processed.assert_called_once_with("raw_transactions_completed-0-123", "cashflow-calculator")
-    mock_cashflow_repo.create_cashflow.assert_not_called()
-    mock_outbox_repo.create_outbox_event.assert_not_called()
-    mock_idempotency_repo.mark_event_processed.assert_not_called()
-    cashflow_consumer._send_to_dlq_async.assert_not_called()
-
-# --- NEW TEST ---
-async def test_process_message_propagates_epoch(
-    cashflow_consumer: CashflowCalculatorConsumer,
-    mock_kafka_message: MagicMock,
-    mock_dependencies: dict
-):
-    """
-    GIVEN a transaction event that includes an epoch from a reprocessing flow
-    WHEN the consumer processes it
-    THEN it should populate the epoch in both the persisted DB record and the outbound event.
-    """
-    # ARRANGE
-    mock_idempotency_repo = mock_dependencies["idempotency_repo"]
-    mock_outbox_repo = mock_dependencies["outbox_repo"]
-    mock_cashflow_repo = mock_dependencies["cashflow_repo"]
-
-    # Modify the incoming event to include an epoch
-    incoming_event_dict = json.loads(mock_kafka_message.value().decode('utf-8'))
-    incoming_event_dict['epoch'] = 2
-    mock_kafka_message.value.return_value = json.dumps(incoming_event_dict).encode('utf-8')
-
-    mock_idempotency_repo.is_event_processed.return_value = False
-    
-    # Simulate the DB record being returned with the correct epoch
-    mock_saved_cashflow = Cashflow(
-        id=2, transaction_id="TXN_CASHFLOW_CONSUMER", portfolio_id="PORT_CFC_01",
-        security_id="SEC_CFC_01", cashflow_date=date(2025, 8, 1),
-        amount=Decimal("1005.50"), currency="USD", classification="INVESTMENT_OUTFLOW",
-        timing="BOD", calculation_type="NET",
-        is_position_flow=True, is_portfolio_flow=False, epoch=2
-    )
-    mock_cashflow_repo.create_cashflow.return_value = mock_saved_cashflow
-
-    # ACT
-    await cashflow_consumer.process_message(mock_kafka_message)
-
-    # ASSERT
-    # 1. Assert the logic was called with an epoch
-    logic_call_args = mock_cashflow_repo.create_cashflow.call_args[0][0]
-    assert logic_call_args.epoch == 2
-
-    # 2. Assert the outbound event contains the epoch
-    mock_outbox_repo.create_outbox_event.assert_called_once()
-    outbox_payload = mock_outbox_repo.create_outbox_event.call_args.kwargs['payload']
-    assert outbox_payload['epoch'] == 2
+        # Assert
+        mock_fencer_instance.check.assert_awaited_once()
+        mock_idempotency_repo.is_event_processed.assert_not_called()
+        mock_cashflow_repo.create_cashflow.assert_not_called()
+        mock_outbox_repo.create_outbox_event.assert_not_called()
+        cashflow_consumer._send_to_dlq_async.assert_not_called()

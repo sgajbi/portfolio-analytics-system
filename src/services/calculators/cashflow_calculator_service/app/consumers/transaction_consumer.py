@@ -13,6 +13,7 @@ from portfolio_common.db import get_async_db_session
 from portfolio_common.config import KAFKA_CASHFLOW_CALCULATED_TOPIC
 from portfolio_common.idempotency_repository import IdempotencyRepository
 from portfolio_common.outbox_repository import OutboxRepository
+from portfolio_common.reprocessing import EpochFencer
 
 from ..core.cashflow_config import get_rule_for_transaction
 from ..core.cashflow_logic import CashflowLogic
@@ -51,6 +52,13 @@ class CashflowCalculatorConsumer(BaseConsumer):
                     idempotency_repo = IdempotencyRepository(db)
                     cashflow_repo = CashflowRepository(db)
                     outbox_repo = OutboxRepository(db)
+
+                    # --- REFACTORED: Add standardized EpochFencer ---
+                    fencer = EpochFencer(db, service_name=SERVICE_NAME)
+                    if not await fencer.check(event):
+                        await tx.rollback() # Rollback the no-op transaction
+                        return
+                    # --- END REFACTOR ---
 
                     # idempotency guard
                     if await idempotency_repo.is_event_processed(event_id, SERVICE_NAME):
