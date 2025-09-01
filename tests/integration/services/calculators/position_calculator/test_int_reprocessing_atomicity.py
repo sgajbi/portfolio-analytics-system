@@ -68,19 +68,21 @@ async def test_reprocessing_is_atomic_on_outbox_failure(
         transaction_id="TXN_ATOM_BACKDATED", portfolio_id=PORTFOLIO_ID, instrument_id="ATS",
         security_id=SECURITY_ID, transaction_date=datetime(2025, 9, 5, 10),
         transaction_type="BUY", quantity=10, price=9, gross_transaction_amount=90,
-        trade_currency="USD", currency="USD", epoch=0
+        trade_currency="USD", currency="USD", epoch=None # An original event has no epoch
     )
 
     # ACT: Attempt to process the back-dated event, which should fail
     with pytest.raises(Exception, match="Outbox failed!"):
+        # --- THIS IS THE FIX ---
+        # The `reprocess_epoch` argument was removed from the method signature.
         await PositionCalculator.calculate(
             event=back_dated_event,
             db_session=async_db_session,
             repo=repo,
             position_state_repo=position_state_repo,
-            outbox_repo=outbox_repo,
-            reprocess_epoch=None
+            outbox_repo=outbox_repo
         )
+        # --- END FIX ---
 
     # ASSERT: Check the database state in a new, clean session
     sync_url = db_engine.url
