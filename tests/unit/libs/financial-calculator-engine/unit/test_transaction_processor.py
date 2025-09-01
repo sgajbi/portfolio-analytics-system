@@ -3,6 +3,7 @@ import pytest
 from datetime import datetime
 from decimal import Decimal
 from typing import List
+from unittest.mock import patch
 
 from engine.transaction_processor import TransactionProcessor
 from logic.parser import TransactionParser
@@ -91,3 +92,31 @@ def test_transaction_processor_handles_backdated_insert(transaction_processor: T
     # Check that the costs for the buy transactions are correct
     assert results["BUY_1"].net_cost == Decimal("1000")
     assert results["BUY_2_BACKDATED"].net_cost == Decimal("800")
+
+@patch('engine.transaction_processor.RECALCULATION_DURATION_SECONDS')
+@patch('engine.transaction_processor.RECALCULATION_DEPTH')
+def test_transaction_processor_records_metrics(
+    mock_depth_metric, mock_duration_metric, transaction_processor: TransactionProcessor
+):
+    """
+    GIVEN a set of transactions
+    WHEN process_transactions is called
+    THEN it should observe the correct depth and duration values in the Prometheus metrics.
+    """
+    # ARRANGE
+    transactions_raw = [
+        {"transaction_id": "BUY_1", "portfolio_id": "P1", "instrument_id": "I1", "security_id": "S1", "transaction_date": "2023-01-01T10:00:00Z", "transaction_type": "BUY", "quantity": 100, "price": 10, "gross_transaction_amount": 1000, "trade_currency": "USD", "portfolio_base_currency": "USD"},
+        {"transaction_id": "SELL_1", "portfolio_id": "P1", "instrument_id": "I1", "security_id": "S1", "transaction_date": "2023-01-10T10:00:00Z", "transaction_type": "SELL", "quantity": 50, "price": 12, "gross_transaction_amount": 600, "trade_currency": "USD", "portfolio_base_currency": "USD"},
+    ]
+
+    # ACT
+    transaction_processor.process_transactions(
+        existing_transactions_raw=[],
+        new_transactions_raw=transactions_raw
+    )
+
+    # ASSERT
+    # The depth is the total number of transactions processed (2 in this case)
+    mock_depth_metric.observe.assert_called_once_with(2)
+    # The duration metric should have been observed exactly once.
+    mock_duration_metric.observe.assert_called_once()
