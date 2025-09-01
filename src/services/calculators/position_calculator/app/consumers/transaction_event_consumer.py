@@ -55,32 +55,32 @@ class TransactionEventConsumer(BaseConsumer):
             reprocess_epoch = event.epoch
 
             async for db in get_async_db_session():
-                # The core logic now manages its own transaction for atomicity
-                idempotency_repo = IdempotencyRepository(db)
-                if await idempotency_repo.is_event_processed(event_id, SERVICE_NAME):
-                    logger.warning("Event already processed. Skipping.")
-                    await db.commit() # Commit to advance offset
-                    return
-
-                repo = PositionRepository(db)
-                position_state_repo = PositionStateRepository(db)
-                outbox_repo = OutboxRepository(db) # <-- Create OutboxRepository
-                
-                await PositionCalculator.calculate(
-                    event=event,
-                    db_session=db,
-                    repo=repo,
-                    position_state_repo=position_state_repo,
-                    outbox_repo=outbox_repo, # <-- Pass it to the logic
-                    reprocess_epoch=reprocess_epoch
-                )
-                
-                # The transaction inside `calculate` is already committed.
-                # Now commit the idempotency key.
+                # --- FIX: Wrap entire operation in a single atomic transaction ---
                 async with db.begin():
+                    idempotency_repo = IdempotencyRepository(db)
+                    if await idempotency_repo.is_event_processed(event_id, SERVICE_NAME):
+                        logger.warning("Event already processed. Skipping.")
+                        # Transaction will be rolled back, but that's safe.
+                        return
+
+                    repo = PositionRepository(db)
+                    position_state_repo = PositionStateRepository(db)
+                    outbox_repo = OutboxRepository(db)
+                    
+                    await PositionCalculator.calculate(
+                        event=event,
+                        db_session=db,
+                        repo=repo,
+                        position_state_repo=position_state_repo,
+                        outbox_repo=outbox_repo,
+                        reprocess_epoch=reprocess_epoch
+                    )
+                    
+                    # This is now part of the same transaction
                     await idempotency_repo.mark_event_processed(
                         event_id, event.portfolio_id, SERVICE_NAME, correlation_id
                     )
+                # --- END FIX ---
 
         except (json.JSONDecodeError, ValidationError):
             logger.error("Invalid processed transaction event; sending to DLQ.", exc_info=True)
