@@ -13,6 +13,9 @@ from portfolio_common.database_models import PortfolioValuationJob, PositionStat
 from ..repositories.valuation_repository import ValuationRepository
 from portfolio_common.valuation_job_repository import ValuationJobRepository
 from portfolio_common.position_state_repository import PositionStateRepository
+# --- NEW IMPORTS ---
+from portfolio_common.reprocessing_job_repository import ReprocessingJobRepository
+# --- END NEW IMPORTS ---
 from portfolio_common.monitoring import (
     REPROCESSING_ACTIVE_KEYS_TOTAL,
     SNAPSHOT_LAG_SECONDS,
@@ -42,34 +45,28 @@ class ValuationScheduler:
 
     async def _process_instrument_level_triggers(self, db):
         """
-        Processes triggers from back-dated price events, fanning out the
-        watermark reset to all affected portfolio positions.
+        Processes triggers from back-dated price events, creating persistent
+        fan-out jobs instead of processing them in-memory.
         """
         repo = ValuationRepository(db)
-        position_state_repo = PositionStateRepository(db)
+        repro_job_repo = ReprocessingJobRepository(db)
 
         triggers = await repo.get_instrument_reprocessing_triggers(self._batch_size)
         if not triggers:
             return
 
-        logger.info(f"Found {len(triggers)} instrument-level reprocessing triggers.")
+        logger.info(f"Found {len(triggers)} instrument-level reprocessing triggers to convert to jobs.")
+        
         processed_security_ids = []
-
         for trigger in triggers:
-            affected_portfolios = await repo.find_portfolios_for_security(trigger.security_id)
-            if not affected_portfolios:
-                logger.info(f"No portfolios found for security {trigger.security_id}, skipping watermark reset.")
-                processed_security_ids.append(trigger.security_id)
-                continue
-
-            keys_to_update = [(p_id, trigger.security_id) for p_id in affected_portfolios]
-            new_watermark = trigger.earliest_impacted_date - timedelta(days=1)
-
-            updated_count = await position_state_repo.update_watermarks_if_older(
-                keys=keys_to_update,
-                new_watermark_date=new_watermark
+            payload = {
+                "security_id": trigger.security_id,
+                "earliest_impacted_date": trigger.earliest_impacted_date.isoformat()
+            }
+            await repro_job_repo.create_job(
+                job_type='RESET_WATERMARKS',
+                payload=payload
             )
-            logger.info(f"Reset {updated_count} position state watermarks for security {trigger.security_id}.")
             processed_security_ids.append(trigger.security_id)
 
         if processed_security_ids:

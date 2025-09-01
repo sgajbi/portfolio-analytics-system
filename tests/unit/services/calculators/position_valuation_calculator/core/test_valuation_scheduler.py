@@ -12,6 +12,8 @@ from services.calculators.position_valuation_calculator.app.core.valuation_sched
 from services.calculators.position_valuation_calculator.app.repositories.valuation_repository import ValuationRepository
 from portfolio_common.valuation_job_repository import ValuationJobRepository
 from portfolio_common.position_state_repository import PositionStateRepository
+# --- NEW IMPORT ---
+from portfolio_common.reprocessing_job_repository import ReprocessingJobRepository
 
 pytestmark = pytest.mark.asyncio
 
@@ -35,6 +37,8 @@ def mock_dependencies():
     mock_repo = AsyncMock(spec=ValuationRepository)
     mock_job_repo = AsyncMock(spec=ValuationJobRepository)
     mock_state_repo = AsyncMock(spec=PositionStateRepository)
+    # --- NEW MOCK ---
+    mock_repro_job_repo = AsyncMock(spec=ReprocessingJobRepository)
     
     mock_db_session = AsyncMock(spec=AsyncSession)
     mock_transaction = AsyncMock()
@@ -51,11 +55,14 @@ def mock_dependencies():
         "services.calculators.position_valuation_calculator.app.core.valuation_scheduler.ValuationJobRepository", return_value=mock_job_repo
     ), patch(
         "services.calculators.position_valuation_calculator.app.core.valuation_scheduler.PositionStateRepository", return_value=mock_state_repo
+    ), patch( # Add patch for the new repository
+        "services.calculators.position_valuation_calculator.app.core.valuation_scheduler.ReprocessingJobRepository", return_value=mock_repro_job_repo
     ):
         yield {
             "repo": mock_repo,
             "job_repo": mock_job_repo,
-            "state_repo": mock_state_repo
+            "state_repo": mock_state_repo,
+            "repro_job_repo": mock_repro_job_repo
         }
 
 async def test_scheduler_creates_position_aware_backfill_jobs(scheduler: ValuationScheduler, mock_dependencies: dict):
@@ -206,15 +213,15 @@ async def test_scheduler_dispatches_claimed_jobs(scheduler: ValuationScheduler, 
     headers1 = dict(first_call_args['headers'])
     assert headers1['correlation_id'] == b'corr-1'
 
-# --- NEW TEST ---
-async def test_scheduler_processes_instrument_triggers(scheduler: ValuationScheduler, mock_dependencies: dict):
+async def test_scheduler_creates_persistent_job_from_instrument_trigger(scheduler: ValuationScheduler, mock_dependencies: dict):
     """
     GIVEN an instrument reprocessing trigger in the database
     WHEN the scheduler runs _process_instrument_level_triggers
-    THEN it should find affected portfolios, reset their watermarks, and delete the trigger.
+    THEN it should create a persistent job and NOT update watermarks directly.
     """
     # ARRANGE
     mock_repo = mock_dependencies["repo"]
+    mock_repro_job_repo = mock_dependencies["repro_job_repo"]
     mock_state_repo = mock_dependencies["state_repo"]
     
     trigger_date = date(2025, 8, 5)
@@ -223,23 +230,26 @@ async def test_scheduler_processes_instrument_triggers(scheduler: ValuationSched
     ]
     
     mock_repo.get_instrument_reprocessing_triggers.return_value = triggers
-    mock_repo.find_portfolios_for_security.return_value = ["P1", "P2"]
-
+    
     # ACT
     await scheduler._process_instrument_level_triggers(AsyncMock())
 
     # ASSERT
     # 1. Verify it checked for triggers
     mock_repo.get_instrument_reprocessing_triggers.assert_awaited_once()
+    
+    # 2. Verify it created a persistent job with the correct payload
+    mock_repro_job_repo.create_job.assert_awaited_once()
+    call_args = mock_repro_job_repo.create_job.call_args.kwargs
+    assert call_args['job_type'] == 'RESET_WATERMARKS'
+    assert call_args['payload'] == {
+        "security_id": "S1",
+        "earliest_impacted_date": "2025-08-05"
+    }
 
-    # 2. Verify it found the affected portfolios
-    mock_repo.find_portfolios_for_security.assert_awaited_once_with("S1")
+    # 3. Verify it DID NOT call the old, direct fan-out logic
+    mock_state_repo.update_watermarks_if_older.assert_not_called()
+    mock_repo.find_portfolios_for_security.assert_not_called()
     
-    # 3. Verify it reset the watermarks correctly
-    mock_state_repo.update_watermarks_if_older.assert_awaited_once()
-    call_args = mock_state_repo.update_watermarks_if_older.call_args.kwargs
-    assert call_args['keys'] == [("P1", "S1"), ("P2", "S1")]
-    assert call_args['new_watermark_date'] == trigger_date - timedelta(days=1)
-    
-    # 4. Verify it consumed and deleted the trigger
+    # 4. Verify it consumed and deleted the original trigger
     mock_repo.delete_instrument_reprocessing_triggers.assert_awaited_once_with(["S1"])
