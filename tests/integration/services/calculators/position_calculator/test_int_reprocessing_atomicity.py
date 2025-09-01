@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.orm import Session
 
 from portfolio_common.database_models import Portfolio, Instrument, Transaction as DBTransaction, PositionState, DailyPositionSnapshot
@@ -28,15 +28,13 @@ def setup_repro_atomicity_data(db_engine, clean_db):
         # Prerequisites
         session.add(Portfolio(portfolio_id=PORTFOLIO_ID, base_currency="USD", open_date=date(2025, 1, 1), cif_id="CIF", status="ACTIVE", risk_exposure="a", investment_time_horizon="b", portfolio_type="c", booking_center="d"))
         
-        # --- FIX: Use correct snake_case attribute names for the SQLAlchemy model ---
         session.add(Instrument(
             security_id=SECURITY_ID, 
             name="Atomicity Test Stock", 
             isin="US_ATOM_REPRO", 
-            currency="USD", # Corrected from instrumentCurrency
-            product_type="Equity" # Corrected from productType
+            currency="USD",
+            product_type="Equity"
         ))
-        # --- END FIX ---
 
         session.flush()
 
@@ -48,7 +46,8 @@ def setup_repro_atomicity_data(db_engine, clean_db):
 
 async def test_reprocessing_is_not_atomic_on_publish_failure(
     setup_repro_atomicity_data,
-    async_db_session: AsyncSession
+    async_db_session: AsyncSession,
+    db_engine # <-- Add db_engine fixture to create a new session
 ):
     """
     This test proves the current implementation is NOT atomic.
@@ -82,10 +81,18 @@ async def test_reprocessing_is_not_atomic_on_publish_failure(
             reprocess_epoch=None
         )
 
+    # --- FIX: Create a new, clean session factory to check the committed DB state ---
+    sync_url = db_engine.url
+    async_url = sync_url.render_as_string(hide_password=False).replace("postgresql://", "postgresql+asyncpg://")
+    async_engine = create_async_engine(async_url)
+    NewSession = async_sessionmaker(bind=async_engine, class_=AsyncSession, expire_on_commit=False)
+    # --- END FIX ---
+
     # ASSERT: Check the database state in a new, clean session to see what was committed.
-    # We must use a new session to ensure we are reading the committed state.
-    async with async_db_session.begin():
-        state_after_failure = await async_db_session.get(PositionState, (PORTFOLIO_ID, SECURITY_ID))
+    async with NewSession() as new_session:
+        state_after_failure = await new_session.get(PositionState, (PORTFOLIO_ID, SECURITY_ID))
+
+    await async_engine.dispose()
 
     # The current (buggy) implementation commits the state change before publishing.
     # This assertion proves the bug: the epoch is now 1, but the replay failed.
