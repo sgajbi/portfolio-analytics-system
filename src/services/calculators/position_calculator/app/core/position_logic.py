@@ -31,7 +31,7 @@ class PositionCalculator:
         db_session: AsyncSession,
         repo: PositionRepository,
         position_state_repo: PositionStateRepository,
-        outbox_repo: OutboxRepository, # <-- UPDATED: Now uses OutboxRepository
+        outbox_repo: OutboxRepository,
         reprocess_epoch: Optional[int] = None
     ) -> None:
         """
@@ -84,26 +84,24 @@ class PositionCalculator:
             )
             new_watermark = transaction_date - timedelta(days=1)
             
-            # --- FIX: Perform state update and event creation in one transaction ---
-            async with db_session.begin():
-                new_state = await position_state_repo.increment_epoch_and_reset_watermark(
-                    portfolio_id, security_id, new_watermark
+            # The calling consumer MUST provide the transaction scope for this to be atomic.
+            new_state = await position_state_repo.increment_epoch_and_reset_watermark(
+                portfolio_id, security_id, new_watermark
+            )
+            
+            all_transactions = await repo.get_all_transactions_for_security(portfolio_id, security_id)
+            
+            logger.info(f"Atomically queuing {len(all_transactions)} events for reprocessing replay in Epoch {new_state.epoch}")
+            for txn in all_transactions:
+                event_to_publish = TransactionEvent.model_validate(txn)
+                event_to_publish.epoch = new_state.epoch
+                await outbox_repo.create_outbox_event(
+                    aggregate_type='ReprocessTransaction',
+                    aggregate_id=str(txn.portfolio_id),
+                    event_type='ReprocessTransactionReplay',
+                    topic=KAFKA_PROCESSED_TRANSACTIONS_COMPLETED_TOPIC,
+                    payload=event_to_publish.model_dump(mode='json')
                 )
-                
-                all_transactions = await repo.get_all_transactions_for_security(portfolio_id, security_id)
-                
-                logger.info(f"Atomically queuing {len(all_transactions)} events for reprocessing replay in Epoch {new_state.epoch}")
-                for txn in all_transactions:
-                    event_to_publish = TransactionEvent.model_validate(txn)
-                    event_to_publish.epoch = new_state.epoch
-                    await outbox_repo.create_outbox_event(
-                        aggregate_type='ReprocessTransaction',
-                        aggregate_id=str(txn.portfolio_id),
-                        event_type='ReprocessTransactionReplay',
-                        topic=KAFKA_PROCESSED_TRANSACTIONS_COMPLETED_TOPIC,
-                        payload=event_to_publish.model_dump(mode='json')
-                    )
-            # --- END FIX ---
             return
 
         await repo.delete_positions_from(portfolio_id, security_id, transaction_date, message_epoch)
@@ -169,8 +167,6 @@ class PositionCalculator:
             cost_basis_local += net_cost_local
         
         elif txn_type in ["SELL", "TRANSFER_OUT"]:
-            # This logic still has the known proportional bug from RFC-023.
-            # That will be fixed in a separate, dedicated step.
             if not quantity.is_zero():
                 proportion_of_holding = transaction.quantity / quantity
                 cost_basis_reduction = cost_basis * proportion_of_holding
