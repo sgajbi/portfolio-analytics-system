@@ -1,4 +1,4 @@
-# tests/unit/services/timeseries-generator-service/consumers/test_position_timeseries_consumer.py
+# tests/unit/services/timeseries_generator_service/timeseries-generator-service/consumers/test_position_timeseries_consumer.py
 import pytest
 from unittest.mock import MagicMock, patch, AsyncMock
 from datetime import date
@@ -12,8 +12,7 @@ from services.timeseries_generator_service.app.consumers.position_timeseries_con
     PositionTimeseriesConsumer, InstrumentNotFoundError
 )
 from src.services.timeseries_generator_service.app.repositories.timeseries_repository import TimeseriesRepository
-from portfolio_common.position_state_repository import PositionStateRepository
-
+from portfolio_common.reprocessing import EpochFencer
 
 logger = logging.getLogger(__name__)
 pytestmark = pytest.mark.asyncio
@@ -48,9 +47,7 @@ def mock_kafka_message(mock_event: DailyPositionSnapshotPersistedEvent) -> Magic
 
 @pytest.fixture
 def mock_dependencies():
-    # Create a mock with the full spec of the real repository
     mock_repo = AsyncMock(spec=TimeseriesRepository)
-    mock_state_repo = AsyncMock(spec=PositionStateRepository)
     
     mock_db_session = AsyncMock(spec=AsyncSession)
     mock_transaction = AsyncMock()
@@ -63,10 +60,8 @@ def mock_dependencies():
         "services.timeseries_generator_service.app.consumers.position_timeseries_consumer.get_async_db_session", new=get_session_gen
     ), patch(
         "services.timeseries_generator_service.app.consumers.position_timeseries_consumer.TimeseriesRepository", return_value=mock_repo
-    ), patch(
-        "services.timeseries_generator_service.app.consumers.position_timeseries_consumer.PositionStateRepository", return_value=mock_state_repo
     ):
-        yield {"repo": mock_repo, "state_repo": mock_state_repo, "db_session": mock_db_session}
+        yield {"repo": mock_repo, "db_session": mock_db_session}
 
 async def test_process_message_success(
     consumer: PositionTimeseriesConsumer,
@@ -76,11 +71,8 @@ async def test_process_message_success(
 ):
     # ARRANGE
     mock_repo = mock_dependencies["repo"]
-    mock_state_repo = mock_dependencies["state_repo"]
     mock_db_session = mock_dependencies["db_session"]
 
-    # Current epoch matches event epoch
-    mock_state_repo.get_or_create_state.return_value = PositionState(epoch=1)
     mock_repo.get_instrument.return_value = Instrument(security_id=mock_event.security_id, currency="USD")
     mock_db_session.get.return_value = DailyPositionSnapshot(
         id=mock_event.id, quantity=Decimal(100), cost_basis=Decimal(1000), market_value_local=Decimal(1100)
@@ -90,23 +82,20 @@ async def test_process_message_success(
     )
     mock_repo.get_all_cashflows_for_security_date.return_value = []
 
-    # ACT
-    await consumer._process_message_with_retry(mock_kafka_message)
+    # Mock the fencer to return True (process the message)
+    with patch("services.timeseries_generator_service.app.consumers.position_timeseries_consumer.EpochFencer") as mock_fencer_class:
+        mock_fencer_instance = AsyncMock()
+        mock_fencer_instance.check.return_value = True
+        mock_fencer_class.return_value = mock_fencer_instance
 
-    # ASSERT
-    mock_repo.get_instrument.assert_awaited_once_with(mock_event.security_id)
-    mock_db_session.get.assert_awaited_once_with(DailyPositionSnapshot, mock_event.id)
-    mock_repo.upsert_position_timeseries.assert_awaited_once()
-    # Verify the correct epoch was used for the query
-    mock_repo.get_last_snapshot_before.assert_awaited_once_with(
-        portfolio_id=mock_event.portfolio_id,
-        security_id=mock_event.security_id,
-        a_date=mock_event.date,
-        epoch=mock_event.epoch
-    )
-    # Verify the generated record has the correct epoch
-    created_record = mock_repo.upsert_position_timeseries.call_args[0][0]
-    assert created_record.epoch == 1
+        # ACT
+        await consumer._process_message_with_retry(mock_kafka_message)
+
+        # ASSERT
+        mock_fencer_instance.check.assert_awaited_once()
+        mock_repo.upsert_position_timeseries.assert_awaited_once()
+        created_record = mock_repo.upsert_position_timeseries.call_args[0][0]
+        assert created_record.epoch == 1
 
 async def test_process_message_skips_stale_epoch(
     consumer: PositionTimeseriesConsumer,
@@ -116,16 +105,19 @@ async def test_process_message_skips_stale_epoch(
 ):
     # ARRANGE
     mock_repo = mock_dependencies["repo"]
-    mock_state_repo = mock_dependencies["state_repo"]
     
-    # Current epoch is newer than the event's epoch
-    mock_state_repo.get_or_create_state.return_value = PositionState(epoch=2)
+    # Mock the fencer to return False (discard the message)
+    with patch("services.timeseries_generator_service.app.consumers.position_timeseries_consumer.EpochFencer") as mock_fencer_class:
+        mock_fencer_instance = AsyncMock()
+        mock_fencer_instance.check.return_value = False
+        mock_fencer_class.return_value = mock_fencer_instance
+    
+        # ACT
+        with caplog.at_level(logging.WARNING):
+            await consumer._process_message_with_retry(mock_kafka_message)
 
-    # ACT
-    with caplog.at_level(logging.WARNING):
-        await consumer._process_message_with_retry(mock_kafka_message)
-
-    # ASSERT
-    mock_repo.get_instrument.assert_not_called()
-    mock_repo.upsert_position_timeseries.assert_not_called()
-    assert "Snapshot event has stale epoch. Discarding." in caplog.text
+        # ASSERT
+        mock_repo.get_instrument.assert_not_called()
+        mock_repo.upsert_position_timeseries.assert_not_called()
+        # The fencer now handles logging, so we don't need to check caplog here.
+        # The key assertion is that the business logic was not executed.

@@ -15,16 +15,15 @@ from portfolio_common.kafka_consumer import BaseConsumer
 from portfolio_common.logging_utils import correlation_id_var
 from portfolio_common.events import DailyPositionSnapshotPersistedEvent
 from portfolio_common.db import get_async_db_session
-from portfolio_common.database_models import DailyPositionSnapshot, PortfolioAggregationJob, Instrument
-from portfolio_common.position_state_repository import PositionStateRepository
-from portfolio_common.monitoring import EPOCH_MISMATCH_DROPPED_TOTAL # NEW IMPORT
+from portfolio_common.database_models import DailyPositionSnapshot, PortfolioAggregationJob, Instrument, PositionState
+from portfolio_common.reprocessing import EpochFencer
 
 from ..core.position_timeseries_logic import PositionTimeseriesLogic
 from ..repositories.timeseries_repository import TimeseriesRepository
 
 logger = logging.getLogger(__name__)
 
-SERVICE_NAME = "timeseries-generator" # Define service name for metric
+SERVICE_NAME = "timeseries-generator"
 
 class InstrumentNotFoundError(Exception):
     pass
@@ -34,7 +33,6 @@ class PreviousTimeseriesNotFoundError(Exception):
 
 class PositionTimeseriesConsumer(BaseConsumer):
     async def process_message(self, msg: Message):
-        # --- FIX: Removed PreviousTimeseriesNotFoundError from retryable exceptions ---
         retry_config = retry(
             wait=wait_fixed(3),
             stop=stop_after_attempt(15),
@@ -73,25 +71,12 @@ class PositionTimeseriesConsumer(BaseConsumer):
             async for db in get_async_db_session():
                 async with db.begin():
                     repo = TimeseriesRepository(db)
-                    position_state_repo = PositionStateRepository(db)
                     
-                    # --- EPOCH FENCING ---
-                    state = await position_state_repo.get_or_create_state(event.portfolio_id, event.security_id)
-                    if event.epoch < state.epoch:
-                        EPOCH_MISMATCH_DROPPED_TOTAL.labels(
-                            service_name=SERVICE_NAME,
-                            topic=msg.topic(),
-                            portfolio_id=event.portfolio_id,
-                            security_id=event.security_id,
-                        ).inc()
-                        logger.warning(
-                            "Snapshot event has stale epoch. Discarding.",
-                            extra={
-                                "portfolio_id": event.portfolio_id, "security_id": event.security_id,
-                                "message_epoch": event.epoch, "current_epoch": state.epoch
-                            }
-                        )
+                    # --- REFACTORED: Use EpochFencer ---
+                    fencer = EpochFencer(db, service_name=SERVICE_NAME)
+                    if not await fencer.check(event):
                         return # Acknowledge message without processing
+                    # --- END REFACTOR ---
 
                     instrument = await repo.get_instrument(event.security_id)
                     if not instrument:
