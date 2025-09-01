@@ -21,7 +21,7 @@ from portfolio_common.database_models import Portfolio
 from engine.transaction_processor import TransactionProcessor
 from logic.parser import TransactionParser
 from logic.sorter import TransactionSorter
-from logic.cost_basis_strategies import FIFOBasisStrategy
+from logic.cost_basis_strategies import FIFOBasisStrategy, AverageCostBasisStrategy
 from logic.disposition_engine import DispositionEngine
 from logic.cost_calculator import CostCalculator
 from logic.error_reporter import ErrorReporter
@@ -44,15 +44,22 @@ class CostCalculatorConsumer(BaseConsumer):
     Consumes raw transaction events, calculates costs/realized P&L,
     persists updates, and emits a full TransactionEvent downstream.
     """
-    def _get_transaction_processor(self) -> TransactionProcessor:
+    def _get_transaction_processor(self, cost_basis_method: str = "FIFO") -> TransactionProcessor:
         """
-        Correctly builds and returns an instance of the TransactionProcessor
-        with all its required dependencies.
+        Builds and returns an instance of the TransactionProcessor, injecting
+        the specified cost basis strategy.
         """
         error_reporter = ErrorReporter()
         parser = TransactionParser(error_reporter=error_reporter)
         sorter = TransactionSorter()
-        strategy = FIFOBasisStrategy()
+
+        if cost_basis_method == "AVCO":
+            strategy = AverageCostBasisStrategy()
+            logger.debug("Using AVCO strategy for cost basis calculation.")
+        else:
+            strategy = FIFOBasisStrategy()
+            logger.debug("Using FIFO strategy for cost basis calculation.")
+            
         disposition_engine = DispositionEngine(cost_basis_strategy=strategy)
         cost_calculator = CostCalculator(
             disposition_engine=disposition_engine, error_reporter=error_reporter
@@ -141,6 +148,8 @@ class CostCalculatorConsumer(BaseConsumer):
                     if not portfolio:
                         raise PortfolioNotFoundError(f"Portfolio {event.portfolio_id} not found. Retrying...")
 
+                    cost_basis_method = portfolio.cost_basis_method or "FIFO"
+
                     history_db = await repo.get_transaction_history(
                         portfolio_id=event.portfolio_id,
                         security_id=event.security_id,
@@ -159,7 +168,7 @@ class CostCalculatorConsumer(BaseConsumer):
                     new_transaction_ids = {event.transaction_id}
                     
                     
-                    processor = self._get_transaction_processor()
+                    processor = self._get_transaction_processor(cost_basis_method)
                     processed, errored = processor.process_transactions(
                         existing_transactions_raw=[],
                         new_transactions_raw=all_transactions_raw

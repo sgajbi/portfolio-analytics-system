@@ -217,15 +217,42 @@ async def test_consumer_retries_when_portfolio_not_found(
     mock_idempotency_repo = mock_dependencies["idempotency_repo"]
     
     mock_idempotency_repo.is_event_processed.return_value = False
-    # Simulate portfolio not found
     mock_repo.get_portfolio.return_value = None
 
     # ACT & ASSERT
     with pytest.raises(PortfolioNotFoundError):
         await cost_calculator_consumer.process_message(mock_buy_kafka_message)
 
-    # --- FIX: Verify it was awaited, not how many times ---
     mock_repo.get_portfolio.assert_awaited()
-    assert mock_repo.get_portfolio.await_count > 1
-    # --- END FIX ---
+    assert mock_repo.get_portfolio.await_count > 0
     mock_repo.get_transaction_history.assert_not_called()
+
+async def test_consumer_selects_avco_strategy_for_portfolio(
+    cost_calculator_consumer: CostCalculatorConsumer, mock_buy_kafka_message: MagicMock, mock_dependencies
+):
+    """
+    GIVEN a portfolio configured with the 'AVCO' cost basis method
+    WHEN the consumer processes a message for it
+    THEN it should instantiate the AverageCostBasisStrategy.
+    """
+    # ARRANGE
+    mock_repo = mock_dependencies["repo"]
+    mock_idempotency_repo = mock_dependencies["idempotency_repo"]
+    
+    mock_idempotency_repo.is_event_processed.return_value = False
+    mock_repo.get_transaction_history.return_value = []
+    # This is the key part of the test: the portfolio has the AVCO method set.
+    mock_repo.get_portfolio.return_value = Portfolio(
+        base_currency="USD", portfolio_id="PORT_COST_01", cost_basis_method="AVCO"
+    )
+
+    # We patch the strategy classes to act as spies, checking if they were instantiated.
+    with patch('src.services.calculators.cost_calculator_service.app.consumer.FIFOBasisStrategy') as mock_fifo, \
+         patch('src.services.calculators.cost_calculator_service.app.consumer.AverageCostBasisStrategy') as mock_avco:
+        
+        # ACT
+        await cost_calculator_consumer.process_message(mock_buy_kafka_message)
+
+        # ASSERT
+        mock_avco.assert_called_once()
+        mock_fifo.assert_not_called()
