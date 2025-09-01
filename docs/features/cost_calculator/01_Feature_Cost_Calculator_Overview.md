@@ -8,12 +8,8 @@ This service ensures that all P&L is calculated accurately, even in complex scen
 
 ## 2. Key Features
 
-* **Realized P&L Calculation:** Computes the realized gain or loss for every `SELL` transaction based on a configured cost basis methodology.
-* **Cost Basis Tracking:** Tracks the cost basis of all open positions using a tax lot accounting system.
-* **Full History Recalculation:** For every new transaction involving a security, the service re-fetches all previous transactions for that same security and recalculates its entire cost basis history from the beginning. This guarantees correctness when historical data is inserted out of order.
-* **Dual-Currency Support:** Accurately calculates cost and P&L for portfolios that trade securities in currencies different from their base currency, using the appropriate historical FX rates.
-* **Configurable Cost Method:** The underlying engine is designed to support multiple cost basis methods, with **First-In, First-Out (FIFO)** being the current implementation.
-
-## 3. Gaps and Design Considerations
-
-* **Incomplete Cost Methodologies:** The `financial-calculator-engine` currently contains a stub for an `AverageCostBasisStrategy`. However, this strategy is not fully implemented or tested for dual-currency scenarios. As of now, the system exclusively supports the **FIFO** method. Completing and enabling other standard methods (Average Cost, LIFO, Specific Lot) would be a significant enhancement.
+* **Realized P&L Calculation**: Computes the realized gain or loss for every `SELL` transaction based on a configured cost basis methodology.
+* **Cost Basis Tracking**: Tracks the cost basis of all open positions using a tax lot (FIFO) or average cost (AVCO) accounting system.
+* **Full History Recalculation**: For every new transaction involving a security, the service re-fetches all previous transactions for that same security and recalculates its entire cost basis history from the beginning. This guarantees correctness when historical data is inserted out of order.
+* **Dual-Currency Support**: Accurately calculates cost and P&L for portfolios that trade securities in currencies different from their base currency, using the appropriate historical FX rates.
+* **Configurable Cost Method**: The system supports multiple cost basis methods. The method is a configurable attribute on each portfolio, allowing clients to use either **First-In, First-Out (FIFO)** or **Average Cost (AVCO)** to meet their accounting requirements.
