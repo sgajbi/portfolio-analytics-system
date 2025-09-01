@@ -39,7 +39,7 @@ from portfolio_common.database_models import (
     Base, Transaction, TransactionCost, Instrument, MarketPrice, FxRate,
     PositionHistory, OutboxEvent, ProcessedEvent, DailyPositionSnapshot,
     Cashflow, Portfolio, PortfolioAggregationJob, PortfolioTimeseries, PositionTimeseries,
-    InstrumentReprocessingState # <-- ADD NEW MODEL HERE
+    InstrumentReprocessingState, ReprocessingJob
 )
 target_metadata = Base.metadata
 

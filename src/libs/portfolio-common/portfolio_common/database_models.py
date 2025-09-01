@@ -337,3 +337,22 @@ class InstrumentReprocessingState(Base):
     earliest_impacted_date = Column(Date, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+class ReprocessingJob(Base):
+    """
+    Stores durable, persistent jobs for the reprocessing engine,
+    such as fanning out watermark resets for a price change.
+    """
+    __tablename__ = 'reprocessing_jobs'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    job_type = Column(String, nullable=False, index=True)
+    payload = Column(JSON, nullable=False)
+    status = Column(String, nullable=False, default='PENDING', index=True)
+    
+    attempt_count = Column(Integer, nullable=False, default=0, server_default='0')
+    last_attempted_at = Column(DateTime(timezone=True), nullable=True)
+    failure_reason = Column(Text, nullable=True)
+    
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
