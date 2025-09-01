@@ -12,7 +12,7 @@ from ..repositories.position_repository import PositionRepository
 from portfolio_common.position_state_repository import PositionStateRepository
 from portfolio_common.outbox_repository import OutboxRepository
 from portfolio_common.config import KAFKA_PROCESSED_TRANSACTIONS_COMPLETED_TOPIC
-from portfolio_common.monitoring import EPOCH_MISMATCH_DROPPED_TOTAL
+from portfolio_common.reprocessing import EpochFencer
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +32,6 @@ class PositionCalculator:
         repo: PositionRepository,
         position_state_repo: PositionStateRepository,
         outbox_repo: OutboxRepository,
-        reprocess_epoch: Optional[int] = None
     ) -> None:
         """
         Orchestrates recalculation and reprocessing triggers for a single transaction event.
@@ -41,25 +40,13 @@ class PositionCalculator:
         security_id = event.security_id
         transaction_date = event.transaction_date.date()
 
-        current_state = await position_state_repo.get_or_create_state(portfolio_id, security_id)
-        
-        message_epoch = reprocess_epoch if reprocess_epoch is not None else current_state.epoch
-        if message_epoch < current_state.epoch:
-            EPOCH_MISMATCH_DROPPED_TOTAL.labels(
-                service_name="position-calculator",
-                topic="processed_transactions_completed",
-                portfolio_id=portfolio_id,
-                security_id=security_id,
-            ).inc()
-            logger.warning(
-                "Message has stale epoch. Discarding.",
-                extra={
-                    "portfolio_id": portfolio_id, "security_id": security_id,
-                    "message_epoch": message_epoch, "current_epoch": current_state.epoch
-                }
-            )
+        # --- REFACTORED: Use EpochFencer ---
+        fencer = EpochFencer(db_session, service_name="position-calculator")
+        if not await fencer.check(event):
             return
-
+        # --- END REFACTOR ---
+        
+        current_state = await position_state_repo.get_or_create_state(portfolio_id, security_id)
         
         latest_snapshot_date = await repo.get_latest_completed_snapshot_date(
             portfolio_id, security_id, current_state.epoch
@@ -71,7 +58,9 @@ class PositionCalculator:
         
         is_backdated = transaction_date < effective_completed_date
         
-        if is_backdated and reprocess_epoch is None:
+        # A back-dated check is only relevant for an original event (epoch is None).
+        # A replayed event will have an epoch and should bypass this.
+        if is_backdated and event.epoch is None:
             logger.warning(
                 "Back-dated transaction detected. Triggering atomic reprocessing flow via outbox.",
                 extra={
@@ -84,7 +73,6 @@ class PositionCalculator:
             )
             new_watermark = transaction_date - timedelta(days=1)
             
-            # The calling consumer MUST provide the transaction scope for this to be atomic.
             new_state = await position_state_repo.increment_epoch_and_reset_watermark(
                 portfolio_id, security_id, new_watermark
             )
@@ -104,6 +92,7 @@ class PositionCalculator:
                 )
             return
 
+        message_epoch = event.epoch if event.epoch is not None else current_state.epoch
         await repo.delete_positions_from(portfolio_id, security_id, transaction_date, message_epoch)
         anchor_position = await repo.get_last_position_before(portfolio_id, security_id, transaction_date, message_epoch)
         transactions_to_replay = await repo.get_transactions_on_or_after(portfolio_id, security_id, transaction_date)
@@ -168,12 +157,9 @@ class PositionCalculator:
         
         elif txn_type in ["SELL", "TRANSFER_OUT"]:
             if not quantity.is_zero():
-                proportion_of_holding = transaction.quantity / quantity
-                cost_basis_reduction = cost_basis * proportion_of_holding
-                cost_basis_local_reduction = cost_basis_local * proportion_of_holding
-                
-                cost_basis -= cost_basis_reduction
-                cost_basis_local -= cost_basis_local_reduction
+                # Correctly reduce cost basis using the FIFO cost from the event
+                cost_basis += net_cost
+                cost_basis_local += net_cost_local
             
             quantity -= transaction.quantity
 

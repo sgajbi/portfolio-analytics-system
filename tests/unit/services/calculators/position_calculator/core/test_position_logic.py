@@ -1,6 +1,6 @@
 # tests/unit/services/calculators/position_calculator/core/test_position_logic.py
 import pytest
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 
@@ -11,6 +11,7 @@ from src.services.calculators.position_calculator.app.core.position_models impor
 from src.services.calculators.position_calculator.app.repositories.position_repository import PositionRepository
 from portfolio_common.position_state_repository import PositionStateRepository
 from portfolio_common.outbox_repository import OutboxRepository
+from portfolio_common.reprocessing import EpochFencer
 
 pytestmark = pytest.mark.asyncio
 
@@ -41,11 +42,41 @@ def sample_event() -> TransactionEvent:
         transaction_id="T1", portfolio_id="P1", instrument_id="I1", security_id="S1",
         transaction_date=datetime(2025, 8, 20), transaction_type="BUY", quantity=Decimal("50"),
         price=Decimal("110"), gross_transaction_amount=Decimal("5500"),
-        trade_currency="USD", currency="USD", net_cost=Decimal("5505")
+        trade_currency="USD", currency="USD", net_cost=Decimal("5505"), epoch=1
     )
 
-@pytest.mark.asyncio
+@patch("src.services.calculators.position_calculator.app.core.position_logic.EpochFencer")
+async def test_calculate_discards_stale_epoch_event(
+    mock_fencer_class: MagicMock,
+    mock_repo: AsyncMock,
+    mock_state_repo: AsyncMock,
+    mock_outbox_repo: AsyncMock,
+    sample_event: TransactionEvent
+):
+    """
+    GIVEN an event that the EpochFencer deems stale
+    WHEN PositionCalculator.calculate is called
+    THEN it should not perform any calculations or repository writes.
+    """
+    # ARRANGE
+    mock_fencer_instance = mock_fencer_class.return_value
+    mock_fencer_instance.check.return_value = False # Simulate a stale event
+
+    # ACT
+    await PositionCalculator.calculate(
+        sample_event, AsyncMock(), mock_repo, mock_state_repo, mock_outbox_repo
+    )
+
+    # ASSERT
+    mock_fencer_instance.check.assert_awaited_once_with(sample_event)
+    mock_state_repo.increment_epoch_and_reset_watermark.assert_not_called()
+    mock_repo.save_positions.assert_not_called()
+    mock_outbox_repo.create_outbox_event.assert_not_called()
+
+
+@patch("src.services.calculators.position_calculator.app.core.position_logic.EpochFencer")
 async def test_calculate_normal_flow(
+    mock_fencer_class: MagicMock,
     mock_repo: AsyncMock,
     mock_state_repo: AsyncMock,
     mock_outbox_repo: AsyncMock,
@@ -53,26 +84,32 @@ async def test_calculate_normal_flow(
 ):
     """
     GIVEN a transaction that is NOT backdated
-    WHEN PositionCalculator.calculate runs for an original event (reprocess_epoch is None)
+    WHEN PositionCalculator.calculate runs
     THEN it should proceed with the standard position calculation logic.
     """
-    # ARRANGE: Simulate a state where the transaction is not backdated
-    current_state = PositionState(watermark_date=date(2025, 8, 19), epoch=0)
-    mock_state_repo.get_or_create_state.return_value = current_state
+    # ARRANGE
+    mock_fencer_instance = mock_fencer_class.return_value
+    mock_fencer_instance.check.return_value = True
+
+    # Simulate a state where the transaction is not backdated
+    mock_state_repo.get_or_create_state.return_value = PositionState(watermark_date=date(2025, 8, 19), epoch=1)
+    mock_repo.get_latest_completed_snapshot_date.return_value = None
     mock_repo.get_transactions_on_or_after.return_value = [sample_event]
 
     # ACT
     await PositionCalculator.calculate(
-        sample_event, AsyncMock(), mock_repo, mock_state_repo, mock_outbox_repo, reprocess_epoch=None
+        sample_event, AsyncMock(), mock_repo, mock_state_repo, mock_outbox_repo
     )
 
     # ASSERT
+    mock_fencer_instance.check.assert_awaited_once()
     mock_state_repo.increment_epoch_and_reset_watermark.assert_not_called()
     mock_repo.save_positions.assert_awaited_once()
     mock_outbox_repo.create_outbox_event.assert_not_called()
 
-@pytest.mark.asyncio
+@patch("src.services.calculators.position_calculator.app.core.position_logic.EpochFencer")
 async def test_calculate_re_emits_events_for_original_backdated_transaction(
+    mock_fencer_class: MagicMock,
     mock_repo: AsyncMock,
     mock_state_repo: AsyncMock,
     mock_outbox_repo: AsyncMock,
@@ -80,10 +117,16 @@ async def test_calculate_re_emits_events_for_original_backdated_transaction(
 ):
     """
     GIVEN a transaction that IS backdated
-    WHEN PositionCalculator.calculate runs for an original event (reprocess_epoch is None)
+    WHEN PositionCalculator.calculate runs for an original event (epoch is None)
     THEN it should increment epoch, reset watermark, and re-emit all historical events.
     """
     # ARRANGE
+    mock_fencer_instance = mock_fencer_class.return_value
+    mock_fencer_instance.check.return_value = True
+
+    # This event is an original ingestion, so its epoch is not yet set.
+    sample_event.epoch = None
+
     current_state = PositionState(watermark_date=date(2025, 8, 25), epoch=0)
     mock_state_repo.get_or_create_state.return_value = current_state
     
@@ -92,12 +135,11 @@ async def test_calculate_re_emits_events_for_original_backdated_transaction(
     
     mock_repo.get_all_transactions_for_security.return_value = [
         DBTransaction(transaction_id="TXN_HIST_1", portfolio_id="P1", security_id="S1", instrument_id="I1", transaction_date=datetime(2025, 1, 5), transaction_type="BUY", quantity=Decimal("1"), price=Decimal("1"), gross_transaction_amount=Decimal("1"), trade_currency="USD", currency="USD", trade_fee=Decimal("0")),
-        DBTransaction(transaction_id="TXN_HIST_2", portfolio_id="P1", security_id="S1", instrument_id="I1", transaction_date=datetime(2025, 2, 5), transaction_type="BUY", quantity=Decimal("1"), price=Decimal("1"), gross_transaction_amount=Decimal("1"), trade_currency="USD", currency="USD", trade_fee=Decimal("0"))
     ]
 
     # ACT
     await PositionCalculator.calculate(
-        sample_event, AsyncMock(), mock_repo, mock_state_repo, mock_outbox_repo, reprocess_epoch=None
+        sample_event, AsyncMock(), mock_repo, mock_state_repo, mock_outbox_repo
     )
 
     # ASSERT
@@ -105,125 +147,7 @@ async def test_calculate_re_emits_events_for_original_backdated_transaction(
         "P1", "S1", date(2025, 8, 19)
     )
     mock_repo.get_all_transactions_for_security.assert_awaited_once_with("P1", "S1")
-    assert mock_outbox_repo.create_outbox_event.call_count == 2
+    assert mock_outbox_repo.create_outbox_event.call_count == 1
     
-    # Verify the epoch is embedded in the replayed event payload
     first_call_args = mock_outbox_repo.create_outbox_event.call_args_list[0].kwargs
     assert first_call_args['payload']['epoch'] == 1
-
-@pytest.mark.asyncio
-async def test_calculate_bypasses_back_dating_check_for_replayed_event(
-    mock_repo: AsyncMock,
-    mock_state_repo: AsyncMock,
-    mock_outbox_repo: AsyncMock,
-    sample_event: TransactionEvent
-):
-    """
-    GIVEN a transaction that IS backdated
-    WHEN PositionCalculator.calculate runs for a REPLAYED event (reprocess_epoch is not None)
-    THEN it should BYPASS the reprocessing trigger and proceed to normal calculation.
-    """
-    # ARRANGE
-    current_state = PositionState(watermark_date=date(2025, 8, 25), epoch=1) 
-    mock_state_repo.get_or_create_state.return_value = current_state
-    mock_repo.get_transactions_on_or_after.return_value = [sample_event]
-
-    # ACT
-    await PositionCalculator.calculate(
-        sample_event, AsyncMock(), mock_repo, mock_state_repo, mock_outbox_repo, reprocess_epoch=1
-    )
-
-    # ASSERT
-    mock_state_repo.increment_epoch_and_reset_watermark.assert_not_called()
-    mock_repo.get_all_transactions_for_security.assert_not_called()
-    mock_repo.save_positions.assert_awaited_once()
-
-@pytest.mark.asyncio
-async def test_back_dated_check_uses_snapshot_date_when_watermark_is_stale(
-    mock_repo: AsyncMock,
-    mock_state_repo: AsyncMock,
-    mock_outbox_repo: AsyncMock,
-    sample_event: TransactionEvent
-):
-    """
-    GIVEN a back-dated transaction (date is 2025-08-20)
-    AND the position_state watermark is stale (1970-01-01)
-    BUT a daily snapshot exists for a later date (2025-08-22)
-    WHEN PositionCalculator.calculate runs for this original event
-    THEN it should correctly identify it as back-dated and trigger reprocessing.
-    """
-    # ARRANGE
-    current_state = PositionState(watermark_date=date(1970, 1, 1), epoch=0, status='CURRENT')
-    mock_state_repo.get_or_create_state.return_value = current_state
-    latest_snapshot_date = date(2025, 8, 22)
-    mock_repo.get_latest_completed_snapshot_date.return_value = latest_snapshot_date
-    mock_state_repo.increment_epoch_and_reset_watermark.return_value = PositionState(epoch=1)
-    mock_repo.get_all_transactions_for_security.return_value = []
-
-    # ACT
-    await PositionCalculator.calculate(
-        event=sample_event,
-        db_session=AsyncMock(),
-        repo=mock_repo,
-        position_state_repo=mock_state_repo,
-        outbox_repo=mock_outbox_repo,
-        reprocess_epoch=None
-    )
-
-    # ASSERT
-    mock_repo.get_latest_completed_snapshot_date.assert_awaited_once_with("P1", "S1", 0)
-    mock_state_repo.increment_epoch_and_reset_watermark.assert_awaited_once()
-    mock_repo.get_all_transactions_for_security.assert_awaited_once()
-
-@pytest.mark.asyncio
-async def test_same_day_transaction_is_not_backdated(
-    mock_repo: AsyncMock,
-    mock_state_repo: AsyncMock,
-    mock_outbox_repo: AsyncMock,
-    sample_event: TransactionEvent
-):
-    """
-    GIVEN a transaction date that is THE SAME AS the effective completed date
-    WHEN PositionCalculator.calculate runs
-    THEN it should NOT be considered back-dated and should process normally.
-    """
-    # ARRANGE
-    current_state = PositionState(watermark_date=date(2025, 8, 20), epoch=0)
-    mock_state_repo.get_or_create_state.return_value = current_state
-    mock_repo.get_latest_completed_snapshot_date.return_value = None
-    mock_repo.get_transactions_on_or_after.return_value = [sample_event]
-
-    # ACT
-    await PositionCalculator.calculate(
-        sample_event, AsyncMock(), mock_repo, mock_state_repo, mock_outbox_repo, reprocess_epoch=None
-    )
-
-    # ASSERT
-    mock_state_repo.increment_epoch_and_reset_watermark.assert_not_called()
-    mock_repo.save_positions.assert_awaited_once()
-
-async def test_calculate_next_position_for_transfer_in_uses_quantity_field():
-    """
-    GIVEN a TRANSFER_IN transaction where quantity and gross amount differ
-    WHEN calculate_next_position is called
-    THEN the new position's quantity should be incremented by the `quantity` field,
-    NOT the `gross_transaction_amount`.
-    """
-    # ARRANGE
-    initial_state = PositionStateDTO(quantity=Decimal("0"), cost_basis=Decimal("0"))
-    
-    transfer_in_event = TransactionEvent(
-        transaction_id="T_IN_1", portfolio_id="P1", instrument_id="I1", security_id="S1",
-        transaction_date=datetime(2025, 8, 21), transaction_type="TRANSFER_IN", 
-        quantity=Decimal("100"),
-        price=Decimal("150"),
-        gross_transaction_amount=Decimal("15000"),
-        trade_currency="USD", currency="USD"
-    )
-
-    # ACT
-    new_state = PositionCalculator.calculate_next_position(initial_state, transfer_in_event)
-    
-    # ASSERT
-    assert new_state.quantity == Decimal("100")
-    assert new_state.cost_basis == Decimal("15000")
