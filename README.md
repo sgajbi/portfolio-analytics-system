@@ -1,339 +1,213 @@
 # Portfolio Analytics System
 
-[![Python Version](https://img.shields.io/badge/python-3.11-blue.svg)](https://www.python.org/downloads/release/python-3110/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Docker](https://img.shields.io/badge/docker-%230db7ed.svg?style=for-the-badge&logo=docker&logoColor=white)](https://www.docker.com/)
-[![Kafka](https://img.shields.io/badge/Apache%20Kafka-231F20?style=for-the-badge&logo=apachekafka&logoColor=white)](https://kafka.apache.org/)
-[![Postgres](https://img.shields.io/badge/postgresql-4169E1?style=for-the-badge&logo=postgresql&logoColor=white)](https://www.postgresql.org/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-005571?style=for-the-badge&logo=fastapi)](https://fastapi.tiangolo.com/)
+This system provides a comprehensive suite of services for portfolio analytics, including position tracking, valuation, performance calculation, and risk analysis. It is designed as a distributed, event-driven architecture using Kafka for messaging and PostgreSQL for data persistence.
 
-An event-driven, microservices-based platform for comprehensive portfolio analytics. Designed for scalability and reliability, this system ingests financial data, performs complex calculations, and exposes the results through a clean, scalable API. It features a deterministic reprocessing engine, idempotent consumers, and a reliable outbox pattern.
----
 ## Table of Contents
 
-1.  [System Architecture](#1-system-architecture)
-2.  [Core Services](#2-core-services)
-3.  [Core Analytics Capabilities](#3-core-analytics-capabilities)
-4.  [Data Flow & Kafka Topics](#4-data-flow--kafka-topics)
-5.  [API Endpoints](#5-api-endpoints)
-6.  [Observability](#6-observability)
-7.  [Local Development](#7-local-development)
-8.  [Testing](#8-testing)
-9.  [Database Migrations](#9-database-migrations)
-10. [Directory Structure](#10-directory-structure)
-11. [Full Usage Example](#11-full-usage-example)
+- [Architectural Overview](#architectural-overview)
+- [System Setup](#system-setup)
+- [Running the System](#running-the-system)
+- [Running Tests](#running-tests)
+- [Verifying the Workflow](#verifying-the-workflow)
+- [Code Quality](#code-quality)
+- [Tools](#tools)
 
----
-## 1. System Architecture
+## Architectural Overview
 
-The system is architected around **Apache Kafka**, promoting a highly decoupled and scalable environment. Data flows through a choreographed pipeline of specialized microservices, each responsible for a distinct business capability.
+The system follows a microservices architecture, where each service is responsible for a specific domain. Data flows through the system via Kafka topics, ensuring loose coupling and scalability.
 
-### 1.1. Deterministic Reprocessing (Epoch/Watermark Model)
+### Core Data Flow
 
-To handle back-dated events reliably, the system uses an **epoch and watermark** model.
+1.  **Ingestion Service**: Receives raw transaction and market data via a REST API and publishes it to Kafka.
+2.  **Persistence Service**: Consumes raw data from Kafka and persists it to the PostgreSQL database.
+3.  **Calculator Services**:
+    * **Position Calculator**: Consumes persisted transactions, calculates position history, and manages reprocessing logic.
+    * **Position Valuation Calculator**: Consumes price data and valuation jobs to calculate the market value of positions. It includes two key background tasks:
+        * **ValuationScheduler**: Creates backfill valuation jobs, advances watermarks, and creates durable jobs for large-scale price reprocessing events.
+        * **ReprocessingWorker**: Consumes the durable reprocessing jobs to fan-out watermark resets in a controlled, scalable manner, mitigating the "Thundering Herd" problem.
+    * **Cashflow Calculator**: Calculates cash flows based on transactions.
+4.  **Timeseries Generator Service**: Aggregates daily position data into position-level and portfolio-level time series.
+5.  **Query Service**: Provides a FastAPI interface to query the aggregated analytics data.
 
--   A **key** is the combination of `(portfolio_id, security_id)`.
--   The **epoch** is an integer version number for the history of a key.
-All current data for a key shares the same epoch.
--   The **watermark** is a date indicating how far the system has successfully calculated for a key's current epoch.
+### Key Architectural Patterns
 
-When a back-dated event (e.g., a transaction or price) arrives, the system increments the epoch for that key, resets its watermark to a point before the event, and deterministically rebuilds its history under the new epoch. **Epoch fencing** ensures that stray messages from an old epoch are safely discarded, preventing data corruption.
+* **Event-Driven**: Services communicate asynchronously through events, promoting resilience and scalability.
+* **Outbox Pattern**: Ensures atomicity between database writes and event publishing, guaranteeing "at-least-once" delivery.
+* **Idempotent Consumers**: Consumers are designed to handle duplicate messages gracefully, preventing data corruption.
+* **Durable Job Queues**: For high-volume, asynchronous tasks like reprocessing fan-outs, the system uses persistent database tables as durable queues to ensure reliability and control.
 
-### 1.2. Idempotent Processing & Reliability
+## System Setup
 
--   **Idempotent Consumers**: All calculator services are idempotent. They track processed Kafka messages in a `processed_events` table, preventing duplicate calculations from event replays.
--   **Outbox Pattern**: Services publish events to an `outbox_events` table within the same transaction as their business logic. A separate `OutboxDispatcher` process reliably publishes these events to Kafka, guaranteeing at-least-once delivery.
--   **Partition Affinity**: Events are keyed by `portfolio_id`, ensuring all messages for a given portfolio land on the same Kafka partition and are processed sequentially.
-
-```mermaid
-graph TD
-    subgraph "API Layer"
-        direction LR
-        Client[User/Client] -- POST Data --> IngestionService[ingestion_service:8000];
-        Client -- GET Data --> QueryService[query_service:8001];
-    end
-
-    subgraph "Kafka Message Bus"
-        RawData((raw_events));
-        PersistenceCompleted((persistence_completed));
-        CalculationsCompleted((calculations_completed));
-end
-
-    subgraph "Data Processing Pipeline"
-        IngestionService -- Publishes --> RawData;
-        RawData --> PersistenceService[persistence-service];
-        PersistenceService -- Writes --> DB[(PostgreSQL)];
-        PersistenceService -- Publishes via Outbox --> PersistenceCompleted;
-
-        PersistenceCompleted -- "raw_transactions_completed" --> CostCalculator[cost-calculator-service];
-        CostCalculator -- Updates --> DB;
-        CostCalculator -- Publishes via Outbox --> CalculationsCompleted;
-        
-        PersistenceCompleted -- "raw_transactions_completed" --> CashflowCalculator[cashflow-calculator-service];
-        CashflowCalculator -- Writes --> DB;
-
-        CalculationsCompleted -- "processed_transactions_completed" --> PositionCalculator[position-calculator-service];
-        PositionCalculator -- Writes --> DB;
-        PositionCalculator -- Publishes via Outbox --> CalculationsCompleted;
-
-        CalculationsCompleted -- "position_history_persisted" --> ValuationCalculator[position-valuation-calculator];
-        PersistenceCompleted -- "market_price_persisted" --> ValuationCalculator;
-        ValuationCalculator -- Updates --> DB;
-    end
-
-    subgraph "Data Query Layer"
-        QueryService -- Reads --> DB;
-end
-````
-
-## 2\. Core Services
-
-  - **`ingestion_service`**: A write-only FastAPI application serving as the single entry point for all incoming data.
-  - **`persistence-service`**: Consumes raw data events and persists them to the PostgreSQL database.
-  - **`query-service`**: A read-only FastAPI application providing a comprehensive set of endpoints to access all processed data.
-  - **Calculator Services (`services/calculators/`)**: A suite of specialized, idempotent consumers that perform core business logic:
-      - **`cost-calculator-service`**: Calculates cost basis and realized gains/losses for transactions.
-      - **`cashflow-calculator-service`**: Generates cashflow records from transactions.
-      - **`position-calculator-service`**: Computes a historical time series of portfolio positions and triggers reprocessing for back-dated events.
-      - **`position-valuation-calculator`**: Calculates the market value of positions and schedules valuation jobs.
-      - **`timeseries-generator-service`**: Aggregates daily data for performance analysis.
-
------
-
-## 3\. Core Analytics Capabilities
-
-The `query-service` exposes powerful, on-the-fly analytical capabilities.
-
-### 3.1. Performance Analytics
-
-The system can calculate **Time-Weighted Return (TWR)** and **Money-Weighted Return (MWR)** for any portfolio over configurable time periods. These calculations are performed dynamically using the underlying daily time-series data.
-
-  - `POST /portfolios/{portfolio_id}/performance` (TWR)
-  - `POST /portfolios/{portfolio_id}/performance/mwr` (MWR)
-
-### 3.2. Risk Analytics
-
-A suite of industry-standard risk metrics can be calculated on-demand, ensuring consistency with performance figures by using the same daily return data.
-
-  - **Metrics Available**: Volatility, Sharpe Ratio, Sortino Ratio, Drawdown, Beta, Tracking Error, Information Ratio, and Value at Risk (VaR).
-  - **Endpoint**: `POST /portfolios/{portfolio_id}/risk`
-
-For a complete guide on the API, calculation methodologies, and operational details, see the **[Risk Analytics Feature Documentation](https://www.google.com/search?q=./docs/features/risk_analytics/01_Feature_Risk_Analytics_Overview.md)**.
-
-### 3.3. Portfolio Summary & Allocation
-
-A consolidated, dashboard-style view of a portfolio's state can be retrieved for any date and period. This is designed to efficiently populate a UI with a single API call.
-
-  - **Data Available**: Total Wealth, P\&L Summary, Income & Activity totals, and multi-dimensional Asset Allocation (by asset class, sector, country, etc.).
-  - **Endpoint**: `POST /portfolios/{portfolio_id}/summary`
-
-For a complete guide, see the **[Portfolio Summary Feature Documentation](https://www.google.com/search?q=./docs/features/portfolio_summary/01_Feature_Portfolio_Summary_Overview.md)**.
-
------
-
-## 4\. Data Flow & Kafka Topics
-
-The system relies on a well-defined sequence of events published to Kafka topics.
-
-  - **Raw Data Topics**: `raw_portfolios`, `raw_transactions`, `raw_instruments`, `raw_market_prices`, `raw_fx_rates`, `raw_business_dates`
-  - **Persistence Completion Topics**: `raw_transactions_completed`, `market_price_persisted`
-  - **Calculation Completion Topics**: `processed_transactions_completed`, `daily_position_snapshot_persisted`
-  - **Job & Scheduling Topics**: `valuation_required`, `portfolio_aggregation_required`
-  - **Reprocessing Topics**: `transactions_reprocessing_requested`
-
------
-
-## 5\. API Endpoints
-
-### Write API (`ingestion_service` @ `http://localhost:8000`)
-
-  - `POST /ingest/portfolios`: Ingests a list of portfolios.
-  - `POST /ingest/instruments`: Ingests a list of financial instruments.
-  - `POST /ingest/transactions`: Ingests a list of financial transactions.
-  - `POST /ingest/market-prices`: Ingests a list of market prices.
-  - `POST /ingest/fx-rates`: Ingests a list of foreign exchange rates.
-  - `POST /reprocess/transactions`: Triggers a reprocessing flow for a list of transaction IDs.
-  - `GET /health/ready`: Readiness probe (checks Kafka connection).
-
-### Read API (`query-service` @ `http://localhost:8001`)
-
-  - `GET /portfolios/{portfolio_id}`: Retrieves details for a single portfolio.
-  - `GET /portfolios/{portfolio_id}/positions`: Retrieves the latest position for each security in a portfolio.
-  - `GET /portfolios/{portfolio_id}/position-history`: Retrieves the historical time series of positions for a security.
-  - `GET /portfolios/{portfolio_id}/transactions`: Retrieves a paginated list of transactions for a portfolio.
-  - `POST /portfolios/{portfolio_id}/performance`: Calculates Time-Weighted Return (TWR) for a portfolio.
-  - `POST /portfolios/{portfolio_id}/performance/mwr`: Calculates Money-Weighted Return (MWR) for a portfolio.
-  - `POST /portfolios/{portfolio_id}/risk`: Calculates a suite of on-demand risk analytics.
-  - `POST /portfolios/{portfolio_id}/summary`: Calculates a consolidated, on-demand summary of portfolio wealth, P\&L, and allocation.
-  - `POST /portfolios/{portfolio_id}/review`: Generates a comprehensive, multi-section portfolio review report with a single API call.
-  - `POST /portfolios/{portfolio_id}/concentration`: **(NEW)** Calculates on-demand concentration risk metrics (e.g., Issuer, Top-N Holdings, HHI).
-  - `GET /health/ready`: Readiness probe (checks database connection).
-
------
-
-## 6\. Observability
-
-  - **Structured Logging**: All services output structured JSON logs enriched with a `correlation_id` for easy tracing.
-  - **Health Probes**: All services expose `GET /health/live` and `GET /health/ready` endpoints, compatible with orchestrators like Kubernetes.
-  - **Prometheus Metrics**: All services expose a `/metrics` endpoint for scraping key performance indicators, including Kafka consumer lag, database latency, and outbox queue size.
-
------
-
-## 7\. Local Development
+Follow these steps to set up the development environment.
 
 ### Prerequisites
 
-  - **Docker Desktop**: Must be installed and running.
-  - **Python 3.11**: Must be installed. Using the `py` launcher on Windows is recommended.
+* Docker and Docker Compose
+* Python 3.11+
+* Git Bash (on Windows)
+* VSCode (recommended)
 
-### Initial Setup
+### Installation
 
-1.  **Clone & Navigate**:
+1.  **Clone the Repository**:
     ```bash
-    git clone <repo-url> && cd portfolio-analytics-system
+    git clone <your-repository-url>
+    cd portfolio-analytics-system
     ```
-2.  **Open in VSCode**:
+
+2.  **Create a Virtual Environment**:
     ```bash
-    code .
+    python -m venv .venv
     ```
-3.  **Create `.env` file**:
+
+3.  **Activate the Virtual Environment**:
+    ```bash
+    source .venv/Scripts/activate
+    ```
+
+4.  **Install Dependencies**:
+    ```bash
+    pip install --upgrade pip
+    pip install -e "src/libs/financial-calculator-engine"
+    pip install -e "src/libs/performance-calculator-engine"
+    pip install -e "src/libs/concentration-analytics-engine"
+    pip install -e "src/libs/risk-analytics-engine"
+    pip install -e "src/libs/portfolio-common"
+    pip install -r src/services/ingestion_service/requirements.txt
+    pip install -r src/services/persistence_service/requirements.txt
+    pip install -r src/services/calculators/position_calculator/requirements.txt
+    pip install -r src/services/calculators/cashflow_calculator_service/requirements.txt
+    pip install -r src/services/calculators/cost_calculator_service/requirements.txt
+    pip install -r src/services/calculators/position_valuation_calculator/requirements.txt
+    pip install -r src/services/timeseries_generator_service/requirements.txt
+    pip install -r src/services/query_service/requirements.txt
+    pip install -r requirements-dev.txt
+    ```
+
+5.  **Set Up Environment Variables**:
     ```bash
     cp .env.example .env
     ```
-4.  **Create & Activate Virtual Environment**:
+    Review the `.env` file and ensure the settings are correct for your environment.
+
+## Running the System
+
+1.  **Start Infrastructure**:
+    This command starts Kafka, Zookeeper, PostgreSQL, and Prometheus.
     ```bash
-    py -3.11 -m venv .venv
-    source .venv/Scripts/activate
-    ```
-5.  **Install All Dependencies**:
-    ```bash
-    pip install -r tests/requirements.txt
-    pip install -e src/libs/portfolio-common
-    pip install -e src/libs/financial-calculator-engine
-    pip install -e src/libs/performance-calculator-engine
-    pip install -e src/libs/risk-analytics-engine
-    pip install -e src/libs/concentration-analytics-engine
-    pip install -e src/services/ingestion_service
-    pip install -e src/services/persistence_service
-    pip install -e src/services/query_service
-    pip install -e src/services/calculators/cashflow_calculator_service
-    pip install -e src/services/calculators/cost_calculator_service
-    pip install -e src/services/calculators/position_calculator
-    pip install -e src/services/calculators/position_valuation_calculator
-    pip install -e src/services/timeseries_generator_service
+    docker compose up -d
     ```
 
-### Running the System
-
-  - **Start all services**:
+2.  **Set Up Kafka Topics**:
+    This tool idempotently creates all necessary Kafka topics.
     ```bash
-    docker compose up --build -d
-    ```
-  - **Stop all services and remove volumes**:
-    ```bash
-    docker compose down -v
-    ```
-  - **View logs for a specific service**:
-    ```bash
-    docker compose logs -f persistence-service
+    python -m tools.kafka_setup
     ```
 
------
-
-## 8\. Testing
-
-The project contains a comprehensive suite of unit, integration, and end-to-end tests.
-
-1.  **Run All Unit Tests**: These are fast and do not require Docker.
-    ```bash
-    pytest tests/unit/
-    ```
-2.  **Run All Integration & E2E Tests**: These require the full Docker environment to be running.
-    ```bash
-    # Ensure all services are running
-    docker compose up --build -d
-
-    # Run all tests
-    pytest
-    ```
-3.  **Clean Docker Build Cache**: If you encounter strange build errors related to "parent snapshots", run this command to clean the Docker cache.
-    ```bash
-    docker builder prune -a
-    ```
-4.  **Generate Coverage Reports**:
-    ```bash
-    # Generate an interactive HTML report for the full suite
-    pytest --cov=src --cov-report=html
-    ```
-    After running, open `htmlcov/index.html` in your browser.
-
------
-
-## 9\. Database Migrations
-
-Database schema changes are managed by Alembic.
-
-1.  **Ensure Postgres is Running**:
-    ```bash
-    docker compose up -d postgres
-    ```
-2.  **Generate a New Migration**: After changing a model in `portfolio_common/database_models.py`, run:
-    ```bash
-    alembic revision --autogenerate -m "feat: Describe your schema change"
-    ```
-3.  **Apply the Migration**:
+3.  **Run Database Migrations**:
+    Apply all pending database migrations to set up the schema.
     ```bash
     alembic upgrade head
     ```
 
------
-
-## 10\. Directory Structure
-
-```
-sgajbi-portfolio-analytics-system/
-├── alembic/                      # Database migration scripts.
-├── docker-compose.yml            # Orchestrates all services for local development.
-└── src/
-    ├── libs/                     # Shared Python libraries.
-    │   ├── financial-calculator-engine/
-    │   ├── performance-calculator-engine/
-    │   └── portfolio-common/     # Common code: DB models, Kafka utils, etc.
-    └── services/                 # All individual microservices.
-        ├── calculators/
-        ├── ingestion_service/    # Write API
-        ├── persistence_service/
-        ├── query_service/        # Read API
-        └── timeseries_generator_service/
-└── tests/
-    ├── e2e/                      # End-to-end tests for full data pipelines.
-    ├── integration/              # Tests for component interaction (e.g., service -> DB).
-    └── unit/                     # Tests for isolated business logic.
-└── tools/                        # Standalone scripts for development/ops tasks.
-```
-
------
-
-## 11\. Full Usage Example
-
-This example demonstrates the full flow from ingesting data to querying the final calculated position.
-
-1.  **Start the entire system**:
-
+4.  **Start Services**:
+    Open a new terminal for each service to run them concurrently.
     ```bash
-    docker compose up --build -d
+    # Terminal 1: Persistence Service
+    python -m src.services.persistence_service.app.main
+
+    # Terminal 2: Position Calculator Service
+    python -m src.services.calculators.position_calculator.app.main
+
+    # Terminal 3: Position Valuation Calculator Service (includes scheduler and worker)
+    python -m src.services.calculators.position_valuation_calculator.app.main
+
+    # Terminal 4: Timeseries Generator Service
+    python -m src.services.timeseries_generator_service.app.main
+
+    # Terminal 5: Query Service (API)
+    python -m src.services.query_service.app.main
+
+    # Terminal 6: Ingestion Service (API)
+    python -m src.services.ingestion_service.app.main
     ```
 
-    Wait about a minute for all services to become healthy. You can check the status with `docker compose ps`.
+## Running Tests
 
-2.  **Run the Example Script**:
-    This script will ingest all the necessary data and then query the final results.
+To run the full suite of unit and integration tests:
+
+```bash
+pytest
+````
+
+To run tests for a specific directory:
+
+```bash
+pytest tests/unit/
+pytest tests/integration/
+```
+
+To get a coverage report:
+
+```bash
+pytest --cov=src
+```
+
+## Verifying the Workflow
+
+1.  **Ingest Data**:
+    Use the `ingest_data.py` tool to load sample data into the system.
 
     ```bash
-    ./scripts/run_e2e_example.sh
+    python -m tools.ingest_data --all
     ```
 
-    The script will print the final `positions` and `transactions` JSON responses to the console.
+2.  **Query the API**:
+    Once the services have processed the data, you can query the `query-service` API endpoints.
+
+      * API Docs: `http://localhost:8081/docs`
+
+3.  **Check the Database**:
+    You can connect to the PostgreSQL database to verify the state of the data.
+
+    ```bash
+    docker compose exec postgres psql -U user -d portfolio_db
+    ```
+
+    Useful queries:
+
+    ```sql
+    -- Check position watermarks
+    SELECT * FROM position_state WHERE portfolio_id = 'PORT001';
+
+    -- Check for any pending reprocessing jobs
+    SELECT * FROM reprocessing_jobs WHERE status = 'PENDING';
+
+    -- View the latest daily snapshots
+    SELECT * FROM daily_position_snapshots WHERE portfolio_id = 'PORT001' ORDER BY date DESC LIMIT 10;
+    ```
+
+## Code Quality
+
+This project uses `black` for formatting and `ruff` for linting.
+
+```bash
+# Format code
+black .
+
+# Lint code
+ruff check .
+```
+
+## Tools
+
+The `tools/` directory contains helpful scripts for development:
+
+  * `kafka_setup.py`: Creates Kafka topics.
+  * `ingest_data.py`: Ingests sample data.
+  * `dlq_replayer.py`: Replays messages from a Dead Letter Queue.
+  * `reprocess_tool.py`: Triggers reprocessing for specific transactions.
 
 <!-- end list -->
+
  
