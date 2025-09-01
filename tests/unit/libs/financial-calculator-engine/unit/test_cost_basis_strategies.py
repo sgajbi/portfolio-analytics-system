@@ -69,12 +69,14 @@ def test_average_cost_dual_currency(avco_strategy: AverageCostBasisStrategy):
     buy1 = Transaction(
         transaction_id="AVCO_BUY_1", portfolio_id="P_USD", instrument_id="EUR_STOCK", security_id="S_EUR",
         transaction_type="BUY", transaction_date=datetime(2023, 1, 1), quantity=Decimal("100"),
+        gross_transaction_amount=Decimal("1000"),
         net_cost_local=Decimal("1000"), net_cost=Decimal("1100"), trade_currency="EUR", portfolio_base_currency="USD"
     )
     # Buy 2: 100 shares @ €12/share, FX=1.15. Cost: €1200 local, $1380 base.
     buy2 = Transaction(
         transaction_id="AVCO_BUY_2", portfolio_id="P_USD", instrument_id="EUR_STOCK", security_id="S_EUR",
         transaction_type="BUY", transaction_date=datetime(2023, 1, 5), quantity=Decimal("100"),
+        gross_transaction_amount=Decimal("1200"),
         net_cost_local=Decimal("1200"), net_cost=Decimal("1380"), trade_currency="EUR", portfolio_base_currency="USD"
     )
     

@@ -101,10 +101,11 @@ class AverageCostBasisStrategy(CostBasisStrategy):
         self._holdings[key]['total_cost_local'] += transaction.net_cost_local
         self._holdings[key]['total_cost_base'] += transaction.net_cost
 
-    def consume_sell_quantity(self, portfolio_id: str, instrument_id: str, required_quantity: Decimal) -> Tuple[Decimal, Decimal, Decimal, Optional[str]]:
+    def consume_sell_quantity(self, portfolio_id: str, instrument_id: str, sell_quantity: Decimal) -> Tuple[Decimal, Decimal, Decimal, Optional[str]]:
         key = (portfolio_id, instrument_id)
         holding = self._holdings[key]
         total_qty = holding['total_qty']
+        required_quantity = sell_quantity
 
         if required_quantity > total_qty:
             return (Decimal(0), Decimal(0), Decimal(0), f"Sell quantity ({required_quantity}) exceeds available average cost holdings ({total_qty}).")
