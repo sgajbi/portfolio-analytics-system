@@ -14,6 +14,9 @@ from portfolio_common.kafka_utils import get_kafka_producer
 from portfolio_common.outbox_dispatcher import OutboxDispatcher
 from .web import app as web_app
 from .core.valuation_scheduler import ValuationScheduler
+# --- NEW IMPORTS ---
+from .core.reprocessing_worker import ReprocessingWorker
+# --- END NEW IMPORTS ---
 from .consumers.valuation_consumer import ValuationConsumer
 from .consumers.price_event_consumer import PriceEventConsumer
 
@@ -54,8 +57,10 @@ class ConsumerManager:
         kafka_producer = get_kafka_producer()
         self.dispatcher = OutboxDispatcher(kafka_producer=kafka_producer)
         self.scheduler = ValuationScheduler()
+        # --- NEW: Instantiate the worker ---
+        self.reprocessing_worker = ReprocessingWorker()
 
-        logger.info(f"ConsumerManager initialized with {len(self.consumers)} consumer(s) and 1 scheduler.")
+        logger.info(f"ConsumerManager initialized with {len(self.consumers)} consumer(s), 1 scheduler, and 1 reprocessing worker.")
 
     def _signal_handler(self, signum, frame):
         """Sets the shutdown event when a signal is received."""
@@ -75,10 +80,12 @@ class ConsumerManager:
         uvicorn_config = uvicorn.Config(web_app, host="0.0.0.0", port=8084, log_config=None)
         server = uvicorn.Server(uvicorn_config)
 
-        logger.info("Starting all consumer tasks, the outbox dispatcher, the scheduler, and the web server...")
+        logger.info("Starting all consumer tasks, the outbox dispatcher, the scheduler, the reprocessing worker, and the web server...")
         self.tasks = [asyncio.create_task(c.run()) for c in self.consumers]
         self.tasks.append(asyncio.create_task(self.dispatcher.run()))
         self.tasks.append(asyncio.create_task(self.scheduler.run()))
+        # --- NEW: Add the worker to the asyncio tasks ---
+        self.tasks.append(asyncio.create_task(self.reprocessing_worker.run()))
         self.tasks.append(asyncio.create_task(server.serve()))
          
         logger.info("ConsumerManager is running. Press Ctrl+C to exit.")
@@ -90,6 +97,8 @@ class ConsumerManager:
         
         self.dispatcher.stop()
         self.scheduler.stop()
+        # --- NEW: Stop the worker ---
+        self.reprocessing_worker.stop()
         server.should_exit = True
         
         await asyncio.gather(*self.tasks, return_exceptions=True)
