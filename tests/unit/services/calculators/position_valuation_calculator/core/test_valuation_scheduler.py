@@ -12,8 +12,9 @@ from services.calculators.position_valuation_calculator.app.core.valuation_sched
 from services.calculators.position_valuation_calculator.app.repositories.valuation_repository import ValuationRepository
 from portfolio_common.valuation_job_repository import ValuationJobRepository
 from portfolio_common.position_state_repository import PositionStateRepository
-# --- NEW IMPORT ---
 from portfolio_common.reprocessing_job_repository import ReprocessingJobRepository
+# --- NEW IMPORT ---
+from portfolio_common.monitoring import INSTRUMENT_REPROCESSING_TRIGGERS_PENDING
 
 pytestmark = pytest.mark.asyncio
 
@@ -37,7 +38,6 @@ def mock_dependencies():
     mock_repo = AsyncMock(spec=ValuationRepository)
     mock_job_repo = AsyncMock(spec=ValuationJobRepository)
     mock_state_repo = AsyncMock(spec=PositionStateRepository)
-    # --- NEW MOCK ---
     mock_repro_job_repo = AsyncMock(spec=ReprocessingJobRepository)
     
     mock_db_session = AsyncMock(spec=AsyncSession)
@@ -55,7 +55,7 @@ def mock_dependencies():
         "services.calculators.position_valuation_calculator.app.core.valuation_scheduler.ValuationJobRepository", return_value=mock_job_repo
     ), patch(
         "services.calculators.position_valuation_calculator.app.core.valuation_scheduler.PositionStateRepository", return_value=mock_state_repo
-    ), patch( # Add patch for the new repository
+    ), patch( 
         "services.calculators.position_valuation_calculator.app.core.valuation_scheduler.ReprocessingJobRepository", return_value=mock_repro_job_repo
     ):
         yield {
@@ -253,3 +253,26 @@ async def test_scheduler_creates_persistent_job_from_instrument_trigger(schedule
     
     # 4. Verify it consumed and deleted the original trigger
     mock_repo.delete_instrument_reprocessing_triggers.assert_awaited_once_with(["S1"])
+
+@patch('src.services.calculators.position_valuation_calculator.app.core.valuation_scheduler.INSTRUMENT_REPROCESSING_TRIGGERS_PENDING')
+async def test_scheduler_updates_pending_triggers_metric(mock_gauge, scheduler: ValuationScheduler, mock_dependencies: dict):
+    """
+    GIVEN a number of pending instrument reprocessing triggers
+    WHEN the scheduler's _update_reprocessing_metrics logic runs
+    THEN it should set the Prometheus gauge to the correct count.
+    """
+    # ARRANGE
+    mock_repo = mock_dependencies["repo"]
+    
+    # Simulate the repository returning a count of 5 pending triggers
+    mock_repo.get_instrument_reprocessing_triggers_count.return_value = 5
+    
+    # ACT
+    await scheduler._update_reprocessing_metrics(AsyncMock())
+
+    # ASSERT
+    # Verify the repository was called to get the count
+    mock_repo.get_instrument_reprocessing_triggers_count.assert_awaited_once()
+    
+    # Verify the Prometheus gauge's .set() method was called with the correct value
+    mock_gauge.set.assert_called_once_with(5)

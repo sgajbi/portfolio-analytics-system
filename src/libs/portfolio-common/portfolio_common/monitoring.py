@@ -125,6 +125,11 @@ def outbox_batch_timer():
 # --------------------------------------------------------------------------------------
 # Reprocessing & Epoch Metrics
 # --------------------------------------------------------------------------------------
+INSTRUMENT_REPROCESSING_TRIGGERS_PENDING = Gauge(
+    "instrument_reprocessing_triggers_pending",
+    "Total number of pending instrument reprocessing triggers awaiting fan-out."
+)
+
 EPOCH_MISMATCH_DROPPED_TOTAL = Counter(
     "epoch_mismatch_dropped_total",
     "Number of Kafka messages dropped due to a stale epoch.",

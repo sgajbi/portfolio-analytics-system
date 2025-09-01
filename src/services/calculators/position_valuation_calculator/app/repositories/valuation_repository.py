@@ -27,6 +27,13 @@ class ValuationRepository:
         self.db = db
 
     # --- NEW METHODS ---
+    @async_timed(repository="ValuationRepository", method="get_instrument_reprocessing_triggers_count")
+    async def get_instrument_reprocessing_triggers_count(self) -> int:
+        """Counts the number of records in the instrument_reprocessing_state table."""
+        stmt = select(func.count()).select_from(InstrumentReprocessingState)
+        result = await self.db.execute(stmt)
+        return result.scalar_one()
+
     @async_timed(repository="ValuationRepository", method="get_instrument_reprocessing_triggers")
     async def get_instrument_reprocessing_triggers(self, batch_size: int) -> List[InstrumentReprocessingState]:
         """Fetches the oldest pending instrument reprocessing triggers."""

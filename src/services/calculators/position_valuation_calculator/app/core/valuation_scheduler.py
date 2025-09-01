@@ -13,14 +13,13 @@ from portfolio_common.database_models import PortfolioValuationJob, PositionStat
 from ..repositories.valuation_repository import ValuationRepository
 from portfolio_common.valuation_job_repository import ValuationJobRepository
 from portfolio_common.position_state_repository import PositionStateRepository
-# --- NEW IMPORTS ---
 from portfolio_common.reprocessing_job_repository import ReprocessingJobRepository
-# --- END NEW IMPORTS ---
 from portfolio_common.monitoring import (
     REPROCESSING_ACTIVE_KEYS_TOTAL,
     SNAPSHOT_LAG_SECONDS,
     SCHEDULER_GAP_DAYS,
-    VALUATION_JOBS_CREATED_TOTAL
+    VALUATION_JOBS_CREATED_TOTAL,
+    INSTRUMENT_REPROCESSING_TRIGGERS_PENDING
 )
 
 
@@ -42,6 +41,12 @@ class ValuationScheduler:
         """Signals the scheduler to gracefully shut down."""
         logger.info("Valuation scheduler shutdown signal received.")
         self._running = False
+
+    async def _update_reprocessing_metrics(self, db):
+        """Queries for and sets key gauges related to reprocessing workload."""
+        repo = ValuationRepository(db)
+        pending_triggers = await repo.get_instrument_reprocessing_triggers_count()
+        INSTRUMENT_REPROCESSING_TRIGGERS_PENDING.set(pending_triggers)
 
     async def _process_instrument_level_triggers(self, db):
         """
@@ -88,7 +93,6 @@ class ValuationScheduler:
 
         lagging_states = await repo.get_lagging_states(latest_business_date, self._batch_size)
         
-        # This metric is now more accurate, reflecting all states being worked on.
         reprocessing_count = sum(1 for s in lagging_states if s.status == 'REPROCESSING')
         REPROCESSING_ACTIVE_KEYS_TOTAL.set(reprocessing_count)
         
@@ -104,7 +108,7 @@ class ValuationScheduler:
 
             if new_watermark and new_watermark > state.watermark_date:
                 is_complete = new_watermark == latest_business_date
-                new_status = 'CURRENT' if is_complete else state.status # Keep REPROCESSING status if not yet complete
+                new_status = 'CURRENT' if is_complete else state.status
                 updates_to_commit.append({
                     "portfolio_id": state.portfolio_id,
                     "security_id": state.security_id,
@@ -114,7 +118,6 @@ class ValuationScheduler:
         
         if updates_to_commit:
             updated_count = await position_state_repo.bulk_update_states(updates_to_commit)
-            # --- RFC CHANGE B: Add explicit logging ---
             log_examples = [
                 f"({u['portfolio_id']},{u['security_id']})->{u['watermark_date']}"
                 for u in updates_to_commit[:3]
@@ -123,7 +126,6 @@ class ValuationScheduler:
                 f"ValuationScheduler: advanced {updated_count} watermarks.",
                 extra={"examples": log_examples}
             )
-            # --- END RFC CHANGE ---
 
     async def _create_backfill_jobs(self, db):
         """
@@ -151,11 +153,9 @@ class ValuationScheduler:
         first_open_dates = await repo.get_first_open_dates_for_keys(keys_to_check)
 
         for state in states_to_backfill:
-            # --- RFC CHANGE B: Add observability metrics ---
             gap_days = (latest_business_date - state.watermark_date).days
             SCHEDULER_GAP_DAYS.observe(gap_days)
             SNAPSHOT_LAG_SECONDS.observe(gap_days * 86400)
-            # --- END RFC CHANGE ---
             
             key = (state.portfolio_id, state.security_id, state.epoch)
             first_open_date = first_open_dates.get(key)
@@ -164,13 +164,11 @@ class ValuationScheduler:
                 logger.warning(f"No position history found for key {key}. Skipping backfill job creation.")
                 continue
 
-            # Determine the correct start date for backfilling.
             start_date = max(state.watermark_date, first_open_date - timedelta(days=1))
             
             job_count = 0
             current_date = start_date + timedelta(days=1)
             
-            # Create jobs up to the latest business date
             while current_date <= latest_business_date:
                 await job_repo.upsert_job(
                     portfolio_id=state.portfolio_id,
@@ -207,7 +205,7 @@ class ValuationScheduler:
             headers = [('correlation_id', (job.correlation_id or "").encode('utf-8'))]
             self._producer.publish_message(
                 topic=KAFKA_VALUATION_REQUIRED_TOPIC,
-                key=job.portfolio_id, # Key by portfolio for partition affinity
+                key=job.portfolio_id, 
                 value=event.model_dump(mode='json'),
                 headers=headers
             )
@@ -222,9 +220,11 @@ class ValuationScheduler:
             try:
                 async for db in get_async_db_session():
                     async with db.begin():
+                        await self._update_reprocessing_metrics(db)
+                        
                         repo = ValuationRepository(db)
                         
-                        await self._process_instrument_level_triggers(db) # <-- NEW LOGIC
+                        await self._process_instrument_level_triggers(db)
                         
                         await repo.find_and_reset_stale_jobs()
                         await self._create_backfill_jobs(db)
