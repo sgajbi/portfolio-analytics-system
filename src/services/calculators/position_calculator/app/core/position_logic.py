@@ -10,8 +10,7 @@ from ..core.position_models import PositionState as PositionStateDTO
 from portfolio_common.events import TransactionEvent
 from ..repositories.position_repository import PositionRepository
 from portfolio_common.position_state_repository import PositionStateRepository
-from portfolio_common.logging_utils import correlation_id_var
-from portfolio_common.kafka_utils import KafkaProducer
+from portfolio_common.outbox_repository import OutboxRepository
 from portfolio_common.config import KAFKA_PROCESSED_TRANSACTIONS_COMPLETED_TOPIC
 from portfolio_common.monitoring import EPOCH_MISMATCH_DROPPED_TOTAL
 
@@ -22,7 +21,7 @@ class PositionCalculator:
     """
     Handles position recalculation. Detects back-dated transactions and triggers
     a full reprocessing by incrementing the key's epoch and re-emitting all
-    historical events for that key.
+    historical events for that key via the outbox pattern for atomicity.
     """
 
     @classmethod
@@ -32,7 +31,7 @@ class PositionCalculator:
         db_session: AsyncSession,
         repo: PositionRepository,
         position_state_repo: PositionStateRepository,
-        kafka_producer: KafkaProducer,
+        outbox_repo: OutboxRepository, # <-- UPDATED: Now uses OutboxRepository
         reprocess_epoch: Optional[int] = None
     ) -> None:
         """
@@ -74,7 +73,7 @@ class PositionCalculator:
         
         if is_backdated and reprocess_epoch is None:
             logger.warning(
-                "Back-dated transaction detected. Triggering reprocessing flow.",
+                "Back-dated transaction detected. Triggering atomic reprocessing flow via outbox.",
                 extra={
                     "portfolio_id": portfolio_id, "security_id": security_id,
                     "transaction_date": transaction_date.isoformat(),
@@ -84,22 +83,27 @@ class PositionCalculator:
                 }
             )
             new_watermark = transaction_date - timedelta(days=1)
-            new_state = await position_state_repo.increment_epoch_and_reset_watermark(
-                portfolio_id, security_id, new_watermark
-            )
             
-            all_transactions = await repo.get_all_transactions_for_security(portfolio_id, security_id)
-            
-            logger.info(f"Re-emitting {len(all_transactions)} transactions for Epoch {new_state.epoch}")
-            for txn in all_transactions:
-                event_to_publish = TransactionEvent.model_validate(txn)
-                event_to_publish.epoch = new_state.epoch
-                kafka_producer.publish_message(
-                    topic=KAFKA_PROCESSED_TRANSACTIONS_COMPLETED_TOPIC,
-                    key=txn.portfolio_id,
-                    value=event_to_publish.model_dump(mode='json')
+            # --- FIX: Perform state update and event creation in one transaction ---
+            async with db_session.begin():
+                new_state = await position_state_repo.increment_epoch_and_reset_watermark(
+                    portfolio_id, security_id, new_watermark
                 )
-            kafka_producer.flush()
+                
+                all_transactions = await repo.get_all_transactions_for_security(portfolio_id, security_id)
+                
+                logger.info(f"Atomically queuing {len(all_transactions)} events for reprocessing replay in Epoch {new_state.epoch}")
+                for txn in all_transactions:
+                    event_to_publish = TransactionEvent.model_validate(txn)
+                    event_to_publish.epoch = new_state.epoch
+                    await outbox_repo.create_outbox_event(
+                        aggregate_type='ReprocessTransaction',
+                        aggregate_id=str(txn.portfolio_id),
+                        event_type='ReprocessTransactionReplay',
+                        topic=KAFKA_PROCESSED_TRANSACTIONS_COMPLETED_TOPIC,
+                        payload=event_to_publish.model_dump(mode='json')
+                    )
+            # --- END FIX ---
             return
 
         await repo.delete_positions_from(portfolio_id, security_id, transaction_date, message_epoch)
@@ -159,14 +163,14 @@ class PositionCalculator:
         net_cost = transaction.net_cost if transaction.net_cost is not None else Decimal(0)
         net_cost_local = transaction.net_cost_local if transaction.net_cost_local is not None else Decimal(0)
 
-        # --- THIS IS THE FIX ---
-        # Refactored logic to handle each transaction type correctly and distinctly.
         if txn_type == "BUY":
             quantity += transaction.quantity
             cost_basis += net_cost
             cost_basis_local += net_cost_local
         
-        elif txn_type in ["SELL", "TRANSFER_OUT"]: # Dispositions of securities
+        elif txn_type in ["SELL", "TRANSFER_OUT"]:
+            # This logic still has the known proportional bug from RFC-023.
+            # That will be fixed in a separate, dedicated step.
             if not quantity.is_zero():
                 proportion_of_holding = transaction.quantity / quantity
                 cost_basis_reduction = cost_basis * proportion_of_holding

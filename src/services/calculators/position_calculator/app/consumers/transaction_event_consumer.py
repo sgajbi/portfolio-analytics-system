@@ -13,7 +13,7 @@ from portfolio_common.events import TransactionEvent
 from portfolio_common.db import get_async_db_session
 from portfolio_common.idempotency_repository import IdempotencyRepository
 from portfolio_common.position_state_repository import PositionStateRepository
-from portfolio_common.kafka_utils import get_kafka_producer, KafkaProducer
+from portfolio_common.outbox_repository import OutboxRepository
 from portfolio_common.monitoring import EPOCH_MISMATCH_DROPPED_TOTAL 
 
 from ..repositories.position_repository import PositionRepository
@@ -34,7 +34,6 @@ class TransactionEventConsumer(BaseConsumer):
     """
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._producer: KafkaProducer = get_kafka_producer()
 
     @retry(
         wait=wait_fixed(5), # Wait longer for retryable errors
@@ -48,32 +47,37 @@ class TransactionEventConsumer(BaseConsumer):
         value = msg.value().decode('utf-8')
         event_id = f"{msg.topic()}-{msg.partition()}-{msg.offset()}"
         correlation_id = correlation_id_var.get()
+        event = None
 
         try:
             data = json.loads(value)
             event = TransactionEvent.model_validate(data)
-            # --- FIX: Read epoch from payload, not headers ---
             reprocess_epoch = event.epoch
 
             async for db in get_async_db_session():
-                async with db.begin():
-                    idempotency_repo = IdempotencyRepository(db)
-                    if await idempotency_repo.is_event_processed(event_id, SERVICE_NAME):
-                        logger.warning("Event already processed. Skipping.")
-                        return
+                # The core logic now manages its own transaction for atomicity
+                idempotency_repo = IdempotencyRepository(db)
+                if await idempotency_repo.is_event_processed(event_id, SERVICE_NAME):
+                    logger.warning("Event already processed. Skipping.")
+                    await db.commit() # Commit to advance offset
+                    return
 
-                    repo = PositionRepository(db)
-                    position_state_repo = PositionStateRepository(db)
-                    
-                    await PositionCalculator.calculate(
-                        event=event,
-                        db_session=db,
-                        repo=repo,
-                        position_state_repo=position_state_repo,
-                        kafka_producer=self._producer,
-                        reprocess_epoch=reprocess_epoch
-                    )
-                    
+                repo = PositionRepository(db)
+                position_state_repo = PositionStateRepository(db)
+                outbox_repo = OutboxRepository(db) # <-- Create OutboxRepository
+                
+                await PositionCalculator.calculate(
+                    event=event,
+                    db_session=db,
+                    repo=repo,
+                    position_state_repo=position_state_repo,
+                    outbox_repo=outbox_repo, # <-- Pass it to the logic
+                    reprocess_epoch=reprocess_epoch
+                )
+                
+                # The transaction inside `calculate` is already committed.
+                # Now commit the idempotency key.
+                async with db.begin():
                     await idempotency_repo.mark_event_processed(
                         event_id, event.portfolio_id, SERVICE_NAME, correlation_id
                     )
