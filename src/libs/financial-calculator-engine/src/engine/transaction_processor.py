@@ -1,4 +1,4 @@
-# libs/financial-calculator-engine/src/services/transaction_processor.py
+# libs/financial-calculator-engine/src/engine/transaction_processor.py
 import logging
 import time
 from typing import Tuple, List, Any
@@ -10,7 +10,7 @@ from logic.sorter import TransactionSorter
 from logic.disposition_engine import DispositionEngine
 from logic.cost_calculator import CostCalculator
 from logic.error_reporter import ErrorReporter
-from monitoring import RECALCULATION_DEPTH, RECALCULATION_DURATION_SECONDS
+from .monitoring import RECALCULATION_DEPTH, RECALCULATION_DURATION_SECONDS
 
 logger = logging.getLogger(__name__)
 
