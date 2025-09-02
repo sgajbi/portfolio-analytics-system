@@ -4,7 +4,7 @@ This guide details the rule-based methodology used by the `cashflow_calculator_s
 
 ## 1. Rule-Based Mapping
 
-The core of the service is a static configuration that maps every supported `transaction_type` to a set of cash flow attributes. This ensures that the process is deterministic and consistent. The logic is defined in the `cashflow_config.py` file.
+The core of the service is a **database-driven configuration** that maps every supported `transaction_type` to a set of cash flow attributes. This ensures that the process is deterministic and consistent. The logic is stored in the `cashflow_rules` table.
 
 The key attributes determined by the rules are:
 
@@ -12,7 +12,7 @@ The key attributes determined by the rules are:
 * **Timing:** Whether the flow should be considered at the Beginning-of-Day (`BOD`) or End-of-Day (`EOD`) for performance calculations.
 * **Flow Type:** Booleans (`is_position_flow`, `is_portfolio_flow`) that determine how the flow impacts TWR calculations.
 
-The following table details the complete rule set:
+The following table details the complete rule set as seeded in the database:
 
 | Transaction Type | Classification | Timing | Is Position Flow? | Is Portfolio Flow? |
 | :--- | :--- | :--- | :--- | :--- |
@@ -34,4 +34,4 @@ The service follows a standard financial sign convention: **inflows to the portf
 * The `amount` is derived from the transaction's `gross_transaction_amount`.
 * For transactions classified as `INVESTMENT_INFLOW`, `INCOME`, `CASHFLOW_IN`, or `TRANSFER_IN`, the resulting amount is positive.
 * For all other classifications (`INVESTMENT_OUTFLOW`, `EXPENSE`, `CASHFLOW_OUT`, `TRANSFER_OUT`), the resulting amount is negative.
-* If the calculation type is `NET`, the `trade_fee` from the transaction is included in the calculation. For a `BUY`, the fee increases the outflow (making it more negative). For a `SELL`, the fee decreases the inflow.
+* The `trade_fee` from the transaction is included in the calculation. For a `BUY`, the fee increases the outflow (making it more negative). For a `SELL`, the fee decreases the inflow.
