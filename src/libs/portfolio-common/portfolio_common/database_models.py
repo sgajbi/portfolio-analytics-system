@@ -34,7 +34,7 @@ class Portfolio(Base):
     is_leverage_allowed = Column(Boolean, default=False, nullable=False)
     advisor_id = Column(String, nullable=True)
     status = Column(String, nullable=False)
-    cost_basis_method = Column(String, server_default='FIFO', nullable=True) # <-- NEW FIELD
+    cost_basis_method = Column(String, server_default='FIFO', nullable=True) 
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
@@ -289,7 +289,7 @@ class PortfolioValuationJob(Base):
     Tracks portfolio-security-date combinations that require valuation.
     This table acts as a stateful, idempotent work set to trigger valuation calculations,
     preventing race conditions from multiple upstream events.
-"""
+    """
     __tablename__ = 'portfolio_valuation_jobs'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -351,5 +351,19 @@ class ReprocessingJob(Base):
     last_attempted_at = Column(DateTime(timezone=True), nullable=True)
     failure_reason = Column(Text, nullable=True)
     
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+class CashflowRule(Base):
+    """
+    Defines the business rules for generating a cashflow from a transaction type.
+    """
+    __tablename__ = 'cashflow_rules'
+
+    transaction_type = Column(String(50), primary_key=True)
+    classification = Column(String(50), nullable=False)
+    timing = Column(String(10), nullable=False)
+    is_position_flow = Column(Boolean, nullable=False)
+    is_portfolio_flow = Column(Boolean, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)

@@ -1,7 +1,7 @@
 """feat: Add asset allocation fields to instruments table
 
 Revision ID: 6acc877cf070
-Revises: 1a7b8c9d0e2f
+Revises: 50f1222afe00
 Create Date: 2025-08-30 09:16:23.077286
 
 """
@@ -13,7 +13,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision: str = '6acc877cf070'
-down_revision: Union[str, None] = '1a7b8c9d0e2f'
+down_revision: Union[str, None] = '50f1222afe00'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
