@@ -31,6 +31,7 @@ class MWRService:
         if not portfolio:
             raise ValueError(f"Portfolio {portfolio_id} not found.")
 
+        # Resolve all requested periods into concrete start/end dates
         resolved_periods = [
             resolve_period(
                 period_type=p.type, name=p.name or p.type, 
@@ -40,12 +41,14 @@ class MWRService:
             for p in request.periods
         ]
 
+        # Create concurrent tasks to fetch data and calculate MWR for each period
         tasks = [
             self._process_single_period(portfolio_id, name, start, end, request.options.annualize)
             for name, start, end in resolved_periods
         ]
         period_results = await asyncio.gather(*tasks)
 
+        # Assemble the final response
         summary = {name: result for name, result in period_results if result}
         return MWRResponse(scope=request.scope, summary=summary)
 
@@ -53,6 +56,7 @@ class MWRService:
         self, portfolio_id: str, name: str, start_date: date, end_date: date, annualize: bool
     ) -> tuple[str, MWRResult]:
         
+        # Fetch timeseries for market values and cashflows for the period concurrently
         ts_task = self.perf_repo.get_portfolio_timeseries_for_range(portfolio_id, start_date, end_date)
         cf_task = self.cashflow_repo.get_external_flows(portfolio_id, start_date, end_date)
         timeseries_data, external_flows = await asyncio.gather(ts_task, cf_task)
@@ -60,6 +64,7 @@ class MWRService:
         begin_mv = timeseries_data[0].bod_market_value if timeseries_data else Decimal(0)
         end_mv = timeseries_data[-1].eod_market_value if timeseries_data else begin_mv
 
+        # Calculate attributes
         contributions = sum(amount for _, amount in external_flows if amount > 0)
         withdrawals = sum(amount for _, amount in external_flows if amount < 0)
         attributes = MWRAttributes(
@@ -70,6 +75,7 @@ class MWRService:
             cashflow_count=len(external_flows)
         )
 
+        # Perform the MWR calculation
         mwr_result_dict = self.calculator.compute_period_mwr(
             start_date=start_date,
             end_date=end_date,
@@ -84,6 +90,8 @@ class MWRService:
             end_date=end_date,
             attributes=attributes,
             mwr=float(mwr_result_dict['mwr']) if mwr_result_dict and mwr_result_dict.get('mwr') is not None else None,
+            # --- THIS IS THE FIX ---
+            # Use .get() to safely access the key, which may be absent for periods < 1 year.
             mwr_annualized=float(mwr_result_dict.get('mwr_annualized')) if mwr_result_dict and mwr_result_dict.get('mwr_annualized') is not None else None,
         )
         
