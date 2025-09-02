@@ -1,5 +1,6 @@
 # tests/integration/services/query_service/test_query_position_repository.py
 import pytest
+import pytest_asyncio
 from datetime import date
 from decimal import Decimal
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,12 +10,11 @@ from portfolio_common.database_models import DailyPositionSnapshot, PositionStat
 
 pytestmark = pytest.mark.asyncio
 
-@pytest.fixture(scope="function", autouse=True)
+@pytest_asyncio.fixture(scope="function")
 async def setup_test_data(async_db_session: AsyncSession):
     """
     Sets up the necessary data for the position repository tests.
-    Inserts instrument, position state, and multiple daily snapshots.
-    This is function-scoped to match its database session dependency.
+    This is now a proper async fixture to handle the database session correctly.
     """
     today = date(2025, 9, 2)
     yesterday = date(2025, 9, 1)
@@ -53,14 +53,14 @@ async def setup_test_data(async_db_session: AsyncSession):
         position_date=date(2025, 8, 1), quantity=Decimal("100")
     )
     
-    async_db_session.add_all([
-        instrument, state, snapshot_yesterday, snapshot_today, stale_snapshot, history_start
-    ])
-    await async_db_session.commit()
+    async with async_db_session.begin():
+        async_db_session.add_all([
+            instrument, state, snapshot_yesterday, snapshot_today, stale_snapshot, history_start
+        ])
     
     yield {"today": today, "yesterday": yesterday}
 
-async def test_get_latest_positions_by_portfolio(clean_db, setup_test_data, async_db_session: AsyncSession):
+async def test_get_latest_positions_by_portfolio(setup_test_data, async_db_session: AsyncSession):
     """
     GIVEN a security with multiple historical daily snapshots in the database
     WHEN get_latest_positions_by_portfolio is called
@@ -95,7 +95,7 @@ async def test_get_latest_positions_by_portfolio(clean_db, setup_test_data, asyn
     assert issuer_id == "USA_GOV"
     assert parent_issuer_id == "USA_GOV"
 
-async def test_get_held_since_date(clean_db, setup_test_data, async_db_session: AsyncSession):
+async def test_get_held_since_date(setup_test_data, async_db_session: AsyncSession):
     """
     GIVEN position history for a security
     WHEN get_held_since_date is called
