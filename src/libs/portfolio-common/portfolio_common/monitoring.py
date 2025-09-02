@@ -153,7 +153,6 @@ SCHEDULER_GAP_DAYS = Histogram(
     buckets=(1, 2, 5, 10, 30, 90, 365)
 )
 
-# --- Valuation Pipeline Metrics ---
 VALUATION_JOBS_CREATED_TOTAL = Counter(
     "valuation_jobs_created_total",
     "Total number of valuation jobs created by the scheduler.",
@@ -172,13 +171,11 @@ VALUATION_JOBS_FAILED_TOTAL = Counter(
     labelnames=("portfolio_id", "security_id", "reason"),
 )
 
-# --- NEW METRIC (RFC 022) ---
 CASHFLOWS_CREATED_TOTAL = Counter(
     "cashflows_created_total",
     "Total number of cashflows created, by classification and timing.",
     ["classification", "timing"]
 )
-# --- END NEW METRIC ---
 
 # --------------------------------------------------------------------------------------
 # Optional generic HTTP metrics (use across services if helpful)
@@ -206,7 +203,6 @@ UNCLASSIFIED_ALLOCATION_MARKET_VALUE = Gauge(
     ["portfolio_id", "dimension"]
 )
 
-# --- NEW METRIC FOR REVIEW API ---
 REVIEW_GENERATION_DURATION_SECONDS = Histogram(
     "review_generation_duration_seconds",
     "Time taken to generate a full portfolio review report.",
@@ -214,7 +210,6 @@ REVIEW_GENERATION_DURATION_SECONDS = Histogram(
     buckets=(0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0),
 )
 
-# --- NEW METRICS FOR POSITION ANALYTICS API (RFC 017) ---
 POSITION_ANALYTICS_DURATION_SECONDS = Histogram(
     "position_analytics_duration_seconds",
     "Time taken to generate a position-level analytics report.",
@@ -240,4 +235,16 @@ CONCENTRATION_LOOKTHROUGH_REQUESTS_TOTAL = Counter(
     "Total number of concentration requests where fund look-through was enabled.",
     labelnames=("portfolio_id",),
 )
- 
+
+RISK_METRIC_REQUESTED_TOTAL = Counter(
+    "risk_metric_requested_total",
+    "Total number of times each specific risk metric has been requested.",
+    labelnames=("metric_name",),
+)
+
+RISK_METRIC_DURATION_SECONDS = Histogram(
+    "risk_metric_duration_seconds",
+    "Latency of individual risk metric calculations.",
+    labelnames=("metric_name",),
+    buckets=(0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5),
+)
