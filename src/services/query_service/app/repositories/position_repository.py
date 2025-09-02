@@ -120,7 +120,7 @@ class PositionRepository:
             select(DailyPositionSnapshot, Instrument, PositionState)
             .join(latest_snapshot_subq, DailyPositionSnapshot.id == latest_snapshot_subq.c.max_id)
             .join(Instrument, Instrument.security_id == DailyPositionSnapshot.security_id)
-            .join(PositionState, 
+            .join(PositionState,
                   (PositionState.portfolio_id == DailyPositionSnapshot.portfolio_id) &
                   (PositionState.security_id == DailyPositionSnapshot.security_id) &
                   (PositionState.epoch == DailyPositionSnapshot.epoch))
