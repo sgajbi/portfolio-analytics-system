@@ -9,9 +9,10 @@ import json
 from sqlalchemy.ext.asyncio import AsyncSession
 from portfolio_common.logging_utils import correlation_id_var
 from portfolio_common.events import TransactionEvent, CashflowCalculatedEvent
-from portfolio_common.database_models import Cashflow
-from src.services.calculators.cashflow_calculator_service.app.consumers.transaction_consumer import CashflowCalculatorConsumer
+from portfolio_common.database_models import Cashflow, CashflowRule
+from src.services.calculators.cashflow_calculator_service.app.consumers.transaction_consumer import CashflowCalculatorConsumer, NoCashflowRuleError
 from src.services.calculators.cashflow_calculator_service.app.repositories.cashflow_repository import CashflowRepository
+from src.services.calculators.cashflow_calculator_service.app.repositories.cashflow_rules_repository import CashflowRulesRepository
 from portfolio_common.idempotency_repository import IdempotencyRepository
 from portfolio_common.outbox_repository import OutboxRepository
 
@@ -65,6 +66,7 @@ def mock_dependencies():
     mock_cashflow_repo = AsyncMock(spec=CashflowRepository)
     mock_idempotency_repo = AsyncMock(spec=IdempotencyRepository)
     mock_outbox_repo = AsyncMock(spec=OutboxRepository)
+    mock_rules_repo = AsyncMock(spec=CashflowRulesRepository) # NEW MOCK
     
     mock_db_session = AsyncMock(spec=AsyncSession)
     mock_transaction = AsyncMock()
@@ -81,11 +83,14 @@ def mock_dependencies():
         "src.services.calculators.cashflow_calculator_service.app.consumers.transaction_consumer.IdempotencyRepository", return_value=mock_idempotency_repo
     ), patch(
         "src.services.calculators.cashflow_calculator_service.app.consumers.transaction_consumer.OutboxRepository", return_value=mock_outbox_repo
+    ), patch( # NEW PATCH
+        "src.services.calculators.cashflow_calculator_service.app.consumers.transaction_consumer.CashflowRulesRepository", return_value=mock_rules_repo
     ):
         yield {
             "cashflow_repo": mock_cashflow_repo,
             "idempotency_repo": mock_idempotency_repo,
-            "outbox_repo": mock_outbox_repo
+            "outbox_repo": mock_outbox_repo,
+            "rules_repo": mock_rules_repo
         }
 
 async def test_process_message_success(
@@ -96,14 +101,20 @@ async def test_process_message_success(
     """
     GIVEN a valid new transaction message
     WHEN the process_message method is called
-    THEN it should check for idempotency, call the repository, mark as processed, and publish an event.
+    THEN it should check for idempotency, load rules, call the repository, and publish an event.
     """
     # Arrange
     mock_cashflow_repo = mock_dependencies["cashflow_repo"]
     mock_idempotency_repo = mock_dependencies["idempotency_repo"]
     mock_outbox_repo = mock_dependencies["outbox_repo"]
+    mock_rules_repo = mock_dependencies["rules_repo"]
 
     mock_idempotency_repo.is_event_processed.return_value = False
+    
+    # Mock the database rule that will be loaded into the cache
+    mock_rules_repo.get_all_rules.return_value = [
+        CashflowRule(transaction_type='BUY', classification='INVESTMENT_OUTFLOW', timing='BOD', is_position_flow=True, is_portfolio_flow=False)
+    ]
     
     mock_saved_cashflow = Cashflow(
         id=1, transaction_id="TXN_CASHFLOW_CONSUMER", portfolio_id="PORT_CFC_01",
@@ -126,6 +137,7 @@ async def test_process_message_success(
 
         # Assert
         mock_idempotency_repo.is_event_processed.assert_called_once_with("raw_transactions_completed-0-123", "cashflow-calculator")
+        mock_rules_repo.get_all_rules.assert_awaited_once() # Verify rules were loaded
         mock_cashflow_repo.create_cashflow.assert_called_once()
         mock_outbox_repo.create_outbox_event.assert_called_once()
         
@@ -134,6 +146,47 @@ async def test_process_message_success(
         
         mock_idempotency_repo.mark_event_processed.assert_called_once()
         cashflow_consumer._send_to_dlq_async.assert_not_called()
+
+async def test_process_message_sends_to_dlq_if_rule_not_found(
+    cashflow_consumer: CashflowCalculatorConsumer,
+    mock_kafka_message: MagicMock,
+    mock_dependencies: dict
+):
+    """
+    GIVEN a transaction message for which no rule exists in the database
+    WHEN the consumer processes it
+    THEN it should raise NoCashflowRuleError and send the message to the DLQ.
+    """
+    # ARRANGE
+    mock_cashflow_repo = mock_dependencies["cashflow_repo"]
+    mock_idempotency_repo = mock_dependencies["idempotency_repo"]
+    mock_outbox_repo = mock_dependencies["outbox_repo"]
+    mock_rules_repo = mock_dependencies["rules_repo"]
+
+    mock_idempotency_repo.is_event_processed.return_value = False
+    
+    # Simulate the repository returning an empty list of rules
+    mock_rules_repo.get_all_rules.return_value = []
+    
+    with patch("src.services.calculators.cashflow_calculator_service.app.consumers.transaction_consumer.EpochFencer") as mock_fencer_class:
+        mock_fencer_instance = AsyncMock()
+        mock_fencer_instance.check.return_value = True
+        mock_fencer_class.return_value = mock_fencer_instance
+
+        # ACT
+        await cashflow_consumer.process_message(mock_kafka_message)
+
+        # ASSERT
+        mock_rules_repo.get_all_rules.assert_awaited_once()
+        
+        # Verify business logic was NOT executed
+        mock_cashflow_repo.create_cashflow.assert_not_called()
+        mock_outbox_repo.create_outbox_event.assert_not_called()
+        
+        # Verify the message was sent to the DLQ
+        cashflow_consumer._send_to_dlq_async.assert_awaited_once()
+        dlq_error_arg = cashflow_consumer._send_to_dlq_async.call_args[0][1]
+        assert isinstance(dlq_error_arg, NoCashflowRuleError)
 
 async def test_process_message_skips_stale_epoch_event(
     cashflow_consumer: CashflowCalculatorConsumer,
