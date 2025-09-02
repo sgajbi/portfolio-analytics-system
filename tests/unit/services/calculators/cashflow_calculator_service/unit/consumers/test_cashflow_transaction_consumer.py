@@ -19,6 +19,13 @@ from portfolio_common.outbox_repository import OutboxRepository
 # Mark all tests in this file as asyncio
 pytestmark = pytest.mark.asyncio
 
+@pytest.fixture(autouse=True)
+def reset_cache():
+    """Resets the module-level cache before each test to ensure isolation."""
+    from src.services.calculators.cashflow_calculator_service.app.consumers import transaction_consumer
+    transaction_consumer._cashflow_rules_cache = None
+    yield
+
 @pytest.fixture
 def cashflow_consumer():
     """Provides an instance of the consumer for testing."""
@@ -66,7 +73,7 @@ def mock_dependencies():
     mock_cashflow_repo = AsyncMock(spec=CashflowRepository)
     mock_idempotency_repo = AsyncMock(spec=IdempotencyRepository)
     mock_outbox_repo = AsyncMock(spec=OutboxRepository)
-    mock_rules_repo = AsyncMock(spec=CashflowRulesRepository) # NEW MOCK
+    mock_rules_repo = AsyncMock(spec=CashflowRulesRepository) 
     
     mock_db_session = AsyncMock(spec=AsyncSession)
     mock_transaction = AsyncMock()
@@ -83,7 +90,7 @@ def mock_dependencies():
         "src.services.calculators.cashflow_calculator_service.app.consumers.transaction_consumer.IdempotencyRepository", return_value=mock_idempotency_repo
     ), patch(
         "src.services.calculators.cashflow_calculator_service.app.consumers.transaction_consumer.OutboxRepository", return_value=mock_outbox_repo
-    ), patch( # NEW PATCH
+    ), patch(
         "src.services.calculators.cashflow_calculator_service.app.consumers.transaction_consumer.CashflowRulesRepository", return_value=mock_rules_repo
     ):
         yield {
@@ -111,7 +118,6 @@ async def test_process_message_success(
 
     mock_idempotency_repo.is_event_processed.return_value = False
     
-    # Mock the database rule that will be loaded into the cache
     mock_rules_repo.get_all_rules.return_value = [
         CashflowRule(transaction_type='BUY', classification='INVESTMENT_OUTFLOW', timing='BOD', is_position_flow=True, is_portfolio_flow=False)
     ]
@@ -137,7 +143,7 @@ async def test_process_message_success(
 
         # Assert
         mock_idempotency_repo.is_event_processed.assert_called_once_with("raw_transactions_completed-0-123", "cashflow-calculator")
-        mock_rules_repo.get_all_rules.assert_awaited_once() # Verify rules were loaded
+        mock_rules_repo.get_all_rules.assert_awaited_once() 
         mock_cashflow_repo.create_cashflow.assert_called_once()
         mock_outbox_repo.create_outbox_event.assert_called_once()
         
