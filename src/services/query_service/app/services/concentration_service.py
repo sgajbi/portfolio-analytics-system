@@ -70,10 +70,12 @@ class ConcentrationService:
                 {
                     "security_id": pos.security_id,
                     "market_value": pos.market_value or Decimal("0"),
-                    "instrument_name": name,
+                    # FIX: Defensively handle cases where the instrument join might fail,
+                    # preventing a None from being passed downstream.
+                    "instrument_name": name or f"Unknown Instrument ({pos.security_id})",
                     "issuer_id": issuer_id,
                     "ultimate_parent_issuer_id": parent_issuer_id,
-                    "issuer_name": name # Use instrument name as a proxy for issuer name for now
+                    "issuer_name": name or f"Unknown Issuer ({issuer_id or 'N/A'})"
                 }
                 for (
                     pos, name, status, isin, currency, asset_class, sector,

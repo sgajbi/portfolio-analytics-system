@@ -1,105 +1,88 @@
 # src/libs/concentration-analytics-engine/src/concentration_analytics_engine/metrics.py
-from typing import List, Dict
+from typing import List, Dict, Any
 import pandas as pd
-from decimal import Decimal
+import numpy as np
 
-from .exceptions import InsufficientDataError
-
-
-def calculate_bulk_concentration(
-    positions_df: pd.DataFrame, top_n_config: List[int]
-) -> Dict:
+def calculate_bulk_concentration(positions: pd.DataFrame, top_n: List[int]) -> Dict[str, Any]:
     """
-    Calculates bulk concentration metrics from a DataFrame of positions.
-
-    Args:
-        positions_df: DataFrame with at least a 'market_value' column.
-        top_n_config: A list of integers for Top-N calculations (e.g., [5, 10]).
-
-    Returns:
-        A dictionary containing the single-position weight, Top-N weights, and HHI.
+    Calculates bulk concentration metrics for a portfolio.
+    
+    Metrics include:
+    - Herfindahl-Hirschman Index (HHI)
+    - Weight of the single largest position
+    - Cumulative weight of the Top-N largest positions
     """
-    if positions_df.empty:
-        raise InsufficientDataError(
-            "Cannot calculate concentration on an empty DataFrame."
-        )
-
-    total_market_value = positions_df["market_value"].sum()
-
-    if total_market_value == Decimal("0"):
+    if positions.empty:
         return {
-            "single_position_weight": 0.0,
-            "top_n_weights": {str(n): 0.0 for n in top_n_config},
             "hhi": 0.0,
+            "single_position_weight": 0.0,
+            "top_n_weights": {str(n): 0.0 for n in top_n}
         }
 
-    positions_df["weight"] = positions_df["market_value"] / total_market_value
-    sorted_weights = positions_df["weight"].sort_values(ascending=False)
+    total_market_value = positions["market_value"].sum()
+    if total_market_value == 0:
+        return {
+            "hhi": 0.0,
+            "single_position_weight": 0.0,
+            "top_n_weights": {str(n): 0.0 for n in top_n}
+        }
 
-    single_position_weight = float(sorted_weights.iloc[0])
-    hhi = float((sorted_weights**2).sum())
-
-    top_n_weights = {
-        str(n): float(sorted_weights.head(n).sum()) for n in top_n_config
-    }
-
+    positions["weight"] = positions["market_value"] / total_market_value
+    
+    # HHI Calculation
+    hhi = np.sum(positions["weight"] ** 2)
+    
+    # Sort positions by weight to find top contributors
+    sorted_positions = positions.sort_values(by="weight", ascending=False)
+    
+    # Single largest position
+    single_position_weight = sorted_positions["weight"].iloc[0] if not sorted_positions.empty else 0.0
+    
+    # Top-N positions
+    top_n_weights = {}
+    for n in top_n:
+        top_n_weights[str(n)] = sorted_positions["weight"].head(n).sum()
+        
     return {
-        "single_position_weight": single_position_weight,
-        "top_n_weights": top_n_weights,
-        "hhi": hhi,
+        "hhi": float(hhi),
+        "single_position_weight": float(single_position_weight),
+        "top_n_weights": {k: float(v) for k, v in top_n_weights.items()}
     }
 
-
-def calculate_issuer_concentration(
-    positions_df: pd.DataFrame, top_n: int
-) -> List[Dict]:
+def calculate_issuer_concentration(positions: pd.DataFrame, top_n: int) -> List[Dict[str, Any]]:
     """
-    Calculates issuer concentration by grouping positions by their ultimate parent issuer.
-
-    Args:
-        positions_df: DataFrame with 'market_value', 'ultimate_parent_issuer_id', and 'issuer_name'.
-        top_n: The number of top issuer exposures to return.
-
-    Returns:
-        A list of dictionaries representing the top N issuer exposures.
+    Calculates issuer concentration, grouping positions by their issuer ID.
     """
-    if positions_df.empty:
+    if positions.empty:
         return []
 
-    required_columns = ["market_value", "ultimate_parent_issuer_id", "issuer_name"]
-    if not all(col in positions_df.columns for col in required_columns):
-        raise ValueError(f"Input DataFrame is missing required columns for issuer concentration: {required_columns}")
-
-    df = positions_df.copy()
-    df["ultimate_parent_issuer_id"] = df["ultimate_parent_issuer_id"].fillna("UNCLASSIFIED")
-    df["issuer_name"] = df["issuer_name"].fillna("Unclassified")
-
-    total_market_value = df["market_value"].sum()
-    if total_market_value == Decimal("0"):
+    total_market_value = positions["market_value"].sum()
+    if total_market_value == 0:
         return []
 
-    issuer_exposure = (
-        df.groupby("ultimate_parent_issuer_id")
-        .agg(
-            exposure=("market_value", "sum"),
-            issuer_name=("issuer_name", "first"),
-        )
-        .reset_index()
+    positions["issuer_id"] = positions["issuer_id"].fillna("UNCLASSIFIED")
+    positions["issuer_name"] = positions.apply(
+        lambda row: "Unclassified" if row["issuer_id"] == "UNCLASSIFIED" else row["issuer_name"],
+        axis=1
     )
 
-    issuer_exposure["weight"] = issuer_exposure["exposure"] / total_market_value
+    issuer_groups = positions.groupby("issuer_id").agg(
+        exposure=("market_value", "sum"),
+        issuer_name=("issuer_name", "first")
+    ).reset_index()
+    
+    issuer_groups["issuer_name"] = issuer_groups["issuer_name"].fillna(issuer_groups["issuer_id"])
 
-    top_exposures = issuer_exposure.sort_values(
-        by="exposure", ascending=False
-    ).head(top_n)
-
-    result = [
+    issuer_groups["weight"] = issuer_groups["exposure"] / total_market_value
+    
+    top_exposures = issuer_groups.sort_values(by="weight", ascending=False).head(top_n)
+    
+    return [
         {
+            "issuer_id": row["issuer_id"],
             "issuer_name": row["issuer_name"],
             "exposure": float(row["exposure"]),
-            "weight": float(row["weight"]),
+            "weight": float(row["weight"])
         }
-        for index, row in top_exposures.iterrows()
+        for _, row in top_exposures.iterrows()
     ]
-
-    return result
