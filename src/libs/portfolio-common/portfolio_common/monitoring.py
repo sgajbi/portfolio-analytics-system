@@ -234,4 +234,10 @@ CONCENTRATION_CALCULATION_DURATION_SECONDS = Histogram(
     labelnames=("portfolio_id",),
     buckets=(0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0),
 )
+
+CONCENTRATION_LOOKTHROUGH_REQUESTS_TOTAL = Counter(
+    "concentration_lookthrough_requests_total",
+    "Total number of concentration requests where fund look-through was enabled.",
+    labelnames=("portfolio_id",),
+)
  

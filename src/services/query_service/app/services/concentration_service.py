@@ -11,7 +11,10 @@ from ..dtos.concentration_dto import (
     ConcentrationRequest, ConcentrationResponse, ResponseSummary,
     BulkConcentration, IssuerConcentration, IssuerExposure
 )
-from portfolio_common.monitoring import CONCENTRATION_CALCULATION_DURATION_SECONDS
+from portfolio_common.monitoring import (
+    CONCENTRATION_CALCULATION_DURATION_SECONDS,
+    CONCENTRATION_LOOKTHROUGH_REQUESTS_TOTAL
+)
 
 # Import the repositories and the new engine
 from ..repositories.portfolio_repository import PortfolioRepository
@@ -34,6 +37,9 @@ class ConcentrationService:
     ) -> ConcentrationResponse:
         
         with CONCENTRATION_CALCULATION_DURATION_SECONDS.labels(portfolio_id=portfolio_id).time():
+            if "ISSUER" in request.metrics and request.options.lookthrough_enabled:
+                CONCENTRATION_LOOKTHROUGH_REQUESTS_TOTAL.labels(portfolio_id=portfolio_id).inc()
+
             portfolio = await self.portfolio_repo.get_by_id(portfolio_id)
             if not portfolio:
                 raise ValueError(f"Portfolio {portfolio_id} not found")

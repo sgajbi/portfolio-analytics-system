@@ -8,7 +8,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.services.query_service.app.services.concentration_service import ConcentrationService
 from src.services.query_service.app.dtos.concentration_dto import ConcentrationRequest
 from portfolio_common.database_models import Portfolio, DailyPositionSnapshot
-from portfolio_common.monitoring import CONCENTRATION_CALCULATION_DURATION_SECONDS
+from portfolio_common.monitoring import (
+    CONCENTRATION_CALCULATION_DURATION_SECONDS,
+    CONCENTRATION_LOOKTHROUGH_REQUESTS_TOTAL
+)
 
 pytestmark = pytest.mark.asyncio
 
@@ -152,3 +155,35 @@ async def test_calculate_concentration_records_metric(mock_metric_histogram, moc
     mock_metric_histogram.labels.assert_called_once_with(portfolio_id="P1")
     mock_metric_histogram.labels.return_value.time.return_value.__enter__.assert_called_once()
     mock_metric_histogram.labels.return_value.time.return_value.__exit__.assert_called_once()
+
+@patch('src.services.query_service.app.services.concentration_service.CONCENTRATION_LOOKTHROUGH_REQUESTS_TOTAL')
+@pytest.mark.parametrize("lookthrough_enabled, metrics, expected_calls", [
+    (True, ["ISSUER", "BULK"], 1), # Lookthrough enabled, issuer requested -> should be called
+    (False, ["ISSUER", "BULK"], 0), # Lookthrough disabled -> should not be called
+    (True, ["BULK"], 0), # Issuer not requested -> should not be called
+])
+async def test_calculate_concentration_records_lookthrough_metric(
+    mock_metric_counter, lookthrough_enabled, metrics, expected_calls, mock_dependencies
+):
+    """
+    GIVEN a request with different lookthrough options
+    WHEN calculate_concentration is called
+    THEN it should increment the lookthrough counter only when appropriate.
+    """
+    # ARRANGE
+    service = mock_dependencies["service"]
+    request = ConcentrationRequest.model_validate({
+        "scope": {"as_of_date": "2025-08-31"},
+        "metrics": metrics,
+        "options": {"lookthrough_enabled": lookthrough_enabled}
+    })
+
+    # ACT
+    await service.calculate_concentration("P1", request)
+
+    # ASSERT
+    if expected_calls > 0:
+        mock_metric_counter.labels.assert_called_once_with(portfolio_id="P1")
+        mock_metric_counter.labels.return_value.inc.assert_called_once()
+    else:
+        mock_metric_counter.labels.assert_not_called()
