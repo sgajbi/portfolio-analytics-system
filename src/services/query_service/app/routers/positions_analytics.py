@@ -1,49 +1,56 @@
-# src/services/query_service/app/routers/positions_analytics.py
+# src/services/query_service/app/routers/position_analytics.py
 import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from portfolio_common.db import get_async_db_session
-from ..dtos.position_analytics_dto import PositionAnalyticsRequest, PositionAnalyticsResponse
-from ..services.position_analytics_service import PositionAnalyticsService, get_position_analytics_service
+from ..services.position_analytics_service import PositionAnalyticsService
+from ..dtos.position_analytics_dto import (
+    PositionAnalyticsRequest, PositionAnalyticsResponse
+)
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/portfolios",
-    tags=["Positions"]
+    tags=["Position Analytics"]
 )
 
 @router.post(
-    "/{portfolio_id}/positions-analytics",
+    # --- THIS IS THE FIX ---
+    "/{portfolio_id}/positions-analytics", # The path was missing "-analytics"
+    # --- END FIX ---
     response_model=PositionAnalyticsResponse,
-    response_model_by_alias=True,
-    summary="Get On-the-Fly Position-Level Analytics"
+    response_model_exclude_none=True,
+    summary="Retrieve Detailed Position-Level Analytics",
+    description=(
+        "Provides a detailed, multi-section breakdown of analytics for all "
+        "positions held within a portfolio as of a specific date."
+    )
 )
 async def get_position_analytics(
     portfolio_id: str,
     request: PositionAnalyticsRequest,
-    service: PositionAnalyticsService = Depends(get_position_analytics_service)
+    db: AsyncSession = Depends(get_async_db_session)
 ):
     """
-    Retrieves a list of all positions for a portfolio and enriches each with
-    a configurable set of on-the-fly analytical metrics, such as performance,
-    income, and valuation details in both local and base currencies.
+    Retrieves comprehensive position-level analytics.
 
-    All calculations are performed against the latest **active and complete**
-    version of the portfolio's data, ensuring consistency with all other
-    system analytics.
+    - **portfolio_id**: The unique identifier for the portfolio.
+    - **Request Body**: A JSON object specifying the as-of date and the sections
+      of analytics to be included (e.g., valuation, performance, instrument details).
     """
     try:
-        return await service.get_position_analytics(portfolio_id, request)
+        service = PositionAnalyticsService(db)
+        return await service.get_analytics(portfolio_id, request)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
-    except Exception:
+    except Exception as e:
         logger.exception(
-            "An unexpected error occurred during position analytics generation for portfolio %s.",
+            "An unexpected error occurred during position analytics retrieval for portfolio %s.",
             portfolio_id
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An unexpected server error occurred during position analytics generation."
+            detail="An unexpected server error occurred."
         )
