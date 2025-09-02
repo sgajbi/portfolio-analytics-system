@@ -1,4 +1,4 @@
-# tests/unit/services/query_service/repositories/test_position_repository.py
+# tests/unit/services/query_service/repositories/test_unit_query_position_repo.py
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 from datetime import date
@@ -14,6 +14,7 @@ def mock_db_session() -> AsyncMock:
     session = AsyncMock(spec=AsyncSession)
     mock_result = MagicMock()
  
+  
     mock_result.all.return_value = [("mock_snapshot", "mock_name")] 
     mock_result.scalars.return_value.all.return_value = ["mock_history_1", "mock_history_2"]
     session.execute = AsyncMock(return_value=mock_result)
@@ -62,7 +63,10 @@ async def test_get_latest_positions_by_portfolio(repository: PositionRepository,
     
     # Check for key components of the new complex query
     assert "FROM daily_position_snapshots" in compiled_query
-    assert "JOIN position_state ON daily_position_snapshots.portfolio_id = position_state.portfolio_id AND daily_position_snapshots.security_id = position_state.security_id AND daily_position_snapshots.epoch = position_state.epoch" in compiled_query
-    assert "row_number()" in compiled_query.lower()
-    assert "PARTITION BY daily_position_snapshots.security_id" in compiled_query
-    assert "WHERE ranked_snapshots.rn = 1" in compiled_query
+    assert "JOIN position_state ON" in compiled_query
+    assert "daily_position_snapshots.epoch = position_state.epoch" in compiled_query
+    # Assert that it uses a subquery to find the max ID for each security
+    assert "JOIN (SELECT max(daily_position_snapshots.id) AS max_id" in compiled_query
+    assert "GROUP BY daily_position_snapshots.security_id)" in compiled_query
+    # Assert that the main query joins on the result of the subquery
+    assert "ON daily_position_snapshots.id = anon_1.max_id" in compiled_query
