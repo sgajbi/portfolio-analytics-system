@@ -52,7 +52,6 @@ class TransactionEventConsumer(BaseConsumer):
         try:
             data = json.loads(value)
             event = TransactionEvent.model_validate(data)
-            reprocess_epoch = event.epoch
 
             async for db in get_async_db_session():
                 # --- FIX: Wrap entire operation in a single atomic transaction ---
@@ -72,8 +71,7 @@ class TransactionEventConsumer(BaseConsumer):
                         db_session=db,
                         repo=repo,
                         position_state_repo=position_state_repo,
-                        outbox_repo=outbox_repo,
-                        reprocess_epoch=reprocess_epoch
+                        outbox_repo=outbox_repo
                     )
                     
                     # This is now part of the same transaction

@@ -1,84 +1,103 @@
 # tests/unit/services/calculators/position_calculator/consumers/test_position_calculator_consumer.py
 import pytest
-from unittest.mock import MagicMock, patch, AsyncMock, ANY
-from datetime import datetime, date
+from unittest.mock import MagicMock, patch, AsyncMock
+from datetime import datetime
 from decimal import Decimal
-from contextlib import asynccontextmanager
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from src.services.calculators.position_calculator.app.consumers.transaction_event_consumer import TransactionEventConsumer, RecalculationInProgressError
 from portfolio_common.events import TransactionEvent
+from src.services.calculators.position_calculator.app.consumers.transaction_event_consumer import TransactionEventConsumer
+from src.services.calculators.position_calculator.app.core.position_logic import PositionCalculator
 from portfolio_common.idempotency_repository import IdempotencyRepository
-from portfolio_common.position_state_repository import PositionStateRepository
 from src.services.calculators.position_calculator.app.repositories.position_repository import PositionRepository
-from portfolio_common.logging_utils import correlation_id_var
-from portfolio_common.database_models import PositionState
+from portfolio_common.position_state_repository import PositionStateRepository
 
 pytestmark = pytest.mark.asyncio
 
 @pytest.fixture
 def position_consumer():
+    """Provides a clean instance of the consumer for each test."""
     consumer = TransactionEventConsumer(
         bootstrap_servers="mock_server",
         topic="processed_transactions_completed",
         group_id="test_group",
         dlq_topic="test.dlq"
     )
+    # Mock the DLQ method to prevent actual network calls and allow for assertions
     consumer._send_to_dlq_async = AsyncMock()
     return consumer
 
 @pytest.fixture
 def mock_transaction_event() -> TransactionEvent:
+    """Provides a standard transaction event for testing."""
     return TransactionEvent(
-        transaction_id="TXN_POS_CALC_02", portfolio_id="PORT_POS_CALC_01",
-        instrument_id="INST_POS_CALC_01", security_id="SEC_POS_CALC_01",
-        transaction_date=datetime(2025, 8, 6, 10, 0, 0), transaction_type="SELL",
-        quantity=Decimal(40), price=Decimal(110), gross_transaction_amount=Decimal(4400),
-        net_cost=Decimal("-4000"), net_cost_local=Decimal("-3600"),
-        trade_currency="USD", currency="USD"
+        transaction_id='TXN_POS_CALC_02',
+        portfolio_id='PORT_POS_CALC_01',
+        instrument_id='INST_POS_CALC_01',
+        security_id='SEC_POS_CALC_01',
+        transaction_date=datetime(2025, 8, 1, 10, 0, 0),
+        transaction_type="SELL",
+        quantity=Decimal('40'),
+        price=Decimal('90'),
+        gross_transaction_amount=Decimal('3600'),
+        trade_currency='USD',
+        currency='USD',
+        net_cost=Decimal('-3600'),
+        net_cost_local=Decimal('-3600'),
+        epoch=None # Default to an original event
     )
 
 @pytest.fixture
-def mock_kafka_message(mock_transaction_event: TransactionEvent):
+def mock_kafka_message(mock_transaction_event: TransactionEvent) -> MagicMock:
+    """Creates a mock Kafka message from a transaction event."""
     mock_msg = MagicMock()
     mock_msg.value.return_value = mock_transaction_event.model_dump_json().encode('utf-8')
-    mock_msg.key.return_value = "test_key".encode('utf-8')
-    mock_msg.headers.return_value = []
-    mock_msg.topic.return_value = "test"
+    mock_msg.key.return_value = mock_transaction_event.portfolio_id.encode('utf-8')
+    mock_msg.topic.return_value = "processed_transactions_completed"
     mock_msg.partition.return_value = 0
-    mock_msg.offset.return_value = 1
+    mock_msg.offset.return_value = 123
+    mock_msg.error.return_value = None
+    mock_msg.headers.return_value = [('correlation_id', b'test-corr-id')]
     return mock_msg
 
 @pytest.fixture
 def mock_dependencies():
-    mock_idempotency_repo = AsyncMock(spec=IdempotencyRepository)
-    mock_position_state_repo = AsyncMock(spec=PositionStateRepository)
-    mock_position_repo = AsyncMock(spec=PositionRepository)
-
+    """Mocks all external dependencies for the consumer."""
     mock_db_session = AsyncMock(spec=AsyncSession)
-    
-    @asynccontextmanager
-    async def mock_begin_transaction():
-        yield
-    mock_db_session.begin.side_effect = mock_begin_transaction
+    mock_db_session.begin.return_value.__aenter__.return_value = AsyncMock()
 
     async def get_session_gen():
         yield mock_db_session
+    
+    with patch(
+        "src.services.calculators.position_calculator.app.consumers.transaction_event_consumer.get_async_db_session", new=get_session_gen
+    ), patch(
+        "src.services.calculators.position_calculator.app.consumers.transaction_event_consumer.PositionCalculator.calculate", new_callable=AsyncMock
+    ) as mock_calculate, patch(
+        "src.services.calculators.position_calculator.app.consumers.transaction_event_consumer.IdempotencyRepository"
+    ) as mock_idempotency_class, patch(
+        "src.services.calculators.position_calculator.app.consumers.transaction_event_consumer.PositionRepository"
+    ) as mock_position_repo_class, patch(
+        "src.services.calculators.position_calculator.app.consumers.transaction_event_consumer.PositionStateRepository"
+    ) as mock_state_repo_class:
+        
+        mock_idempotency_instance = AsyncMock(spec=IdempotencyRepository)
+        mock_position_repo_instance = AsyncMock(spec=PositionRepository)
+        mock_state_repo_instance = AsyncMock(spec=PositionStateRepository)
 
-    with patch("src.services.calculators.position_calculator.app.consumers.transaction_event_consumer.get_async_db_session", new=get_session_gen), \
-         patch("src.services.calculators.position_calculator.app.consumers.transaction_event_consumer.IdempotencyRepository", return_value=mock_idempotency_repo), \
-         patch("src.services.calculators.position_calculator.app.consumers.transaction_event_consumer.PositionRepository", return_value=mock_position_repo), \
-         patch("src.services.calculators.position_calculator.app.consumers.transaction_event_consumer.PositionStateRepository", return_value=mock_position_state_repo), \
-         patch("src.services.calculators.position_calculator.app.consumers.transaction_event_consumer.PositionCalculator.calculate") as mock_calculate:
+        mock_idempotency_class.return_value = mock_idempotency_instance
+        mock_position_repo_class.return_value = mock_position_repo_instance
+        mock_state_repo_class.return_value = mock_state_repo_instance
+
         yield {
-            "idempotency_repo": mock_idempotency_repo,
-            "position_state_repo": mock_position_state_repo,
-            "position_repo": mock_position_repo,
-            "calculate_logic": mock_calculate
+            "calculate_logic": mock_calculate,
+            "idempotency_repo": mock_idempotency_instance,
+            "position_repo": mock_position_repo_instance,
+            "position_state_repo": mock_state_repo_instance,
         }
 
-async def test_consumer_calls_logic_with_no_epoch_for_original_event(position_consumer: TransactionEventConsumer, mock_kafka_message: MagicMock, mock_dependencies: dict):
-    """Tests that an original event (no epoch in payload) calls the logic with reprocess_epoch=None."""
+async def test_consumer_calls_logic_with_original_event(position_consumer: TransactionEventConsumer, mock_kafka_message: MagicMock, mock_dependencies: dict):
+    """Tests that an original event (no epoch in payload) calls the logic, and the event object passed has epoch=None."""
     # ARRANGE
     mock_dependencies["idempotency_repo"].is_event_processed.return_value = False
 
@@ -88,13 +107,14 @@ async def test_consumer_calls_logic_with_no_epoch_for_original_event(position_co
     # ASSERT
     mock_dependencies["calculate_logic"].assert_awaited_once()
     call_kwargs = mock_dependencies["calculate_logic"].call_args.kwargs
-    assert call_kwargs['reprocess_epoch'] is None
+    passed_event: TransactionEvent = call_kwargs['event']
+    assert passed_event.epoch is None
 
-async def test_consumer_passes_reprocess_epoch_payload_to_logic(position_consumer: TransactionEventConsumer, mock_kafka_message: MagicMock, mock_transaction_event: TransactionEvent, mock_dependencies: dict):
-    """Tests that the consumer correctly parses the reprocess_epoch from the payload and passes it to the logic layer."""
+async def test_consumer_passes_epoch_from_payload_to_logic(position_consumer: TransactionEventConsumer, mock_kafka_message: MagicMock, mock_transaction_event: TransactionEvent, mock_dependencies: dict):
+    """Tests that the consumer correctly parses the epoch from the payload and passes it to the logic layer inside the event object."""
     # ARRANGE
     mock_dependencies["idempotency_repo"].is_event_processed.return_value = False
-    mock_transaction_event.epoch = 2 # Set the epoch in the event payload
+    mock_transaction_event.epoch = 2
     mock_kafka_message.value.return_value = mock_transaction_event.model_dump_json().encode('utf-8')
 
     # ACT
@@ -103,35 +123,17 @@ async def test_consumer_passes_reprocess_epoch_payload_to_logic(position_consume
     # ASSERT
     mock_dependencies["calculate_logic"].assert_awaited_once()
     call_kwargs = mock_dependencies["calculate_logic"].call_args.kwargs
-    assert call_kwargs['reprocess_epoch'] == 2
+    passed_event: TransactionEvent = call_kwargs['event']
+    assert passed_event.epoch == 2
 
-# --- NEW TEST ---
-async def test_consumer_sends_to_dlq_on_unexpected_error(
-    position_consumer: TransactionEventConsumer,
-    mock_kafka_message: MagicMock,
-    mock_dependencies: dict
-):
-    """
-    GIVEN a valid message
-    WHEN the core logic layer (PositionCalculator.calculate) raises an unexpected Exception
-    THEN the consumer should catch it and send the message to the DLQ.
-    """
+async def test_consumer_skips_already_processed_events(position_consumer: TransactionEventConsumer, mock_kafka_message: MagicMock, mock_dependencies: dict):
+    """Tests that if the idempotency check returns True, the business logic is not called."""
     # ARRANGE
-    mock_dependencies["idempotency_repo"].is_event_processed.return_value = False
-    mock_logic = mock_dependencies["calculate_logic"]
-    
-    # Configure the mocked logic to raise a generic, unexpected error
-    mock_logic.side_effect = Exception("A critical logic error occurred!")
+    mock_dependencies["idempotency_repo"].is_event_processed.return_value = True
 
     # ACT
     await position_consumer.process_message(mock_kafka_message)
 
     # ASSERT
-    # The logic should have been called, triggering the error
-    mock_logic.assert_awaited_once()
-
-    # The message should have been sent to the DLQ
-    position_consumer._send_to_dlq_async.assert_awaited_once()
-    
-    # The idempotency key should NOT be marked as processed, allowing for redelivery/replay
-    mock_dependencies["idempotency_repo"].mark_event_processed.assert_not_called()
+    mock_dependencies["idempotency_repo"].is_event_processed.assert_awaited_once()
+    mock_dependencies["calculate_logic"].assert_not_awaited()

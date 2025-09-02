@@ -40,11 +40,9 @@ class PositionCalculator:
         security_id = event.security_id
         transaction_date = event.transaction_date.date()
 
-        # --- REFACTORED: Use EpochFencer ---
         fencer = EpochFencer(db_session, service_name="position-calculator")
         if not await fencer.check(event):
             return
-        # --- END REFACTOR ---
         
         current_state = await position_state_repo.get_or_create_state(portfolio_id, security_id)
         
