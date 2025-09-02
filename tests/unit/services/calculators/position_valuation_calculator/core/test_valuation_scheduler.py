@@ -68,7 +68,7 @@ async def test_scheduler_creates_position_aware_backfill_jobs(scheduler: Valuati
     """
     GIVEN a state with an old watermark but a recent first_open_date
     WHEN _create_backfill_jobs runs
-    THEN it should create jobs starting from the first_open_date.
+    THEN it should create jobs starting from the first_open_date and set the lag gauge.
     """
     # ARRANGE
     mock_repo = mock_dependencies["repo"]
@@ -76,9 +76,12 @@ async def test_scheduler_creates_position_aware_backfill_jobs(scheduler: Valuati
     
     latest_business_date = date(2025, 8, 12)
     first_open_date = date(2025, 8, 10)
+    watermark_date = date(1970, 1, 1)
+    expected_lag = (latest_business_date - watermark_date).days
+
 
     states_to_backfill = [
-        PositionState(portfolio_id="P1", security_id="S1", watermark_date=date(1970, 1, 1), epoch=1)
+        PositionState(portfolio_id="P1", security_id="S1", watermark_date=watermark_date, epoch=1)
     ]
     
     mock_repo.get_latest_business_date.return_value = latest_business_date
@@ -95,8 +98,9 @@ async def test_scheduler_creates_position_aware_backfill_jobs(scheduler: Valuati
         assert mock_job_repo.upsert_job.call_count == 3
         first_call_args = mock_job_repo.upsert_job.call_args_list[0].kwargs
         assert first_call_args['valuation_date'] == date(2025, 8, 10)
-        mock_gauge_labels.assert_called_once()
-        mock_gauge_labels.return_value.set.assert_called_once()
+        
+        mock_gauge_labels.assert_called_once_with(portfolio_id="P1", security_id="S1")
+        mock_gauge_labels.return_value.set.assert_called_once_with(expected_lag)
 
 
 async def test_scheduler_skips_jobs_for_keys_with_no_position_history(scheduler: ValuationScheduler, mock_dependencies: dict):

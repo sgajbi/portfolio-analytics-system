@@ -8,7 +8,7 @@ The health of this service is crucial for both data accuracy and the proper func
 
 ### Key Metrics to Watch
 
-| Metric Name | Type | Labels | Description |
+| Metric Name | Type | Labels | Description & What to Watch For |
 | :--- | :--- | :--- | :--- |
 | **`reprocessing_epoch_bumped_total`** | **Counter** | `portfolio_id`, `security_id` | **(New)** Increments every time a back-dated transaction triggers a new epoch and a full reprocessing flow. This is the primary indicator of reprocessing activity. |
 | `epoch_mismatch_dropped_total` | Counter | `service_name`, `topic`, `portfolio_id`, `security_id` | Increments every time this consumer discards a Kafka message because its epoch is stale. A high rate indicates that epoch fencing is working correctly to prevent data corruption during an active replay. |

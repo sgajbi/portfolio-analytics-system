@@ -57,8 +57,6 @@ class PositionCalculator:
         
         is_backdated = transaction_date < effective_completed_date
         
-        # A back-dated check is only relevant for an original event (epoch is None).
-        # A replayed event will have an epoch and should bypass this.
         if is_backdated and event.epoch is None:
             logger.warning(
                 "Back-dated transaction detected. Triggering atomic reprocessing flow via outbox.",
@@ -81,15 +79,19 @@ class PositionCalculator:
                 portfolio_id, security_id, new_watermark
             )
             
-            all_transactions = await repo.get_all_transactions_for_security(portfolio_id, security_id)
+            historical_db_txns = await repo.get_all_transactions_for_security(portfolio_id, security_id)
             
-            logger.info(f"Atomically queuing {len(all_transactions)} events for reprocessing replay in Epoch {new_state.epoch}")
-            for txn in all_transactions:
-                event_to_publish = TransactionEvent.model_validate(txn)
+            # Combine historical events with the current triggering event
+            all_events_to_replay = [TransactionEvent.model_validate(t) for t in historical_db_txns]
+            all_events_to_replay.append(event)
+            all_events_to_replay.sort(key=lambda x: x.transaction_date) # Re-sort to ensure chronological order
+            
+            logger.info(f"Atomically queuing {len(all_events_to_replay)} events for reprocessing replay in Epoch {new_state.epoch}")
+            for event_to_publish in all_events_to_replay:
                 event_to_publish.epoch = new_state.epoch
                 await outbox_repo.create_outbox_event(
                     aggregate_type='ReprocessTransaction',
-                    aggregate_id=str(txn.portfolio_id),
+                    aggregate_id=str(event_to_publish.portfolio_id),
                     event_type='ReprocessTransactionReplay',
                     topic=KAFKA_PROCESSED_TRANSACTIONS_COMPLETED_TOPIC,
                     payload=event_to_publish.model_dump(mode='json')
@@ -162,8 +164,6 @@ class PositionCalculator:
         elif txn_type in ["SELL", "TRANSFER_OUT"]:
             quantity -= transaction.quantity
             
-            # transaction.net_cost is negative for a SELL/TRANSFER_OUT, representing the COGS.
-            # Adding this negative value correctly reduces the total cost basis.
             if transaction.net_cost is not None:
                 cost_basis += transaction.net_cost
             if transaction.net_cost_local is not None:

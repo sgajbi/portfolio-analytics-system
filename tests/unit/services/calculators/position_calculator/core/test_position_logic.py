@@ -12,6 +12,7 @@ from src.services.calculators.position_calculator.app.repositories.position_repo
 from portfolio_common.position_state_repository import PositionStateRepository
 from portfolio_common.outbox_repository import OutboxRepository
 from portfolio_common.reprocessing import EpochFencer
+from portfolio_common.monitoring import REPROCESSING_EPOCH_BUMPED_TOTAL
 
 # The module-level pytestmark is removed to apply the asyncio mark selectively.
 
@@ -122,8 +123,8 @@ async def test_calculate_re_emits_and_increments_metric_for_backdated_event(
 ):
     """
     GIVEN a transaction that IS backdated
-    WHEN PositionCalculator.calculate runs
-    THEN it should increment epoch, re-emit events, and increment the metric.
+    WHEN PositionCalculator.calculate runs for an original event (epoch is None)
+    THEN it should increment epoch, re-emit all historical events plus the triggering event.
     """
     # ARRANGE
     mock_fencer_instance = mock_fencer_class.return_value
@@ -149,9 +150,19 @@ async def test_calculate_re_emits_and_increments_metric_for_backdated_event(
     mock_state_repo.increment_epoch_and_reset_watermark.assert_awaited_once_with(
         "P1", "S1", date(2025, 8, 19)
     )
+    
+    # Assert that the metric was instrumented correctly
     mock_metric.labels.assert_called_once_with(portfolio_id="P1", security_id="S1")
     mock_metric.labels.return_value.inc.assert_called_once()
-    assert mock_outbox_repo.create_outbox_event.call_count == 1
+    
+    # Assert that it tried to publish TWO events: one historical + the triggering one
+    assert mock_outbox_repo.create_outbox_event.call_count == 2
+    
+    # Check that both events were tagged with the new epoch
+    first_call_args = mock_outbox_repo.create_outbox_event.call_args_list[0].kwargs
+    assert first_call_args['payload']['epoch'] == 1
+    second_call_args = mock_outbox_repo.create_outbox_event.call_args_list[1].kwargs
+    assert second_call_args['payload']['epoch'] == 1
 
 def test_calculate_next_position_for_sell_uses_net_cost():
     """
