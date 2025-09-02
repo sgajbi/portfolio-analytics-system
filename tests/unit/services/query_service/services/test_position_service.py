@@ -24,8 +24,11 @@ def mock_position_repo() -> AsyncMock:
         quantity=Decimal(100), cost_basis=Decimal(1000), 
         date=date(2025, 1, 1)
     )
-    # UPDATED: Return a 6-element tuple including the new issuer fields
-    repo.get_latest_positions_by_portfolio.return_value = [(mock_snapshot, "Test Instrument", "CURRENT", "Equity", "ISSUER_A", "PARENT_A")]
+    # Return the full 11-item tuple to match the repository's new signature
+    repo.get_latest_positions_by_portfolio.return_value = [(
+        mock_snapshot, "Test Instrument", "CURRENT", "ISIN123", "USD",
+        "Equity", "Technology", "US", "ISSUER_A", "PARENT_A", 0
+    )]
     return repo
 
 async def test_get_position_history(mock_position_repo: AsyncMock):
