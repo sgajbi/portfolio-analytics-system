@@ -220,3 +220,49 @@ def test_fifo_multi_lot_disposition(fifo_strategy: FIFOBasisStrategy):
     lot_key = ("P1", "FIFO_STOCK")
     assert len(fifo_strategy._open_lots[lot_key]) == 1
     assert fifo_strategy._open_lots[lot_key][0].remaining_quantity == Decimal("30")
+
+# --- NEW TEST ---
+def test_fifo_dual_currency_disposition(fifo_strategy: FIFOBasisStrategy):
+    """
+    Tests FIFO with a USD portfolio trading a EUR stock with changing FX rates.
+    """
+    # ARRANGE
+    # Lot 1: 100 shares @ €10/share, FX=1.10. Cost: €1000 local, $1100 base.
+    buy1 = Transaction(
+        transaction_id="FIFO_DC_BUY_1", portfolio_id="P_USD", instrument_id="EUR_STOCK", security_id="S_EUR",
+        transaction_type="BUY", transaction_date=datetime(2023, 1, 1), quantity=Decimal("100"),
+        gross_transaction_amount=Decimal("1000"),
+        net_cost_local=Decimal("1000"), net_cost=Decimal("1100"), trade_currency="EUR", portfolio_base_currency="USD"
+    )
+    # Lot 2: 50 shares @ €12/share, FX=1.15. Cost: €600 local, $690 base.
+    buy2 = Transaction(
+        transaction_id="FIFO_DC_BUY_2", portfolio_id="P_USD", instrument_id="EUR_STOCK", security_id="S_EUR",
+        transaction_type="BUY", transaction_date=datetime(2023, 1, 5), quantity=Decimal("50"),
+        gross_transaction_amount=Decimal("600"),
+        net_cost_local=Decimal("600"), net_cost=Decimal("690"), trade_currency="EUR", portfolio_base_currency="USD"
+    )
+    fifo_strategy.add_buy_lot(buy1)
+    fifo_strategy.add_buy_lot(buy2)
+    assert fifo_strategy.get_available_quantity("P_USD", "EUR_STOCK") == Decimal("150")
+
+    # ACT: Sell 120 shares. This should consume all of Lot 1 and 20 shares of Lot 2.
+    cogs_base, cogs_local, consumed_qty, error = fifo_strategy.consume_sell_quantity(
+        "P_USD", "EUR_STOCK", Decimal("120")
+    )
+
+    # ASSERT
+    assert error is None
+    assert consumed_qty == Decimal("120")
+
+    # COGS Local: (100 shares * €10) + (20 shares * €12) = €1000 + €240 = €1240
+    assert cogs_local == pytest.approx(Decimal("1240"))
+
+    # COGS Base: (100 shares * $11) + (20 shares * $13.80) = $1100 + $276 = $1376
+    # Note: Cost per share for Lot 2 is $690/50 = $13.80
+    assert cogs_base == pytest.approx(Decimal("1376"))
+
+    # Assert final state: 30 shares from Lot 2 should remain
+    assert fifo_strategy.get_available_quantity("P_USD", "EUR_STOCK") == Decimal("30")
+    remaining_lot = fifo_strategy._open_lots[("P_USD", "EUR_STOCK")][0]
+    assert remaining_lot.transaction_id == "FIFO_DC_BUY_2"
+    assert remaining_lot.remaining_quantity == Decimal("30")
