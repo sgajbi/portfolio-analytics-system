@@ -73,7 +73,6 @@ class SecurityInflowStrategy:
             except ValueError as e:
                 error_reporter.add_error(transaction.transaction_id, str(e))
 
-# --- NEW STRATEGY ---
 class SecurityOutflowStrategy:
     def calculate_costs(self, transaction: Transaction, disposition_engine: DispositionEngine, error_reporter: ErrorReporter) -> None:
         """Consumes a cost lot for a security transfer out, but does not realize a P&L."""
@@ -84,14 +83,11 @@ class SecurityOutflowStrategy:
             return
 
         if consumed_quantity > Decimal(0):
-            # Set cost fields based on the consumed lots for accurate position history
             transaction.net_cost = -cogs_base
             transaction.net_cost_local = -cogs_local
             transaction.gross_cost = -cogs_base
-            # Ensure no P&L is realized for a transfer
             transaction.realized_gain_loss = None
             transaction.realized_gain_loss_local = None
-# --- END NEW STRATEGY ---
 
 class IncomeStrategy:
     def calculate_costs(self, transaction: Transaction, disposition_engine: DispositionEngine, error_reporter: ErrorReporter) -> None:
@@ -119,10 +115,8 @@ class CostCalculator:
             TransactionType.DIVIDEND: IncomeStrategy(),
             TransactionType.DEPOSIT: CashInflowStrategy(),
             TransactionType.TRANSFER_IN: SecurityInflowStrategy(),
-            # --- THIS IS THE FIX ---
             TransactionType.TRANSFER_OUT: SecurityOutflowStrategy(),
             TransactionType.WITHDRAWAL: SecurityOutflowStrategy(),
-            # --- END FIX ---
             TransactionType.FEE: DefaultStrategy(),
             TransactionType.OTHER: DefaultStrategy(),
         }
