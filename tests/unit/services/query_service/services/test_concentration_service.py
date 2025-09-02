@@ -26,7 +26,6 @@ def mock_dependencies():
         portfolio_id="P1", open_date=date(2023, 1, 1)
     )
 
-    # --- FIX: Return the correct 3-tuple structure (Snapshot, Instrument, State) ---
     mock_snapshot_1 = DailyPositionSnapshot(security_id="S1_JPM", market_value=Decimal("60000"))
     mock_instrument_1 = Instrument(name="JPM Bond", issuer_id="JPM_ISSUER", ultimate_parent_issuer_id="JPM_PARENT")
     mock_state_1 = PositionState(status="CURRENT")
@@ -39,7 +38,6 @@ def mock_dependencies():
         (mock_snapshot_1, mock_instrument_1, mock_state_1),
         (mock_snapshot_2, mock_instrument_2, mock_state_2),
     ]
-    # --- END FIX ---
 
     with patch(
         "src.services.query_service.app.services.concentration_service.PortfolioRepository",
@@ -76,11 +74,8 @@ async def test_calculate_bulk_concentration(mock_dependencies):
     bulk = response.bulk_concentration
     assert bulk is not None
     
-    # single_position_weight = 60000 / 100000 = 0.6
     assert bulk.single_position_weight == pytest.approx(0.6)
-    # HHI = (0.6^2 + 0.4^2) = 0.36 + 0.16 = 0.52
     assert bulk.hhi == pytest.approx(0.52)
-    # Top 1 = 60%
     assert bulk.top_n_weights["1"] == pytest.approx(0.6)
 
 
@@ -106,8 +101,10 @@ async def test_calculate_issuer_concentration(mock_dependencies):
     top_exposures = response.issuer_concentration.top_exposures
     assert len(top_exposures) == 2
 
-    jpm_exposure = next(item for item in top_exposures if item.issuer_name == "JPM Bond")
-    msft_exposure = next(item for item in top_exposures if item.issuer_name == "Microsoft Stock")
+    # --- FIX: Assert against the ultimate_parent_issuer_id, which becomes the issuer_name ---
+    jpm_exposure = next(item for item in top_exposures if item.issuer_name == "JPM_PARENT")
+    msft_exposure = next(item for item in top_exposures if item.issuer_name == "MSFT_PARENT")
+    # --- END FIX ---
 
     assert jpm_exposure.exposure == pytest.approx(60000.0)
     assert jpm_exposure.weight == pytest.approx(0.6)
@@ -124,7 +121,7 @@ async def test_calculate_concentration_for_empty_portfolio(mock_dependencies):
     # ARRANGE
     service = mock_dependencies["service"]
     mock_position_repo = mock_dependencies["position_repo"]
-    mock_position_repo.get_latest_positions_by_portfolio.return_value = [] # No positions
+    mock_position_repo.get_latest_positions_by_portfolio.return_value = [] 
 
     request = ConcentrationRequest.model_validate({
         "scope": {"as_of_date": "2025-08-31"},
@@ -164,9 +161,9 @@ async def test_calculate_concentration_records_metric(mock_metric_histogram, moc
 
 @patch('src.services.query_service.app.services.concentration_service.CONCENTRATION_LOOKTHROUGH_REQUESTS_TOTAL')
 @pytest.mark.parametrize("lookthrough_enabled, metrics, expected_calls", [
-    (True, ["ISSUER", "BULK"], 1), # Lookthrough enabled, issuer requested -> should be called
-    (False, ["ISSUER", "BULK"], 0), # Lookthrough disabled -> should not be called
-    (True, ["BULK"], 0), # Issuer not requested -> should not be called
+    (True, ["ISSUER", "BULK"], 1),
+    (False, ["ISSUER", "BULK"], 0),
+    (True, ["BULK"], 0),
 ])
 async def test_calculate_concentration_records_lookthrough_metric(
     mock_metric_counter, lookthrough_enabled, metrics, expected_calls, mock_dependencies
