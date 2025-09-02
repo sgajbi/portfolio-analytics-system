@@ -9,11 +9,12 @@ from portfolio_common.database_models import DailyPositionSnapshot, PositionStat
 
 pytestmark = pytest.mark.asyncio
 
-@pytest.fixture(scope="module", autouse=True)
+@pytest.fixture(scope="function", autouse=True)
 async def setup_test_data(async_db_session: AsyncSession):
     """
     Sets up the necessary data for the position repository tests.
     Inserts instrument, position state, and multiple daily snapshots.
+    This is function-scoped to match its database session dependency.
     """
     today = date(2025, 9, 2)
     yesterday = date(2025, 9, 1)
