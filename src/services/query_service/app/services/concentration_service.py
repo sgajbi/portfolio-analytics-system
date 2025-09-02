@@ -7,7 +7,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import Depends
 
 from portfolio_common.db import get_async_db_session
-from portfolio_common.monitoring import CONCENTRATION_CALCULATION_DURATION_SECONDS
+from portfolio_common.monitoring import (
+    CONCENTRATION_CALCULATION_DURATION_SECONDS,
+    CONCENTRATION_LOOKTHROUGH_REQUESTS_TOTAL,
+)
 from ..dtos.concentration_dto import (
     ConcentrationRequest, ConcentrationResponse, ResponseSummary,
     BulkConcentration, IssuerConcentration, IssuerExposure
@@ -74,6 +77,9 @@ class ConcentrationService:
                 bulk_concentration_result = BulkConcentration(**bulk_metrics)
             
             if "ISSUER" in request.metrics:
+                if request.options.lookthrough_enabled:
+                    CONCENTRATION_LOOKTHROUGH_REQUESTS_TOTAL.labels(portfolio_id=portfolio_id).inc()
+
                 issuer_metrics = calculate_issuer_concentration(
                     positions_df, request.options.issuer_top_n
                 )

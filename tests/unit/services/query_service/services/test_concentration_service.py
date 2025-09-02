@@ -7,7 +7,7 @@ from decimal import Decimal
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.services.query_service.app.services.concentration_service import ConcentrationService
 from src.services.query_service.app.dtos.concentration_dto import ConcentrationRequest
-from portfolio_common.database_models import Portfolio, DailyPositionSnapshot
+from portfolio_common.database_models import Portfolio, DailyPositionSnapshot, Instrument, PositionState
 from portfolio_common.monitoring import (
     CONCENTRATION_CALCULATION_DURATION_SECONDS,
     CONCENTRATION_LOOKTHROUGH_REQUESTS_TOTAL
@@ -26,20 +26,20 @@ def mock_dependencies():
         portfolio_id="P1", open_date=date(2023, 1, 1)
     )
 
-    # Mock the return value of get_latest_positions_by_portfolio
-    # It returns a list of 11-item tuples
+    # --- FIX: Return the correct 3-tuple structure (Snapshot, Instrument, State) ---
     mock_snapshot_1 = DailyPositionSnapshot(security_id="S1_JPM", market_value=Decimal("60000"))
+    mock_instrument_1 = Instrument(name="JPM Bond", issuer_id="JPM_ISSUER", ultimate_parent_issuer_id="JPM_PARENT")
+    mock_state_1 = PositionState(status="CURRENT")
+
     mock_snapshot_2 = DailyPositionSnapshot(security_id="S2_MSFT", market_value=Decimal("40000"))
+    mock_instrument_2 = Instrument(name="Microsoft Stock", issuer_id="MSFT_ISSUER", ultimate_parent_issuer_id="MSFT_PARENT")
+    mock_state_2 = PositionState(status="CURRENT")
+
     mock_position_repo.get_latest_positions_by_portfolio.return_value = [
-        (
-            mock_snapshot_1, "JPM Bond", "CURRENT", "ISIN_JPM", "USD", "Fixed Income",
-            "Financials", "US", "JPM_ISSUER", "JPM_PARENT", 0
-        ),
-        (
-            mock_snapshot_2, "Microsoft Stock", "CURRENT", "ISIN_MSFT", "USD", "Equity",
-            "Technology", "US", "MSFT_ISSUER", "MSFT_PARENT", 0
-        ),
+        (mock_snapshot_1, mock_instrument_1, mock_state_1),
+        (mock_snapshot_2, mock_instrument_2, mock_state_2),
     ]
+    # --- END FIX ---
 
     with patch(
         "src.services.query_service.app.services.concentration_service.PortfolioRepository",
