@@ -137,3 +137,39 @@ async def test_consumer_skips_already_processed_events(position_consumer: Transa
     # ASSERT
     mock_dependencies["idempotency_repo"].is_event_processed.assert_awaited_once()
     mock_dependencies["calculate_logic"].assert_not_awaited()
+
+# --- NEW TEST ---
+async def test_consumer_sends_to_dlq_on_logic_failure(
+    position_consumer: TransactionEventConsumer,
+    mock_kafka_message: MagicMock,
+    mock_dependencies: dict
+):
+    """
+    GIVEN an event that causes an unexpected error in the logic layer
+    WHEN the consumer processes the message
+    THEN it should send the message to the DLQ and not call other repos.
+    """
+    # ARRANGE
+    mock_idempotency_repo = mock_dependencies["idempotency_repo"]
+    mock_calculate_logic = mock_dependencies["calculate_logic"]
+
+    mock_idempotency_repo.is_event_processed.return_value = False
+    
+    # Simulate a crash inside the core business logic
+    processing_error = Exception("Unexpected database constraint violation!")
+    mock_calculate_logic.side_effect = processing_error
+
+    # ACT
+    await position_consumer.process_message(mock_kafka_message)
+
+    # ASSERT
+    # 1. Verify it attempted to process the message
+    mock_calculate_logic.assert_awaited_once()
+
+    # 2. Verify it sent the message to the DLQ
+    position_consumer._send_to_dlq_async.assert_awaited_once_with(
+        mock_kafka_message, processing_error
+    )
+    
+    # 3. Verify it did NOT try to mark the event as processed, as it failed
+    mock_idempotency_repo.mark_event_processed.assert_not_called()
