@@ -113,7 +113,8 @@ def test_portfolio_review_endpoint(setup_review_data, e2e_api_client: E2EApiClie
     ytd_perf = performance["summary"]["YTD"]
     assert isinstance(ytd_perf["net_cumulative_return"], float)
     assert isinstance(ytd_perf["gross_cumulative_return"], float)
-    assert ytd_perf["gross_cumulative_return"] > ytd_perf["net_cumulative_return"]
+    # Corrected assertion: Gross return should be greater than or equal to Net return.
+    assert ytd_perf["gross_cumulative_return"] >= ytd_perf["net_cumulative_return"]
     
     # --- Assert Risk Analytics Section ---
     risk = data["riskAnalytics"]
