@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.services.query_service.app.services.concentration_service import ConcentrationService
 from src.services.query_service.app.dtos.concentration_dto import ConcentrationRequest
 from portfolio_common.database_models import Portfolio, DailyPositionSnapshot
+from portfolio_common.monitoring import CONCENTRATION_CALCULATION_DURATION_SECONDS
 
 pytestmark = pytest.mark.asyncio
 
@@ -129,3 +130,25 @@ async def test_calculate_concentration_for_empty_portfolio(mock_dependencies):
     assert response.summary.findings == []
     assert response.bulk_concentration.single_position_weight == 0.0
     assert response.issuer_concentration.top_exposures == []
+
+@patch('src.services.query_service.app.services.concentration_service.CONCENTRATION_CALCULATION_DURATION_SECONDS')
+async def test_calculate_concentration_records_metric(mock_metric_histogram, mock_dependencies):
+    """
+    GIVEN a valid request
+    WHEN calculate_concentration is called
+    THEN it should observe the duration in the Prometheus histogram.
+    """
+    # ARRANGE
+    service = mock_dependencies["service"]
+    request = ConcentrationRequest.model_validate({
+        "scope": {"as_of_date": "2025-08-31"},
+        "metrics": ["BULK"]
+    })
+    
+    # ACT
+    await service.calculate_concentration("P1", request)
+
+    # ASSERT
+    mock_metric_histogram.labels.assert_called_once_with(portfolio_id="P1")
+    mock_metric_histogram.labels.return_value.time.return_value.__enter__.assert_called_once()
+    mock_metric_histogram.labels.return_value.time.return_value.__exit__.assert_called_once()

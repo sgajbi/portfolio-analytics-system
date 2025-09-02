@@ -227,3 +227,11 @@ POSITION_ANALYTICS_SECTION_REQUESTED_TOTAL = Counter(
     "Total number of times each section has been requested in the Position Analytics API.",
     labelnames=("section_name",),
 )
+
+CONCENTRATION_CALCULATION_DURATION_SECONDS = Histogram(
+    "concentration_calculation_duration_seconds",
+    "Time taken to generate a full portfolio concentration report.",
+    labelnames=("portfolio_id",),
+    buckets=(0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0),
+)
+ 
