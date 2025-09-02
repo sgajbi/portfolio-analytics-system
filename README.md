@@ -1,3 +1,4 @@
+
 # Portfolio Analytics System
 
 This system provides a comprehensive suite of services for portfolio analytics, including position tracking, valuation, performance calculation, and risk analysis. It is designed as a distributed, event-driven architecture using Kafka for messaging and PostgreSQL for data persistence.
@@ -27,7 +28,11 @@ The system follows a microservices architecture, where each service is responsib
         * **ReprocessingWorker**: Consumes the durable reprocessing jobs to fan-out watermark resets in a controlled, scalable manner, mitigating the "Thundering Herd" problem.
     * **Cashflow Calculator**: Calculates cash flows based on transactions.
 4.  **Timeseries Generator Service**: Aggregates daily position data into position-level and portfolio-level time series.
-5.  **Query Service**: Provides a FastAPI interface to query the aggregated analytics data.
+5.  **Query Service**: Provides a rich FastAPI interface for all read operations. This includes both fetching foundational data (portfolios, transactions, etc.) and performing complex, on-the-fly analytical calculations such as:
+    * **Performance Analytics** (TWR, MWR)
+    * **Risk Analytics** (Volatility, Sharpe, VaR, etc.)
+    * **Concentration Analytics** (HHI, Issuer Exposure)
+    * **Consolidated Reporting** (Portfolio Review)
 
 ### Key Architectural Patterns
 
@@ -194,7 +199,6 @@ This project uses `black` for formatting and `ruff` for linting.
 ```bash
 # Format code
 black .
-
 # Lint code
 ruff check .
 ```
@@ -209,5 +213,7 @@ The `tools/` directory contains helpful scripts for development:
   * `reprocess_tool.py`: Triggers reprocessing for specific transactions.
 
 <!-- end list -->
+
+ 
 
  
