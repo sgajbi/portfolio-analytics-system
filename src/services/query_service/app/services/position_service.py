@@ -70,11 +70,7 @@ class PositionService:
         db_results = await self.repo.get_latest_positions_by_portfolio(portfolio_id)
         
         positions = []
-        # Unpack the new 11-item tuple from the repository
-        for (
-            pos_snapshot, instrument_name, reprocessing_status, isin, currency,
-            asset_class, sector, country_of_risk, issuer_id, parent_issuer_id, epoch
-        ) in db_results:
+        for pos_snapshot, instrument, pos_state in db_results:
             valuation_dto = ValuationData(
                 market_price=pos_snapshot.market_price,
                 market_value=pos_snapshot.market_value,
@@ -87,11 +83,11 @@ class PositionService:
                 quantity=pos_snapshot.quantity,
                 cost_basis=pos_snapshot.cost_basis,
                 cost_basis_local=pos_snapshot.cost_basis_local,
-                instrument_name=instrument_name or "N/A",
+                instrument_name=instrument.name if instrument else "N/A",
                 position_date=pos_snapshot.date,
-                asset_class=asset_class,
+                asset_class=instrument.asset_class if instrument else None,
                 valuation=valuation_dto,
-                reprocessing_status=reprocessing_status
+                reprocessing_status=pos_state.status if pos_state else None
             )
             positions.append(position_dto)
         

@@ -102,13 +102,16 @@ def test_issuer_concentration_e2e(setup_concentration_data, e2e_api_client: E2EA
     assert response.status_code == 200
     
     issuer_data = data["issuer_concentration"]["top_exposures"]
+    
+    # --- FIX: Assert against the corrected, unambiguous output ---
     assert len(issuer_data) == 2
 
     # Expected: PARENT_XYZ exposure = 60,000 + 25,000 = 85,000 (85%)
     #           PARENT_ABC exposure = 15,000 (15%)
     
-    xyz_exposure = next(item for item in issuer_data if item["issuer_name"] == "CONC_A")
-    abc_exposure = next(item for item in issuer_data if item["issuer_name"] == "CONC_C")
+    xyz_exposure = next(item for item in issuer_data if item['issuer_name'] == "PARENT_XYZ")
+    abc_exposure = next(item for item in issuer_data if item['issuer_name'] == "PARENT_ABC")
+    # --- END FIX ---
 
     assert xyz_exposure["exposure"] == pytest.approx(85000.0)
     assert xyz_exposure["weight"] == pytest.approx(0.85)
