@@ -4,14 +4,16 @@ import pandas as pd
 from decimal import Decimal
 
 from concentration_analytics_engine.metrics import calculate_bulk_concentration, calculate_issuer_concentration
+from concentration_analytics_engine.exceptions import InsufficientDataError
+
 
 @pytest.fixture
 def sample_positions_df():
     data = [
-        {"security_id": "S1", "market_value": Decimal("60000"), "issuer_id": "JPM", "issuer_name": "JPMorgan"},
-        {"security_id": "S2", "market_value": Decimal("40000"), "issuer_id": "MSFT", "issuer_name": "Microsoft"},
-        {"security_id": "S3", "market_value": Decimal("30000"), "issuer_id": "JPM", "issuer_name": "JPMorgan"},
-        {"security_id": "S4", "market_value": Decimal("20000"), "issuer_id": None, "issuer_name": None}, # Unclassified
+        {"security_id": "S1", "market_value": Decimal("60000"), "issuer_id": "JPM", "issuer_name": "JPMorgan", "ultimate_parent_issuer_id": "JPM_PARENT"},
+        {"security_id": "S2", "market_value": Decimal("40000"), "issuer_id": "MSFT", "issuer_name": "Microsoft", "ultimate_parent_issuer_id": "MSFT_PARENT"},
+        {"security_id": "S3", "market_value": Decimal("30000"), "issuer_id": "JPM", "issuer_name": "JPMorgan", "ultimate_parent_issuer_id": "JPM_PARENT"},
+        {"security_id": "S4", "market_value": Decimal("20000"), "issuer_id": None, "issuer_name": None, "ultimate_parent_issuer_id": None}, # Unclassified
     ]
     return pd.DataFrame(data)
 
@@ -24,7 +26,7 @@ def test_bulk_concentration(sample_positions_df):
     # Total MV = 150k. Weights: S1=0.4, S2=0.2666, S3=0.2, S4=0.1333
     
     # ACT
-    result = calculate_bulk_concentration(sample_positions_df, top_n=[1, 2])
+    result = calculate_bulk_concentration(sample_positions_df, top_n_config=[1, 2])
     
     # ASSERT
     # HHI = (0.4^2) + (0.2666...^2) + (0.2^2) + (0.1333...^2) = 0.16 + 0.0711... + 0.04 + 0.0177... = 0.2888...
@@ -39,8 +41,8 @@ def test_issuer_concentration(sample_positions_df):
     WHEN calculate_issuer_concentration is called
     THEN it correctly groups by issuer and calculates exposure.
     """
-    # JPM exposure = 90k (60%)
-    # MSFT exposure = 40k (26.6%)
+    # JPM_PARENT exposure = 90k (60%)
+    # MSFT_PARENT exposure = 40k (26.6%)
     # Unclassified = 20k (13.3%)
 
     # ACT
@@ -49,13 +51,11 @@ def test_issuer_concentration(sample_positions_df):
     # ASSERT
     assert len(result) == 3
     
-    jpm_result = next(item for item in result if item["issuer_id"] == "JPM")
-    assert jpm_result["issuer_name"] == "JPMorgan"
+    jpm_result = next(item for item in result if item["issuer_name"] == "JPM_PARENT")
     assert jpm_result["exposure"] == pytest.approx(90000)
     assert jpm_result["weight"] == pytest.approx(0.6)
 
-    unclassified_result = next(item for item in result if item["issuer_id"] == "UNCLASSIFIED")
-    assert unclassified_result["issuer_name"] == "Unclassified"
+    unclassified_result = next(item for item in result if item["issuer_name"] == "UNCLASSIFIED")
     assert unclassified_result["exposure"] == pytest.approx(20000)
     assert unclassified_result["weight"] == pytest.approx(20000 / 150000)
 
@@ -67,7 +67,7 @@ def test_issuer_concentration_with_missing_issuer_name():
     """
     # ARRANGE
     data = [
-        {"security_id": "S1", "market_value": Decimal("1000"), "issuer_id": "KNOWN_ID", "issuer_name": None},
+        {"security_id": "S1", "market_value": Decimal("1000"), "issuer_name": None, "ultimate_parent_issuer_id": "KNOWN_ID"},
     ]
     df = pd.DataFrame(data)
 
@@ -76,8 +76,6 @@ def test_issuer_concentration_with_missing_issuer_name():
 
     # ASSERT
     assert len(result) == 1
-    assert result[0]["issuer_id"] == "KNOWN_ID"
-    # This is the key assertion: the name falls back to the ID
     assert result[0]["issuer_name"] == "KNOWN_ID"
     assert result[0]["weight"] == pytest.approx(1.0)
 
@@ -85,17 +83,14 @@ def test_concentration_on_empty_dataframe():
     """
     GIVEN an empty DataFrame
     WHEN concentration metrics are calculated
-    THEN they should return zeroed-out, valid structures.
+    THEN they should raise an InsufficientDataError or return valid, empty structures.
     """
     # ARRANGE
-    empty_df = pd.DataFrame(columns=["security_id", "market_value", "issuer_id", "issuer_name"])
+    empty_df = pd.DataFrame(columns=["security_id", "market_value", "issuer_id", "issuer_name", "ultimate_parent_issuer_id"])
 
-    # ACT
-    bulk_result = calculate_bulk_concentration(empty_df, top_n=[1, 2])
+    # ACT & ASSERT
+    with pytest.raises(InsufficientDataError):
+        calculate_bulk_concentration(empty_df, top_n_config=[1, 2])
+    
     issuer_result = calculate_issuer_concentration(empty_df, top_n=5)
-
-    # ASSERT
-    assert bulk_result["hhi"] == 0.0
-    assert bulk_result["single_position_weight"] == 0.0
-    assert bulk_result["top_n_weights"]["1"] == 0.0
     assert issuer_result == []
