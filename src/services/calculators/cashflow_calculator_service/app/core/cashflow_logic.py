@@ -3,6 +3,7 @@ from decimal import Decimal
 from typing import Optional
 from portfolio_common.database_models import Cashflow, CashflowRule
 from portfolio_common.events import TransactionEvent
+from portfolio_common.monitoring import CASHFLOWS_CREATED_TOTAL
 from .enums import CashflowClassification
 
 logger = logging.getLogger(__name__)
@@ -57,11 +58,17 @@ class CashflowLogic:
             currency=transaction.currency,
             classification=rule.classification,
             timing=rule.timing,
-            calculation_type="NET",
+            calculation_type="NET", # Currently all are NET
             is_position_flow=rule.is_position_flow,
             is_portfolio_flow=rule.is_portfolio_flow,
             epoch=epoch or 0
         )
 
+        # Increment the Prometheus counter
+        CASHFLOWS_CREATED_TOTAL.labels(
+            classification=rule.classification,
+            timing=rule.timing
+        ).inc()
+        
         logger.info(f"Calculated cashflow for txn {transaction.transaction_id}: Amount={amount}, Class='{rule.classification}'")
         return cashflow

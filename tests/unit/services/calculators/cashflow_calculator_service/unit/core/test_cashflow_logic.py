@@ -2,6 +2,7 @@
 import pytest
 from decimal import Decimal
 from datetime import datetime
+from unittest.mock import patch
 
 from portfolio_common.events import TransactionEvent
 from portfolio_common.database_models import CashflowRule
@@ -26,7 +27,8 @@ def base_transaction_event() -> TransactionEvent:
         currency="USD",
     )
 
-def test_calculate_buy_transaction(base_transaction_event: TransactionEvent):
+@patch("src.services.calculators.cashflow_calculator_service.app.core.cashflow_logic.CASHFLOWS_CREATED_TOTAL")
+def test_calculate_buy_transaction(mock_metric, base_transaction_event: TransactionEvent):
     """A BUY is a negative cashflow (outflow)."""
     event = base_transaction_event
     rule = CashflowRule(classification=CashflowClassification.INVESTMENT_OUTFLOW, timing=CashflowTiming.BOD, is_position_flow=True, is_portfolio_flow=False)
@@ -35,8 +37,11 @@ def test_calculate_buy_transaction(base_transaction_event: TransactionEvent):
     assert cashflow.amount < 0
     assert cashflow.is_position_flow is True
     assert cashflow.is_portfolio_flow is False
+    mock_metric.labels.assert_called_once_with(classification='INVESTMENT_OUTFLOW', timing='BOD')
+    mock_metric.labels.return_value.inc.assert_called_once()
 
-def test_calculate_sell_transaction(base_transaction_event: TransactionEvent):
+@patch("src.services.calculators.cashflow_calculator_service.app.core.cashflow_logic.CASHFLOWS_CREATED_TOTAL")
+def test_calculate_sell_transaction(mock_metric, base_transaction_event: TransactionEvent):
     """A SELL is a positive cashflow (inflow)."""
     event = base_transaction_event
     event.transaction_type = "SELL"
@@ -46,8 +51,11 @@ def test_calculate_sell_transaction(base_transaction_event: TransactionEvent):
     assert cashflow.amount > 0
     assert cashflow.is_position_flow is True
     assert cashflow.is_portfolio_flow is False
+    mock_metric.labels.assert_called_once_with(classification='INVESTMENT_INFLOW', timing='EOD')
+    mock_metric.labels.return_value.inc.assert_called_once()
 
-def test_calculate_dividend_transaction(base_transaction_event: TransactionEvent):
+@patch("src.services.calculators.cashflow_calculator_service.app.core.cashflow_logic.CASHFLOWS_CREATED_TOTAL")
+def test_calculate_dividend_transaction(mock_metric, base_transaction_event: TransactionEvent):
     """A DIVIDEND is a positive cashflow (inflow)."""
     event = base_transaction_event
     event.transaction_type = "DIVIDEND"
@@ -58,8 +66,11 @@ def test_calculate_dividend_transaction(base_transaction_event: TransactionEvent
     assert cashflow.is_position_flow is True
     assert cashflow.is_portfolio_flow is False
     assert cashflow.timing == "EOD"
+    mock_metric.labels.assert_called_once_with(classification='INCOME', timing='EOD')
+    mock_metric.labels.return_value.inc.assert_called_once()
 
-def test_calculate_deposit_transaction(base_transaction_event: TransactionEvent):
+@patch("src.services.calculators.cashflow_calculator_service.app.core.cashflow_logic.CASHFLOWS_CREATED_TOTAL")
+def test_calculate_deposit_transaction(mock_metric, base_transaction_event: TransactionEvent):
     """A DEPOSIT is a positive cashflow (inflow)."""
     event = base_transaction_event
     event.transaction_type = "DEPOSIT"
@@ -70,8 +81,11 @@ def test_calculate_deposit_transaction(base_transaction_event: TransactionEvent)
     assert cashflow.is_position_flow is True
     assert cashflow.is_portfolio_flow is True
     assert cashflow.amount > 0
+    mock_metric.labels.assert_called_once_with(classification='CASHFLOW_IN', timing='BOD')
+    mock_metric.labels.return_value.inc.assert_called_once()
 
-def test_calculate_fee_transaction(base_transaction_event: TransactionEvent):
+@patch("src.services.calculators.cashflow_calculator_service.app.core.cashflow_logic.CASHFLOWS_CREATED_TOTAL")
+def test_calculate_fee_transaction(mock_metric, base_transaction_event: TransactionEvent):
     """A FEE is a negative cashflow (outflow)."""
     event = base_transaction_event
     event.transaction_type = "FEE"
@@ -81,8 +95,11 @@ def test_calculate_fee_transaction(base_transaction_event: TransactionEvent):
     assert cashflow.amount < 0
     assert cashflow.is_position_flow is True
     assert cashflow.is_portfolio_flow is True
+    mock_metric.labels.assert_called_once_with(classification='EXPENSE', timing='EOD')
+    mock_metric.labels.return_value.inc.assert_called_once()
 
-def test_calculate_withdrawal_transaction(base_transaction_event: TransactionEvent):
+@patch("src.services.calculators.cashflow_calculator_service.app.core.cashflow_logic.CASHFLOWS_CREATED_TOTAL")
+def test_calculate_withdrawal_transaction(mock_metric, base_transaction_event: TransactionEvent):
     """A WITHDRAWAL is a negative cashflow (outflow)."""
     event = base_transaction_event
     event.transaction_type = "WITHDRAWAL"
@@ -96,8 +113,11 @@ def test_calculate_withdrawal_transaction(base_transaction_event: TransactionEve
     assert cashflow.timing == "EOD"
     assert cashflow.is_position_flow is True
     assert cashflow.is_portfolio_flow is True
+    mock_metric.labels.assert_called_once_with(classification='CASHFLOW_OUT', timing='EOD')
+    mock_metric.labels.return_value.inc.assert_called_once()
 
-def test_calculate_transfer_in_transaction(base_transaction_event: TransactionEvent):
+@patch("src.services.calculators.cashflow_calculator_service.app.core.cashflow_logic.CASHFLOWS_CREATED_TOTAL")
+def test_calculate_transfer_in_transaction(mock_metric, base_transaction_event: TransactionEvent):
     """A TRANSFER_IN is a positive cashflow (inflow)."""
     event = base_transaction_event
     event.transaction_type = "TRANSFER_IN"
@@ -107,8 +127,11 @@ def test_calculate_transfer_in_transaction(base_transaction_event: TransactionEv
     assert cashflow.classification == "TRANSFER"
     assert cashflow.is_portfolio_flow is True
     assert cashflow.amount > 0
+    mock_metric.labels.assert_called_once_with(classification='TRANSFER', timing='BOD')
+    mock_metric.labels.return_value.inc.assert_called_once()
 
-def test_calculate_transfer_out_transaction(base_transaction_event: TransactionEvent):
+@patch("src.services.calculators.cashflow_calculator_service.app.core.cashflow_logic.CASHFLOWS_CREATED_TOTAL")
+def test_calculate_transfer_out_transaction(mock_metric, base_transaction_event: TransactionEvent):
     """A TRANSFER_OUT is a negative cashflow (outflow)."""
     event = base_transaction_event
     event.transaction_type = "TRANSFER_OUT"
@@ -118,3 +141,5 @@ def test_calculate_transfer_out_transaction(base_transaction_event: TransactionE
     assert cashflow.classification == "TRANSFER"
     assert cashflow.is_portfolio_flow is True
     assert cashflow.amount < 0
+    mock_metric.labels.assert_called_once_with(classification='TRANSFER', timing='EOD')
+    mock_metric.labels.return_value.inc.assert_called_once()

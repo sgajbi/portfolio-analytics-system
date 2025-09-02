@@ -172,6 +172,14 @@ VALUATION_JOBS_FAILED_TOTAL = Counter(
     labelnames=("portfolio_id", "security_id", "reason"),
 )
 
+# --- NEW METRIC (RFC 022) ---
+CASHFLOWS_CREATED_TOTAL = Counter(
+    "cashflows_created_total",
+    "Total number of cashflows created, by classification and timing.",
+    ["classification", "timing"]
+)
+# --- END NEW METRIC ---
+
 # --------------------------------------------------------------------------------------
 # Optional generic HTTP metrics (use across services if helpful)
 # --------------------------------------------------------------------------------------
