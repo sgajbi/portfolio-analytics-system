@@ -70,8 +70,11 @@ class PositionService:
         db_results = await self.repo.get_latest_positions_by_portfolio(portfolio_id)
         
         positions = []
-        # Unpack the new 6-item tuple from the repository
-        for pos_snapshot, instrument_name, reprocessing_status, asset_class, issuer_id, parent_issuer_id in db_results:
+        # Unpack the new 11-item tuple from the repository
+        for (
+            pos_snapshot, instrument_name, reprocessing_status, isin, currency,
+            asset_class, sector, country_of_risk, issuer_id, parent_issuer_id, epoch
+        ) in db_results:
             valuation_dto = ValuationData(
                 market_price=pos_snapshot.market_price,
                 market_value=pos_snapshot.market_value,

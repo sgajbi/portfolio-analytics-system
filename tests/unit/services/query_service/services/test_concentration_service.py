@@ -27,12 +27,18 @@ def mock_dependencies():
     )
 
     # Mock the return value of get_latest_positions_by_portfolio
-    # It returns a list of 6-item tuples
+    # It returns a list of 11-item tuples
     mock_snapshot_1 = DailyPositionSnapshot(security_id="S1_JPM", market_value=Decimal("60000"))
     mock_snapshot_2 = DailyPositionSnapshot(security_id="S2_MSFT", market_value=Decimal("40000"))
     mock_position_repo.get_latest_positions_by_portfolio.return_value = [
-        (mock_snapshot_1, "JPM Bond", "CURRENT", "Fixed Income", "JPM_ISSUER", "JPM_PARENT"),
-        (mock_snapshot_2, "Microsoft Stock", "CURRENT", "Equity", "MSFT_ISSUER", "MSFT_PARENT"),
+        (
+            mock_snapshot_1, "JPM Bond", "CURRENT", "ISIN_JPM", "USD", "Fixed Income",
+            "Financials", "US", "JPM_ISSUER", "JPM_PARENT", 0
+        ),
+        (
+            mock_snapshot_2, "Microsoft Stock", "CURRENT", "ISIN_MSFT", "USD", "Equity",
+            "Technology", "US", "MSFT_ISSUER", "MSFT_PARENT", 0
+        ),
     ]
 
     with patch(

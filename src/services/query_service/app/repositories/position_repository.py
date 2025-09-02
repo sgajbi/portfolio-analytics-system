@@ -114,6 +114,8 @@ class PositionRepository:
             Instrument.asset_class,
             Instrument.sector,
             Instrument.country_of_risk,
+            Instrument.issuer_id,
+            Instrument.ultimate_parent_issuer_id,
             PositionState.status.label("reprocessing_status"),
             func.row_number().over(
                 partition_by=DailyPositionSnapshot.security_id,
@@ -146,6 +148,8 @@ class PositionRepository:
             ranked_snapshots_subq.c.asset_class,
             ranked_snapshots_subq.c.sector,
             ranked_snapshots_subq.c.country_of_risk,
+            ranked_snapshots_subq.c.issuer_id,
+            ranked_snapshots_subq.c.ultimate_parent_issuer_id,
             ranked_snapshots_subq.c.epoch
         ).filter(
             ranked_snapshots_subq.c.rn == 1,

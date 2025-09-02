@@ -75,7 +75,10 @@ class ConcentrationService:
                     "ultimate_parent_issuer_id": parent_issuer_id,
                     "issuer_name": name # Use instrument name as a proxy for issuer name for now
                 }
-                for pos, name, status, asset_class, issuer_id, parent_issuer_id in positions_data
+                for (
+                    pos, name, status, isin, currency, asset_class, sector,
+                    country_of_risk, issuer_id, parent_issuer_id, epoch
+                ) in positions_data
             ]
             positions_df = pd.DataFrame(positions_list)
             total_market_value = positions_df["market_value"].sum()
