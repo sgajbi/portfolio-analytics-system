@@ -1,10 +1,10 @@
-# src/services/query_service/app/routers/position_analytics.py
+# src/services/query_service/app/routers/positions_analytics.py
 import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from portfolio_common.db import get_async_db_session
-from ..services.position_analytics_service import PositionAnalyticsService
+from ..services.position_analytics_service import PositionAnalyticsService, get_position_analytics_service
 from ..dtos.position_analytics_dto import (
     PositionAnalyticsRequest, PositionAnalyticsResponse
 )
@@ -17,9 +17,7 @@ router = APIRouter(
 )
 
 @router.post(
-    # --- THIS IS THE FIX ---
-    "/{portfolio_id}/positions-analytics", # The path was missing "-analytics"
-    # --- END FIX ---
+    "/{portfolio_id}/positions-analytics",
     response_model=PositionAnalyticsResponse,
     response_model_exclude_none=True,
     summary="Retrieve Detailed Position-Level Analytics",
@@ -31,7 +29,7 @@ router = APIRouter(
 async def get_position_analytics(
     portfolio_id: str,
     request: PositionAnalyticsRequest,
-    db: AsyncSession = Depends(get_async_db_session)
+    service: PositionAnalyticsService = Depends(get_position_analytics_service)
 ):
     """
     Retrieves comprehensive position-level analytics.
@@ -41,11 +39,10 @@ async def get_position_analytics(
       of analytics to be included (e.g., valuation, performance, instrument details).
     """
     try:
-        service = PositionAnalyticsService(db)
-        return await service.get_analytics(portfolio_id, request)
+        return await service.get_position_analytics(portfolio_id, request)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
-    except Exception as e:
+    except Exception:
         logger.exception(
             "An unexpected error occurred during position analytics retrieval for portfolio %s.",
             portfolio_id
