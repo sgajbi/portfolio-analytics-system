@@ -54,7 +54,9 @@ async def calculate_performance(
 @router.post(
     "/{portfolio_id}/performance/mwr",
     response_model=MWRResponse,
-    response_model_exclude_none=True,
+    # --- THIS IS THE FIX ---
+    # response_model_exclude_none=True, # REMOVED
+    # --- END FIX ---
     summary="Calculate Money-Weighted Return (MWR / IRR) for a Portfolio"
 )
 async def calculate_mwr(
