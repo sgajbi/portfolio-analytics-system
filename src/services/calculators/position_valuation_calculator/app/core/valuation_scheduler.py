@@ -216,24 +216,36 @@ class ValuationScheduler:
         """The main polling loop for the scheduler."""
         logger.info(f"ValuationScheduler started. Polling every {self._poll_interval} seconds.")
         while self._running:
-            claimed_jobs = []
             try:
                 async for db in get_async_db_session():
                     async with db.begin():
                         await self._update_reprocessing_metrics(db)
-                        
-                        repo = ValuationRepository(db)
-                        
+                
+                async for db in get_async_db_session():
+                    async with db.begin():
                         await self._process_instrument_level_triggers(db)
-                        
+                
+                async for db in get_async_db_session():
+                    async with db.begin():
+                        repo = ValuationRepository(db)
                         await repo.find_and_reset_stale_jobs()
+                
+                async for db in get_async_db_session():
+                    async with db.begin():
                         await self._create_backfill_jobs(db)
+
+                claimed_jobs = []
+                async for db in get_async_db_session():
+                    async with db.begin():
+                        repo = ValuationRepository(db)
                         claimed_jobs = await repo.find_and_claim_eligible_jobs(self._batch_size)
-                        
-                        await self._advance_watermarks(db)
                 
                 if claimed_jobs:
                     await self._dispatch_jobs(claimed_jobs)
+                
+                async for db in get_async_db_session():
+                    async with db.begin():
+                        await self._advance_watermarks(db)
 
             except Exception as e:
                 logger.error("Error in scheduler polling loop.", exc_info=True)
