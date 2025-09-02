@@ -29,17 +29,14 @@ def setup_review_data(clean_db_module, e2e_api_client: E2EApiClient, poll_db_unt
         
         # Apple Purchase
         {"transaction_id": "REVIEW_BUY_AAPL", "portfolio_id": PORTFOLIO_ID, "instrument_id": "AAPL", "security_id": "SEC_AAPL", "transaction_date": "2025-08-20T10:00:00Z", "transaction_type": "BUY", "quantity": 100, "price": 150, "gross_transaction_amount": 15000, "trade_currency": "USD", "currency": "USD"},
-        # --- FIX: Add corresponding cash settlement for Apple purchase ---
         {"transaction_id": "REVIEW_CASH_SETTLE_AAPL", "portfolio_id": PORTFOLIO_ID, "instrument_id": "CASH_USD", "security_id": "CASH_USD", "transaction_date": "2025-08-20T10:00:00Z", "transaction_type": "SELL", "quantity": 15000, "price": 1, "gross_transaction_amount": 15000, "trade_currency": "USD", "currency": "USD"},
         
         # Bond Purchase
         {"transaction_id": "REVIEW_BUY_BOND", "portfolio_id": PORTFOLIO_ID, "instrument_id": "UST", "security_id": "SEC_BOND", "transaction_date": "2025-08-20T11:00:00Z", "transaction_type": "BUY", "quantity": 10, "price": 980, "gross_transaction_amount": 9800, "trade_currency": "USD", "currency": "USD"},
-        # --- FIX: Add corresponding cash settlement for Bond purchase ---
         {"transaction_id": "REVIEW_CASH_SETTLE_BOND", "portfolio_id": PORTFOLIO_ID, "instrument_id": "CASH_USD", "security_id": "CASH_USD", "transaction_date": "2025-08-20T11:00:00Z", "transaction_type": "SELL", "quantity": 9800, "price": 1, "gross_transaction_amount": 9800, "trade_currency": "USD", "currency": "USD"},
 
         # Dividend Payment
         {"transaction_id": "REVIEW_DIV_AAPL", "portfolio_id": PORTFOLIO_ID, "instrument_id": "AAPL", "security_id": "SEC_AAPL", "transaction_date": "2025-08-25T10:00:00Z", "transaction_type": "DIVIDEND", "quantity": 0, "price": 0, "gross_transaction_amount": 120, "trade_currency": "USD", "currency": "USD"},
-        # --- FIX: Add corresponding cash settlement for Dividend payment ---
         {"transaction_id": "REVIEW_CASH_SETTLE_DIV", "portfolio_id": PORTFOLIO_ID, "instrument_id": "CASH_USD", "security_id": "CASH_USD", "transaction_date": "2025-08-25T10:00:00Z", "transaction_type": "BUY", "quantity": 120, "price": 1, "gross_transaction_amount": 120, "trade_currency": "USD", "currency": "USD"}
     ]
     e2e_api_client.ingest("/ingest/transactions", {"transactions": transactions})
@@ -71,7 +68,9 @@ def test_portfolio_review_endpoint(setup_review_data, e2e_api_client: E2EApiClie
     api_url = f"/portfolios/{portfolio_id}/review"
     request_payload = {
         "as_of_date": AS_OF_DATE,
-        "sections": ["OVERVIEW", "HOLDINGS", "TRANSACTIONS"]
+        "sections": [
+            "OVERVIEW", "HOLDINGS", "TRANSACTIONS", "PERFORMANCE", "RISK_ANALYTICS"
+        ]
     }
 
     # ACT
@@ -83,8 +82,6 @@ def test_portfolio_review_endpoint(setup_review_data, e2e_api_client: E2EApiClie
     assert data["portfolio_id"] == portfolio_id
 
     # --- Assert Overview Section ---
-    # Expected MV = (100 * 160) + (10 * 995) + (100000 - 15000 - 9800 + 120) = 16000 + 9950 + 75320 = 101270
-    # Expected U-PNL = (16000 - 15000) + (9950 - 9800) = 1000 + 150 = 1150
     overview = data["overview"]
     assert overview["total_market_value"] == pytest.approx(101270.00)
     assert overview["total_cash"] == pytest.approx(75320.00)
@@ -103,12 +100,29 @@ def test_portfolio_review_endpoint(setup_review_data, e2e_api_client: E2EApiClie
     transactions = data["transactions"]["transactionsByAssetClass"]
     assert "Equity" in transactions
     assert "Cash" in transactions
-    # Note: The original test had a bug, DIVIDEND is on an Equity, not its own class.
-    # The transaction grouping logic correctly groups both BUY and DIVIDEND under "Equity".
     txn_ids_equity = {t["transaction_id"] for t in transactions["Equity"]}
     assert "REVIEW_BUY_AAPL" in txn_ids_equity
     assert "REVIEW_DIV_AAPL" in txn_ids_equity
     assert "REVIEW_BUY_BOND" in transactions["Fixed Income"][0]["transaction_id"]
+    
+    # --- Assert Performance Section ---
+    performance = data["performance"]
+    assert performance is not None
+    assert "YTD" in performance["summary"]
+    assert "Since Inception" in performance["summary"]
+    ytd_perf = performance["summary"]["YTD"]
+    assert isinstance(ytd_perf["net_cumulative_return"], float)
+    assert isinstance(ytd_perf["gross_cumulative_return"], float)
+    assert ytd_perf["gross_cumulative_return"] > ytd_perf["net_cumulative_return"]
+    
+    # --- Assert Risk Analytics Section ---
+    risk = data["riskAnalytics"]
+    assert risk is not None
+    assert "YTD" in risk["results"]
+    ytd_risk_metrics = risk["results"]["YTD"]["metrics"]
+    assert "VOLATILITY" in ytd_risk_metrics
+    assert "SHARPE" in ytd_risk_metrics
+    assert isinstance(ytd_risk_metrics["VOLATILITY"]["value"], float)
 
 
 def test_portfolio_review_for_empty_portfolio(clean_db, e2e_api_client: E2EApiClient):
