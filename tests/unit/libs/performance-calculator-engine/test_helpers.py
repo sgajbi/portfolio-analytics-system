@@ -76,7 +76,11 @@ def test_annualized_return_for_long_period():
     # 2 years period (731 days including a leap year)
     result = calculate_annualized_return(21, date(2023, 1, 1), date(2024, 12, 31))
     assert result is not None
-    assert pytest.approx(result) == 9.99282915
+    # Calculate the expected value dynamically instead of hardcoding it.
+    # Formula: ((1 + 0.21)**(1 / (731/365.25))) - 1
+    years = 731 / 365.25
+    expected_return = ((1.21)**(1/years) - 1) * 100
+    assert result == pytest.approx(expected_return)
 
 def test_annualized_return_for_short_period_returns_cumulative():
     """
