@@ -62,7 +62,7 @@ Follow these steps to set up the development environment.
 
 2.  **Create a Virtual Environment**:
     ```bash
-    python -m venv .venv
+    py -3.12 -m venv .venv
     ```
 
 3.  **Activate the Virtual Environment**:
@@ -72,12 +72,12 @@ Follow these steps to set up the development environment.
 
 4.  **Install Dependencies**:
     ```bash
-    pip install --upgrade pip
+    python -m pip install --upgrade pip wheel
     pip install -e "src/libs/financial-calculator-engine"
     pip install -e "src/libs/performance-calculator-engine"
     pip install -e "src/libs/concentration-analytics-engine"
     pip install -e "src/libs/risk-analytics-engine"
-    pip install -e "src/libs/portfolio-common"
+    pip install -e "src/libs/portfolio-common" 
     pip install -r src/services/ingestion_service/requirements.txt
     pip install -r src/services/persistence_service/requirements.txt
     pip install -r src/services/calculators/position_calculator/requirements.txt
@@ -86,7 +86,7 @@ Follow these steps to set up the development environment.
     pip install -r src/services/calculators/position_valuation_calculator/requirements.txt
     pip install -r src/services/timeseries_generator_service/requirements.txt
     pip install -r src/services/query_service/requirements.txt
-    pip install -r requirements-dev.txt
+    pip install -r tests/requirements.txt
     ```
 
 5.  **Set Up Environment Variables**:
