@@ -153,6 +153,18 @@ SCHEDULER_GAP_DAYS = Histogram(
     buckets=(1, 2, 5, 10, 30, 90, 365)
 )
 
+REPROCESSING_EPOCH_BUMPED_TOTAL = Counter(
+    "reprocessing_epoch_bumped_total",
+    "Total number of times a reprocessing flow was triggered by an epoch increment.",
+    labelnames=("portfolio_id", "security_id"),
+)
+
+POSITION_STATE_WATERMARK_LAG_DAYS = Gauge(
+    "position_state_watermark_lag_days",
+    "The current lag in days between the latest business date and a key's watermark.",
+    labelnames=("portfolio_id", "security_id"),
+)
+
 VALUATION_JOBS_CREATED_TOTAL = Counter(
     "valuation_jobs_created_total",
     "Total number of valuation jobs created by the scheduler.",

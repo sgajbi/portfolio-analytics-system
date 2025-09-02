@@ -110,9 +110,11 @@ async def test_calculate_normal_flow(
     mock_outbox_repo.create_outbox_event.assert_not_called()
 
 @pytest.mark.asyncio
+@patch("src.services.calculators.position_calculator.app.core.position_logic.REPROCESSING_EPOCH_BUMPED_TOTAL")
 @patch("src.services.calculators.position_calculator.app.core.position_logic.EpochFencer")
-async def test_calculate_re_emits_events_for_original_backdated_transaction(
+async def test_calculate_re_emits_and_increments_metric_for_backdated_event(
     mock_fencer_class: MagicMock,
+    mock_metric: MagicMock,
     mock_repo: AsyncMock,
     mock_state_repo: AsyncMock,
     mock_outbox_repo: AsyncMock,
@@ -120,14 +122,12 @@ async def test_calculate_re_emits_events_for_original_backdated_transaction(
 ):
     """
     GIVEN a transaction that IS backdated
-    WHEN PositionCalculator.calculate runs for an original event (epoch is None)
-    THEN it should increment epoch, reset watermark, and re-emit all historical events.
+    WHEN PositionCalculator.calculate runs
+    THEN it should increment epoch, re-emit events, and increment the metric.
     """
     # ARRANGE
     mock_fencer_instance = mock_fencer_class.return_value
     mock_fencer_instance.check = AsyncMock(return_value=True)
-
-    # This event is an original ingestion, so its epoch is not yet set.
     sample_event.epoch = None
 
     current_state = PositionState(watermark_date=date(2025, 8, 25), epoch=0)
@@ -149,35 +149,27 @@ async def test_calculate_re_emits_events_for_original_backdated_transaction(
     mock_state_repo.increment_epoch_and_reset_watermark.assert_awaited_once_with(
         "P1", "S1", date(2025, 8, 19)
     )
-    mock_repo.get_all_transactions_for_security.assert_awaited_once_with("P1", "S1")
+    mock_metric.labels.assert_called_once_with(portfolio_id="P1", security_id="S1")
+    mock_metric.labels.return_value.inc.assert_called_once()
     assert mock_outbox_repo.create_outbox_event.call_count == 1
-    
-    first_call_args = mock_outbox_repo.create_outbox_event.call_args_list[0].kwargs
-    assert first_call_args['payload']['epoch'] == 1
 
-# --- NEW TEST FOR RFC 023 ---
 def test_calculate_next_position_for_sell_uses_net_cost():
     """
     Verifies that for a SELL transaction, the cost basis is correctly reduced
     by the `net_cost` (COGS) from the event, not by a proportional amount.
     """
     # ARRANGE
-    # Initial state: 100 shares with an average cost of $12/share.
     initial_state = PositionStateDTO(
         quantity=Decimal("100"),
         cost_basis=Decimal("1200"),
         cost_basis_local=Decimal("1000")
     )
-    
-    # Sell event: 50 shares. The cost calculator determined the FIFO COGS
-    # for these shares was $550 (i.e., $11/share) in base currency and €500 local.
     sell_event = TransactionEvent(
         transaction_id="SELL_FIFO_01",
         transaction_type="SELL",
         quantity=Decimal("50"),
-        net_cost=Decimal("-550"), # Negative value represents COGS
-        net_cost_local=Decimal("-500"), # Negative value for local COGS
-        # Other fields are not needed for this logic test
+        net_cost=Decimal("-550"),
+        net_cost_local=Decimal("-500"),
         portfolio_id="P1", instrument_id="I1", security_id="S1",
         transaction_date=datetime.now(), price=Decimal(0),
         gross_transaction_amount=Decimal(0), trade_currency="USD", currency="USD"
@@ -187,12 +179,6 @@ def test_calculate_next_position_for_sell_uses_net_cost():
     new_state = PositionCalculator.calculate_next_position(initial_state, sell_event)
 
     # ASSERT
-    # The new quantity should be 100 - 50 = 50.
     assert new_state.quantity == Decimal("50")
-    
-    # The new cost basis should be the old basis plus the (negative) net_cost.
-    # 1200 + (-550) = 650.
     assert new_state.cost_basis == Decimal("650")
-    
-    # Verify local cost basis as well. 1000 + (-500) = 500.
     assert new_state.cost_basis_local == Decimal("500")

@@ -19,7 +19,8 @@ from portfolio_common.monitoring import (
     SNAPSHOT_LAG_SECONDS,
     SCHEDULER_GAP_DAYS,
     VALUATION_JOBS_CREATED_TOTAL,
-    INSTRUMENT_REPROCESSING_TRIGGERS_PENDING
+    INSTRUMENT_REPROCESSING_TRIGGERS_PENDING,
+    POSITION_STATE_WATERMARK_LAG_DAYS
 )
 
 
@@ -150,12 +151,17 @@ class ValuationScheduler:
         logger.info(f"Scheduler: Found {len(states_to_backfill)} keys needing backfill up to {latest_business_date}.")
 
         keys_to_check = [(s.portfolio_id, s.security_id, s.epoch) for s in states_to_backfill]
+        
         first_open_dates = await repo.get_first_open_dates_for_keys(keys_to_check)
 
         for state in states_to_backfill:
             gap_days = (latest_business_date - state.watermark_date).days
             SCHEDULER_GAP_DAYS.observe(gap_days)
             SNAPSHOT_LAG_SECONDS.observe(gap_days * 86400)
+            
+            POSITION_STATE_WATERMARK_LAG_DAYS.labels(
+                portfolio_id=state.portfolio_id, security_id=state.security_id
+            ).set(gap_days)
             
             key = (state.portfolio_id, state.security_id, state.epoch)
             first_open_date = first_open_dates.get(key)

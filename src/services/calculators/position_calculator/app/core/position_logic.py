@@ -13,6 +13,7 @@ from portfolio_common.position_state_repository import PositionStateRepository
 from portfolio_common.outbox_repository import OutboxRepository
 from portfolio_common.config import KAFKA_PROCESSED_TRANSACTIONS_COMPLETED_TOPIC
 from portfolio_common.reprocessing import EpochFencer
+from portfolio_common.monitoring import REPROCESSING_EPOCH_BUMPED_TOTAL
 
 logger = logging.getLogger(__name__)
 
@@ -69,6 +70,11 @@ class PositionCalculator:
                     "current_epoch": current_state.epoch
                 }
             )
+            
+            REPROCESSING_EPOCH_BUMPED_TOTAL.labels(
+                portfolio_id=portfolio_id, security_id=security_id
+            ).inc()
+            
             new_watermark = transaction_date - timedelta(days=1)
             
             new_state = await position_state_repo.increment_epoch_and_reset_watermark(
@@ -172,6 +178,7 @@ class PositionCalculator:
             quantity += transaction.quantity
             cost_basis += transaction.gross_transaction_amount 
             cost_basis_local += transaction.gross_transaction_amount
+        
         
         elif txn_type in ["FEE", "TAX", "WITHDRAWAL"]: 
             quantity -= transaction.gross_transaction_amount

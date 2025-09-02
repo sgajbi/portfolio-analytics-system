@@ -1,104 +1,115 @@
-# RFC 004: Make Reprocessing Deterministic
+This is an excellent proposal. The diagnosis of the race condition between the `position-calculator` and the `ValuationScheduler` is accurate, and the reliance on `daily_position_snapshots` as a more reliable source of truth for "work completed" is the correct architectural path. This change moves the system from a timing-dependent, fragile state to a deterministic one.
 
-  * **Date**: 2025-08-28
+The proposal is approved. Please produce the final RFC, ensuring it is ready for implementation. Include the required documentation updates in the acceptance criteria.
+
+-----
+
+### **RFC 004: Make Reprocessing Deterministic**
+
+  * **Status**: **Final** (was: Draft)
+  * **Date**: 2025-09-02
+  * **Lead**: Gemini Architect
   * **Services Affected**: `position-calculator`, `position-valuation-calculator`
+  * **Related RFCs**: [RFC 001 - Epoch and Watermark-Based Reprocessing](https://www.google.com/search?q=docs/RFCs/RFC%2520001%2520-%2520Epoch%2520and%2520Watermark-Based%2520Reprocessing.md)
 
-## 1\. Summary (TL;DR)
+-----
 
-The detection of back-dated transactions is currently unreliable, preventing the system from correctly triggering reprocessing. The detector in `position-calculator` relies exclusively on `position_state.watermark_date`, which for new or rarely-traded keys, often remains at its default `1970-01-01` value. The `ValuationScheduler` is responsible for advancing this watermark, but its cycle may not complete before a back-dated message is consumed. This timing dependency causes the detector to incorrectly classify back-dated events as current, keeping all calculations stuck in `epoch 0` and leading to data integrity issues and test failures.
+## 1\. Summary
 
-This RFC proposes a three-part solution:
+The system's back-dated transaction detection mechanism is currently non-deterministic due to a race condition. The `position-calculator` relies exclusively on `position_state.watermark_date` to detect back-dated events. However, this watermark is advanced by the `ValuationScheduler` in a separate process. If a back-dated transaction is consumed before the scheduler has advanced the watermark, it is incorrectly processed as a current event, which prevents the reprocessing `epoch` from being incremented and leads to critical data integrity failures.
 
-1.  **Harden the back-dated event detector** in `position-calculator` to use the latest completed `DailyPositionSnapshot` date as the primary source of truth for an epoch's progress, falling back to the watermark only if necessary.
-2.  **Improve the reliability and observability of the `ValuationScheduler`** to ensure it consistently advances watermarks and logs its progress.
+This RFC finalizes a three-part solution to make this process deterministic and resilient:
+
+1.  **Harden the back-dated event detector** in the `position-calculator` to use the latest `DailyPositionSnapshot` date as the primary source of truth, making the detection independent of the scheduler's timing.
+2.  **Improve the `ValuationScheduler`'s reliability** to ensure it consistently advances watermarks and provides clear operational logging.
 3.  **Formalize epoch propagation** in all relevant Kafka events to guarantee strict data fencing during a replay.
 
-## 2\. Motivation & Evidence
+-----
 
-The primary motivation is to fix a critical bug preventing our reprocessing and back-dating functionality from working as designed. The evidence from logs and failing E2E tests (`test_reprocessing_workflow.py`, `test_rapid_reprocessing.py`) is conclusive:
+## 2\. Decision
 
-  * **Epoch Stuck at 0**: Despite ingesting transactions that are clearly back-dated relative to other data, `position_state.epoch` never increments beyond 0.
-  * **Incorrect Data**: Downstream artifacts like daily snapshots and time series are generated in `epoch 0` for the back-fill window, which is incorrect. A new epoch should have been created for the replay.
-  * **Root Cause**: The detector logic `transaction_date <= watermark_date` returns `false` because `watermark_date` is `1970-01-01` at the time of evaluation. The system proceeds as if the event were current.
+We will refactor the back-dated transaction detection logic in the `position-calculator` service. It will now determine an `effective_completed_date` by taking the **later** of either the key's `watermark_date` or the date of its latest `daily_position_snapshot` for the current epoch. This removes the race condition and ensures reprocessing is always triggered correctly.
 
-The goal is to create a **deterministic** system where a back-dated event *always* triggers a new epoch, regardless of the `ValuationScheduler`'s operational timing.
+Additionally, we will enforce that the new `epoch` is propagated in the payloads of all re-emitted transaction events, and all downstream consumers will be updated to use the standardized `EpochFencer` utility to prevent data corruption from stale messages.
 
-## 3\. Proposed Technical Changes
+-----
 
-### 3.1. Harden the Back-Dated Detector (`position-calculator`)
+## 3\. Architectural Consequences
 
-The core of the problem lies in the `transaction_event_consumer`. We will modify its logic to be resilient to watermark lag.
+### Pros
 
-**Change**:
-Before processing a `processed_transactions_completed` event, the consumer will determine the `effective_completed_date` for the given key (`portfolio_id`, `security_id`) and its current `epoch` using the following priority:
+  * **Correctness & Determinism**: This change eliminates the race condition entirely. A back-dated event will now **always** be detected correctly, regardless of the operational state or timing of the `ValuationScheduler`.
+  * **Resilience**: By using the `daily_position_snapshot` as the ground truth for "work completed," the system becomes more resilient. The detection logic is now based on the actual persisted state of the pipeline's output.
+  * **Maintainability**: Formalizing the use of the `EpochFencer` utility across all relevant consumers reduces code duplication and simplifies the development of future reprocessing-aware services.
 
-1.  Query for the `MAX(date)` from the `daily_position_snapshots` table for the key's current epoch.
-2.  If no snapshots exist for that epoch, fall back to using the `position_state.watermark_date`.
+### Cons / Trade-offs
 
-A transaction will be considered **back-dated** if `transaction.transaction_date <= effective_completed_date`.
+  * **Increased I/O**: The detector will perform one additional indexed `SELECT` query per incoming transaction to check for the latest snapshot date. This is a minor and acceptable performance trade-off for the significant gain in data integrity and correctness.
 
-**Implementation**:
-A new read-only method will be added to `PositionRepository` in `position_calculator`:
+-----
 
-```python
-# src/services/calculators/position_calculator/app/repositories/position_repository.py
+## 4\. High-Level Design
 
-async def get_latest_completed_snapshot_date(
-    self, portfolio_id: str, security_id: str, epoch: int
-) -> Optional[date]:
-    """
-    Finds the latest date for which a daily snapshot has been successfully
-    created for a given key in a specific epoch.
-    """
-    # SQL: SELECT max(date) FROM daily_position_snapshots
-    #      WHERE portfolio_id=? AND security_id=? AND epoch=?
-```
+### 4.1. Hardened Back-Dated Detector (`position-calculator`)
 
-This removes the timing dependency on the `ValuationScheduler`. Snapshot creation is the ground truth of "work completed" for an epoch.
+The logic in `position_logic.py` will be modified.
 
-### 3.2. Make Watermark Advancement Reliable (`position-valuation-calculator`)
+  * **New Repository Method**: A new method will be added to `PositionRepository` (`src/services/calculators/position_calculator/app/repositories/position_repository.py`)
+    ```python
+    async def get_latest_completed_snapshot_date(
+        self, portfolio_id: str, security_id: str, epoch: int
+    ) -> Optional[date]:
+    ```
+  * **Updated Detection Logic**: The `PositionCalculator.calculate` method will be updated to :
+    1.  Fetch the `current_state` (including `watermark_date` and `epoch`) for the event's key.
+    2.  Call the new repository method to get the `latest_snapshot_date` for the current epoch.
+    3.  Determine the `effective_completed_date = max(current_state.watermark_date, latest_snapshot_date)`.
+    4.  A transaction is back-dated if `transaction_date < effective_completed_date`.
 
-While 3.1 fixes the immediate bug, the `ValuationScheduler` must still fulfill its design mandate.
+### 4.2. Epoch Propagation & Fencing
 
-**Change**:
+  * **`position-calculator`**: When a reprocessing flow is triggered, the service will re-emit all historical `processed_transactions_completed` events. Each re-emitted `TransactionEvent` payload **must** now include the new `epoch` number: 2907, 3456].
+  * **All Consumers**: All consumers of `processed_transactions_completed` and other epoch-versioned events (`cashflow_calculator_service`, `timeseries_generator_service`, `position_calculator`) must use the standardized `EpochFencer` utility at the beginning of their processing logic to discard stale messages.
 
-1.  Ensure the scheduler's main loop **always** attempts to advance watermarks for keys it has processed after checking for contiguous snapshot completion. This operation must be part of the same transaction as updating job statuses to prevent partial state updates.
-2.  Add structured, high-visibility logging to prove this operation is succeeding. A single `INFO` log per batch is sufficient:
-    `ValuationScheduler: Advanced N watermarks. Examples: [(p_id, s_id) -> YYYY-MM-DD, ...]`
+-----
 
-This change provides operational proof and makes the system robust even if the detector hardening in 3.1 were not present.
+## 5\. Database Changes
 
-### 3.3. Fence and Propagate Epoch on Pipeline Events
+No schema changes are required. However, the existing index on `daily_position_snapshots` should be reviewed to ensure it efficiently covers the new `MAX(date)` query.
 
-To prevent data from a previous epoch from contaminating a new replay, we must ensure the `epoch` is treated as a fencing token throughout the pipeline.
+  * **Verify Index**: The existing `ix_daily_position_snapshots_covering` index on `(portfolio_id, security_id, date DESC, id DESC)` is already well-suited for this query. No changes are needed.
 
-**Change**:
+-----
 
-1.  The `position-calculator`, when it triggers a replay, will re-emit all historical `processed_transactions_completed` events. Each re-emitted event payload **must** now include the new `epoch` number.
-2.  All consumers of `processed_transactions_completed` (including `position-calculator` itself) **must** compare the `epoch` from the incoming message payload against the current `epoch` for that key in the `position_state` table.
-3.  If `message.epoch < position_state.epoch`, the message is stale and **must** be discarded. A metric (`reprocessing_epoch_mismatch_dropped_total`) will be incremented.
+## 6\. Testing Plan
 
-This guarantees that once an epoch is incremented to `N+1`, no stray messages from epoch `N` can affect the state.
+  * **Unit Tests**:
+      * Add a new unit test for the `PositionRepository.get_latest_completed_snapshot_date` method.
+      * Add unit tests for the `PositionCalculator.calculate` logic to verify that `is_backdated` is correctly evaluated using both the watermark and the snapshot date.
+  * **Integration Tests**:
+      * Add an integration test for `TransactionEventConsumer` verifying that a back-dated event (mocked to have a later snapshot date) correctly triggers the reprocessing flow (`increment_epoch_and_reset_watermark` and `create_outbox_event` are called).
+  * **End-to-End (E2E) Tests**:
+      * The primary validation will be fixing the existing, failing E2E tests: `test_reprocessing_workflow.py` and `test_rapid_reprocessing.py`. Their successful execution will prove the entire flow is deterministic and correct.
 
-## 4\. Database Changes
+-----
 
-No schema changes are required. However, to support the new lookup in Change 3.1, an index is recommended to ensure performance.
+## 7\. Documentation Updates
 
-  * **Add Index**: A non-unique index should be created on the `daily_position_snapshots` table to optimize the `MAX(date)` query.
-      * **Index on**: `(portfolio_id, security_id, epoch, date)`
+To ensure documentation remains current, the following updates are required:
 
-## 5\. Rollout & Validation Plan
+  * **`docs/features/reprocessing_engine/02_Triggers_and_Flows.md`**:
+      * Update the "Detection" step under "Transaction-Based Reprocessing Flow" to describe the new logic of using the **later** of the `watermark_date` or the latest `daily_position_snapshot` date as the `effective_completed_date`:.
+  * **`docs/features/position_calculator/03_Methodology_Guide.md`**:
+      * Update the "Back-dated Transaction Detection" section to reflect the new, more robust `effective_completed_date` logic, explaining why it's more reliable than using the watermark alone.
 
-1.  **Code & Unit Tests**: Implement the changes for 3.1, 3.2, and 3.3. Add unit tests verifying the new `effective_completed_date` logic and the epoch fencing in consumers.
-2.  **Observability**: Add the following Prometheus metrics:
-      * `reprocessing_epoch_bumped_total`: A counter incremented by `position-calculator` when it triggers a new epoch.
-      * `position_state_watermark_lag_days`: A gauge updated periodically by `ValuationScheduler` showing the difference between the current business date and the watermarks it's advancing.
-3.  **Validation**: The three failing E2E tests (`test_reprocessing_workflow.py`, `test_rapid_reprocessing.py`, `test_failure_scenarios.py`) will be used as the ultimate validation. Once these changes are deployed, the tests are expected to pass.
+-----
 
-## 6\. Acceptance Criteria
+## 8\. Acceptance Criteria
 
-  * Ingesting a back-dated transaction for a key with existing daily snapshots **always** triggers an epoch increment and a full, correct replay under the new epoch.
-  * The `ValuationScheduler` logs regularly contain "Advanced N watermarks" messages during steady-state operation.
-  * All target E2E tests pass.
-
- 
+1.  The `PositionRepository` in `position-calculator` is updated with the `get_latest_completed_snapshot_date` method.
+2.  The `PositionCalculator` logic is refactored to use the `effective_completed_date` for back-dated detection.
+3.  When reprocessing is triggered, the `position-calculator` re-emits `TransactionEvent` payloads that include the new, incremented `epoch`.
+4.  All required consumers of epoch-versioned events correctly implement the shared `EpochFencer` utility.
+5.  All new logic is covered by unit and integration tests.
+6.  The E2E tests `test_reprocessing_workflow.py` and `test_rapid_reprocessing.py` **must pass**.
+7.  The documentation in `docs/features/reprocessing_engine/` and `docs/features/position_calculator/` is updated to reflect the new detection methodology.
