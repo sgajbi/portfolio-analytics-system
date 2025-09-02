@@ -1,31 +1,37 @@
 # Operations & Troubleshooting Guide: Cashflow Calculator
 
-This guide provides operational instructions for monitoring and troubleshooting the `cashflow_calculator_service`.
+This guide provides information for operating and troubleshooting the `cashflow_calculator_service`.
 
-## 1. Observability & Monitoring
+## 1. Key Metrics
 
-The service is a standard Kafka consumer and exposes metrics via its `/metrics` endpoint.
+The service exposes the following critical Prometheus metrics at its `/metrics` endpoint. These should be monitored in a Grafana dashboard.
 
-### Key Metrics to Watch
-
-* **Consumer Lag:** High or growing consumer lag on the `raw_transactions_completed` topic indicates that the service cannot keep up with the volume of incoming transactions. This could be due to a performance bottleneck or persistent errors causing messages to be retried.
-* **`events_processed_total` (Counter):** Tracks the number of transactions successfully processed. A flat line on this metric when there is known traffic indicates the service is stuck or failing.
-* **`events_dlqd_total` (Counter):** Tracks the number of messages sent to the Dead-Letter Queue. Any increase in this metric requires immediate investigation, as it signifies a "poison pill" message that could not be processed.
-
-## 2. Structured Logging & Tracing
-
-All logs are structured JSON and are tagged with the `correlation_id` of the original ingestion request. When investigating an incorrect performance figure downstream, you can find the `transaction_id` causing the issue and use it to find the corresponding `correlation_id` in the `cashflow_calculator_service` logs to see exactly how its cash flow was generated.
-
-A key log message to look for is: `Calculated cashflow for txn ...`. This confirms that a transaction was processed and shows the resulting amount and classification.
-
-## 3. Common Failure Scenarios & Resolutions
-
-| Scenario | Symptom(s) in API / Logs | Key Log Message(s) / DB Query | Resolution / Action |
+| Metric Name | Type | Labels | Description |
 | :--- | :--- | :--- | :--- |
-| **Incorrect Performance (TWR)** | Downstream performance reports show incorrect TWR figures that don't align with client contributions. | (No error logs) Query the `cashflows` table for the portfolio and period in question. | **Cause:** The issue is almost always a misclassified cash flow. For example, a fee might be incorrectly marked as `is_portfolio_flow=False`. <br> **Resolution:** 1. Query the `cashflows` table to find the incorrect record. 2. Trace its `transaction_id` back to the original transaction. 3. Escalate to the development team to correct the rule in `cashflow_config.py`. 4. Manually reprocess the original transaction to regenerate the correct cash flow. |
-| **Messages Sent to DLQ** | The `events_dlqd_total` metric is increasing. | `Message validation failed... Sending to DLQ.` | **Cause:** A "poison pill" message. This most commonly occurs if a new `transaction_type` is introduced without a corresponding rule in the `cashflow_config.py` map. <br> **Resolution:** **Escalate to the development team.** Provide the full DLQ message, which contains the original transaction and a detailed error traceback. |
-| **High Consumer Lag** | Kafka consumer lag is high and growing. | `DB integrity error; will retry...` appears frequently in logs. | **Cause:** The service is likely stuck in a retry loop due to a transient database issue (e.g., connection problems, deadlocks). <br> **Resolution:** Check the health of the PostgreSQL database. The consumer should recover automatically once the database is healthy. |
+| `kafka_messages_consumed_total`| Counter | `topic`, `group_id` | Tracks the total number of messages consumed from Kafka. A healthy service shows this steadily increasing. |
+| `kafka_consume_errors_total` | Counter | `topic`, `error` | Monitors for Kafka consumption errors. Any value other than zero requires investigation. |
+| `db_operation_latency_seconds` | Histogram | `repository`, `method` | Measures the latency of database operations. Spikes can indicate DB performance issues. |
+| `outbox_events_published_total`| Counter | `aggregate_type`, `topic` | Tracks the number of `CashflowCalculated` events successfully published. |
+| **`cashflows_created_total`** | **Counter** | **`classification`, `timing`**| **(New in RFC 022)** Provides a business-level count of generated cashflows. This is crucial for understanding the financial activity being processed (e.g., number of `INCOME` vs. `EXPENSE` flows). |
 
-## 4. Gaps and Design Considerations
+## 2. Common Failure Modes & Recovery
 
-* **Missing Metrics:** The service lacks specific metrics for the business logic it performs. There is no visibility into the *types* of cashflows being created. Adding a Prometheus counter with a `classification` label would provide valuable insight into the nature of the transactions flowing through the system (e.g., are we processing more deposits or withdrawals today?).
+### Symptom: Consumer Lag is Increasing
+
+- **Potential Cause 1: Database Performance**
+  - **Check**: The `db_operation_latency_seconds` histogram in Grafana. Are `create_cashflow` operations becoming slow?
+  - **Action**: Investigate the database for slow queries, high CPU usage, or connection pool exhaustion.
+
+- **Potential Cause 2: Downstream Outage**
+  - **Check**: The `outbox_events_pending` gauge. If this number is high and not decreasing, the outbox dispatcher is failing to publish events. This can be due to Kafka being unavailable.
+  - **Action**: Check Kafka broker health and network connectivity from the service.
+
+### Symptom: Messages are ending up in the DLQ
+
+- **Potential Cause 1: Invalid Message Payload**
+  - **Check**: The logs for the `cashflow_calculator_service`. Look for `ValidationError` or `JSONDecodeError` messages.
+  - **Action**: The upstream service is likely publishing a malformed `TransactionEvent`. The message in the DLQ will need to be inspected to identify the schema violation.
+
+- **Potential Cause 2: Missing Cashflow Rule**
+  - **Check**: The service logs for a `NoCashflowRuleError`. This error is logged when a transaction is received for a type that does not have a corresponding entry in the `cashflow_rules` table.
+  - **Action**: This is a configuration error. A business analyst or administrator needs to add a new rule to the `cashflow_rules` table for the missing transaction type. The affected message(s) can then be replayed from the DLQ.

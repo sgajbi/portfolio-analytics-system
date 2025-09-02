@@ -1,26 +1,27 @@
-# Feature Documentation: Cashflow Calculator
+# Feature: Cashflow Calculator
 
-## 1. Summary
+The **Cashflow Calculator** service is a core component of the system responsible for translating raw financial transactions into standardized cashflow records. These records are essential for all higher-level performance and time-series calculations.
 
-The **`cashflow_calculator_service`** is a specialized backend service responsible for translating raw transaction events into standardized, financially significant cash flow records. These records are the primary input for all performance measurement calculations, such as Time-Weighted Return (TWR) and Money-Weighted Return (MWR).
+## 1. Core Responsibilities
 
-The service operates on a simple, powerful, rule-based system. It consumes transaction events from a Kafka topic and, based on the transaction type (e.g., "BUY", "DIVIDEND", "FEE"), generates a corresponding cash flow record with the correct amount, sign, and classification.
+- **Consumption**: Listens to the `processed_transactions_completed` Kafka topic for new, validated transaction events.
+- **Enrichment**: For each transaction, it applies a set of business rules to determine the cashflow's financial characteristics.
+- **Calculation**: It calculates the net cashflow amount, adjusting for fees and applying the correct sign (inflow/outflow).
+- **Persistence**: Saves the resulting `Cashflow` record to the main database.
+- **Publication**: Publishes a `CashflowCalculated` event to the `cashflows_calculated_completed` topic via the outbox pattern for downstream consumers like the `timeseries_generator_service`.
 
-## 2. Key Concepts
+## 2. Key Features
 
-### Position Flow vs. Portfolio Flow
+### Database-Driven Business Logic
 
-A critical distinction made by this service is between a **position flow** and a **portfolio flow**. This is essential for accurate TWR calculations.
+The rules that map a transaction type (e.g., "BUY", "DIVIDEND") to a cashflow's financial properties are not hardcoded. Instead, they are stored in the `cashflow_rules` database table.
 
-* **Position Flow:** A cash flow that affects the value of a specific instrument but does **not** represent new money entering or leaving the portfolio. A `BUY` or `SELL` is a classic example. The cash used to buy a stock is a negative position flow for the cash instrument and a positive position flow for the stock, but the net effect on the total portfolio value (before any market movement) is zero.
-* **Portfolio Flow:** A cash flow that represents external money moving into or out of the portfolio, which directly impacts the denominator in a TWR calculation. A `DEPOSIT` or `WITHDRAWAL` is the clearest example. Certain internal events, like `FEE`s, are also correctly treated as portfolio flows as they represent a permanent removal of capital.
+This provides significant business agility, as a financial analyst can modify how transactions are treated without requiring a developer to change code or redeploy the service. The service loads these rules into an in-memory cache at startup for high performance.
 
-## 3. Key Features
+### Idempotency and Reliability
 
-* **Rule-Based Classification:** Uses a centralized configuration (`cashflow_config.py`) to map every transaction type to a specific cash flow classification, timing (Beginning-of-Day or End-of-Day), and flow type (position vs. portfolio).
-* **Correct Sign Convention:** Automatically applies the correct sign for financial calculations: inflows to the portfolio (e.g., SELL proceeds, DIVIDENDS) are positive, and outflows (e.g., BUYS, FEES) are negative.
-* **Epoch-Aware:** The service is fully integrated with the reprocessing engine. It consumes the `epoch` from incoming transaction events and propagates it to the outbound `cashflow_calculated` events, ensuring data consistency during historical recalculations.
+The consumer is fully idempotent. It tracks processed event IDs in the `processed_events` table to ensure that a duplicated message from Kafka will not result in a duplicate cashflow record. All database writes and event publications are wrapped in a single atomic transaction using the outbox pattern.
 
-## 4. Gaps and Design Considerations
+### Observability
 
-* **Hardcoded Rules:** The cash flow generation rules are currently hardcoded in a Python dictionary. While simple and effective, this means that any change to a rule (e.g., reclassifying a specific fee type) requires a full code deployment. A more flexible, enterprise-grade solution would be to store these rules in a database table, allowing for dynamic updates without a release.
+The service is instrumented with Prometheus metrics to provide deep insight into its operational health and business activity. See the [Operations & Troubleshooting Guide](./04_Operations_Troubleshooting_Guide.md) for a full list of available metrics.
