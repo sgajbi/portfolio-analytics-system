@@ -40,11 +40,17 @@ class ConcentrationService:
             if "ISSUER" in request.metrics and request.options.lookthrough_enabled:
                 CONCENTRATION_LOOKTHROUGH_REQUESTS_TOTAL.labels(portfolio_id=portfolio_id).inc()
 
-            portfolio = await self.portfolio_repo.get_by_id(portfolio_id)
+            # Create tasks to fetch portfolio details and positions concurrently
+            portfolio_task = self.portfolio_repo.get_by_id(portfolio_id)
+            positions_task = self.position_repo.get_latest_positions_by_portfolio(portfolio_id)
+            
+            # Run data fetching in parallel
+            portfolio, positions_data = await asyncio.gather(
+                portfolio_task, positions_task
+            )
+
             if not portfolio:
                 raise ValueError(f"Portfolio {portfolio_id} not found")
-
-            positions_data = await self.position_repo.get_latest_positions_by_portfolio(portfolio_id)
             
             # Handle the edge case of a portfolio with no positions
             if not positions_data:
