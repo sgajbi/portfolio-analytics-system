@@ -145,21 +145,23 @@ class PositionCalculator:
         cost_basis = current_state.cost_basis
         cost_basis_local = current_state.cost_basis_local
         txn_type = transaction.transaction_type.upper()
-        net_cost = transaction.net_cost if transaction.net_cost is not None else Decimal(0)
-        net_cost_local = transaction.net_cost_local if transaction.net_cost_local is not None else Decimal(0)
-
+        
         if txn_type == "BUY":
             quantity += transaction.quantity
-            cost_basis += net_cost
-            cost_basis_local += net_cost_local
+            if transaction.net_cost is not None:
+                cost_basis += transaction.net_cost
+            if transaction.net_cost_local is not None:
+                cost_basis_local += transaction.net_cost_local
         
         elif txn_type in ["SELL", "TRANSFER_OUT"]:
-            if not quantity.is_zero():
-                # Correctly reduce cost basis using the FIFO cost from the event
-                cost_basis += net_cost
-                cost_basis_local += net_cost_local
-            
             quantity -= transaction.quantity
+            
+            # transaction.net_cost is negative for a SELL/TRANSFER_OUT, representing the COGS.
+            # Adding this negative value correctly reduces the total cost basis.
+            if transaction.net_cost is not None:
+                cost_basis += transaction.net_cost
+            if transaction.net_cost_local is not None:
+                cost_basis_local += transaction.net_cost_local
 
         elif txn_type == "DEPOSIT":
             quantity += transaction.gross_transaction_amount

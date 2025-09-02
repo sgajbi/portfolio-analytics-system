@@ -13,7 +13,7 @@ from portfolio_common.position_state_repository import PositionStateRepository
 from portfolio_common.outbox_repository import OutboxRepository
 from portfolio_common.reprocessing import EpochFencer
 
-pytestmark = pytest.mark.asyncio
+# The module-level pytestmark is removed to apply the asyncio mark selectively.
 
 @pytest.fixture
 def mock_repo() -> AsyncMock:
@@ -45,6 +45,7 @@ def sample_event() -> TransactionEvent:
         trade_currency="USD", currency="USD", net_cost=Decimal("5505"), epoch=1
     )
 
+@pytest.mark.asyncio
 @patch("src.services.calculators.position_calculator.app.core.position_logic.EpochFencer")
 async def test_calculate_discards_stale_epoch_event(
     mock_fencer_class: MagicMock,
@@ -60,10 +61,7 @@ async def test_calculate_discards_stale_epoch_event(
     """
     # ARRANGE
     mock_fencer_instance = mock_fencer_class.return_value
-    # --- THIS IS THE FIX ---
-    # The mocked method must be an awaitable that returns a boolean.
     mock_fencer_instance.check = AsyncMock(return_value=False)
-    # --- END FIX ---
 
     # ACT
     await PositionCalculator.calculate(
@@ -77,6 +75,7 @@ async def test_calculate_discards_stale_epoch_event(
     mock_outbox_repo.create_outbox_event.assert_not_called()
 
 
+@pytest.mark.asyncio
 @patch("src.services.calculators.position_calculator.app.core.position_logic.EpochFencer")
 async def test_calculate_normal_flow(
     mock_fencer_class: MagicMock,
@@ -92,9 +91,7 @@ async def test_calculate_normal_flow(
     """
     # ARRANGE
     mock_fencer_instance = mock_fencer_class.return_value
-    # --- THIS IS THE FIX ---
     mock_fencer_instance.check = AsyncMock(return_value=True)
-    # --- END FIX ---
 
     # Simulate a state where the transaction is not backdated
     mock_state_repo.get_or_create_state.return_value = PositionState(watermark_date=date(2025, 8, 19), epoch=1)
@@ -112,6 +109,7 @@ async def test_calculate_normal_flow(
     mock_repo.save_positions.assert_awaited_once()
     mock_outbox_repo.create_outbox_event.assert_not_called()
 
+@pytest.mark.asyncio
 @patch("src.services.calculators.position_calculator.app.core.position_logic.EpochFencer")
 async def test_calculate_re_emits_events_for_original_backdated_transaction(
     mock_fencer_class: MagicMock,
@@ -127,9 +125,7 @@ async def test_calculate_re_emits_events_for_original_backdated_transaction(
     """
     # ARRANGE
     mock_fencer_instance = mock_fencer_class.return_value
-    # --- THIS IS THE FIX ---
     mock_fencer_instance.check = AsyncMock(return_value=True)
-    # --- END FIX ---
 
     # This event is an original ingestion, so its epoch is not yet set.
     sample_event.epoch = None
@@ -158,3 +154,45 @@ async def test_calculate_re_emits_events_for_original_backdated_transaction(
     
     first_call_args = mock_outbox_repo.create_outbox_event.call_args_list[0].kwargs
     assert first_call_args['payload']['epoch'] == 1
+
+# --- NEW TEST FOR RFC 023 ---
+def test_calculate_next_position_for_sell_uses_net_cost():
+    """
+    Verifies that for a SELL transaction, the cost basis is correctly reduced
+    by the `net_cost` (COGS) from the event, not by a proportional amount.
+    """
+    # ARRANGE
+    # Initial state: 100 shares with an average cost of $12/share.
+    initial_state = PositionStateDTO(
+        quantity=Decimal("100"),
+        cost_basis=Decimal("1200"),
+        cost_basis_local=Decimal("1000")
+    )
+    
+    # Sell event: 50 shares. The cost calculator determined the FIFO COGS
+    # for these shares was $550 (i.e., $11/share) in base currency and €500 local.
+    sell_event = TransactionEvent(
+        transaction_id="SELL_FIFO_01",
+        transaction_type="SELL",
+        quantity=Decimal("50"),
+        net_cost=Decimal("-550"), # Negative value represents COGS
+        net_cost_local=Decimal("-500"), # Negative value for local COGS
+        # Other fields are not needed for this logic test
+        portfolio_id="P1", instrument_id="I1", security_id="S1",
+        transaction_date=datetime.now(), price=Decimal(0),
+        gross_transaction_amount=Decimal(0), trade_currency="USD", currency="USD"
+    )
+
+    # ACT
+    new_state = PositionCalculator.calculate_next_position(initial_state, sell_event)
+
+    # ASSERT
+    # The new quantity should be 100 - 50 = 50.
+    assert new_state.quantity == Decimal("50")
+    
+    # The new cost basis should be the old basis plus the (negative) net_cost.
+    # 1200 + (-550) = 650.
+    assert new_state.cost_basis == Decimal("650")
+    
+    # Verify local cost basis as well. 1000 + (-500) = 500.
+    assert new_state.cost_basis_local == Decimal("500")

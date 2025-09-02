@@ -1,123 +1,113 @@
-### **RFC 022: Enhance Cashflow Calculator Configurability and Monitoring**
+This is a critical data integrity bug fix. The proposal to align the `position_calculator_service` with the authoritative cost basis calculations from the `cost_calculator_service` is the correct approach. It establishes a single source of truth for cost basis logic, which is a foundational principle for a robust financial system.
+
+The plan is approved. Proceed with producing the finalized RFC.
+
+### **RFC 023: Correct Position History Cost Basis Calculation**
 
   * **Status**: **Final**
   * **Date**: 2025-09-02
-  * **Services Affected**: `cashflow_calculator_service`, `portfolio-common`
-  * **Related RFCs**: None
+  * **Lead**: Gemini Architect
+  * **Services Affected**: `position_calculator_service`
+  * **Related RFCs**: [RFC 001 - Epoch and Watermark-Based Reprocessing](https://www.google.com/search?q=docs/RFCs/RFC%2520001%2520-%2520Epoch%2520and%2520Watermark-Based%2520Reprocessing.md)
 
 -----
 
-## 1\. Summary (TL;DR)
+### 1\. Summary (TL;DR)
 
-This RFC is approved. We will proceed with enhancing the `cashflow_calculator_service` to improve its flexibility and observability.
+This RFC finalizes the decision to correct a critical data integrity flaw in the `position_calculator_service`. The service currently uses an incorrect proportional approximation to calculate cost basis reductions for sell-side transactions, which is logically inconsistent with the precise, methodology-driven (e.g., FIFO) Cost of Goods Sold (COGS) calculated by the upstream `cost_calculator_service`.
 
-[cite\_start]The current implementation hardcodes its business logic in a Python dictionary (`cashflow_config.py`) [cite: 2121] and lacks specific business-level metrics. To address this, we will:
+We will refactor the `position_calculator_service` to use the authoritative `net_cost` and `net_cost_local` values provided on the incoming `TransactionEvent`. This change will eliminate the data drift, ensure the `position_history` table is verifiably correct, and simplify the system by removing redundant, flawed logic.
 
-1.  **Externalize Business Logic**: The transaction-to-cashflow mapping rules will be moved from the static configuration file into a new `cashflow_rules` database table. The service will load these rules into an in-memory cache at startup to maintain high performance.
-2.  **Enhance Monitoring**: A new Prometheus `Counter` metric, `cashflows_created_total`, will be introduced. It will be labeled by `classification` and `timing` to provide granular, business-level insight into the service's processing activity.
+### 2\. Decision
 
------
+We will implement the solution as proposed. The `calculate_next_position` method within `src/services/calculators/position_calculator/app/core/position_logic.py` will be refactored. For `SELL` and `TRANSFER_OUT` transactions, it will no longer use a proportional reduction. Instead, it will directly apply the `net_cost` (for base currency) and `net_cost_local` values from the inbound `TransactionEvent`, which correctly represent the cost of the shares being disposed of.
 
-## 2\. Decision
+### 3\. Architectural Consequences
 
-We will implement a new `cashflow_rules` table to act as the single source of truth for cashflow generation logic. The `CashflowCalculatorConsumer` will be refactored to query this table on startup, caching the rules for low-latency processing. We will also instrument the `CashflowLogic` class to emit the new `cashflows_created_total` metric, enriching our existing observability framework.
+#### Pros:
 
------
+  * **Correctness & Data Integrity**: This is the primary benefit. The `cost_basis` in the `position_history` table will now be perfectly consistent with the underlying FIFO or AVCO tax lots calculated upstream. This eliminates a significant source of data drift and ensures all downstream analytics and API responses are based on correct data.
+  * **System Simplification**: The refactoring removes a redundant, complex, and incorrect calculation from the `position_calculator`, simplifying its logic. It enforces the principle of a single source of truth, where the `cost_calculator_service` is the sole authority on cost basis calculations.
+  * **Improved Auditability**: The `position_history` table will become a more reliable and auditable record, as the change in cost basis after a sale will directly correspond to the COGS of that specific disposition.
 
-## 3\. Architectural Consequences
+#### Trade-offs:
 
-### Pros:
+  * **Tighter Coupling**: This change makes the `position_calculator_service` more tightly coupled to the correctness of the `net_cost` provided by the upstream `cost_calculator_service`. This is a desirable and necessary trade-off, as it enforces the single source of truth pattern for cost basis logic.
 
-  * **Business Agility**: The primary benefit is that cashflow rules can be modified by updating a database record, without requiring a developer to change code and redeploy the service. This empowers business analysts to manage financial logic directly.
-  * **Improved Observability**: The new metric provides crucial, real-time insight into the business nature of the data flowing through the system, moving beyond purely technical monitoring (e.g., consumer lag) to answer questions like "How many dividend payments have we processed today?".
-  * **Centralized & Auditable Logic**: Moving rules to the database provides a centralized, auditable source of truth for how transactions are treated.
+### 4\. High-Level Design
 
-### Cons / Trade-offs:
+The change is confined to a single method in the `position_calculator_service`.
 
-  * **Increased Startup Dependency**: The service will have a new dependency on the `cashflow_rules` table being populated to start correctly. This is a minor, acceptable trade-off.
-  * **Performance Consideration**: The initial fetching of rules adds a small overhead at startup. However, by caching the rules in memory for the lifetime of the process, the per-message performance remains unaffected.
+  * **File to Modify**: `src/services/calculators/position_calculator/app/core/position_logic.py`
+  * **Method to Modify**: `calculate_next_position`
 
------
+The logic for handling `SELL` and `TRANSFER_OUT` transaction types will be modified as follows:
 
-## 4\. High-Level Design
+**From (Incorrect Proportional Logic):**
 
-### 4.1. Data Model Changes
+```python
+# OLD LOGIC - INCORRECT
+elif txn_type in ["SELL", "TRANSFER_OUT"]:
+    if not quantity.is_zero():
+        proportion_of_holding = transaction.quantity / quantity
+        cost_basis_reduction = cost_basis * proportion_of_holding
+        cost_basis_local_reduction = cost_basis_local * proportion_of_holding
+        
+        cost_basis -= cost_basis_reduction
+        cost_basis_local -= cost_basis_local_reduction
+    
+    quantity -= transaction.quantity
+```
 
-An Alembic migration script will be created to add the following new table:
+**To (Correct Additive Logic):**
 
-**New Table: `cashflow_rules`**
-| Column | Type | Description |
-| :--- | :--- | :--- |
-| `transaction_type` | `VARCHAR(50)` (PK) | The transaction type (e.g., "BUY", "SELL", "FEE"). |
-| `classification` | `VARCHAR(50)` | The financial purpose (e.g., "INCOME", "EXPENSE"). |
-| `timing` | `VARCHAR(10)` | "BOD" or "EOD". |
-| `is_position_flow` | `BOOLEAN` | True if it affects the instrument's value. |
-| `is_portfolio_flow` | `BOOLEAN` | True if it's an external contribution/withdrawal. |
-| `created_at` | `TIMESTAMPZ` | |
-| `updated_at` | `TIMESTAMPZ` | |
+```python
+# NEW LOGIC - CORRECT
+elif txn_type in ["SELL", "TRANSFER_OUT"]:
+    quantity -= transaction.quantity
 
-### 4.2. Service Logic Changes
+    # transaction.net_cost is negative for a SELL/TRANSFER_OUT, representing the COGS.
+    # Adding this negative value correctly reduces the total cost basis.
+    if transaction.net_cost is not None:
+        cost_basis += transaction.net_cost
+    if transaction.net_cost_local is not None:
+        cost_basis_local += transaction.net_cost_local
+```
 
-  * **New `CashflowRulesRepository`**: A new repository will be created in the `cashflow_calculator_service` to handle fetching all rules from the new table.
-  * **Consumer Refactoring (`TransactionConsumer`)**:
-      * On startup, the consumer manager will use the new repository to fetch all cashflow rules and load them into a singleton dictionary or a simple cache.
-      * The `get_rule_for_transaction` function will now read from this in-memory cache instead of the static `CASHFLOW_CONFIG` object.
-      * If a transaction is received for a type that has no rule in the cache, the consumer will log a critical error and send the message to the DLQ, as this is a non-retryable configuration error.
+### 5\. Testing Plan
 
-### 4.3. Monitoring
-
-  * **New Metric**: A new `Counter` will be added to `portfolio-common/monitoring.py`:
-    ```python
-    CASHFLOWS_CREATED_TOTAL = Counter(
-        "cashflows_created_total",
-        "Total number of cashflows created, by classification and timing.",
-        ["classification", "timing"]
-    )
-    ```
-  * **Instrumentation**: The `CashflowLogic.calculate` method will be updated to increment this metric upon successful creation of a `Cashflow` object.
-
------
-
-## 5\. Implementation Plan
-
-1.  **Phase 1: Database & Models**
-      * Create an Alembic migration script for the new `cashflow_rules` table.
-      * Add a corresponding `CashflowRule` model to `portfolio-common/database_models.py`.
-2.  **Phase 2: Service Logic**
-      * Implement the new `CashflowRulesRepository` in the `cashflow_calculator_service`.
-      * Refactor the `ConsumerManager` and `TransactionConsumer` to load rules from the database into an in-memory cache at startup.
-3.  **Phase 3: Observability**
-      * Add the `CASHFLOWS_CREATED_TOTAL` metric to `portfolio-common/monitoring.py`.
-      * Instrument the `CashflowLogic.calculate` method to increment the new metric.
-4.  **Phase 4: Testing & Documentation**
-      * Implement the full testing plan (see below).
-      * Update all relevant documentation in `docs/features/cashflow_calculator/`.
-
------
-
-## 6\. Testing Plan
+A comprehensive testing strategy is required to validate this critical fix.
 
   * **Unit Tests**:
-      * Create a new test file for the `CashflowRulesRepository` to verify its database query logic.
-      * Update tests for `CashflowCalculatorConsumer` to mock the repository call and the in-memory cache, verifying it correctly handles both found and missing rules.
-      * Update tests for `CashflowLogic` to assert that the `CASHFLOWS_CREATED_TOTAL` metric is incremented with the correct labels.
-  * **Integration Tests**:
-      * Create an integration test that seeds the test database with a rule, starts the consumer, and verifies that it successfully loads the rule into its cache.
-  * **E2E Tests**:
-      * The existing `test_cashflow_pipeline.py` will be run to ensure no regressions in the end-to-end flow.
-      * A **new E2E test** will be created to validate the dynamic nature of the feature:
-        1.  Ingest a transaction and verify it generates cashflow `X`.
-        2.  **Directly update the rule** for that transaction type in the test database.
-        3.  Manually trigger a reprocessing of the same transaction.
-        4.  Verify that the system now generates the new, updated cashflow `Y` **without a service restart**.
 
------
+      * New unit tests will be added to `tests/unit/services/calculators/position_calculator/core/test_position_logic.py`.
+      * A specific test case will be created that:
+        1.  Initializes a `PositionStateDTO` with a non-uniform average cost (e.g., quantity 100, cost basis 1200).
+        2.  Creates a `SELL` `TransactionEvent` for a partial quantity (e.g., 50) with a `net_cost` derived from a different cost per share (e.g., `-550`, representing a FIFO cost of $11/share).
+        3.  Calls `PositionCalculator.calculate_next_position`.
+        4.  Asserts that the `new_state.cost_basis` is exactly `initial_state.cost_basis + event.net_cost` (i.e., `1200 + (-550) = 650`), and **not** the incorrect proportional value (`1200 * (1 - 50/100) = 600`).
+      * A parallel test will be created to verify the logic for `net_cost_local`.
 
-## 7\. Acceptance Criteria
+  * **End-to-End (E2E) Tests**:
 
-1.  The `cashflow_rules` table is created via an Alembic migration.
-2.  The `cashflow_calculator_service` loads its rules from the database at startup and caches them.
-3.  The hardcoded `CASHFLOW_CONFIG` dictionary in `cashflow_config.py` is removed.
-4.  The new `cashflows_created_total` Prometheus metric is implemented and correctly reports the classification and timing of generated cashflows.
-5.  All new and modified logic is covered by unit, integration, and E2E tests as outlined in the testing plan.
-6.  The documentation in `docs/features/cashflow_calculator/` is updated to reflect the new database-driven configuration and the availability of the new metrics in the operations guide.
+      * Existing E2E tests, particularly `test_reprocessing_workflow.py`, `test_5_day_workflow.py`, and `test_dual_currency_workflow.py`, will be run to ensure no regressions. The final assertions on `cost_basis` and `realized_gain_loss` in these tests are the ultimate validation that the end-to-end pipeline is now consistent.
+
+### 6\. Documentation Update
+
+To ensure our documentation remains current and accurate, the following files must be updated as part of this change:
+
+  * **`docs/features/position_calculator/01_Feature_Position_Calculator_Overview.md`**:
+
+      * The "Gaps and Design Considerations" section detailing the flawed logic must be **removed**. The overview should now state that the service accurately tracks cost basis by consuming the authoritative COGS from the `cost_calculator_service`.
+
+  * **`docs/features/position_calculator/03_Methodology_Guide.md`**:
+
+      * The note about the "proportional approximation" flaw must be **removed**.
+      * The table detailing the calculation logic must be updated to reflect the new, correct methodology for `SELL` and `TRANSFER_OUT` transactions, explaining that the cost basis is reduced by the `net_cost` from the transaction event.
+
+### 7\. Acceptance Criteria
+
+1.  The `calculate_next_position` logic in `position_logic.py` is refactored to use the additive `net_cost` and `net_cost_local` from the transaction event for sell-side dispositions.
+2.  New unit tests are added to `test_position_logic.py` that specifically validate the correctness of the new cost basis calculation against a known expected value.
+3.  All existing unit, integration, and E2E tests pass, with special attention to the final `cost_basis` assertions in `test_reprocessing_workflow.py` and `test_5_day_workflow.py`.
+4.  The feature documentation in `docs/features/position_calculator/` is updated to remove all mentions of the previous flawed logic and accurately describe the new, correct methodology.
