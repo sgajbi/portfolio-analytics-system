@@ -132,16 +132,22 @@ To run the enforced unit test gate:
 make test
 ```
 
+To run the integration-lite suite used in CI coverage:
+
+```bash
+make test-integration-lite
+```
+
 To run the query-service unit suite directly:
 
 ```bash
 pytest tests/unit/services/query_service -q
 ```
 
-To run the full local quality gate (lint + mypy + tests):
+To run the full local quality gate (lint + mypy + combined coverage gate):
 
 ```bash
-make check
+make ci-local
 ```
 
 ## Verifying the Workflow
@@ -186,7 +192,17 @@ This project uses a DPM-aligned engineering baseline:
 make lint
 make typecheck
 make check
+make coverage-gate
+make ci-local
 ```
+
+CI workflow shape:
+
+- `Workflow Lint`
+- `Lint, Typecheck, Unit Tests`
+- `Tests (unit)` + `Tests (integration-lite)` coverage data jobs
+- `Coverage Gate (Combined)` with `--fail-under=82`
+- `Validate Docker Build`
 
 ## Tools
 

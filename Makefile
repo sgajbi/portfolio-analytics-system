@@ -1,4 +1,4 @@
-.PHONY: install lint typecheck test test-unit check docker-build clean
+.PHONY: install lint typecheck test test-unit test-integration-lite check coverage-gate ci-local docker-build clean
 
 install:
 	python scripts/bootstrap_dev.py
@@ -16,7 +16,15 @@ test:
 test-unit:
 	python -m pytest tests/unit/services/query_service -q
 
+test-integration-lite:
+	python -m pytest tests/integration/services/query_service/test_concentration_router.py tests/integration/services/query_service/test_position_analytics_router.py tests/integration/services/query_service/test_review_router.py tests/integration/services/query_service/test_summary_router.py -q
+
 check: lint typecheck test
+
+coverage-gate:
+	python scripts/coverage_gate.py
+
+ci-local: lint typecheck coverage-gate
 
 docker-build:
 	docker build -f src/services/query_service/Dockerfile -t portfolio-analytics-query-service:ci .

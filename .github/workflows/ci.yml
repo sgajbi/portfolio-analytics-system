@@ -50,12 +50,85 @@ jobs:
           python -m pip install --upgrade pip
           make install
 
-      - name: Run Quality Gate
+      - name: Lint + Typecheck + Unit Tests
         run: make check
+
+  test-suites:
+    name: Tests (${{ matrix.suite }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - suite: unit
+            args: tests/unit/services/query_service
+          - suite: integration-lite
+            args: tests/integration/services/query_service/test_concentration_router.py tests/integration/services/query_service/test_position_analytics_router.py tests/integration/services/query_service/test_review_router.py tests/integration/services/query_service/test_summary_router.py
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install Tooling and Project Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          make install
+
+      - name: Run ${{ matrix.suite }} tests with coverage data
+        env:
+          COVERAGE_FILE: .coverage.${{ matrix.suite }}
+        run: |
+          python -m pytest ${{ matrix.args }} --cov=src/services/query_service/app --cov-report=
+
+      - name: Upload coverage data (${{ matrix.suite }})
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-data-${{ matrix.suite }}
+          path: .coverage.${{ matrix.suite }}
+          include-hidden-files: true
+          if-no-files-found: error
+
+  coverage-gate:
+    name: Coverage Gate (Combined)
+    needs: [test-suites]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install Tooling and Project Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          make install
+
+      - name: Download coverage artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: coverage-data-*
+          merge-multiple: true
+          path: coverage-data
+
+      - name: Enforce combined coverage threshold
+        run: |
+          python -m coverage combine coverage-data
+          python -m coverage report --fail-under=82
 
   docker-build:
     name: Validate Docker Build
-    needs: [quality]
+    needs: [quality, coverage-gate]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
