@@ -3,10 +3,13 @@ import pytest
 from unittest.mock import AsyncMock, patch
 from datetime import date
 from decimal import Decimal
+from types import SimpleNamespace
+import pandas as pd
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.services.query_service.app.services.position_analytics_service import (
     PositionAnalyticsService,
+    get_position_analytics_service,
 )
 from src.services.query_service.app.dtos.position_analytics_dto import (
     PositionAnalyticsRequest,
@@ -177,3 +180,135 @@ async def test_get_position_analytics_portfolio_not_found(mock_dependencies):
     # ACT & ASSERT
     with pytest.raises(ValueError, match="Portfolio P_NOT_FOUND not found"):
         await service.get_position_analytics("P_NOT_FOUND", request)
+
+
+async def test_calculate_performance_returns_none_without_options(mock_dependencies):
+    service = mock_dependencies["service"]
+    request = PositionAnalyticsRequest(asOfDate=date(2025, 8, 31), sections=["BASE"])
+
+    result = await service._calculate_performance(
+        "P1", "SEC1", "USD", "USD", date(2023, 1, 1), request
+    )
+
+    assert result is None
+
+
+async def test_calculate_performance_fx_conversion_path(mock_dependencies):
+    service = mock_dependencies["service"]
+    request = PositionAnalyticsRequest(
+        asOfDate=date(2025, 8, 31),
+        sections=["PERFORMANCE"],
+        performanceOptions={"periods": ["YTD"]},
+    )
+
+    mock_dependencies["perf_repo"].get_position_timeseries_for_range.return_value = [
+        SimpleNamespace(
+            date=date(2025, 1, 1),
+            bod_market_value=Decimal("100"),
+            eod_market_value=Decimal("101"),
+            bod_cashflow_position=Decimal("0"),
+            eod_cashflow_position=Decimal("0"),
+            fees=Decimal("0"),
+        ),
+        SimpleNamespace(
+            date=date(2025, 1, 2),
+            bod_market_value=Decimal("101"),
+            eod_market_value=Decimal("103"),
+            bod_cashflow_position=Decimal("0"),
+            eod_cashflow_position=Decimal("0"),
+            fees=Decimal("0"),
+        ),
+    ]
+    mock_dependencies["fx_repo"].get_fx_rates.return_value = [
+        SimpleNamespace(rate_date=pd.Timestamp("2025-01-01"), rate=Decimal("1.3")),
+        SimpleNamespace(rate_date=pd.Timestamp("2025-01-02"), rate=Decimal("1.4")),
+    ]
+
+    with patch(
+        "src.services.query_service.app.services.position_analytics_service.PerformanceCalculator"
+    ) as mock_calc:
+        mock_calc.return_value.calculate_performance.side_effect = [
+            pd.DataFrame(
+                [
+                    {
+                        "final_cumulative_ror_pct": 2.0,
+                        "date": date(2025, 1, 2),
+                        "bod_market_value": Decimal("101"),
+                        "eod_market_value": Decimal("103"),
+                        "bod_cashflow": Decimal("0"),
+                        "eod_cashflow": Decimal("0"),
+                    }
+                ]
+            ),
+            pd.DataFrame([{"final_cumulative_ror_pct": 2.7, "date": date(2025, 1, 2)}]),
+        ]
+        result = await service._calculate_performance(
+            "P1",
+            "SEC1",
+            "EUR",
+            "USD",
+            date(2023, 1, 1),
+            request,
+        )
+
+    assert result is not None
+    assert "YTD" in result
+    assert result["YTD"].local_return == 2.0
+    assert result["YTD"].base_return == 2.7
+
+
+async def test_enrich_position_income_fx_forward_fill(mock_dependencies):
+    service = mock_dependencies["service"]
+    portfolio = Portfolio(portfolio_id="P1", base_currency="USD", open_date=date(2023, 1, 1))
+    snapshot = DailyPositionSnapshot(
+        security_id="SEC2",
+        quantity=Decimal("10"),
+        market_value=Decimal("100"),
+        market_value_local=Decimal("80"),
+        cost_basis=Decimal("90"),
+        cost_basis_local=Decimal("70"),
+        unrealized_gain_loss=Decimal("10"),
+        unrealized_gain_loss_local=Decimal("10"),
+        date=date(2025, 8, 30),
+    )
+    repo_row = (
+        snapshot,
+        "Instrument 2",
+        "CURRENT",
+        "ISIN2",
+        "EUR",
+        "Equity",
+        "Tech",
+        "DE",
+        2,
+    )
+
+    request = PositionAnalyticsRequest(
+        asOfDate=date(2025, 8, 31),
+        sections=["BASE", "INCOME"],
+    )
+
+    mock_dependencies["cashflow_repo"].get_income_cashflows_for_position.return_value = [
+        SimpleNamespace(amount=Decimal("10"), cashflow_date=date(2025, 8, 30)),
+        SimpleNamespace(amount=Decimal("5"), cashflow_date=date(2025, 8, 31)),
+    ]
+    mock_dependencies["fx_repo"].get_fx_rates.return_value = [
+        SimpleNamespace(rate_date=date(2025, 8, 30), rate=Decimal("1.2")),
+    ]
+
+    enriched = await service._enrich_position(
+        portfolio=portfolio,
+        total_market_value_base=Decimal("100"),
+        repo_row=repo_row,
+        request=request,
+    )
+
+    assert enriched.income is not None
+    assert enriched.income.local.amount == 15.0
+    # 10*1.2 + 5*1.2 (forward-filled)
+    assert enriched.income.base.amount == pytest.approx(18.0)
+
+
+async def test_get_position_analytics_service_factory():
+    service = get_position_analytics_service(AsyncMock(spec=AsyncSession))
+    assert isinstance(service, PositionAnalyticsService)

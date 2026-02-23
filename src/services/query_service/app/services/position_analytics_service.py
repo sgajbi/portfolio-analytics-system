@@ -128,12 +128,14 @@ class PositionAnalyticsService:
 
                     if "fx_rate" in df_merged.columns and not df_merged["fx_rate"].isnull().all():
                         df_base = df_merged.copy()
+                        df_base["fx_rate"] = df_base["fx_rate"].astype(float)
                         for col in [
                             "bod_market_value",
                             "eod_market_value",
                             "bod_cashflow",
                             "eod_cashflow",
                         ]:
+                            df_base[col] = pd.to_numeric(df_base[col], errors="coerce").fillna(0.0)
                             df_base[col] = df_base[col] * df_base["fx_rate"]
 
                         base_ts_dicts = df_base.to_dict("records")
