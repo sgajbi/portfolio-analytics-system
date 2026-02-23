@@ -322,3 +322,64 @@ async def test_summary_service_allocation_section_without_dimensions_returns_non
     response = await service.get_portfolio_summary("P1", request)
 
     assert response.allocation is None
+
+
+async def test_summary_service_calculates_additional_maturity_buckets(mock_dependencies):
+    service = mock_dependencies["service"]
+    mock_summary_repo = mock_dependencies["summary_repo"]
+    as_of_date = date(2025, 1, 1)
+
+    mock_summary_repo.get_wealth_and_allocation_data.return_value = [
+        (
+            DailyPositionSnapshot(security_id="B1", market_value=Decimal("100")),
+            Instrument(
+                security_id="B1",
+                product_type="Bond",
+                asset_class="Fixed Income",
+                maturity_date=date(2025, 10, 1),  # <= 1 year
+            ),
+        ),
+        (
+            DailyPositionSnapshot(security_id="B2", market_value=Decimal("100")),
+            Instrument(
+                security_id="B2",
+                product_type="Bond",
+                asset_class="Fixed Income",
+                maturity_date=date(2029, 1, 1),  # <= 5 years
+            ),
+        ),
+        (
+            DailyPositionSnapshot(security_id="B3", market_value=Decimal("100")),
+            Instrument(
+                security_id="B3",
+                product_type="Bond",
+                asset_class="Fixed Income",
+                maturity_date=date(2032, 1, 1),  # <= 10 years
+            ),
+        ),
+        (
+            DailyPositionSnapshot(security_id="B4", market_value=Decimal("100")),
+            Instrument(
+                security_id="B4",
+                product_type="Bond",
+                asset_class="Fixed Income",
+                maturity_date=date(2040, 1, 1),  # > 10 years
+            ),
+        ),
+    ]
+
+    request = SummaryRequest.model_validate(
+        {
+            "as_of_date": as_of_date.isoformat(),
+            "period": {"type": "YTD"},
+            "sections": ["ALLOCATION"],
+            "allocation_dimensions": ["MATURITY_BUCKET"],
+        }
+    )
+    response = await service.get_portfolio_summary("P1", request)
+
+    groups = [g.group for g in (response.allocation.by_maturity_bucket or [])]
+    assert "0-1Y" in groups
+    assert "3-5Y" in groups
+    assert "5-10Y" in groups
+    assert "10Y+" in groups

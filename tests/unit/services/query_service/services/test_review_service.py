@@ -28,6 +28,7 @@ from src.services.query_service.app.dtos.performance_dto import (
     PerformanceResult,
 )
 from src.services.query_service.app.dtos.instrument_dto import InstrumentRecord
+from src.services.query_service.app.dtos.risk_dto import RiskRequestScope, RiskResponse
 
 pytestmark = pytest.mark.asyncio
 
@@ -241,3 +242,53 @@ async def test_get_portfolio_review_orchestrates_correctly(mock_dependencies):
     assert response.transactions is not None
     assert "Equity" in response.transactions.transactions_by_asset_class
     assert response.transactions.transactions_by_asset_class["Equity"][0].transaction_id == "T1"
+
+
+async def test_get_portfolio_review_raises_when_portfolio_missing(mock_dependencies):
+    service = mock_dependencies["service"]
+    mock_dependencies["portfolio"].get_portfolio_by_id.return_value = None
+    request = PortfolioReviewRequest(
+        as_of_date=date(2025, 8, 30), sections=[ReviewSection.OVERVIEW]
+    )
+
+    with pytest.raises(ValueError, match="Portfolio P404 not found"):
+        await service.get_portfolio_review("P404", request)
+
+
+async def test_get_portfolio_review_raises_on_subservice_exception(mock_dependencies):
+    service = mock_dependencies["service"]
+    mock_dependencies["summary"].get_portfolio_summary.side_effect = RuntimeError("summary failed")
+    request = PortfolioReviewRequest(
+        as_of_date=date(2025, 8, 30), sections=[ReviewSection.OVERVIEW]
+    )
+
+    with pytest.raises(RuntimeError, match="summary failed"):
+        await service.get_portfolio_review("P1", request)
+
+
+async def test_get_portfolio_review_sets_performance_none_when_empty(mock_dependencies):
+    service = mock_dependencies["service"]
+    mock_dependencies["performance"].calculate_performance.side_effect = [None, None]
+    request = PortfolioReviewRequest(
+        as_of_date=date(2025, 8, 30),
+        sections=[ReviewSection.PERFORMANCE],
+    )
+
+    response = await service.get_portfolio_review("P1", request)
+
+    assert response.performance is None
+
+
+async def test_get_portfolio_review_sets_risk_none_when_no_results(mock_dependencies):
+    service = mock_dependencies["service"]
+    mock_dependencies["risk"].calculate_risk.return_value = RiskResponse(
+        scope=RiskRequestScope(as_of_date=date(2025, 8, 30), net_or_gross="NET"), results={}
+    )
+    request = PortfolioReviewRequest(
+        as_of_date=date(2025, 8, 30),
+        sections=[ReviewSection.RISK_ANALYTICS],
+    )
+
+    response = await service.get_portfolio_review("P1", request)
+
+    assert response.risk_analytics is None
