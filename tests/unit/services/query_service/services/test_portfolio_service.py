@@ -63,3 +63,56 @@ async def test_get_portfolios(mock_portfolio_repo: AsyncMock):
         assert portfolio_record.portfolio_id == "P1"
         assert portfolio_record.cif_id == "C100"
         assert portfolio_record.status == "ACTIVE"
+
+
+async def test_get_portfolios_empty_result(mock_portfolio_repo: AsyncMock):
+    with patch(
+        "src.services.query_service.app.services.portfolio_service.PortfolioRepository",
+        return_value=mock_portfolio_repo,
+    ):
+        mock_db_session = AsyncMock(spec=AsyncSession)
+        service = PortfolioService(mock_db_session)
+        mock_portfolio_repo.get_portfolios.return_value = []
+
+        response_dto = await service.get_portfolios()
+
+        assert response_dto.portfolios == []
+
+
+async def test_get_portfolio_by_id_success(mock_portfolio_repo: AsyncMock):
+    with patch(
+        "src.services.query_service.app.services.portfolio_service.PortfolioRepository",
+        return_value=mock_portfolio_repo,
+    ):
+        mock_db_session = AsyncMock(spec=AsyncSession)
+        service = PortfolioService(mock_db_session)
+        mock_portfolio_repo.get_by_id.return_value = Portfolio(
+            portfolio_id="P1",
+            base_currency="USD",
+            open_date=date(2025, 1, 1),
+            risk_exposure="High",
+            investment_time_horizon="Long",
+            portfolio_type="Discretionary",
+            booking_center="SG",
+            cif_id="C100",
+            status="ACTIVE",
+            is_leverage_allowed=False,
+        )
+
+        result = await service.get_portfolio_by_id("P1")
+
+        assert result.portfolio_id == "P1"
+        mock_portfolio_repo.get_by_id.assert_awaited_once_with("P1")
+
+
+async def test_get_portfolio_by_id_not_found(mock_portfolio_repo: AsyncMock):
+    with patch(
+        "src.services.query_service.app.services.portfolio_service.PortfolioRepository",
+        return_value=mock_portfolio_repo,
+    ):
+        mock_db_session = AsyncMock(spec=AsyncSession)
+        service = PortfolioService(mock_db_session)
+        mock_portfolio_repo.get_by_id.return_value = None
+
+        with pytest.raises(ValueError, match="Portfolio with id P404 not found"):
+            await service.get_portfolio_by_id("P404")
