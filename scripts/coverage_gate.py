@@ -10,13 +10,15 @@ import sys
 UNIT_ARGS = ["tests/unit/services/query_service"]
 INTEGRATION_LITE_ARGS = [
     "tests/integration/services/query_service/test_concentration_router.py",
+    "tests/integration/services/query_service/test_performance_router.py",
     "tests/integration/services/query_service/test_position_analytics_router.py",
     "tests/integration/services/query_service/test_review_router.py",
+    "tests/integration/services/query_service/test_risk_router_dependency.py",
     "tests/integration/services/query_service/test_summary_router.py",
 ]
 
 SOURCE = "src/services/query_service/app"
-FAIL_UNDER = "82"
+FAIL_UNDER = "84"
 
 
 def run_pytest(args: list[str], coverage_file: str) -> None:

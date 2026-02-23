@@ -201,7 +201,7 @@ CI workflow shape:
 - `Workflow Lint`
 - `Lint, Typecheck, Unit Tests`
 - `Tests (unit)` + `Tests (integration-lite)` coverage data jobs
-- `Coverage Gate (Combined)` with `--fail-under=82`
+- `Coverage Gate (Combined)` with `--fail-under=84`
 - `Validate Docker Build`
 
 ## Tools

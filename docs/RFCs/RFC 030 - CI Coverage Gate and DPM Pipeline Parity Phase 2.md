@@ -21,14 +21,14 @@ Adopt DPM-style phased CI hardening:
    - `Tests (unit)`
    - `Tests (integration-lite)`
 2. Upload per-suite coverage artifacts.
-3. Add `Coverage Gate (Combined)` job enforcing `--fail-under=82`.
+3. Add `Coverage Gate (Combined)` job enforcing `--fail-under=84`.
 4. Keep `Lint, Typecheck, Unit Tests` and `Validate Docker Build` as protected required checks.
 5. Keep Docker-dependent integration tests out of required gate until migration-runner/docker-compose reliability is hardened.
 
-## Why 82% Now
+## Why 84% Now
 
-- Current stable combined scope (unit + integration-lite) reaches ~83%.
-- 82% creates a real guardrail without introducing CI flakiness.
+- Current stable combined scope (unit + integration-lite) reaches ~85% with expanded router tests.
+- 84% creates a real guardrail without introducing CI flakiness.
 - Threshold can be ratcheted upward once additional routers/services and Docker-dependent integration tests are stabilized.
 
 ## Makefile Alignment

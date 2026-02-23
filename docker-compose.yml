@@ -90,7 +90,7 @@ services:
     hostname: migration-runner
     container_name: migration-runner
     environment:
-      DATABASE_URL: ${DATABASE_URL}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://user:password@postgres:5432/portfolio_db}
     depends_on:
       postgres:
         condition: service_healthy
@@ -137,7 +137,7 @@ services:
     ports:
       - "8001:8001"
     environment:
-      DATABASE_URL: ${QUERY_DATABASE_URL}
+      DATABASE_URL: ${QUERY_DATABASE_URL:-postgresql://user:password@postgres:5432/portfolio_db}
     depends_on:
       migration-runner:
         condition: service_completed_successfully
@@ -167,7 +167,7 @@ services:
       - "8080:8080"
     environment:
       KAFKA_BOOTSTRAP_SERVERS: kafka:9093
-      DATABASE_URL: ${DATABASE_URL}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://user:password@postgres:5432/portfolio_db}
     depends_on:
       kafka-topic-creator:
         condition: service_completed_successfully
@@ -197,7 +197,7 @@ services:
       - "8083:8083"
     environment:
       KAFKA_BOOTSTRAP_SERVERS: kafka:9093
-      DATABASE_URL: ${DATABASE_URL}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://user:password@postgres:5432/portfolio_db}
     depends_on:
       kafka-topic-creator:
        condition: service_completed_successfully
@@ -228,7 +228,7 @@ services:
      - "8082:8082"
     environment:
       KAFKA_BOOTSTRAP_SERVERS: kafka:9093
-      DATABASE_URL: ${DATABASE_URL}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://user:password@postgres:5432/portfolio_db}
     depends_on:
       kafka-topic-creator:
         condition: service_completed_successfully
@@ -258,7 +258,7 @@ services:
       - "8081:8081"
     environment:
       KAFKA_BOOTSTRAP_SERVERS: kafka:9093
-      DATABASE_URL: ${DATABASE_URL}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://user:password@postgres:5432/portfolio_db}
     depends_on:
       kafka-topic-creator:
         condition: service_completed_successfully
@@ -288,7 +288,7 @@ services:
       - "8084:8084"
     environment:
       KAFKA_BOOTSTRAP_SERVERS: kafka:9093
-      DATABASE_URL: ${DATABASE_URL}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://user:password@postgres:5432/portfolio_db}
       VALUATION_SCHEDULER_POLL_INTERVAL: 2
     depends_on:
       kafka-topic-creator:
@@ -319,7 +319,7 @@ services:
       - "8085:8085"
     environment:
       KAFKA_BOOTSTRAP_SERVERS: kafka:9093
-      DATABASE_URL: ${DATABASE_URL}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://user:password@postgres:5432/portfolio_db}
     depends_on:
       kafka-topic-creator:
         condition: service_completed_successfully
