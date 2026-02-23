@@ -4,17 +4,19 @@ from datetime import date
 from typing import List, Tuple
 from decimal import Decimal
 
-from sqlalchemy import select, func, and_
+from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from portfolio_common.database_models import Cashflow, PositionState
 from portfolio_common.utils import async_timed
 
 logger = logging.getLogger(__name__)
 
+
 class CashflowRepository:
     """
     Handles read-only database queries for cashflow data.
     """
+
     def __init__(self, db: AsyncSession):
         self.db = db
 
@@ -31,8 +33,8 @@ class CashflowRepository:
             .where(
                 Cashflow.portfolio_id == portfolio_id,
                 Cashflow.cashflow_date.between(start_date, end_date),
-                Cashflow.is_portfolio_flow == True,
-                Cashflow.classification.in_(['CASHFLOW_IN', 'CASHFLOW_OUT'])
+                Cashflow.is_portfolio_flow,
+                Cashflow.classification.in_(["CASHFLOW_IN", "CASHFLOW_OUT"]),
             )
             .order_by(Cashflow.cashflow_date.asc())
         )
@@ -54,14 +56,14 @@ class CashflowRepository:
                 and_(
                     PositionState.portfolio_id == Cashflow.portfolio_id,
                     PositionState.security_id == Cashflow.security_id,
-                    PositionState.epoch == Cashflow.epoch
-                )
+                    PositionState.epoch == Cashflow.epoch,
+                ),
             )
             .where(
                 Cashflow.portfolio_id == portfolio_id,
                 Cashflow.security_id == security_id,
                 Cashflow.cashflow_date.between(start_date, end_date),
-                Cashflow.classification == 'INCOME'
+                Cashflow.classification == "INCOME",
             )
         )
         result = await self.db.execute(stmt)

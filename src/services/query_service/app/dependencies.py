@@ -2,9 +2,10 @@
 from fastapi import Query
 from typing import Dict, Optional
 
+
 def pagination_params(
     skip: int = Query(0, ge=0, description="Number of records to skip for pagination"),
-    limit: int = Query(100, ge=1, le=1000, description="Maximum number of records to return")
+    limit: int = Query(100, ge=1, le=1000, description="Maximum number of records to return"),
 ) -> Dict[str, int]:
     """
     A dependency that provides standardized pagination query parameters.
@@ -13,9 +14,12 @@ def pagination_params(
     """
     return {"skip": skip, "limit": limit}
 
+
 def sorting_params(
-    sort_by: Optional[str] = Query(None, description="Field to sort by (e.g., 'transaction_date')."),
-    sort_order: Optional[str] = Query("desc", description="Sort order: 'asc' or 'desc'.")
+    sort_by: Optional[str] = Query(
+        None, description="Field to sort by (e.g., 'transaction_date')."
+    ),
+    sort_order: Optional[str] = Query("desc", description="Sort order: 'asc' or 'desc'."),
 ) -> Dict[str, Optional[str]]:
     """
     A dependency that provides standardized sorting query parameters.

@@ -9,10 +9,12 @@ from ..dtos.transaction_dto import TransactionRecord, PaginatedTransactionRespon
 
 logger = logging.getLogger(__name__)
 
+
 class TransactionService:
     """
     Handles the business logic for querying transaction data.
     """
+
     def __init__(self, db: AsyncSession):
         self.db = db
         self.repo = TransactionRepository(db)
@@ -26,18 +28,18 @@ class TransactionService:
         sort_order: Optional[str] = "desc",
         security_id: Optional[str] = None,
         start_date: Optional[date] = None,
-        end_date: Optional[date] = None
+        end_date: Optional[date] = None,
     ) -> PaginatedTransactionResponse:
         """
         Retrieves a paginated and filtered list of transactions for a portfolio.
         """
         logger.info(f"Fetching transactions for portfolio '{portfolio_id}'.")
-        
+
         total_count = await self.repo.get_transactions_count(
             portfolio_id=portfolio_id,
             security_id=security_id,
             start_date=start_date,
-            end_date=end_date
+            end_date=end_date,
         )
 
         db_results = await self.repo.get_transactions(
@@ -48,9 +50,9 @@ class TransactionService:
             sort_order=sort_order,
             security_id=security_id,
             start_date=start_date,
-            end_date=end_date
+            end_date=end_date,
         )
-        
+
         transactions = []
         for transaction in db_results:
             record = TransactionRecord.model_validate(transaction)
@@ -63,5 +65,5 @@ class TransactionService:
             total=total_count,
             skip=skip,
             limit=limit,
-            transactions=transactions
+            transactions=transactions,
         )

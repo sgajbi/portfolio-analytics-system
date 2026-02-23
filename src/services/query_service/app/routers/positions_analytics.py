@@ -1,20 +1,17 @@
 # src/services/query_service/app/routers/positions_analytics.py
 import logging
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from portfolio_common.db import get_async_db_session
-from ..services.position_analytics_service import PositionAnalyticsService, get_position_analytics_service
-from ..dtos.position_analytics_dto import (
-    PositionAnalyticsRequest, PositionAnalyticsResponse
+from ..services.position_analytics_service import (
+    PositionAnalyticsService,
+    get_position_analytics_service,
 )
+from ..dtos.position_analytics_dto import PositionAnalyticsRequest, PositionAnalyticsResponse
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(
-    prefix="/portfolios",
-    tags=["Position Analytics"]
-)
+router = APIRouter(prefix="/portfolios", tags=["Position Analytics"])
+
 
 @router.post(
     "/{portfolio_id}/positions-analytics",
@@ -24,12 +21,12 @@ router = APIRouter(
     description=(
         "Provides a detailed, multi-section breakdown of analytics for all "
         "positions held within a portfolio as of a specific date."
-    )
+    ),
 )
 async def get_position_analytics(
     portfolio_id: str,
     request: PositionAnalyticsRequest,
-    service: PositionAnalyticsService = Depends(get_position_analytics_service)
+    service: PositionAnalyticsService = Depends(get_position_analytics_service),
 ):
     """
     Retrieves comprehensive position-level analytics.
@@ -45,9 +42,9 @@ async def get_position_analytics(
     except Exception:
         logger.exception(
             "An unexpected error occurred during position analytics retrieval for portfolio %s.",
-            portfolio_id
+            portfolio_id,
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An unexpected server error occurred."
+            detail="An unexpected server error occurred.",
         )

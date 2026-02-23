@@ -1,8 +1,7 @@
 # src/services/query_service/app/dtos/summary_dto.py
 from datetime import date
-from typing import List, Optional, Dict
+from typing import List, Optional
 from pydantic import BaseModel, Field, ConfigDict
-from decimal import Decimal
 from enum import Enum
 
 # Reuse the well-defined period models from the performance DTOs for consistency
@@ -10,12 +9,14 @@ from .performance_dto import PerformanceRequestPeriod
 
 # --- Enums for strong typing ---
 
+
 class SummarySection(str, Enum):
     WEALTH = "WEALTH"
     ALLOCATION = "ALLOCATION"
     PNL = "PNL"
     INCOME = "INCOME"
     ACTIVITY = "ACTIVITY"
+
 
 class AllocationDimension(str, Enum):
     ASSET_CLASS = "ASSET_CLASS"
@@ -25,7 +26,9 @@ class AllocationDimension(str, Enum):
     MATURITY_BUCKET = "MATURITY_BUCKET"
     RATING = "RATING"
 
+
 # --- Request DTOs ---
+
 
 class SummaryRequest(BaseModel):
     as_of_date: date
@@ -33,7 +36,9 @@ class SummaryRequest(BaseModel):
     sections: List[SummarySection]
     allocation_dimensions: Optional[List[AllocationDimension]] = Field(None)
 
+
 # --- Response DTOs ---
+
 
 class ResponseScope(BaseModel):
     portfolio_id: str
@@ -41,9 +46,11 @@ class ResponseScope(BaseModel):
     period_start_date: date
     period_end_date: date
 
+
 class WealthSummary(BaseModel):
     total_market_value: float
     total_cash: float
+
 
 class PnlSummary(BaseModel):
     net_new_money: float
@@ -51,9 +58,11 @@ class PnlSummary(BaseModel):
     unrealized_pnl_change: float
     total_pnl: float
 
+
 class IncomeSummary(BaseModel):
     total_dividends: float
     total_interest: float
+
 
 class ActivitySummary(BaseModel):
     total_deposits: float
@@ -62,10 +71,12 @@ class ActivitySummary(BaseModel):
     total_transfers_out: float
     total_fees: float
 
+
 class AllocationGroup(BaseModel):
     group: str
     market_value: float
-    weight: float # Weight is a percentage (0.0 to 1.0), float is appropriate
+    weight: float  # Weight is a percentage (0.0 to 1.0), float is appropriate
+
 
 class AllocationSummary(BaseModel):
     by_asset_class: Optional[List[AllocationGroup]] = Field(None, alias="byAssetClass")
@@ -77,6 +88,7 @@ class AllocationSummary(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True)
 
+
 class SummaryResponse(BaseModel):
     scope: ResponseScope
     wealth: Optional[WealthSummary] = None
@@ -87,5 +99,5 @@ class SummaryResponse(BaseModel):
 
     model_config = ConfigDict(
         populate_by_name=True,
-        arbitrary_types_allowed=True # For Decimal
+        arbitrary_types_allowed=True,  # For Decimal
     )

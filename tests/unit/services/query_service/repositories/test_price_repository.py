@@ -8,6 +8,7 @@ from src.services.query_service.app.repositories.price_repository import MarketP
 
 pytestmark = pytest.mark.asyncio
 
+
 @pytest.fixture
 def mock_db_session() -> AsyncMock:
     """Provides a mock SQLAlchemy AsyncSession."""
@@ -17,12 +18,16 @@ def mock_db_session() -> AsyncMock:
     session.execute = AsyncMock(return_value=mock_result)
     return session
 
+
 @pytest.fixture
 def repository(mock_db_session: AsyncMock) -> MarketPriceRepository:
     """Provides an instance of the repository with a mock session."""
     return MarketPriceRepository(mock_db_session)
 
-async def test_get_prices_with_filters(repository: MarketPriceRepository, mock_db_session: AsyncMock):
+
+async def test_get_prices_with_filters(
+    repository: MarketPriceRepository, mock_db_session: AsyncMock
+):
     """
     GIVEN security_id and date filters
     WHEN get_prices is called
@@ -30,15 +35,13 @@ async def test_get_prices_with_filters(repository: MarketPriceRepository, mock_d
     """
     # ACT
     await repository.get_prices(
-        security_id="S1",
-        start_date=date(2025, 1, 1),
-        end_date=date(2025, 1, 31)
+        security_id="S1", start_date=date(2025, 1, 1), end_date=date(2025, 1, 31)
     )
 
     # ASSERT
     executed_stmt = mock_db_session.execute.call_args[0][0]
     compiled_query = str(executed_stmt.compile(compile_kwargs={"literal_binds": True}))
-    
+
     assert "WHERE market_prices.security_id = 'S1'" in compiled_query
     assert "AND market_prices.price_date >= '2025-01-01'" in compiled_query
     assert "AND market_prices.price_date <= '2025-01-31'" in compiled_query

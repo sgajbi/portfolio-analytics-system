@@ -11,6 +11,7 @@ from portfolio_common.database_models import Portfolio, PortfolioTimeseries
 
 pytestmark = pytest.mark.asyncio
 
+
 @pytest.fixture
 def mock_dependencies():
     """
@@ -18,7 +19,9 @@ def mock_dependencies():
     It yields the service instance and a dictionary of its mocked dependencies.
     """
     mock_portfolio_repo = AsyncMock()
-    mock_portfolio_repo.get_by_id.return_value = Portfolio(portfolio_id="P1", open_date=date(2023, 1, 1))
+    mock_portfolio_repo.get_by_id.return_value = Portfolio(
+        portfolio_id="P1", open_date=date(2023, 1, 1)
+    )
 
     mock_perf_repo = AsyncMock()
     mock_perf_repo.get_portfolio_timeseries_for_range.return_value = [
@@ -30,25 +33,30 @@ def mock_dependencies():
     mock_cashflow_repo.get_external_flows.return_value = [
         (date(2025, 1, 15), Decimal("5000")),
     ]
-    
+
     mock_mwr_calculator = MagicMock()
     mock_mwr_calculator.compute_period_mwr.return_value = {
         "mwr": Decimal("0.0958"),
         "mwr_annualized": None,
     }
 
-    with patch(
-        "src.services.query_service.app.services.mwr_service.PortfolioRepository",
-        return_value=mock_portfolio_repo
-    ), patch(
-        "src.services.query_service.app.services.mwr_service.PerformanceRepository",
-        return_value=mock_perf_repo
-    ), patch(
-        "src.services.query_service.app.services.mwr_service.CashflowRepository",
-        return_value=mock_cashflow_repo
-    ), patch(
-        "src.services.query_service.app.services.mwr_service.MWRCalculator",
-        return_value=mock_mwr_calculator
+    with (
+        patch(
+            "src.services.query_service.app.services.mwr_service.PortfolioRepository",
+            return_value=mock_portfolio_repo,
+        ),
+        patch(
+            "src.services.query_service.app.services.mwr_service.PerformanceRepository",
+            return_value=mock_perf_repo,
+        ),
+        patch(
+            "src.services.query_service.app.services.mwr_service.CashflowRepository",
+            return_value=mock_cashflow_repo,
+        ),
+        patch(
+            "src.services.query_service.app.services.mwr_service.MWRCalculator",
+            return_value=mock_mwr_calculator,
+        ),
     ):
         service = MWRService(AsyncMock(spec=AsyncSession))
         yield {
@@ -73,11 +81,13 @@ async def test_calculate_mwr_happy_path(mock_dependencies: dict):
     mock_cashflow_repo = mock_dependencies["cashflow_repo"]
     mock_mwr_calculator = mock_dependencies["calculator"]
 
-    request = MWRRequest.model_validate({
-        "scope": {"as_of_date": "2025-01-31"},
-        "periods": [{"type": "MTD", "name": "Test MTD"}],
-        "options": {"annualize": True} # Explicitly include options
-    })
+    request = MWRRequest.model_validate(
+        {
+            "scope": {"as_of_date": "2025-01-31"},
+            "periods": [{"type": "MTD", "name": "Test MTD"}],
+            "options": {"annualize": True},  # Explicitly include options
+        }
+    )
 
     # ACT
     response = await service.calculate_mwr("P1", request)
@@ -88,14 +98,14 @@ async def test_calculate_mwr_happy_path(mock_dependencies: dict):
     mock_perf_repo.get_portfolio_timeseries_for_range.assert_awaited_once()
     mock_cashflow_repo.get_external_flows.assert_awaited_once()
     mock_mwr_calculator.compute_period_mwr.assert_called_once()
-    
+
     # 2. Verify the response is correctly assembled
     assert "Test MTD" in response.summary
     result = response.summary["Test MTD"]
-    
+
     assert result.mwr == pytest.approx(0.0958)
     assert result.mwr_annualized is None
-    
+
     # 3. Verify attributes
     assert result.attributes.begin_market_value == Decimal("100000")
     assert result.attributes.end_market_value == Decimal("115000")

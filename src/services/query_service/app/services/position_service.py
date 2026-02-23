@@ -1,24 +1,26 @@
 # src/services/query_service/app/services/position_service.py
 import logging
 from datetime import date
-from typing import List, Optional
+from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..repositories.position_repository import PositionRepository
 from ..dtos.position_dto import (
-    Position, 
+    Position,
     PortfolioPositionsResponse,
     PositionHistoryRecord,
-    PortfolioPositionHistoryResponse
+    PortfolioPositionHistoryResponse,
 )
 from ..dtos.valuation_dto import ValuationData
 
 logger = logging.getLogger(__name__)
 
+
 class PositionService:
     """
     Handles the business logic for querying position data.
     """
+
     def __init__(self, db: AsyncSession):
         self.db = db
         self.repo = PositionRepository(db)
@@ -28,20 +30,22 @@ class PositionService:
         portfolio_id: str,
         security_id: str,
         start_date: Optional[date] = None,
-        end_date: Optional[date] = None
+        end_date: Optional[date] = None,
     ) -> PortfolioPositionHistoryResponse:
         """
         Retrieves and formats the position history for a given security.
         """
-        logger.info(f"Fetching position history for security '{security_id}' in portfolio '{portfolio_id}'.")
-        
+        logger.info(
+            f"Fetching position history for security '{security_id}' in portfolio '{portfolio_id}'."
+        )
+
         db_results = await self.repo.get_position_history_by_security(
             portfolio_id=portfolio_id,
             security_id=security_id,
             start_date=start_date,
-            end_date=end_date
+            end_date=end_date,
         )
-        
+
         positions = []
         for position_history_obj, reprocessing_status in db_results:
             record = PositionHistoryRecord(
@@ -51,14 +55,12 @@ class PositionService:
                 cost_basis=position_history_obj.cost_basis,
                 cost_basis_local=position_history_obj.cost_basis_local,
                 valuation=None,
-                reprocessing_status=reprocessing_status
+                reprocessing_status=reprocessing_status,
             )
             positions.append(record)
-        
+
         return PortfolioPositionHistoryResponse(
-            portfolio_id=portfolio_id,
-            security_id=security_id,
-            positions=positions
+            portfolio_id=portfolio_id, security_id=security_id, positions=positions
         )
 
     async def get_portfolio_positions(self, portfolio_id: str) -> PortfolioPositionsResponse:
@@ -66,9 +68,9 @@ class PositionService:
         Retrieves and formats the latest positions for a given portfolio.
         """
         logger.info(f"Fetching latest positions for portfolio '{portfolio_id}'.")
-        
+
         db_results = await self.repo.get_latest_positions_by_portfolio(portfolio_id)
-        
+
         positions = []
         for pos_snapshot, instrument, pos_state in db_results:
             valuation_dto = ValuationData(
@@ -76,7 +78,7 @@ class PositionService:
                 market_value=pos_snapshot.market_value,
                 unrealized_gain_loss=pos_snapshot.unrealized_gain_loss,
                 market_value_local=pos_snapshot.market_value_local,
-                unrealized_gain_loss_local=pos_snapshot.unrealized_gain_loss_local
+                unrealized_gain_loss_local=pos_snapshot.unrealized_gain_loss_local,
             )
             position_dto = Position(
                 security_id=pos_snapshot.security_id,
@@ -87,11 +89,8 @@ class PositionService:
                 position_date=pos_snapshot.date,
                 asset_class=instrument.asset_class if instrument else None,
                 valuation=valuation_dto,
-                reprocessing_status=pos_state.status if pos_state else None
+                reprocessing_status=pos_state.status if pos_state else None,
             )
             positions.append(position_dto)
-        
-        return PortfolioPositionsResponse(
-            portfolio_id=portfolio_id,
-            positions=positions
-        )
+
+        return PortfolioPositionsResponse(portfolio_id=portfolio_id, positions=positions)

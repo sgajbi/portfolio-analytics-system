@@ -10,6 +10,7 @@ from portfolio_common.database_models import Portfolio
 
 pytestmark = pytest.mark.asyncio
 
+
 @pytest.fixture
 def mock_portfolio_repo() -> AsyncMock:
     """Provides a mock PortfolioRepository."""
@@ -25,10 +26,11 @@ def mock_portfolio_repo() -> AsyncMock:
             booking_center="SG",
             cif_id="C100",
             status="ACTIVE",
-            is_leverage_allowed=False
+            is_leverage_allowed=False,
         )
     ]
     return repo
+
 
 async def test_get_portfolios(mock_portfolio_repo: AsyncMock):
     """
@@ -41,17 +43,12 @@ async def test_get_portfolios(mock_portfolio_repo: AsyncMock):
     # We patch the repository at the point of use within the service module
     with patch(
         "src.services.query_service.app.services.portfolio_service.PortfolioRepository",
-        return_value=mock_portfolio_repo
-    ) as mock_repo_class:
-        
+        return_value=mock_portfolio_repo,
+    ):
         mock_db_session = AsyncMock(spec=AsyncSession)
         service = PortfolioService(mock_db_session)
-        
-        filters = {
-            "portfolio_id": "P1",
-            "cif_id": "C100",
-            "booking_center": "SG"
-        }
+
+        filters = {"portfolio_id": "P1", "cif_id": "C100", "booking_center": "SG"}
 
         # ACT
         response_dto = await service.get_portfolios(**filters)

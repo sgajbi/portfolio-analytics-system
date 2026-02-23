@@ -10,6 +10,7 @@ from portfolio_common.utils import async_timed
 
 logger = logging.getLogger(__name__)
 
+
 class PerformanceRepository:
     def __init__(self, db: AsyncSession):
         self.db = db
@@ -34,12 +35,12 @@ class PerformanceRepository:
                     PositionTimeseries.portfolio_id == PositionState.portfolio_id,
                     PositionTimeseries.security_id == PositionState.security_id,
                     PositionTimeseries.epoch == PositionState.epoch,
-                )
+                ),
             )
             .where(
                 PositionTimeseries.portfolio_id == portfolio_id,
                 PositionTimeseries.security_id == security_id,
-                PositionTimeseries.date.between(start_date, end_date)
+                PositionTimeseries.date.between(start_date, end_date),
             )
             .order_by(PositionTimeseries.date.asc())
         )
@@ -65,12 +66,16 @@ class PerformanceRepository:
             .scalar_subquery()
         )
 
-        stmt = select(PortfolioTimeseries).where(
-            PortfolioTimeseries.portfolio_id == portfolio_id,
-            PortfolioTimeseries.date >= start_date,
-            PortfolioTimeseries.date <= end_date,
-            PortfolioTimeseries.epoch == current_epoch_subq
-        ).order_by(PortfolioTimeseries.date.asc())
+        stmt = (
+            select(PortfolioTimeseries)
+            .where(
+                PortfolioTimeseries.portfolio_id == portfolio_id,
+                PortfolioTimeseries.date >= start_date,
+                PortfolioTimeseries.date <= end_date,
+                PortfolioTimeseries.epoch == current_epoch_subq,
+            )
+            .order_by(PortfolioTimeseries.date.asc())
+        )
 
         result = await self.db.execute(stmt)
         return result.scalars().all()

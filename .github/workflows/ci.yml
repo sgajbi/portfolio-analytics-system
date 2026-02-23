@@ -1,0 +1,66 @@
+name: Portfolio Analytics System Pipeline
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  PYTHONUNBUFFERED: "1"
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  workflow-lint:
+    name: Workflow Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Lint GitHub Actions Workflows
+        uses: reviewdog/action-actionlint@v1
+
+  quality:
+    name: Lint, Typecheck, Unit Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install Tooling and Project Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          make install
+
+      - name: Run Quality Gate
+        run: make check
+
+  docker-build:
+    name: Validate Docker Build
+    needs: [quality]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Build query-service image
+        run: make docker-build

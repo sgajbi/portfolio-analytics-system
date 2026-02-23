@@ -9,25 +9,24 @@ from ..services.summary_service import SummaryService
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(
-    prefix="/portfolios",
-    tags=["Portfolio Summary"]
-)
+router = APIRouter(prefix="/portfolios", tags=["Portfolio Summary"])
+
 
 def get_summary_service(db: AsyncSession = Depends(get_async_db_session)) -> SummaryService:
     """Dependency injector for the SummaryService."""
     return SummaryService(db)
 
+
 @router.post(
     "/{portfolio_id}/summary",
     response_model=SummaryResponse,
     response_model_exclude_none=True,
-    summary="Get a Consolidated Portfolio Summary"
+    summary="Get a Consolidated Portfolio Summary",
 )
 async def get_portfolio_summary(
     portfolio_id: str,
     request: SummaryRequest,
-    summary_service: SummaryService = Depends(get_summary_service)
+    summary_service: SummaryService = Depends(get_summary_service),
 ):
     """
     Retrieves a consolidated, dashboard-style summary for a portfolio.
@@ -43,9 +42,9 @@ async def get_portfolio_summary(
     except Exception:
         logger.exception(
             "An unexpected error occurred during summary calculation for portfolio %s.",
-            portfolio_id
+            portfolio_id,
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An unexpected server error occurred during summary calculation."
+            detail="An unexpected server error occurred during summary calculation.",
         )

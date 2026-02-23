@@ -8,25 +8,30 @@ from src.services.query_service.app.repositories.summary_repository import Summa
 
 pytestmark = pytest.mark.asyncio
 
+
 @pytest.fixture
 def mock_db_session() -> AsyncMock:
     """Provides a mock SQLAlchemy AsyncSession."""
     session = AsyncMock(spec=AsyncSession)
     mock_result = MagicMock()
-    
-    mock_result.scalars.return_value.all.return_value = ["cashflow_1", "cashflow_2"] 
+
+    mock_result.scalars.return_value.all.return_value = ["cashflow_1", "cashflow_2"]
     mock_result.all.return_value = [("snapshot_1", "instrument_1"), ("snapshot_2", "instrument_2")]
     mock_result.scalar_one_or_none.return_value = 1234.56
 
     session.execute = AsyncMock(return_value=mock_result)
     return session
 
+
 @pytest.fixture
 def repository(mock_db_session: AsyncMock) -> SummaryRepository:
     """Provides an instance of the repository with a mock session."""
     return SummaryRepository(mock_db_session)
 
-async def test_get_wealth_and_allocation_data_query(repository: SummaryRepository, mock_db_session: AsyncMock):
+
+async def test_get_wealth_and_allocation_data_query(
+    repository: SummaryRepository, mock_db_session: AsyncMock
+):
     """
     GIVEN a portfolio_id and as_of_date
     WHEN get_wealth_and_allocation_data is called
@@ -41,7 +46,10 @@ async def test_get_wealth_and_allocation_data_query(repository: SummaryRepositor
     assert "JOIN instruments ON" in compiled_query
     assert "row_number() over" in compiled_query.lower()
 
-async def test_get_cashflows_for_period_query(repository: SummaryRepository, mock_db_session: AsyncMock):
+
+async def test_get_cashflows_for_period_query(
+    repository: SummaryRepository, mock_db_session: AsyncMock
+):
     """
     GIVEN a portfolio_id and date range
     WHEN get_cashflows_for_period is called
@@ -50,14 +58,18 @@ async def test_get_cashflows_for_period_query(repository: SummaryRepository, moc
     await repository.get_cashflows_for_period("P1", date(2025, 1, 1), date(2025, 8, 29))
     executed_stmt = mock_db_session.execute.call_args[0][0]
     compiled_query = str(executed_stmt.compile(compile_kwargs={"literal_binds": True}))
-    
+
     # --- FIX: Make assertion robust ---
     # Check that the query selects columns from cashflows and performs the required joins.
     assert "SELECT" in compiled_query
     assert "cashflows.id" in compiled_query
-    assert "JOIN transactions ON transactions.transaction_id = cashflows.transaction_id" in compiled_query
+    assert (
+        "JOIN transactions ON transactions.transaction_id = cashflows.transaction_id"
+        in compiled_query
+    )
     assert "JOIN position_state" in compiled_query
     # --- END FIX ---
+
 
 async def test_get_realized_pnl_query(repository: SummaryRepository, mock_db_session: AsyncMock):
     """
@@ -71,7 +83,10 @@ async def test_get_realized_pnl_query(repository: SummaryRepository, mock_db_ses
     assert "SELECT sum(transactions.realized_gain_loss)" in compiled_query
     assert "WHERE transactions.portfolio_id = 'P1'" in compiled_query
 
-async def test_get_total_unrealized_pnl_query(repository: SummaryRepository, mock_db_session: AsyncMock):
+
+async def test_get_total_unrealized_pnl_query(
+    repository: SummaryRepository, mock_db_session: AsyncMock
+):
     """
     GIVEN a portfolio_id and as_of_date
     WHEN get_total_unrealized_pnl is called

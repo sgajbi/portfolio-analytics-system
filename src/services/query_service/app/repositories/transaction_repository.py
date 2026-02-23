@@ -6,23 +6,20 @@ from typing import List, Optional
 from sqlalchemy import select, func, desc, asc
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
-from portfolio_common.database_models import Transaction, Cashflow
+from portfolio_common.database_models import Transaction
 from portfolio_common.utils import async_timed
 
 logger = logging.getLogger(__name__)
 
 # Whitelist of columns that clients are allowed to sort by.
-ALLOWED_SORT_FIELDS = {
-    "transaction_date",
-    "quantity",
-    "price",
-    "gross_transaction_amount"
-}
+ALLOWED_SORT_FIELDS = {"transaction_date", "quantity", "price", "gross_transaction_amount"}
+
 
 class TransactionRepository:
     """
     Handles read-only database queries for transaction data.
     """
+
     def __init__(self, db: AsyncSession):
         self.db = db
 
@@ -31,13 +28,17 @@ class TransactionRepository:
         portfolio_id: str,
         security_id: Optional[str] = None,
         start_date: Optional[date] = None,
-        end_date: Optional[date] = None
+        end_date: Optional[date] = None,
     ):
         """
         Constructs a base query with all the common filters.
         """
         # FIX: Change from selectinload to joinedload for reliable eager loading
-        stmt = select(Transaction).options(joinedload(Transaction.cashflow)).filter_by(portfolio_id=portfolio_id)
+        stmt = (
+            select(Transaction)
+            .options(joinedload(Transaction.cashflow))
+            .filter_by(portfolio_id=portfolio_id)
+        )
 
         if security_id:
             stmt = stmt.filter_by(security_id=security_id)
@@ -57,7 +58,7 @@ class TransactionRepository:
         sort_order: Optional[str] = "desc",
         security_id: Optional[str] = None,
         start_date: Optional[date] = None,
-        end_date: Optional[date] = None
+        end_date: Optional[date] = None,
     ) -> List[Transaction]:
         """
         Retrieves a paginated list of transactions with optional filters.
@@ -72,10 +73,12 @@ class TransactionRepository:
         order_clause = sort_direction(getattr(Transaction, sort_field))
 
         stmt = stmt.order_by(order_clause)
-        
+
         results = await self.db.execute(stmt.offset(skip).limit(limit))
         transactions = results.scalars().unique().all()
-        logger.info(f"Found {len(transactions)} transactions for portfolio '{portfolio_id}' with given filters.")
+        logger.info(
+            f"Found {len(transactions)} transactions for portfolio '{portfolio_id}' with given filters."
+        )
         return transactions
 
     @async_timed(repository="TransactionRepository", method="get_transactions_count")
@@ -84,7 +87,7 @@ class TransactionRepository:
         portfolio_id: str,
         security_id: Optional[str] = None,
         start_date: Optional[date] = None,
-        end_date: Optional[date] = None
+        end_date: Optional[date] = None,
     ) -> int:
         """
         Returns the total count of transactions for the given filters.

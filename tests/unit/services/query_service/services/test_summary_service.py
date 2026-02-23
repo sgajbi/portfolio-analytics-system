@@ -1,19 +1,22 @@
 # tests/unit/services/query_service/services/test_summary_service.py
 import pytest
 from unittest.mock import AsyncMock, patch
-from datetime import date, timedelta
+from datetime import date
 from decimal import Decimal
-from typing import List, Any, Dict
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.services.query_service.app.services.summary_service import SummaryService
-from src.services.query_service.app.dtos.summary_dto import (
-    SummaryRequest, SummaryResponse, ResponseScope, WealthSummary, PnlSummary,
-    IncomeSummary, ActivitySummary, AllocationSummary, AllocationGroup
+from src.services.query_service.app.dtos.summary_dto import SummaryRequest
+from portfolio_common.database_models import (
+    Portfolio,
+    DailyPositionSnapshot,
+    Instrument,
+    Cashflow,
+    Transaction,
 )
-from portfolio_common.database_models import Portfolio, DailyPositionSnapshot, Instrument, Cashflow, Transaction
 
 pytestmark = pytest.mark.asyncio
+
 
 @pytest.fixture
 def mock_dependencies():
@@ -22,69 +25,124 @@ def mock_dependencies():
     mock_summary_repo = AsyncMock()
 
     mock_portfolio_repo.get_by_id.return_value = Portfolio(
-        portfolio_id="P1", open_date=date(2023, 1, 1),
-        base_currency="USD", risk_exposure="High", investment_time_horizon="Long",
-        portfolio_type="Discretionary", booking_center="SG", cif_id="CIF_TEST", status="ACTIVE"
+        portfolio_id="P1",
+        open_date=date(2023, 1, 1),
+        base_currency="USD",
+        risk_exposure="High",
+        investment_time_horizon="Long",
+        portfolio_type="Discretionary",
+        booking_center="SG",
+        cif_id="CIF_TEST",
+        status="ACTIVE",
     )
-    
+
     mock_snapshot_1 = DailyPositionSnapshot(security_id="S1", market_value=Decimal("50000"))
-    mock_instrument_1 = Instrument(security_id="S1", product_type="Equity", asset_class="Equity", sector="Technology")
+    mock_instrument_1 = Instrument(
+        security_id="S1", product_type="Equity", asset_class="Equity", sector="Technology"
+    )
     mock_snapshot_2 = DailyPositionSnapshot(security_id="S2", market_value=Decimal("30000"))
-    mock_instrument_2 = Instrument(security_id="S2", product_type="Bond", asset_class="Fixed Income", sector=None)
+    mock_instrument_2 = Instrument(
+        security_id="S2", product_type="Bond", asset_class="Fixed Income", sector=None
+    )
     mock_snapshot_3 = DailyPositionSnapshot(security_id="S3", market_value=Decimal("20000"))
     mock_instrument_3 = Instrument(security_id="S3", product_type="Cash", asset_class="Cash")
-    
+
     mock_summary_repo.get_wealth_and_allocation_data.return_value = [
-        (mock_snapshot_1, mock_instrument_1), (mock_snapshot_2, mock_instrument_2), (mock_snapshot_3, mock_instrument_3),
+        (mock_snapshot_1, mock_instrument_1),
+        (mock_snapshot_2, mock_instrument_2),
+        (mock_snapshot_3, mock_instrument_3),
     ]
 
     mock_summary_repo.get_cashflows_for_period.return_value = [
-        Cashflow(classification="CASHFLOW_IN", amount=Decimal("10000"), transaction=Transaction(transaction_type="DEPOSIT")),
-        Cashflow(classification="CASHFLOW_OUT", amount=Decimal("-2000"), transaction=Transaction(transaction_type="WITHDRAWAL")),
-        Cashflow(classification="TRANSFER", amount=Decimal("50000"), transaction=Transaction(transaction_type="TRANSFER_IN")),
-        Cashflow(classification="TRANSFER", amount=Decimal("-15000"), transaction=Transaction(transaction_type="TRANSFER_OUT")),
-        Cashflow(classification="INCOME", amount=Decimal("500"), transaction=Transaction(transaction_type="DIVIDEND")),
-        Cashflow(classification="INCOME", amount=Decimal("150"), transaction=Transaction(transaction_type="INTEREST")),
-        Cashflow(classification="EXPENSE", amount=Decimal("-100"), transaction=Transaction(transaction_type="FEE")),
+        Cashflow(
+            classification="CASHFLOW_IN",
+            amount=Decimal("10000"),
+            transaction=Transaction(transaction_type="DEPOSIT"),
+        ),
+        Cashflow(
+            classification="CASHFLOW_OUT",
+            amount=Decimal("-2000"),
+            transaction=Transaction(transaction_type="WITHDRAWAL"),
+        ),
+        Cashflow(
+            classification="TRANSFER",
+            amount=Decimal("50000"),
+            transaction=Transaction(transaction_type="TRANSFER_IN"),
+        ),
+        Cashflow(
+            classification="TRANSFER",
+            amount=Decimal("-15000"),
+            transaction=Transaction(transaction_type="TRANSFER_OUT"),
+        ),
+        Cashflow(
+            classification="INCOME",
+            amount=Decimal("500"),
+            transaction=Transaction(transaction_type="DIVIDEND"),
+        ),
+        Cashflow(
+            classification="INCOME",
+            amount=Decimal("150"),
+            transaction=Transaction(transaction_type="INTEREST"),
+        ),
+        Cashflow(
+            classification="EXPENSE",
+            amount=Decimal("-100"),
+            transaction=Transaction(transaction_type="FEE"),
+        ),
     ]
     mock_summary_repo.get_realized_pnl.return_value = Decimal("1500")
     mock_summary_repo.get_total_unrealized_pnl.return_value = Decimal("0")
 
-    with patch(
-        "src.services.query_service.app.services.summary_service.PortfolioRepository",
-        return_value=mock_portfolio_repo
-    ), patch(
-        "src.services.query_service.app.services.summary_service.SummaryRepository",
-        return_value=mock_summary_repo
+    with (
+        patch(
+            "src.services.query_service.app.services.summary_service.PortfolioRepository",
+            return_value=mock_portfolio_repo,
+        ),
+        patch(
+            "src.services.query_service.app.services.summary_service.SummaryRepository",
+            return_value=mock_summary_repo,
+        ),
     ):
         service = SummaryService(AsyncMock(spec=AsyncSession))
-        yield { "service": service, "summary_repo": mock_summary_repo }
+        yield {"service": service, "summary_repo": mock_summary_repo}
+
 
 async def test_summary_service_calculates_wealth(mock_dependencies):
     service = mock_dependencies["service"]
-    request = SummaryRequest.model_validate({ "as_of_date": "2025-08-29", "period": {"type": "YTD"}, "sections": ["WEALTH"] })
+    request = SummaryRequest.model_validate(
+        {"as_of_date": "2025-08-29", "period": {"type": "YTD"}, "sections": ["WEALTH"]}
+    )
     response = await service.get_portfolio_summary("P1", request)
     assert response.wealth.total_market_value == Decimal("100000")
     assert response.wealth.total_cash == Decimal("20000")
 
+
 async def test_summary_service_calculates_allocation(mock_dependencies):
     service = mock_dependencies["service"]
-    request = SummaryRequest.model_validate({
-        "as_of_date": "2025-08-29", "period": {"type": "YTD"},
-        "sections": ["ALLOCATION"], "allocation_dimensions": ["ASSET_CLASS", "SECTOR"]
-    })
+    request = SummaryRequest.model_validate(
+        {
+            "as_of_date": "2025-08-29",
+            "period": {"type": "YTD"},
+            "sections": ["ALLOCATION"],
+            "allocation_dimensions": ["ASSET_CLASS", "SECTOR"],
+        }
+    )
     response = await service.get_portfolio_summary("P1", request)
     assert response.allocation.by_sector[1].market_value == Decimal("50000")
     assert response.allocation.by_sector[1].weight == pytest.approx(0.5)
+
 
 async def test_summary_service_calculates_all_sections(mock_dependencies):
     service = mock_dependencies["service"]
     mock_summary_repo = mock_dependencies["summary_repo"]
     mock_summary_repo.get_total_unrealized_pnl.side_effect = [Decimal("8000"), Decimal("10500")]
-    request = SummaryRequest.model_validate({
-        "as_of_date": "2025-08-29", "period": {"type": "YTD"},
-        "sections": ["WEALTH", "PNL", "INCOME", "ACTIVITY"]
-    })
+    request = SummaryRequest.model_validate(
+        {
+            "as_of_date": "2025-08-29",
+            "period": {"type": "YTD"},
+            "sections": ["WEALTH", "PNL", "INCOME", "ACTIVITY"],
+        }
+    )
 
     response = await service.get_portfolio_summary("P1", request)
 
@@ -98,7 +156,7 @@ async def test_summary_service_calculates_all_sections(mock_dependencies):
     assert activity.total_transfers_in == Decimal("50000")
     assert activity.total_transfers_out == Decimal("-15000")
     assert activity.total_fees == Decimal("-100")
-    
+
     pnl = response.pnl_summary
     assert pnl.net_new_money == Decimal("43000")
     assert pnl.realized_pnl == Decimal("1500")
@@ -109,26 +167,33 @@ async def test_summary_service_calculates_all_sections(mock_dependencies):
     assert income.total_dividends == Decimal("500")
     assert income.total_interest == Decimal("150")
 
+
 async def test_summary_service_calculates_maturity_bucket_from_as_of_date(mock_dependencies):
     service = mock_dependencies["service"]
     mock_summary_repo = mock_dependencies["summary_repo"]
-    
+
     historical_as_of_date = date(2024, 8, 30)
     maturity_date = date(2025, 12, 31)
 
     mock_snapshot = DailyPositionSnapshot(security_id="BOND_1", market_value=Decimal("1000"))
     mock_instrument = Instrument(
-        security_id="BOND_1", product_type="Bond", asset_class="Fixed Income", 
-        maturity_date=maturity_date
+        security_id="BOND_1",
+        product_type="Bond",
+        asset_class="Fixed Income",
+        maturity_date=maturity_date,
     )
-    mock_summary_repo.get_wealth_and_allocation_data.return_value = [(mock_snapshot, mock_instrument)]
-    
-    request = SummaryRequest.model_validate({
-        "as_of_date": historical_as_of_date.isoformat(),
-        "period": {"type": "YTD"},
-        "sections": ["ALLOCATION"],
-        "allocation_dimensions": ["MATURITY_BUCKET"]
-    })
+    mock_summary_repo.get_wealth_and_allocation_data.return_value = [
+        (mock_snapshot, mock_instrument)
+    ]
+
+    request = SummaryRequest.model_validate(
+        {
+            "as_of_date": historical_as_of_date.isoformat(),
+            "period": {"type": "YTD"},
+            "sections": ["ALLOCATION"],
+            "allocation_dimensions": ["MATURITY_BUCKET"],
+        }
+    )
 
     response = await service.get_portfolio_summary("P1", request)
     allocation = response.allocation
@@ -137,8 +202,11 @@ async def test_summary_service_calculates_maturity_bucket_from_as_of_date(mock_d
     assert len(allocation.by_maturity_bucket) == 1
     assert allocation.by_maturity_bucket[0].group == "1-3Y"
 
+
 # --- NEW FAILING TEST (TDD) ---
-@patch('src.services.query_service.app.services.summary_service.UNCLASSIFIED_ALLOCATION_MARKET_VALUE')
+@patch(
+    "src.services.query_service.app.services.summary_service.UNCLASSIFIED_ALLOCATION_MARKET_VALUE"
+)
 async def test_summary_service_sets_unclassified_metric(mock_gauge, mock_dependencies):
     """
     GIVEN a portfolio with an unclassified asset
@@ -152,14 +220,18 @@ async def test_summary_service_sets_unclassified_metric(mock_gauge, mock_depende
     # Mock data with one unclassified instrument (asset_class is None)
     mock_snapshot = DailyPositionSnapshot(security_id="UNCLASS_1", market_value=Decimal("12345.67"))
     mock_instrument = Instrument(security_id="UNCLASS_1", product_type="Other", asset_class=None)
-    mock_summary_repo.get_wealth_and_allocation_data.return_value = [(mock_snapshot, mock_instrument)]
+    mock_summary_repo.get_wealth_and_allocation_data.return_value = [
+        (mock_snapshot, mock_instrument)
+    ]
 
-    request = SummaryRequest.model_validate({
-        "as_of_date": "2025-08-29",
-        "period": {"type": "YTD"},
-        "sections": ["ALLOCATION"],
-        "allocation_dimensions": ["ASSET_CLASS"]
-    })
+    request = SummaryRequest.model_validate(
+        {
+            "as_of_date": "2025-08-29",
+            "period": {"type": "YTD"},
+            "sections": ["ALLOCATION"],
+            "allocation_dimensions": ["ASSET_CLASS"],
+        }
+    )
 
     # ACT
     await service.get_portfolio_summary("P1", request)

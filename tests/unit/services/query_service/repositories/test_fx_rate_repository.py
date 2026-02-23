@@ -8,6 +8,7 @@ from src.services.query_service.app.repositories.fx_rate_repository import FxRat
 
 pytestmark = pytest.mark.asyncio
 
+
 @pytest.fixture
 def mock_db_session() -> AsyncMock:
     """Provides a mock SQLAlchemy AsyncSession."""
@@ -17,10 +18,12 @@ def mock_db_session() -> AsyncMock:
     session.execute = AsyncMock(return_value=mock_result)
     return session
 
+
 @pytest.fixture
 def repository(mock_db_session: AsyncMock) -> FxRateRepository:
     """Provides an instance of the repository with a mock session."""
     return FxRateRepository(mock_db_session)
+
 
 async def test_get_fx_rates_with_filters(repository: FxRateRepository, mock_db_session: AsyncMock):
     """
@@ -33,13 +36,13 @@ async def test_get_fx_rates_with_filters(repository: FxRateRepository, mock_db_s
         from_currency="USD",
         to_currency="EUR",
         start_date=date(2025, 1, 1),
-        end_date=date(2025, 1, 31)
+        end_date=date(2025, 1, 31),
     )
 
     # ASSERT
     executed_stmt = mock_db_session.execute.call_args[0][0]
     compiled_query = str(executed_stmt.compile(compile_kwargs={"literal_binds": True}))
-    
+
     assert "WHERE fx_rates.from_currency = 'USD'" in compiled_query
     assert "AND fx_rates.to_currency = 'EUR'" in compiled_query
     assert "AND fx_rates.rate_date >= '2025-01-01'" in compiled_query

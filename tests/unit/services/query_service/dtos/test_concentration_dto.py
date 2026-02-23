@@ -5,6 +5,7 @@ from datetime import date
 
 from src.services.query_service.app.dtos.concentration_dto import ConcentrationRequest
 
+
 def test_concentration_request_valid_payload():
     """
     GIVEN a valid request payload dictionary
@@ -12,25 +13,19 @@ def test_concentration_request_valid_payload():
     THEN it should succeed without errors and create the correct objects.
     """
     payload = {
-        "scope": {
-            "as_of_date": "2025-08-31",
-            "reporting_currency": "EUR"
-        },
+        "scope": {"as_of_date": "2025-08-31", "reporting_currency": "EUR"},
         "metrics": ["ISSUER", "BULK"],
-        "options": {
-            "lookthrough_enabled": False,
-            "issuer_top_n": 5,
-            "bulk_top_n": [3, 5, 10]
-        }
+        "options": {"lookthrough_enabled": False, "issuer_top_n": 5, "bulk_top_n": [3, 5, 10]},
     }
-    
+
     request = ConcentrationRequest.model_validate(payload)
-    
+
     assert request.scope.as_of_date == date(2025, 8, 31)
     assert request.scope.reporting_currency == "EUR"
     assert request.metrics == ["ISSUER", "BULK"]
     assert request.options.issuer_top_n == 5
     assert request.options.bulk_top_n == [3, 5, 10]
+
 
 def test_concentration_request_invalid_metric_fails():
     """
@@ -38,13 +33,11 @@ def test_concentration_request_invalid_metric_fails():
     WHEN it is parsed
     THEN it should raise a ValidationError.
     """
-    payload = {
-        "scope": {"as_of_date": "2025-08-31"},
-        "metrics": ["ISSUER", "INVALID_METRIC"]
-    }
-    
+    payload = {"scope": {"as_of_date": "2025-08-31"}, "metrics": ["ISSUER", "INVALID_METRIC"]}
+
     with pytest.raises(ValidationError):
         ConcentrationRequest.model_validate(payload)
+
 
 def test_concentration_request_missing_required_scope_field_fails():
     """
@@ -53,8 +46,8 @@ def test_concentration_request_missing_required_scope_field_fails():
     THEN it should raise a ValidationError.
     """
     payload = {
-        "scope": {}, # as_of_date is missing
-        "metrics": ["BULK"]
+        "scope": {},  # as_of_date is missing
+        "metrics": ["BULK"],
     }
 
     with pytest.raises(ValidationError):

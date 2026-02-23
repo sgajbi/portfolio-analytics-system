@@ -7,20 +7,18 @@ from ..services.concentration_service import ConcentrationService, get_concentra
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(
-    prefix="/portfolios",
-    tags=["Concentration Analytics"]
-)
+router = APIRouter(prefix="/portfolios", tags=["Concentration Analytics"])
+
 
 @router.post(
     "/{portfolio_id}/concentration",
     response_model=ConcentrationResponse,
-    summary="Calculate On-the-Fly Portfolio Concentration Analytics"
+    summary="Calculate On-the-Fly Portfolio Concentration Analytics",
 )
 async def calculate_concentration(
     portfolio_id: str,
     request: ConcentrationRequest,
-    service: ConcentrationService = Depends(get_concentration_service)
+    service: ConcentrationService = Depends(get_concentration_service),
 ):
     """
     Calculates a set of portfolio concentration metrics (e.g., Issuer, Bulk)
@@ -33,9 +31,9 @@ async def calculate_concentration(
     except Exception:
         logger.exception(
             "An unexpected error occurred during concentration calculation for portfolio %s.",
-            portfolio_id
+            portfolio_id,
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An unexpected server error occurred during concentration calculation."
+            detail="An unexpected server error occurred during concentration calculation.",
         )

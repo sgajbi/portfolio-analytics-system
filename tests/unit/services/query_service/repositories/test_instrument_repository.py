@@ -8,6 +8,7 @@ from portfolio_common.database_models import Instrument
 
 pytestmark = pytest.mark.asyncio
 
+
 @pytest.fixture
 def mock_db_session() -> AsyncMock:
     """
@@ -15,18 +16,20 @@ def mock_db_session() -> AsyncMock:
     This correctly simulates the SQLAlchemy 2.0 async API.
     """
     session = AsyncMock(spec=AsyncSession)
-    
+
     # The result of awaiting execute() should be a synchronous mock,
     # because the SQLAlchemy Result object has synchronous methods like .scalars() and .scalar().
     mock_result = MagicMock()
     session.execute.return_value = mock_result
-    
+
     return session
+
 
 @pytest.fixture
 def repository(mock_db_session: AsyncMock) -> InstrumentRepository:
     """Provides an instance of the repository with a mock session."""
     return InstrumentRepository(mock_db_session)
+
 
 async def test_get_by_security_ids(repository: InstrumentRepository, mock_db_session: AsyncMock):
     """
@@ -48,7 +51,10 @@ async def test_get_by_security_ids(repository: InstrumentRepository, mock_db_ses
     compiled_query = str(executed_stmt.compile(compile_kwargs={"literal_binds": True}))
     assert "WHERE instruments.security_id IN ('SEC1', 'SEC2')" in compiled_query
 
-async def test_get_instruments_no_filters(repository: InstrumentRepository, mock_db_session: AsyncMock):
+
+async def test_get_instruments_no_filters(
+    repository: InstrumentRepository, mock_db_session: AsyncMock
+):
     """
     GIVEN no filters
     WHEN get_instruments is called
@@ -57,9 +63,10 @@ async def test_get_instruments_no_filters(repository: InstrumentRepository, mock
     # ARRANGE: Explicitly configure the mock's return value for this test
     mock_result = mock_db_session.execute.return_value
     mock_result.scalars.return_value.all.return_value = [
-        MagicMock(spec=Instrument), MagicMock(spec=Instrument)
+        MagicMock(spec=Instrument),
+        MagicMock(spec=Instrument),
     ]
-    
+
     # ACT
     instruments = await repository.get_instruments(skip=0, limit=100)
 
@@ -69,7 +76,10 @@ async def test_get_instruments_no_filters(repository: InstrumentRepository, mock
     executed_stmt = mock_db_session.execute.call_args[0][0]
     assert "WHERE" not in str(executed_stmt.compile(compile_kwargs={"literal_binds": True}))
 
-async def test_get_instruments_pagination(repository: InstrumentRepository, mock_db_session: AsyncMock):
+
+async def test_get_instruments_pagination(
+    repository: InstrumentRepository, mock_db_session: AsyncMock
+):
     """
     GIVEN skip and limit parameters
     WHEN get_instruments is called
@@ -85,11 +95,14 @@ async def test_get_instruments_pagination(repository: InstrumentRepository, mock
     # ASSERT
     executed_stmt = mock_db_session.execute.call_args[0][0]
     compiled_query = str(executed_stmt.compile(compile_kwargs={"literal_binds": True}))
-    
+
     assert "LIMIT 50" in compiled_query
     assert "OFFSET 10" in compiled_query
 
-async def test_get_instruments_with_filters(repository: InstrumentRepository, mock_db_session: AsyncMock):
+
+async def test_get_instruments_with_filters(
+    repository: InstrumentRepository, mock_db_session: AsyncMock
+):
     """
     GIVEN security_id and product_type filters
     WHEN get_instruments is called
@@ -105,9 +118,10 @@ async def test_get_instruments_with_filters(repository: InstrumentRepository, mo
     # ASSERT
     executed_stmt = mock_db_session.execute.call_args[0][0]
     compiled_query = str(executed_stmt.compile(compile_kwargs={"literal_binds": True}))
-    
+
     assert "WHERE instruments.security_id = 'SEC1'" in compiled_query
     assert "AND instruments.product_type = 'Equity'" in compiled_query
+
 
 async def test_get_instruments_count(repository: InstrumentRepository, mock_db_session: AsyncMock):
     """

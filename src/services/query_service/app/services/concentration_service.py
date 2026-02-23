@@ -1,6 +1,5 @@
 # src/services/query_service/app/services/concentration_service.py
 import logging
-import asyncio
 import pandas as pd
 from decimal import Decimal
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,20 +11,29 @@ from portfolio_common.monitoring import (
     CONCENTRATION_LOOKTHROUGH_REQUESTS_TOTAL,
 )
 from ..dtos.concentration_dto import (
-    ConcentrationRequest, ConcentrationResponse, ResponseSummary,
-    BulkConcentration, IssuerConcentration, IssuerExposure
+    ConcentrationRequest,
+    ConcentrationResponse,
+    ResponseSummary,
+    BulkConcentration,
+    IssuerConcentration,
+    IssuerExposure,
 )
 
 from ..repositories.portfolio_repository import PortfolioRepository
 from ..repositories.position_repository import PositionRepository
-from concentration_analytics_engine.metrics import calculate_bulk_concentration, calculate_issuer_concentration
+from concentration_analytics_engine.metrics import (
+    calculate_bulk_concentration,
+    calculate_issuer_concentration,
+)
 
 logger = logging.getLogger(__name__)
+
 
 class ConcentrationService:
     """
     Orchestrates the data fetching and calculation for concentration analytics.
     """
+
     def __init__(self, db: AsyncSession):
         self.db = db
         self.portfolio_repo = PortfolioRepository(db)
@@ -39,8 +47,10 @@ class ConcentrationService:
             if not portfolio:
                 raise ValueError(f"Portfolio {portfolio_id} not found")
 
-            positions_data = await self.position_repo.get_latest_positions_by_portfolio(portfolio_id)
-            
+            positions_data = await self.position_repo.get_latest_positions_by_portfolio(
+                portfolio_id
+            )
+
             if not positions_data:
                 return ConcentrationResponse(
                     scope=request.scope,
@@ -48,9 +58,13 @@ class ConcentrationService:
                     bulk_concentration=BulkConcentration(
                         top_n_weights={str(n): 0.0 for n in request.options.bulk_top_n},
                         single_position_weight=0.0,
-                        hhi=0.0
-                    ) if "BULK" in request.metrics else None,
-                    issuer_concentration=IssuerConcentration(top_exposures=[]) if "ISSUER" in request.metrics else None,
+                        hhi=0.0,
+                    )
+                    if "BULK" in request.metrics
+                    else None,
+                    issuer_concentration=IssuerConcentration(top_exposures=[])
+                    if "ISSUER" in request.metrics
+                    else None,
                 )
 
             positions_list = [
@@ -60,7 +74,7 @@ class ConcentrationService:
                     "instrument_name": instrument.name,
                     "issuer_id": instrument.issuer_id,
                     "ultimate_parent_issuer_id": instrument.ultimate_parent_issuer_id,
-                    "issuer_name": instrument.name 
+                    "issuer_name": instrument.name,
                 }
                 for snapshot, instrument, state in positions_data
             ]
@@ -75,7 +89,7 @@ class ConcentrationService:
                     positions_df, request.options.bulk_top_n
                 )
                 bulk_concentration_result = BulkConcentration(**bulk_metrics)
-            
+
             if "ISSUER" in request.metrics:
                 if request.options.lookthrough_enabled:
                     CONCENTRATION_LOOKTHROUGH_REQUESTS_TOTAL.labels(portfolio_id=portfolio_id).inc()
@@ -89,7 +103,9 @@ class ConcentrationService:
 
             return ConcentrationResponse(
                 scope=request.scope,
-                summary=ResponseSummary(portfolio_market_value=float(total_market_value), findings=[]),
+                summary=ResponseSummary(
+                    portfolio_market_value=float(total_market_value), findings=[]
+                ),
                 bulk_concentration=bulk_concentration_result,
                 issuer_concentration=issuer_concentration_result,
             )
