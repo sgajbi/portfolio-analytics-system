@@ -195,6 +195,8 @@ make test-e2e-smoke
     curl -X POST "http://localhost:8201/integration/portfolios/PORT001/core-snapshot" \
       -H "Content-Type: application/json" \
       -d '{"asOfDate":"2026-02-23","includeSections":["OVERVIEW","ALLOCATION","HOLDINGS","TRANSACTIONS"],"consumerSystem":"PA"}'
+
+    curl "http://localhost:8201/integration/capabilities?consumerSystem=BFF&tenantId=default"
     ```
 
 2.  **Query the API**:
