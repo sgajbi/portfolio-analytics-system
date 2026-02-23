@@ -12,6 +12,7 @@ from src.services.ingestion_service.app.DTOs.transaction_dto import Transaction
 from src.services.ingestion_service.app.DTOs.instrument_dto import Instrument
 from src.services.ingestion_service.app.DTOs.market_price_dto import MarketPrice
 from src.services.ingestion_service.app.DTOs.fx_rate_dto import FxRate
+from src.services.ingestion_service.app.DTOs.portfolio_bundle_dto import PortfolioBundleIngestionRequest
 
 pytestmark = pytest.mark.asyncio
 
@@ -77,3 +78,66 @@ async def test_publish_with_correlation_id(ingestion_service: IngestionService, 
     call_args = mock_kafka_producer.publish_message.call_args.kwargs
     headers = dict(call_args['headers'])
     assert headers['correlation_id'] == b'test-corr-id-123'
+
+
+async def test_publish_portfolio_bundle(ingestion_service: IngestionService):
+    """Verifies mixed bundle fan-out returns correct published counts."""
+    bundle = PortfolioBundleIngestionRequest.model_validate(
+        {
+            "businessDates": [{"businessDate": "2026-01-02"}],
+            "portfolios": [
+                {
+                    "portfolioId": "P1",
+                    "baseCurrency": "USD",
+                    "openDate": "2025-01-01",
+                    "cifId": "C1",
+                    "status": "ACTIVE",
+                    "riskExposure": "a",
+                    "investmentTimeHorizon": "b",
+                    "portfolioType": "c",
+                    "bookingCenter": "d",
+                }
+            ],
+            "instruments": [
+                {
+                    "securityId": "S1",
+                    "name": "N1",
+                    "isin": "I1",
+                    "instrumentCurrency": "USD",
+                    "productType": "E",
+                }
+            ],
+            "transactions": [
+                {
+                    "transaction_id": "T1",
+                    "portfolio_id": "P1",
+                    "instrument_id": "I1",
+                    "security_id": "S1",
+                    "transaction_date": "2026-01-02T10:00:00Z",
+                    "transaction_type": "BUY",
+                    "quantity": 1,
+                    "price": 1,
+                    "gross_transaction_amount": 1,
+                    "trade_currency": "USD",
+                    "currency": "USD",
+                }
+            ],
+            "marketPrices": [
+                {"securityId": "S1", "priceDate": "2026-01-02", "price": 100, "currency": "USD"}
+            ],
+            "fxRates": [
+                {"fromCurrency": "USD", "toCurrency": "EUR", "rateDate": "2026-01-02", "rate": 0.9}
+            ],
+        }
+    )
+
+    counts = await ingestion_service.publish_portfolio_bundle(bundle)
+
+    assert counts == {
+        "business_dates": 1,
+        "portfolios": 1,
+        "instruments": 1,
+        "transactions": 1,
+        "market_prices": 1,
+        "fx_rates": 1,
+    }

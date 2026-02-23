@@ -159,6 +159,14 @@ make ci-local
     python -m tools.ingest_data --all
     ```
 
+    For UI/file-upload style onboarding, PAS also supports:
+
+    ```bash
+    curl -X POST "http://localhost:8200/ingest/portfolio-bundle" \
+      -H "Content-Type: application/json" \
+      -d '{"mode":"UPSERT","businessDates":[],"portfolios":[],"instruments":[],"transactions":[],"marketPrices":[],"fxRates":[]}'
+    ```
+
 2.  **Query the API**:
     Once the services have processed the data, you can query the `query-service` API endpoints.
 

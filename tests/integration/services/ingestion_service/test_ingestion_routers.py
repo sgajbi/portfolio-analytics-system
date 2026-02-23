@@ -87,3 +87,66 @@ async def test_ingest_fx_rates_endpoint(async_test_client: httpx.AsyncClient, mo
     
     assert response.status_code == 202
     mock_kafka_producer.publish_message.assert_called_once()
+
+
+async def test_ingest_portfolio_bundle_endpoint(
+    async_test_client: httpx.AsyncClient, mock_kafka_producer: MagicMock
+):
+    """Tests the POST /ingest/portfolio-bundle endpoint."""
+    mock_kafka_producer.publish_message.reset_mock()
+    payload = {
+        "sourceSystem": "UI_UPLOAD",
+        "mode": "UPSERT",
+        "businessDates": [{"businessDate": "2026-01-02"}],
+        "portfolios": [
+            {
+                "portfolioId": "P1",
+                "baseCurrency": "USD",
+                "openDate": "2025-01-01",
+                "cifId": "c",
+                "status": "s",
+                "riskExposure": "r",
+                "investmentTimeHorizon": "i",
+                "portfolioType": "t",
+                "bookingCenter": "b",
+            }
+        ],
+        "instruments": [
+            {
+                "securityId": "S1",
+                "name": "N1",
+                "isin": "I1",
+                "instrumentCurrency": "USD",
+                "productType": "E",
+            }
+        ],
+        "transactions": [
+            {
+                "transaction_id": "T1",
+                "portfolio_id": "P1",
+                "instrument_id": "I1",
+                "security_id": "S1",
+                "transaction_date": "2026-01-02T10:00:00Z",
+                "transaction_type": "BUY",
+                "quantity": 1,
+                "price": 1,
+                "gross_transaction_amount": 1,
+                "trade_currency": "USD",
+                "currency": "USD",
+            }
+        ],
+        "marketPrices": [
+            {"securityId": "S1", "priceDate": "2026-01-02", "price": 100, "currency": "USD"}
+        ],
+        "fxRates": [
+            {"fromCurrency": "USD", "toCurrency": "EUR", "rateDate": "2026-01-02", "rate": 0.9}
+        ],
+    }
+
+    response = await async_test_client.post("/ingest/portfolio-bundle", json=payload)
+
+    assert response.status_code == 202
+    body = response.json()
+    assert body["published_counts"]["portfolios"] == 1
+    assert body["published_counts"]["transactions"] == 1
+    assert mock_kafka_producer.publish_message.call_count == 6

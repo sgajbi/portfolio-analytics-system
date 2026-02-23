@@ -8,6 +8,7 @@ from app.DTOs.market_price_dto import MarketPrice
 from app.DTOs.fx_rate_dto import FxRate
 from app.DTOs.portfolio_dto import Portfolio
 from app.DTOs.business_date_dto import BusinessDate
+from app.DTOs.portfolio_bundle_dto import PortfolioBundleIngestionRequest
 from portfolio_common.kafka_utils import KafkaProducer, get_kafka_producer
 from portfolio_common.config import (
     KAFKA_RAW_TRANSACTIONS_TOPIC, 
@@ -123,6 +124,28 @@ class IngestionService:
                 headers=headers
             )
             KAFKA_MESSAGES_PUBLISHED_TOTAL.labels(topic=KAFKA_FX_RATES_TOPIC).inc()
+
+    async def publish_portfolio_bundle(self, bundle: PortfolioBundleIngestionRequest) -> dict[str, int]:
+        """
+        Publishes a mixed portfolio bundle for UI/file-upload workflows.
+        The bundle is fan-out published to existing domain topics to keep downstream
+        processing unchanged.
+        """
+        await self.publish_business_dates(bundle.business_dates)
+        await self.publish_portfolios(bundle.portfolios)
+        await self.publish_instruments(bundle.instruments)
+        await self.publish_transactions(bundle.transactions)
+        await self.publish_market_prices(bundle.market_prices)
+        await self.publish_fx_rates(bundle.fx_rates)
+
+        return {
+            "business_dates": len(bundle.business_dates),
+            "portfolios": len(bundle.portfolios),
+            "instruments": len(bundle.instruments),
+            "transactions": len(bundle.transactions),
+            "market_prices": len(bundle.market_prices),
+            "fx_rates": len(bundle.fx_rates),
+        }
 
 def get_ingestion_service(
     kafka_producer: KafkaProducer = Depends(get_kafka_producer)
