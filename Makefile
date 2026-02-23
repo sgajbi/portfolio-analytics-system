@@ -1,4 +1,4 @@
-.PHONY: install lint typecheck test test-unit test-integration-lite check coverage-gate ci-local docker-build clean
+.PHONY: install lint typecheck test test-unit test-integration-lite test-e2e-smoke check coverage-gate ci-local docker-build clean
 
 install:
 	python scripts/bootstrap_dev.py
@@ -18,6 +18,9 @@ test-unit:
 
 test-integration-lite:
 	python -m pytest tests/integration/services/query_service/test_concentration_router.py tests/integration/services/query_service/test_integration_router_dependency.py tests/integration/services/query_service/test_main_app.py tests/integration/services/query_service/test_performance_router.py tests/integration/services/query_service/test_portfolios_router_dependency.py tests/integration/services/query_service/test_position_analytics_router.py tests/integration/services/query_service/test_positions_router_dependency.py tests/integration/services/query_service/test_operations_router_dependency.py tests/integration/services/query_service/test_reference_data_routers.py tests/integration/services/query_service/test_review_router.py tests/integration/services/query_service/test_risk_router_dependency.py tests/integration/services/query_service/test_summary_router.py tests/integration/services/query_service/test_transactions_router.py -q
+
+test-e2e-smoke:
+	python -m pytest tests/e2e/test_query_service_observability.py tests/e2e/test_complex_portfolio_lifecycle.py -q
 
 check: lint typecheck test
 

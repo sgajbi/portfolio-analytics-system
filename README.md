@@ -150,6 +150,12 @@ To run the full local quality gate (lint + mypy + combined coverage gate):
 make ci-local
 ```
 
+To run the E2E smoke suite locally (requires Docker engine running):
+
+```bash
+make test-e2e-smoke
+```
+
 ## Verifying the Workflow
 
 1.  **Ingest Data**:
@@ -217,6 +223,7 @@ CI workflow shape:
 - `Tests (unit)` + `Tests (integration-lite)` coverage data jobs
 - `Coverage Gate (Combined)` with `--fail-under=84`
 - `Validate Docker Build`
+- `E2E Smoke (Manual)` on `workflow_dispatch`
 
 ## Tools
 

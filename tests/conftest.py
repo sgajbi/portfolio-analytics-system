@@ -114,8 +114,8 @@ def docker_services(request):
 def e2e_api_client(docker_services) -> E2EApiClient:
     """Provides an instance of the E2EApiClient for E2E tests."""
     return E2EApiClient(
-        ingestion_url="http://localhost:8000",
-        query_url="http://localhost:8001"
+        ingestion_url=os.getenv("E2E_INGESTION_URL", "http://localhost:8200"),
+        query_url=os.getenv("E2E_QUERY_URL", "http://localhost:8201"),
     )
 # --- END NEW ---
 
@@ -124,7 +124,10 @@ def db_engine(docker_services):
     """
     Provides a SQLAlchemy Engine, ensuring the Docker services are running first.
     """
-    db_url = os.getenv("HOST_DATABASE_URL", "postgresql://user:password@localhost:5432/portfolio_db")
+    db_url = os.getenv(
+        "HOST_DATABASE_URL",
+        "postgresql://user:password@localhost:55432/portfolio_db",
+    )
     
     # Wait for the database to be connectable
     engine = create_engine(db_url)
