@@ -173,6 +173,22 @@ make test-e2e-smoke
       -d '{"mode":"UPSERT","businessDates":[],"portfolios":[],"instruments":[],"transactions":[],"marketPrices":[],"fxRates":[]}'
     ```
 
+    For bulk CSV/XLSX onboarding with pre-validation:
+
+    ```bash
+    # Preview (validate only, no publishing)
+    curl -X POST "http://localhost:8200/ingest/uploads/preview" \
+      -F "entityType=transactions" \
+      -F "sampleSize=20" \
+      -F "file=@./samples/transactions.csv"
+
+    # Commit (strict by default; set allowPartial=true to publish valid rows only)
+    curl -X POST "http://localhost:8200/ingest/uploads/commit" \
+      -F "entityType=transactions" \
+      -F "allowPartial=true" \
+      -F "file=@./samples/transactions.csv"
+    ```
+
     For PA/DPM style integration contracts, PAS query-service supports:
 
     ```bash
