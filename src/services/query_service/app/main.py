@@ -25,6 +25,7 @@ from .routers import (
     concentration,
     positions_analytics,
     operations,
+    integration,
 )
 
 SERVICE_PREFIX = "QRY"
@@ -106,3 +107,4 @@ app.include_router(review.router)
 app.include_router(concentration.router)
 app.include_router(positions_analytics.router)
 app.include_router(operations.router)
+app.include_router(integration.router)

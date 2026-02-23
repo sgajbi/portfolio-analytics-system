@@ -167,6 +167,14 @@ make ci-local
       -d '{"mode":"UPSERT","businessDates":[],"portfolios":[],"instruments":[],"transactions":[],"marketPrices":[],"fxRates":[]}'
     ```
 
+    For PA/DPM style integration contracts, PAS query-service supports:
+
+    ```bash
+    curl -X POST "http://localhost:8201/integration/portfolios/PORT001/core-snapshot" \
+      -H "Content-Type: application/json" \
+      -d '{"asOfDate":"2026-02-23","includeSections":["OVERVIEW","ALLOCATION","HOLDINGS","TRANSACTIONS"],"consumerSystem":"PA"}'
+    ```
+
 2.  **Query the API**:
     Once the services have processed the data, you can query the `query-service` API endpoints.
 
