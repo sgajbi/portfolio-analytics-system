@@ -192,3 +192,157 @@ async def test_calculate_performance_raises_for_missing_portfolio(
     # ACT & ASSERT
     with pytest.raises(ValueError, match="Portfolio P_NONEXISTENT not found"):
         await service.calculate_performance("P_NONEXISTENT", request)
+
+
+def test_aggregate_attributes_empty_dataframe_returns_defaults(
+    service: PerformanceService,
+):
+    result = service._aggregate_attributes(pd.DataFrame())
+    assert result.begin_market_value is None
+    assert result.end_market_value is None
+    assert result.total_cashflow is None
+
+
+async def test_calculate_performance_returns_empty_when_no_timeseries(
+    service: PerformanceService, mock_performance_repo: AsyncMock
+):
+    request = PerformanceRequest.model_validate(
+        {"scope": {"as_of_date": "2025-02-15", "net_or_gross": "NET"}, "periods": [{"type": "YTD"}]}
+    )
+    mock_performance_repo.get_portfolio_timeseries_for_range.return_value = []
+
+    response = await service.calculate_performance("P1", request)
+
+    assert response.summary == {}
+    assert response.breakdowns is None
+
+
+async def test_calculate_performance_period_without_data_returns_empty_result(
+    service: PerformanceService, mock_performance_calculator: MagicMock
+):
+    request = PerformanceRequest.model_validate(
+        {
+            "scope": {"as_of_date": "2025-02-15", "net_or_gross": "NET"},
+            "periods": [
+                {"type": "YTD"},
+                {"type": "EXPLICIT", "name": "Future", "from": "2025-12-01", "to": "2025-12-31"},
+            ],
+        }
+    )
+
+    mock_df = pd.DataFrame(
+        [
+            {
+                "date": date(2025, 1, 2),
+                "daily_ror_pct": Decimal("1.0"),
+                "final_cumulative_ror_pct": Decimal("1.0"),
+            }
+        ]
+    )
+    mock_performance_calculator.return_value.calculate_performance.return_value = mock_df
+
+    with patch(
+        "src.services.query_service.app.services.performance_service.PerformanceCalculator",
+        new=mock_performance_calculator,
+    ):
+        response = await service.calculate_performance("P1", request)
+
+    assert "Future" in response.summary
+    assert response.summary["Future"].cumulative_return is None
+    assert response.summary["Future"].annualized_return is None
+
+
+async def test_calculate_performance_empty_engine_dataframe_returns_zero_cumulative(
+    service: PerformanceService, mock_performance_calculator: MagicMock
+):
+    request = PerformanceRequest.model_validate(
+        {
+            "scope": {"as_of_date": "2025-02-15", "net_or_gross": "NET"},
+            "periods": [{"type": "YTD"}],
+            "options": {"include_cumulative": True, "include_annualized": False},
+        }
+    )
+    mock_performance_calculator.return_value.calculate_performance.return_value = pd.DataFrame()
+
+    with patch(
+        "src.services.query_service.app.services.performance_service.PerformanceCalculator",
+        new=mock_performance_calculator,
+    ):
+        response = await service.calculate_performance("P1", request)
+
+    assert response.summary["YTD"].cumulative_return == 0.0
+
+
+async def test_calculate_breakdowns_weekly_path_returns_weekly_return(
+    service: PerformanceService,
+):
+    request = PerformanceRequest.model_validate(
+        {
+            "scope": {"as_of_date": "2025-02-15", "net_or_gross": "NET"},
+            "periods": [{"type": "YTD"}],
+            "options": {
+                "include_cumulative": True,
+                "include_annualized": True,
+                "include_attributes": True,
+            },
+        }
+    )
+    portfolio = Portfolio(portfolio_id="P1", open_date=date(2020, 1, 1))
+    results_df = pd.DataFrame(
+        [
+            {
+                "date": date(2025, 1, 1),
+                "daily_ror_pct": Decimal("1.0"),
+                "final_cumulative_ror_pct": Decimal("1.0"),
+                "bod_market_value": Decimal("100"),
+                "eod_market_value": Decimal("101"),
+                "bod_cashflow": Decimal("0"),
+                "eod_cashflow": Decimal("0"),
+                "fees": Decimal("0"),
+            },
+            {
+                "date": date(2025, 1, 2),
+                "daily_ror_pct": Decimal("1.0"),
+                "final_cumulative_ror_pct": Decimal("2.01"),
+                "bod_market_value": Decimal("101"),
+                "eod_market_value": Decimal("103"),
+                "bod_cashflow": Decimal("0"),
+                "eod_cashflow": Decimal("0"),
+                "fees": Decimal("0"),
+            },
+        ]
+    )
+
+    with patch(
+        "src.services.query_service.app.services.performance_service.PerformanceCalculator"
+    ) as mock_calculator:
+        mock_calculator.return_value.calculate_performance.return_value = pd.DataFrame(
+            [{"final_cumulative_ror_pct": Decimal("2.01")}]
+        )
+        breakdowns = service._calculate_breakdowns(results_df, "WEEKLY", request, portfolio)
+
+    assert len(breakdowns) == 1
+    assert breakdowns[0].weekly_return is not None
+    assert breakdowns[0].attributes is not None
+
+
+async def test_calculate_breakdowns_invalid_type_returns_empty(
+    service: PerformanceService,
+):
+    request = PerformanceRequest.model_validate(
+        {"scope": {"as_of_date": "2025-02-15", "net_or_gross": "NET"}, "periods": [{"type": "YTD"}]}
+    )
+    portfolio = Portfolio(portfolio_id="P1", open_date=date(2020, 1, 1))
+    results_df = pd.DataFrame(
+        [
+            {
+                "date": date(2025, 1, 1),
+                "daily_ror_pct": Decimal("1.0"),
+                "final_cumulative_ror_pct": Decimal("1.0"),
+            }
+        ]
+    )
+
+    breakdowns = service._calculate_breakdowns(results_df, "UNKNOWN", request, portfolio)
+
+    assert breakdowns == []
