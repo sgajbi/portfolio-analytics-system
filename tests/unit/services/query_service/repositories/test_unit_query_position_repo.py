@@ -69,8 +69,11 @@ async def test_get_latest_positions_by_portfolio(
     assert "FROM daily_position_snapshots" in compiled_query
     assert "JOIN position_state ON" in compiled_query
     assert "daily_position_snapshots.epoch = position_state.epoch" in compiled_query
-    # Assert that it uses a subquery to find the max ID for each security
-    assert "JOIN (SELECT max(daily_position_snapshots.id) AS max_id" in compiled_query
-    assert "GROUP BY daily_position_snapshots.security_id)" in compiled_query
-    # Assert that the main query joins on the result of the subquery
-    assert "ON daily_position_snapshots.id = anon_1.max_id" in compiled_query
+    # Assert that it ranks snapshots by business date and id per security.
+    assert "row_number() OVER (PARTITION BY daily_position_snapshots.security_id" in compiled_query
+    assert (
+        "ORDER BY daily_position_snapshots.date DESC, daily_position_snapshots.id DESC"
+        in compiled_query
+    )
+    # Assert the final query selects only the top-ranked snapshot per security.
+    assert "ON daily_position_snapshots.id = anon_1.snapshot_id AND anon_1.rn = 1" in compiled_query

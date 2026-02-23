@@ -7,25 +7,40 @@ from .valuation_dto import ValuationData
 
 
 class Position(BaseModel):
-    security_id: str
-    quantity: float
-    instrument_name: str
-    position_date: date
-    asset_class: Optional[str] = None  # ADDED: New field for direct asset class info
-
-    cost_basis: float
-
-    cost_basis_local: Optional[float] = None
-
-    valuation: Optional[ValuationData] = None
-    reprocessing_status: Optional[str] = None
+    security_id: str = Field(
+        ..., description="Security identifier for the position.", examples=["AAPL.OQ"]
+    )
+    quantity: float = Field(..., description="Position quantity.", examples=[125.0])
+    instrument_name: str = Field(
+        ..., description="Instrument display name.", examples=["Apple Inc."]
+    )
+    position_date: date = Field(
+        ..., description="Business date of the position snapshot.", examples=["2025-12-30"]
+    )
+    asset_class: Optional[str] = Field(
+        None, description="Asset class for grouping and reporting.", examples=["Equity"]
+    )
+    cost_basis: float = Field(
+        ..., description="Cost basis in portfolio base currency.", examples=[15000.0]
+    )
+    cost_basis_local: Optional[float] = Field(
+        None, description="Cost basis in local instrument currency.", examples=[15000.0]
+    )
+    valuation: Optional[ValuationData] = Field(
+        None, description="Valuation details for the position snapshot."
+    )
+    reprocessing_status: Optional[str] = Field(
+        None,
+        description="Reprocessing status for this portfolio-security key.",
+        examples=["CURRENT", "REPROCESSING"],
+    )
 
     model_config = ConfigDict(from_attributes=True)
 
 
 class PortfolioPositionsResponse(BaseModel):
-    portfolio_id: str
-    positions: List[Position]
+    portfolio_id: str = Field(..., description="Portfolio identifier.", examples=["PF-001"])
+    positions: List[Position] = Field(..., description="Latest positions for the portfolio.")
 
 
 class PositionHistoryRecord(BaseModel):
@@ -48,8 +63,14 @@ class PositionHistoryRecord(BaseModel):
         None, description="The total cost basis in the instrument's local currency."
     )
 
-    valuation: Optional[ValuationData] = None
-    reprocessing_status: Optional[str] = None
+    valuation: Optional[ValuationData] = Field(
+        None, description="Valuation details for this record."
+    )
+    reprocessing_status: Optional[str] = Field(
+        None,
+        description="Reprocessing status for this portfolio-security key.",
+        examples=["CURRENT", "REPROCESSING"],
+    )
 
     model_config = ConfigDict(from_attributes=True)
 

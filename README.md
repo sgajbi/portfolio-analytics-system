@@ -164,24 +164,15 @@ make ci-local
 
       * API Docs: `http://localhost:8081/docs`
 
-3.  **Check the Database**:
-    You can connect to the PostgreSQL database to verify the state of the data.
+3.  **Use Support and Lineage APIs (Preferred over direct DB access)**:
+    Use the query-service operational APIs for support diagnostics.
 
     ```bash
-    docker compose exec postgres psql -U user -d portfolio_db
-    ```
+    # Portfolio-level support overview
+    curl "http://localhost:8081/support/portfolios/PORT001/overview"
 
-    Useful queries:
-
-    ```sql
-    -- Check position watermarks
-    SELECT * FROM position_state WHERE portfolio_id = 'PORT001';
-
-    -- Check for any pending reprocessing jobs
-    SELECT * FROM reprocessing_jobs WHERE status = 'PENDING';
-
-    -- View the latest daily snapshots
-    SELECT * FROM daily_position_snapshots WHERE portfolio_id = 'PORT001' ORDER BY date DESC LIMIT 10;
+    # Key-level lineage (epoch/watermark + latest artifacts)
+    curl "http://localhost:8081/lineage/portfolios/PORT001/securities/SEC001"
     ```
 
 ## Code Quality

@@ -58,11 +58,11 @@ class PerformanceRepository:
         Fetches the raw, daily portfolio_timeseries data required for performance
         calculations, ensuring it only selects data from the portfolio's current epoch.
         """
-        # Subquery to find the maximum (current) epoch for the given portfolio.
-        # This is determined by the max epoch of any security within that portfolio.
+        # Use the latest epoch that actually exists in portfolio_timeseries for this
+        # portfolio to avoid transient mismatches during reprocessing.
         current_epoch_subq = (
-            select(func.max(PositionState.epoch))
-            .where(PositionState.portfolio_id == portfolio_id)
+            select(func.max(PortfolioTimeseries.epoch))
+            .where(PortfolioTimeseries.portfolio_id == portfolio_id)
             .scalar_subquery()
         )
 

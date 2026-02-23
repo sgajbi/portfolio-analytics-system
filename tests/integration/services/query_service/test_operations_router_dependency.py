@@ -1,0 +1,80 @@
+from datetime import date
+from unittest.mock import AsyncMock
+
+import httpx
+import pytest
+import pytest_asyncio
+
+from src.services.query_service.app.main import app
+from src.services.query_service.app.routers.operations import get_operations_service
+
+pytestmark = pytest.mark.asyncio
+
+
+@pytest_asyncio.fixture
+async def async_test_client():
+    mock_operations_service = AsyncMock()
+    app.dependency_overrides[get_operations_service] = lambda: mock_operations_service
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        yield client, mock_operations_service
+    app.dependency_overrides.pop(get_operations_service, None)
+
+
+async def test_support_overview_success(async_test_client):
+    client, mock_service = async_test_client
+    mock_service.get_support_overview.return_value = {
+        "portfolio_id": "P1",
+        "current_epoch": 3,
+        "active_reprocessing_keys": 1,
+        "pending_valuation_jobs": 2,
+        "pending_aggregation_jobs": 0,
+        "latest_transaction_date": date(2025, 8, 31),
+        "latest_position_snapshot_date": date(2025, 8, 31),
+    }
+
+    response = await client.get("/support/portfolios/P1/overview")
+
+    assert response.status_code == 200
+    assert response.json()["portfolio_id"] == "P1"
+    assert "X-Correlation-ID" in response.headers
+
+
+async def test_support_overview_unexpected_maps_to_500(async_test_client):
+    client, mock_service = async_test_client
+    mock_service.get_support_overview.side_effect = RuntimeError("boom")
+
+    response = await client.get("/support/portfolios/P1/overview")
+
+    assert response.status_code == 500
+    assert "support overview" in response.json()["detail"].lower()
+
+
+async def test_lineage_success(async_test_client):
+    client, mock_service = async_test_client
+    mock_service.get_lineage.return_value = {
+        "portfolio_id": "P1",
+        "security_id": "S1",
+        "epoch": 2,
+        "watermark_date": date(2025, 8, 1),
+        "reprocessing_status": "CURRENT",
+        "latest_position_history_date": date(2025, 8, 31),
+        "latest_daily_snapshot_date": date(2025, 8, 31),
+        "latest_valuation_job_date": date(2025, 8, 31),
+        "latest_valuation_job_status": "DONE",
+    }
+
+    response = await client.get("/lineage/portfolios/P1/securities/S1")
+
+    assert response.status_code == 200
+    assert response.json()["security_id"] == "S1"
+
+
+async def test_lineage_not_found_maps_to_404(async_test_client):
+    client, mock_service = async_test_client
+    mock_service.get_lineage.side_effect = ValueError("Lineage state not found")
+
+    response = await client.get("/lineage/portfolios/P1/securities/S404")
+
+    assert response.status_code == 404
+    assert "lineage state not found" in response.json()["detail"].lower()

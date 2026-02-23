@@ -3,7 +3,7 @@ import logging
 from datetime import date
 from typing import List, Any, Optional
 
-from sqlalchemy import select, func, text
+from sqlalchemy import select, func, text, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from portfolio_common.database_models import (
     PositionHistory,
@@ -104,22 +104,40 @@ class PositionRepository:
         ensuring that the snapshot belongs to the current epoch for that security.
         It eagerly loads the related Instrument and PositionState data.
         """
-        latest_snapshot_subq = (
-            select(func.max(DailyPositionSnapshot.id).label("max_id"))
+        ranked_snapshot_subq = (
+            select(
+                DailyPositionSnapshot.id.label("snapshot_id"),
+                func.row_number()
+                .over(
+                    partition_by=DailyPositionSnapshot.security_id,
+                    order_by=(
+                        DailyPositionSnapshot.date.desc(),
+                        DailyPositionSnapshot.id.desc(),
+                    ),
+                )
+                .label("rn"),
+            )
             .join(
                 PositionState,
-                (DailyPositionSnapshot.portfolio_id == PositionState.portfolio_id)
-                & (DailyPositionSnapshot.security_id == PositionState.security_id)
-                & (DailyPositionSnapshot.epoch == PositionState.epoch),
+                and_(
+                    DailyPositionSnapshot.portfolio_id == PositionState.portfolio_id,
+                    DailyPositionSnapshot.security_id == PositionState.security_id,
+                    DailyPositionSnapshot.epoch == PositionState.epoch,
+                ),
             )
-            .filter(DailyPositionSnapshot.portfolio_id == portfolio_id)
-            .group_by(DailyPositionSnapshot.security_id)
+            .where(DailyPositionSnapshot.portfolio_id == portfolio_id)
             .subquery()
         )
 
         stmt = (
             select(DailyPositionSnapshot, Instrument, PositionState)
-            .join(latest_snapshot_subq, DailyPositionSnapshot.id == latest_snapshot_subq.c.max_id)
+            .join(
+                ranked_snapshot_subq,
+                and_(
+                    DailyPositionSnapshot.id == ranked_snapshot_subq.c.snapshot_id,
+                    ranked_snapshot_subq.c.rn == 1,
+                ),
+            )
             .join(Instrument, Instrument.security_id == DailyPositionSnapshot.security_id)
             .join(
                 PositionState,

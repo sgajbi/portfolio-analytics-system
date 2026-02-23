@@ -48,7 +48,5 @@ async def test_get_portfolio_timeseries_for_range_constructs_correct_query(
     assert "portfolio_timeseries.date <= '2025-01-31'" in compiled_query
     assert "ORDER BY portfolio_timeseries.date ASC" in compiled_query
 
-    # Verify the critical epoch-filtering subquery components more robustly
-    assert "portfolio_timeseries.epoch = (SELECT max(position_state.epoch)" in compiled_query
-    assert "FROM position_state" in compiled_query
-    assert "WHERE position_state.portfolio_id = 'P1'" in compiled_query
+    # Verify the critical epoch-filtering subquery components.
+    assert "portfolio_timeseries.epoch = (SELECT max(portfolio_timeseries.epoch)" in compiled_query

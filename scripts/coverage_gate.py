@@ -12,6 +12,7 @@ INTEGRATION_LITE_ARGS = [
     "tests/integration/services/query_service/test_concentration_router.py",
     "tests/integration/services/query_service/test_performance_router.py",
     "tests/integration/services/query_service/test_position_analytics_router.py",
+    "tests/integration/services/query_service/test_operations_router_dependency.py",
     "tests/integration/services/query_service/test_review_router.py",
     "tests/integration/services/query_service/test_risk_router_dependency.py",
     "tests/integration/services/query_service/test_summary_router.py",

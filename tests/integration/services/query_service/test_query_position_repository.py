@@ -123,3 +123,89 @@ async def test_get_held_since_date(clean_db, setup_held_since_data, async_db_ses
     # ASSERT
     # The last zero quantity was on Mar 15. The next transaction was on Apr 1.
     assert held_since == date(2025, 4, 1)
+
+
+@pytest.fixture(scope="function")
+def setup_snapshot_id_order_mismatch_data(db_engine):
+    """
+    Inserts an older business-date snapshot after a newer one to ensure latest selection
+    is based on date, not surrogate id ordering.
+    """
+    portfolio_id = "POS_REPO_TEST_02"
+    security_id = "SEC_POS_TEST_02"
+    with Session(db_engine) as session:
+        session.add(
+            Portfolio(
+                portfolio_id=portfolio_id,
+                base_currency="USD",
+                open_date=date(2024, 1, 1),
+                risk_exposure="a",
+                investment_time_horizon="b",
+                portfolio_type="c",
+                booking_center="d",
+                cif_id="e",
+                status="f",
+            )
+        )
+        session.add(
+            Instrument(
+                security_id=security_id,
+                name="TestSec2",
+                isin="XS0000000002",
+                currency="USD",
+                product_type="Stock",
+                asset_class="Equity",
+                sector="Tech",
+                country_of_risk="US",
+            )
+        )
+        session.add(
+            PositionState(
+                portfolio_id=portfolio_id,
+                security_id=security_id,
+                epoch=0,
+                watermark_date=date(2024, 1, 1),
+                status="CURRENT",
+            )
+        )
+        session.flush()
+
+        newer_date = date(2025, 1, 10)
+        older_date = date(2025, 1, 9)
+        session.add(
+            DailyPositionSnapshot(
+                portfolio_id=portfolio_id,
+                security_id=security_id,
+                date=newer_date,
+                quantity=Decimal("200"),
+                cost_basis=Decimal("20000"),
+                epoch=0,
+            )
+        )
+        session.flush()
+        session.add(
+            DailyPositionSnapshot(
+                portfolio_id=portfolio_id,
+                security_id=security_id,
+                date=older_date,
+                quantity=Decimal("150"),
+                cost_basis=Decimal("15000"),
+                epoch=0,
+            )
+        )
+        session.commit()
+    return {"portfolio_id": portfolio_id, "newer_date": newer_date}
+
+
+async def test_get_latest_positions_prefers_latest_business_date_over_latest_id(
+    clean_db, setup_snapshot_id_order_mismatch_data, async_db_session: AsyncSession
+):
+    repo = PositionRepository(async_db_session)
+    portfolio_id = setup_snapshot_id_order_mismatch_data["portfolio_id"]
+
+    latest_positions = await repo.get_latest_positions_by_portfolio(portfolio_id)
+
+    assert len(latest_positions) == 1
+    latest_snapshot, _, _ = latest_positions[0]
+    assert latest_snapshot.date == setup_snapshot_id_order_mismatch_data["newer_date"]
+    assert latest_snapshot.quantity == Decimal("200")
