@@ -240,3 +240,68 @@ async def test_summary_service_sets_unclassified_metric(mock_gauge, mock_depende
     # Verify that the gauge's .set() method was called with the correct value
     mock_gauge.labels.assert_called_once_with(portfolio_id="P1", dimension="ASSET_CLASS")
     mock_gauge.labels.return_value.set.assert_called_once_with(12345.67)
+
+
+async def test_summary_service_raises_when_portfolio_not_found(mock_dependencies):
+    service = mock_dependencies["service"]
+    service.portfolio_repo.get_by_id.return_value = None
+    request = SummaryRequest.model_validate(
+        {"as_of_date": "2025-08-29", "period": {"type": "YTD"}, "sections": ["WEALTH"]}
+    )
+
+    with pytest.raises(ValueError, match="Portfolio P404 not found"):
+        await service.get_portfolio_summary("P404", request)
+
+
+async def test_summary_service_skips_allocation_for_zero_market_value(mock_dependencies):
+    service = mock_dependencies["service"]
+    mock_summary_repo = mock_dependencies["summary_repo"]
+    mock_summary_repo.get_wealth_and_allocation_data.return_value = [
+        (
+            DailyPositionSnapshot(security_id="S_ZERO", market_value=Decimal("0")),
+            Instrument(security_id="S_ZERO", product_type="Cash", asset_class=None),
+        )
+    ]
+    request = SummaryRequest.model_validate(
+        {
+            "as_of_date": "2025-08-29",
+            "period": {"type": "YTD"},
+            "sections": ["ALLOCATION"],
+            "allocation_dimensions": ["ASSET_CLASS"],
+        }
+    )
+
+    response = await service.get_portfolio_summary("P1", request)
+
+    assert response.allocation is not None
+    assert response.allocation.by_asset_class == []
+
+
+async def test_summary_service_uses_na_for_non_fixed_income_maturity_bucket(mock_dependencies):
+    service = mock_dependencies["service"]
+    mock_summary_repo = mock_dependencies["summary_repo"]
+    mock_summary_repo.get_wealth_and_allocation_data.return_value = [
+        (
+            DailyPositionSnapshot(security_id="EQ_1", market_value=Decimal("2500")),
+            Instrument(
+                security_id="EQ_1",
+                product_type="Equity",
+                asset_class="Equity",
+                maturity_date=date(2030, 1, 1),
+            ),
+        )
+    ]
+    request = SummaryRequest.model_validate(
+        {
+            "as_of_date": "2025-08-29",
+            "period": {"type": "YTD"},
+            "sections": ["ALLOCATION"],
+            "allocation_dimensions": ["MATURITY_BUCKET"],
+        }
+    )
+
+    response = await service.get_portfolio_summary("P1", request)
+
+    assert response.allocation is not None
+    assert response.allocation.by_maturity_bucket is not None
+    assert response.allocation.by_maturity_bucket[0].group == "N/A"

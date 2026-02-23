@@ -320,3 +320,99 @@ async def test_calculate_risk_scales_var_and_es_for_horizon_days(service: RiskSe
     assert metric.details == {"expected_shortfall": pytest.approx(6.0)}
     assert mock_var.call_count == 1
     assert mock_es.call_count == 1
+
+
+async def test_calculate_risk_returns_empty_when_resolved_periods_empty(service: RiskService):
+    request = RiskRequest.model_validate(
+        {
+            "scope": {"as_of_date": "2025-01-31", "net_or_gross": "NET"},
+            "periods": [],
+            "metrics": ["VOLATILITY"],
+            "options": {"frequency": "DAILY"},
+        }
+    )
+    response = await service.calculate_risk("P1", request)
+
+    assert response.results == {}
+
+
+async def test_calculate_risk_returns_empty_when_calculator_has_no_rows(service: RiskService):
+    perf_calc = MagicMock()
+    perf_calc.return_value.calculate_performance.return_value = pd.DataFrame()
+
+    with (
+        patch(
+            "src.services.query_service.app.services.risk_service.resolve_period",
+            return_value=("YTD", date(2025, 1, 1), date(2025, 1, 31)),
+        ),
+        patch(
+            "src.services.query_service.app.services.risk_service.PerformanceCalculator",
+            new=perf_calc,
+        ),
+    ):
+        response = await service.calculate_risk("P1", build_request(["VOLATILITY"]))
+
+    assert response.results == {}
+
+
+async def test_get_benchmark_returns_handles_price_edge_cases(service: RiskService):
+    service.price_repo.get_prices = AsyncMock(return_value=[])
+    response_empty = await service._get_benchmark_returns(
+        "BMK_1", date(2025, 1, 1), date(2025, 1, 31)
+    )
+    assert response_empty.empty
+
+    service.price_repo.get_prices = AsyncMock(
+        return_value=[
+            type("P", (), {"price_date": date(2025, 1, 2), "price": 100.0})(),
+            type("P", (), {"price_date": date(2025, 1, 3), "price": 102.0})(),
+            type("P", (), {"price_date": date(2025, 1, 6), "price": 101.0})(),
+        ]
+    )
+    response = await service._get_benchmark_returns("BMK_1", date(2025, 1, 1), date(2025, 1, 31))
+    assert not response.empty
+    assert "returns" in response.columns
+    assert response.iloc[0]["returns"] == pytest.approx(2.0)
+
+
+async def test_calculate_risk_zero_mode_skips_risk_free_conversion(service: RiskService):
+    base_returns_df = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2025-01-02", "2025-01-03"]),
+            "daily_ror_pct": [0.5, 0.7],
+        }
+    )
+    perf_calc = MagicMock()
+    perf_calc.return_value.calculate_performance.return_value = base_returns_df
+
+    with (
+        patch(
+            "src.services.query_service.app.services.risk_service.resolve_period",
+            return_value=("YTD", date(2025, 1, 1), date(2025, 1, 31)),
+        ),
+        patch(
+            "src.services.query_service.app.services.risk_service.PerformanceCalculator",
+            new=perf_calc,
+        ),
+        patch(
+            "src.services.query_service.app.services.risk_service.calculate_sharpe_ratio",
+            return_value=1.1,
+        ) as mock_sharpe,
+        patch(
+            "src.services.query_service.app.services.risk_service.convert_annual_rate_to_periodic",
+            return_value=0.0,
+        ) as mock_convert,
+    ):
+        await service.calculate_risk(
+            "P1",
+            build_request(
+                ["SHARPE"],
+                options_override={
+                    "risk_free_mode": "ZERO",
+                    "risk_free_annual_rate": None,
+                },
+            ),
+        )
+
+    assert mock_sharpe.call_args.args[1] == 0.0
+    assert mock_convert.call_count == 1  # MAR only
