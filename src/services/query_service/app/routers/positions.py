@@ -11,6 +11,12 @@ from ..dtos.position_dto import PortfolioPositionsResponse, PortfolioPositionHis
 router = APIRouter(prefix="/portfolios", tags=["Positions"])
 
 
+def get_position_service(
+    db: AsyncSession = Depends(get_async_db_session),
+) -> PositionService:
+    return PositionService(db)
+
+
 @router.get(
     "/{portfolio_id}/position-history",
     response_model=PortfolioPositionHistoryResponse,
@@ -25,10 +31,9 @@ async def get_position_history(
     end_date: Optional[date] = Query(
         None, description="The end date for the date range filter (inclusive)."
     ),
-    db: AsyncSession = Depends(get_async_db_session),
+    service: PositionService = Depends(get_position_service),
 ):
     try:
-        service = PositionService(db)
         return await service.get_position_history(
             portfolio_id=portfolio_id,
             security_id=security_id,
@@ -47,9 +52,10 @@ async def get_position_history(
     response_model=PortfolioPositionsResponse,
     summary="Get Latest Positions for a Portfolio",
 )
-async def get_latest_positions(portfolio_id: str, db: AsyncSession = Depends(get_async_db_session)):
+async def get_latest_positions(
+    portfolio_id: str, service: PositionService = Depends(get_position_service)
+):
     try:
-        service = PositionService(db)
         return await service.get_portfolio_positions(portfolio_id)
     except Exception as e:
         raise HTTPException(

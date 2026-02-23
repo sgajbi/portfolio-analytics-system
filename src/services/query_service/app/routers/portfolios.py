@@ -10,6 +10,12 @@ from ..dtos.portfolio_dto import PortfolioQueryResponse, PortfolioRecord
 router = APIRouter(prefix="/portfolios", tags=["Portfolios"])
 
 
+def get_portfolio_service(
+    db: AsyncSession = Depends(get_async_db_session),
+) -> PortfolioService:
+    return PortfolioService(db)
+
+
 @router.get("/", response_model=PortfolioQueryResponse, summary="Get Portfolio Details")
 async def get_portfolios(
     portfolio_id: Optional[str] = Query(
@@ -22,10 +28,9 @@ async def get_portfolios(
     booking_center: Optional[str] = Query(
         None, description="Filter by booking center to get all portfolios for a business unit."
     ),
-    db: AsyncSession = Depends(get_async_db_session),
+    service: PortfolioService = Depends(get_portfolio_service),
 ):
     try:
-        service = PortfolioService(db)
         return await service.get_portfolios(
             portfolio_id=portfolio_id, cif_id=cif_id, booking_center=booking_center
         )
@@ -39,12 +44,14 @@ async def get_portfolios(
 @router.get(
     "/{portfolio_id}", response_model=PortfolioRecord, summary="Get a Single Portfolio by ID"
 )
-async def get_portfolio_by_id(portfolio_id: str, db: AsyncSession = Depends(get_async_db_session)):
+async def get_portfolio_by_id(
+    portfolio_id: str,
+    service: PortfolioService = Depends(get_portfolio_service),
+):
     """
     Retrieves a single portfolio by its unique ID.
     Returns a `404 Not Found` if the portfolio does not exist.
     """
-    service = PortfolioService(db)
     try:
         portfolio = await service.get_portfolio_by_id(portfolio_id)
         return portfolio

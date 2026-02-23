@@ -162,7 +162,7 @@ make ci-local
 2.  **Query the API**:
     Once the services have processed the data, you can query the `query-service` API endpoints.
 
-      * API Docs: `http://localhost:8081/docs`
+      * API Docs: `http://localhost:8201/docs`
 
 3.  **Use Support and Lineage APIs (Preferred over direct DB access)**:
     Use the query-service operational APIs for support diagnostics.
