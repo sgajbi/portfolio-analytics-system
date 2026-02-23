@@ -16,6 +16,10 @@ router = APIRouter(prefix="/portfolios", tags=["Transactions"])
     "/{portfolio_id}/transactions",
     response_model=PaginatedTransactionResponse,
     summary="Get Transactions for a Portfolio",
+    description=(
+        "Returns transactions for a portfolio with filters, pagination, and sorting. "
+        "Designed for transaction ledgers, audit timelines, and investigative support."
+    ),
 )
 async def get_transactions(
     portfolio_id: str,

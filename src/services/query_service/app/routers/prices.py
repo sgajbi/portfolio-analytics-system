@@ -11,7 +11,15 @@ from ..dtos.price_dto import MarketPriceResponse
 router = APIRouter(prefix="/prices", tags=["Market Prices"])
 
 
-@router.get("/", response_model=MarketPriceResponse, summary="Get Market Prices for a Security")
+@router.get(
+    "/",
+    response_model=MarketPriceResponse,
+    summary="Get Market Prices for a Security",
+    description=(
+        "Returns market price series for a security with optional date-range filtering. "
+        "Used by valuation checks and market data diagnostics."
+    ),
+)
 async def get_prices(
     security_id: str = Query(..., description="The unique identifier for the security to query."),
     start_date: Optional[date] = Query(

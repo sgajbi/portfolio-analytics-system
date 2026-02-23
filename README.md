@@ -211,10 +211,16 @@ This project uses a DPM-aligned engineering baseline:
 ```bash
 make lint
 make typecheck
+make openapi-gate
 make check
 make coverage-gate
 make ci-local
 ```
+
+`make check` enforces OpenAPI documentation quality for query-service endpoints:
+- each business endpoint must define both `summary` and `description`
+- duplicate `operationId` values are rejected
+- `/health/*` endpoints are exempt
 
 CI workflow shape:
 

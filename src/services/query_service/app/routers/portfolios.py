@@ -16,7 +16,15 @@ def get_portfolio_service(
     return PortfolioService(db)
 
 
-@router.get("/", response_model=PortfolioQueryResponse, summary="Get Portfolio Details")
+@router.get(
+    "/",
+    response_model=PortfolioQueryResponse,
+    summary="Get Portfolio Details",
+    description=(
+        "Returns portfolios with optional filtering by portfolio ID, CIF, and booking center. "
+        "Used by UI/BFF for portfolio discovery and navigation."
+    ),
+)
 async def get_portfolios(
     portfolio_id: Optional[str] = Query(
         None, description="Filter by a single, specific portfolio ID."

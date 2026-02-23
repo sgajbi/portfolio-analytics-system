@@ -11,7 +11,15 @@ from ..dtos.fx_rate_dto import FxRateResponse
 router = APIRouter(prefix="/fx-rates", tags=["FX Rates"])
 
 
-@router.get("/", response_model=FxRateResponse, summary="Get FX Rates for a Currency Pair")
+@router.get(
+    "/",
+    response_model=FxRateResponse,
+    summary="Get FX Rates for a Currency Pair",
+    description=(
+        "Returns FX rates for a currency pair over an optional date range. "
+        "Used by valuation/performance conversion diagnostics and reconciliation."
+    ),
+)
 async def get_fx_rates(
     from_currency: str = Query(
         ..., description="The base currency (e.g., USD).", min_length=3, max_length=3

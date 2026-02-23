@@ -21,6 +21,10 @@ def get_position_service(
     "/{portfolio_id}/position-history",
     response_model=PortfolioPositionHistoryResponse,
     summary="Get Position History for a Security",
+    description=(
+        "Returns epoch-aware position history for a portfolio-security key across a date range. "
+        "Used for drill-down views and lineage-aware troubleshooting."
+    ),
 )
 async def get_position_history(
     portfolio_id: str,
@@ -51,6 +55,10 @@ async def get_position_history(
     "/{portfolio_id}/positions",
     response_model=PortfolioPositionsResponse,
     summary="Get Latest Positions for a Portfolio",
+    description=(
+        "Returns latest current-epoch positions for a portfolio. "
+        "Used by holdings screens and downstream review/analytics flows."
+    ),
 )
 async def get_latest_positions(
     portfolio_id: str, service: PositionService = Depends(get_position_service)

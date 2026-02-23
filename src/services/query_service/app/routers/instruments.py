@@ -11,7 +11,15 @@ from ..dependencies import pagination_params
 router = APIRouter(prefix="/instruments", tags=["Instruments"])
 
 
-@router.get("/", response_model=PaginatedInstrumentResponse, summary="Get a List of Instruments")
+@router.get(
+    "/",
+    response_model=PaginatedInstrumentResponse,
+    summary="Get a List of Instruments",
+    description=(
+        "Returns reference instrument records with optional filtering by security and product type. "
+        "Used by lookup selectors and enrichment workflows."
+    ),
+)
 async def get_instruments(
     security_id: Optional[str] = Query(None, description="Filter by a specific security ID."),
     product_type: Optional[str] = Query(
