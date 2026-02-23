@@ -416,3 +416,90 @@ async def test_calculate_risk_zero_mode_skips_risk_free_conversion(service: Risk
 
     assert mock_sharpe.call_args.args[1] == 0.0
     assert mock_convert.call_count == 1  # MAR only
+
+
+async def test_risk_helpers_return_empty_for_empty_series():
+    empty_series = pd.Series(dtype="float64")
+
+    resampled = RiskService._resample_returns(empty_series, "DAILY")
+    log_series = RiskService._to_log_returns(empty_series)
+
+    assert resampled.empty
+    assert log_series.empty
+
+
+async def test_calculate_risk_captures_drawdown_sharpe_sortino_and_benchmark_metric_errors(
+    service: RiskService,
+):
+    base_returns_df = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2025-01-02", "2025-01-03", "2025-01-06"]),
+            "daily_ror_pct": [1.0, -0.5, 0.8],
+        }
+    )
+    benchmark_returns_df = pd.DataFrame(
+        {"returns": [0.7, -0.3, 0.6]},
+        index=pd.to_datetime(["2025-01-02", "2025-01-03", "2025-01-06"]),
+    )
+    perf_calc = MagicMock()
+    perf_calc.return_value.calculate_performance.return_value = base_returns_df
+
+    with (
+        patch(
+            "src.services.query_service.app.services.risk_service.resolve_period",
+            return_value=("YTD", date(2025, 1, 1), date(2025, 1, 31)),
+        ),
+        patch(
+            "src.services.query_service.app.services.risk_service.PerformanceCalculator",
+            new=perf_calc,
+        ),
+        patch.object(
+            service, "_get_benchmark_returns", AsyncMock(return_value=benchmark_returns_df)
+        ),
+        patch(
+            "src.services.query_service.app.services.risk_service.calculate_drawdown",
+            side_effect=InsufficientDataError("drawdown n/a"),
+        ),
+        patch(
+            "src.services.query_service.app.services.risk_service.calculate_sharpe_ratio",
+            side_effect=InsufficientDataError("sharpe n/a"),
+        ),
+        patch(
+            "src.services.query_service.app.services.risk_service.calculate_sortino_ratio",
+            side_effect=InsufficientDataError("sortino n/a"),
+        ),
+        patch(
+            "src.services.query_service.app.services.risk_service.calculate_beta",
+            side_effect=InsufficientDataError("beta n/a"),
+        ),
+        patch(
+            "src.services.query_service.app.services.risk_service.calculate_tracking_error",
+            side_effect=InsufficientDataError("te n/a"),
+        ),
+        patch(
+            "src.services.query_service.app.services.risk_service.calculate_information_ratio",
+            side_effect=InsufficientDataError("ir n/a"),
+        ),
+    ):
+        response = await service.calculate_risk(
+            "P1",
+            build_request(
+                [
+                    "DRAWDOWN",
+                    "SHARPE",
+                    "SORTINO",
+                    "BETA",
+                    "TRACKING_ERROR",
+                    "INFORMATION_RATIO",
+                ],
+                options_override={"use_log_returns": True},
+            ),
+        )
+
+    metrics = response.results["YTD"].metrics
+    assert metrics["DRAWDOWN"].details == {"error": "drawdown n/a"}
+    assert metrics["SHARPE"].details == {"error": "sharpe n/a"}
+    assert metrics["SORTINO"].details == {"error": "sortino n/a"}
+    assert metrics["BETA"].details == {"error": "beta n/a"}
+    assert metrics["TRACKING_ERROR"].details == {"error": "te n/a"}
+    assert metrics["INFORMATION_RATIO"].details == {"error": "ir n/a"}

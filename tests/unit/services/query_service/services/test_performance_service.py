@@ -194,7 +194,7 @@ async def test_calculate_performance_raises_for_missing_portfolio(
         await service.calculate_performance("P_NONEXISTENT", request)
 
 
-def test_aggregate_attributes_empty_dataframe_returns_defaults(
+async def test_aggregate_attributes_empty_dataframe_returns_defaults(
     service: PerformanceService,
 ):
     result = service._aggregate_attributes(pd.DataFrame())
