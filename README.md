@@ -3,6 +3,9 @@
 
 This system provides a comprehensive suite of services for portfolio analytics, including position tracking, valuation, performance calculation, and risk analysis. It is designed as a distributed, event-driven architecture using Kafka for messaging and PostgreSQL for data persistence.
 
+Platform architecture governance source:
+- `https://github.com/sgajbi/pbwm-platform-docs` (cross-cutting and multi-service decisions)
+
 ## Table of Contents
 
 - [Architectural Overview](#architectural-overview)
