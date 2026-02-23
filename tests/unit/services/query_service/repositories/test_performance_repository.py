@@ -50,3 +50,24 @@ async def test_get_portfolio_timeseries_for_range_constructs_correct_query(
 
     # Verify the critical epoch-filtering subquery components.
     assert "portfolio_timeseries.epoch = (SELECT max(portfolio_timeseries.epoch)" in compiled_query
+
+
+async def test_get_position_timeseries_for_range_constructs_epoch_aware_query(
+    repository: PerformanceRepository, mock_db_session: AsyncMock
+):
+    await repository.get_position_timeseries_for_range(
+        portfolio_id="P1",
+        security_id="S1",
+        start_date=date(2025, 1, 1),
+        end_date=date(2025, 1, 31),
+    )
+
+    executed_stmt = mock_db_session.execute.call_args[0][0]
+    compiled_query = str(executed_stmt.compile(compile_kwargs={"literal_binds": True}))
+
+    assert "FROM position_timeseries JOIN position_state" in compiled_query
+    assert "position_timeseries.epoch = position_state.epoch" in compiled_query
+    assert "position_timeseries.portfolio_id = 'P1'" in compiled_query
+    assert "position_timeseries.security_id = 'S1'" in compiled_query
+    assert "position_timeseries.date BETWEEN '2025-01-01' AND '2025-01-31'" in compiled_query
+    assert "ORDER BY position_timeseries.date ASC" in compiled_query

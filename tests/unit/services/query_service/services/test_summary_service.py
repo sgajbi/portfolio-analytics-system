@@ -305,3 +305,20 @@ async def test_summary_service_uses_na_for_non_fixed_income_maturity_bucket(mock
     assert response.allocation is not None
     assert response.allocation.by_maturity_bucket is not None
     assert response.allocation.by_maturity_bucket[0].group == "N/A"
+
+
+async def test_summary_service_allocation_section_without_dimensions_returns_none(
+    mock_dependencies,
+):
+    service = mock_dependencies["service"]
+    request = SummaryRequest.model_validate(
+        {
+            "as_of_date": "2025-08-29",
+            "period": {"type": "YTD"},
+            "sections": ["ALLOCATION"],
+        }
+    )
+
+    response = await service.get_portfolio_summary("P1", request)
+
+    assert response.allocation is None

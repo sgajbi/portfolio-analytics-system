@@ -77,3 +77,31 @@ async def test_get_latest_positions_by_portfolio(
     )
     # Assert the final query selects only the top-ranked snapshot per security.
     assert "ON daily_position_snapshots.id = anon_1.snapshot_id AND anon_1.rn = 1" in compiled_query
+
+
+async def test_get_held_since_date_uses_last_zero_cte(
+    repository: PositionRepository, mock_db_session: AsyncMock
+):
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = date(2025, 1, 10)
+    mock_db_session.execute = AsyncMock(return_value=mock_result)
+
+    held_since = await repository.get_held_since_date("P1", "S1", 3)
+
+    assert held_since == date(2025, 1, 10)
+    executed_stmt = mock_db_session.execute.call_args[0][0]
+    compiled_query = str(executed_stmt.compile(compile_kwargs={"literal_binds": True}))
+    assert "WITH last_zero_date AS" in compiled_query
+    assert "coalesce(last_zero_date.last_zero_date" in compiled_query.lower()
+    assert "position_history.epoch = 3" in compiled_query
+
+
+async def test_get_position_history_without_date_filters(
+    repository: PositionRepository, mock_db_session: AsyncMock
+):
+    await repository.get_position_history_by_security(portfolio_id="P1", security_id="S1")
+
+    executed_stmt = mock_db_session.execute.call_args[0][0]
+    compiled_query = str(executed_stmt.compile(compile_kwargs={"literal_binds": True}))
+    assert "position_history.position_date >=" not in compiled_query
+    assert "position_history.position_date <=" not in compiled_query

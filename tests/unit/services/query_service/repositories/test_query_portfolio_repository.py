@@ -90,3 +90,26 @@ async def test_get_portfolios_with_all_filters(
     assert "portfolios.portfolio_id = 'P1'" in compiled_query
     assert "portfolios.cif_id = 'C100'" in compiled_query
     assert "portfolios.booking_center = 'SG'" in compiled_query
+
+
+async def test_get_by_id_returns_first_match(
+    repository: PortfolioRepository, mock_db_session: AsyncMock
+):
+    portfolio = await repository.get_by_id("P1")
+
+    assert portfolio is not None
+    executed_stmt = mock_db_session.execute.call_args[0][0]
+    compiled_query = str(executed_stmt.compile(compile_kwargs={"literal_binds": True}))
+    assert "WHERE portfolios.portfolio_id = 'P1'" in compiled_query
+
+
+async def test_get_by_id_returns_none_when_missing(
+    repository: PortfolioRepository, mock_db_session: AsyncMock
+):
+    mock_result = MagicMock()
+    mock_result.scalars.return_value.first.return_value = None
+    mock_db_session.execute = AsyncMock(return_value=mock_result)
+
+    portfolio = await repository.get_by_id("P404")
+
+    assert portfolio is None
