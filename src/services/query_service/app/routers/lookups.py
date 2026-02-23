@@ -22,6 +22,17 @@ async def _fetch_all_instruments(service: InstrumentService, page_limit: int) ->
     return collected
 
 
+def _filter_limit_sort_items(
+    items: list[LookupItem], q: str | None, limit: int
+) -> list[LookupItem]:
+    if q:
+        q_norm = q.strip().upper()
+        items = [
+            item for item in items if q_norm in item.id.upper() or q_norm in item.label.upper()
+        ]
+    return sorted(items, key=lambda item: item.id)[:limit]
+
+
 @router.get(
     "/portfolios",
     response_model=LookupResponse,
@@ -29,10 +40,22 @@ async def _fetch_all_instruments(service: InstrumentService, page_limit: int) ->
     description="Returns portfolio selector options for BFF/UI portfolio selection workflows.",
 )
 async def get_portfolio_lookups(
+    cif_id: str | None = Query(
+        default=None, description="Optional CIF filter for tenant/client scoping."
+    ),
+    booking_center: str | None = Query(
+        default=None,
+        description="Optional booking-center filter for business-unit specific catalogs.",
+    ),
+    q: str | None = Query(
+        default=None,
+        description="Optional case-insensitive search text applied to portfolio ID.",
+    ),
+    limit: int = Query(default=500, ge=1, le=1000),
     db: AsyncSession = Depends(get_async_db_session),
 ) -> LookupResponse:
     service = PortfolioService(db)
-    response = await service.get_portfolios()
+    response = await service.get_portfolios(cif_id=cif_id, booking_center=booking_center)
 
     items = [
         LookupItem(
@@ -41,7 +64,7 @@ async def get_portfolio_lookups(
         )
         for portfolio in response.portfolios
     ]
-    return LookupResponse(items=items)
+    return LookupResponse(items=_filter_limit_sort_items(items, q=q, limit=limit))
 
 
 @router.get(
@@ -52,10 +75,18 @@ async def get_portfolio_lookups(
 )
 async def get_instrument_lookups(
     limit: int = Query(default=200, ge=1, le=1000),
+    product_type: str | None = Query(
+        default=None,
+        description="Optional product type filter (for example: Equity, Bond).",
+    ),
+    q: str | None = Query(
+        default=None,
+        description="Optional case-insensitive search text applied to security ID and instrument name.",
+    ),
     db: AsyncSession = Depends(get_async_db_session),
 ) -> LookupResponse:
     service = InstrumentService(db)
-    response = await service.get_instruments(skip=0, limit=limit)
+    response = await service.get_instruments(skip=0, limit=limit, product_type=product_type)
 
     items = [
         LookupItem(
@@ -64,7 +95,7 @@ async def get_instrument_lookups(
         )
         for instrument in response.instruments
     ]
-    return LookupResponse(items=items)
+    return LookupResponse(items=_filter_limit_sort_items(items, q=q, limit=limit))
 
 
 @router.get(
@@ -78,23 +109,42 @@ async def get_instrument_lookups(
 )
 async def get_currency_lookups(
     instrument_page_limit: int = Query(default=500, ge=50, le=1000),
+    source: str = Query(
+        default="ALL",
+        pattern="^(ALL|PORTFOLIOS|INSTRUMENTS)$",
+        description="Currency source scope. Use ALL, PORTFOLIOS, or INSTRUMENTS.",
+    ),
+    q: str | None = Query(
+        default=None,
+        description="Optional case-insensitive search text applied to currency code.",
+    ),
+    limit: int = Query(default=500, ge=1, le=1000),
     db: AsyncSession = Depends(get_async_db_session),
 ) -> LookupResponse:
     portfolio_service = PortfolioService(db)
     instrument_service = InstrumentService(db)
 
-    portfolios_response = await portfolio_service.get_portfolios()
-    instruments = await _fetch_all_instruments(
-        service=instrument_service,
-        page_limit=instrument_page_limit,
+    source_scope = source.upper()
+    portfolios_response = (
+        await portfolio_service.get_portfolios() if source_scope in {"ALL", "PORTFOLIOS"} else None
+    )
+    instruments = (
+        await _fetch_all_instruments(
+            service=instrument_service,
+            page_limit=instrument_page_limit,
+        )
+        if source_scope in {"ALL", "INSTRUMENTS"}
+        else []
     )
 
-    codes = {
-        portfolio.base_currency.upper()
-        for portfolio in portfolios_response.portfolios
-        if portfolio.base_currency
-    }
+    codes: set[str] = set()
+    if portfolios_response:
+        codes.update(
+            portfolio.base_currency.upper()
+            for portfolio in portfolios_response.portfolios
+            if portfolio.base_currency
+        )
     codes.update({instrument.currency.upper() for instrument in instruments if instrument.currency})
 
-    items = [LookupItem(id=code, label=code) for code in sorted(codes)]
-    return LookupResponse(items=items)
+    items = [LookupItem(id=code, label=code) for code in codes]
+    return LookupResponse(items=_filter_limit_sort_items(items, q=q, limit=limit))
