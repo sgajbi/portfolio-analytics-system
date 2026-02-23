@@ -1,30 +1,31 @@
 # src/services/query_service/app/services/risk_service.py
 import logging
-import pandas as pd
 from datetime import date
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..dtos.risk_dto import RiskRequest, RiskResponse, RiskPeriodResult, RiskValue
-from ..repositories.portfolio_repository import PortfolioRepository
-from ..repositories.performance_repository import PerformanceRepository
-from ..repositories.price_repository import MarketPriceRepository
+import numpy as np
+import pandas as pd
 from performance_calculator_engine.calculator import PerformanceCalculator
+from performance_calculator_engine.constants import DAILY_ROR_PCT, DATE
 from performance_calculator_engine.helpers import resolve_period
-from performance_calculator_engine.constants import DATE, DAILY_ROR_PCT
-
+from risk_analytics_engine.exceptions import InsufficientDataError
+from risk_analytics_engine.helpers import convert_annual_rate_to_periodic
 from risk_analytics_engine.metrics import (
-    calculate_volatility,
+    calculate_beta,
     calculate_drawdown,
+    calculate_expected_shortfall,
+    calculate_information_ratio,
     calculate_sharpe_ratio,
     calculate_sortino_ratio,
-    calculate_beta,
     calculate_tracking_error,
-    calculate_information_ratio,
     calculate_var,
-    calculate_expected_shortfall,
+    calculate_volatility,
 )
-from risk_analytics_engine.helpers import convert_annual_rate_to_periodic
-from risk_analytics_engine.exceptions import InsufficientDataError
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from ..dtos.risk_dto import RiskPeriodResult, RiskRequest, RiskResponse, RiskValue
+from ..repositories.performance_repository import PerformanceRepository
+from ..repositories.portfolio_repository import PortfolioRepository
+from ..repositories.price_repository import MarketPriceRepository
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +40,26 @@ class RiskService:
         self.perf_repo = PerformanceRepository(db)
         self.portfolio_repo = PortfolioRepository(db)
         self.price_repo = MarketPriceRepository(db)
+
+    @staticmethod
+    def _resample_returns(returns: pd.Series, frequency: str) -> pd.Series:
+        """Resample arithmetic returns (in percentage points) to requested periodicity."""
+        if returns.empty:
+            return returns
+
+        series = returns.sort_index()
+        if frequency == "DAILY":
+            return series
+
+        rule = {"WEEKLY": "W-FRI", "MONTHLY": "ME"}[frequency]
+        return series.resample(rule).apply(lambda x: ((1 + x / 100).prod() - 1) * 100).dropna()
+
+    @staticmethod
+    def _to_log_returns(returns: pd.Series) -> pd.Series:
+        """Convert arithmetic percentage returns to log percentage returns."""
+        if returns.empty:
+            return returns
+        return np.log1p(returns / 100) * 100
 
     async def _get_benchmark_returns(
         self, security_id: str, start_date: date, end_date: date
@@ -134,7 +155,13 @@ class RiskService:
                 & (base_returns_df[DATE] <= pd.Timestamp(end_date))
             ]
             period_metrics = {}
-            returns_series = period_df.set_index(DATE)[DAILY_ROR_PCT]
+            raw_returns_series = period_df.set_index(DATE)[DAILY_ROR_PCT].dropna()
+            drawdown_returns_series = self._resample_returns(
+                raw_returns_series, request.options.frequency
+            )
+            returns_series = drawdown_returns_series
+            if request.options.use_log_returns:
+                returns_series = self._to_log_returns(returns_series)
 
             if "VOLATILITY" in request.metrics:
                 try:
@@ -146,7 +173,7 @@ class RiskService:
 
             if "DRAWDOWN" in request.metrics:
                 try:
-                    dd_data = calculate_drawdown(returns=returns_series)
+                    dd_data = calculate_drawdown(returns=drawdown_returns_series)
                     period_metrics["DRAWDOWN"] = RiskValue(
                         value=dd_data["max_drawdown"], details=dd_data
                     )
@@ -172,9 +199,20 @@ class RiskService:
             if not benchmark_returns_df.empty and any(
                 m in request.metrics for m in benchmark_metrics
             ):
+                benchmark_period = benchmark_returns_df.loc[
+                    (benchmark_returns_df.index >= pd.Timestamp(start_date))
+                    & (benchmark_returns_df.index <= pd.Timestamp(end_date)),
+                    "returns",
+                ]
+                benchmark_period = self._resample_returns(
+                    benchmark_period, request.options.frequency
+                )
+                if request.options.use_log_returns:
+                    benchmark_period = self._to_log_returns(benchmark_period)
+
                 aligned_df = pd.merge(
                     returns_series,
-                    benchmark_returns_df,
+                    benchmark_period.to_frame(name="returns"),
                     left_index=True,
                     right_index=True,
                     how="inner",
@@ -210,15 +248,20 @@ class RiskService:
             if "VAR" in request.metrics:
                 try:
                     var_options = request.options.var
-                    var_val = calculate_var(
+                    var_val_base = calculate_var(
                         returns_series, var_options.confidence, var_options.method
                     )
+                    var_val = var_val_base
+                    if var_options.horizon_days > 1:
+                        var_val = var_val * (var_options.horizon_days**0.5)
 
                     details = {}
                     if var_options.include_expected_shortfall:
                         es_val = calculate_expected_shortfall(
-                            returns_series, var_options.confidence, var_val
+                            returns_series, var_options.confidence, var_val_base
                         )
+                        if var_options.horizon_days > 1:
+                            es_val = es_val * (var_options.horizon_days**0.5)
                         details["expected_shortfall"] = es_val
 
                     period_metrics["VAR"] = RiskValue(value=var_val, details=details or None)

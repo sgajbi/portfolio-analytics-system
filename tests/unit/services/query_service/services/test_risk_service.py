@@ -54,24 +54,28 @@ def service(mock_portfolio_repo: AsyncMock, mock_performance_repo: AsyncMock) ->
         return RiskService(AsyncMock(spec=AsyncSession))
 
 
-def build_request(metrics: list[str]) -> RiskRequest:
+def build_request(metrics: list[str], options_override: dict | None = None) -> RiskRequest:
+    options = {
+        "frequency": "DAILY",
+        "risk_free_mode": "ANNUAL_RATE",
+        "risk_free_annual_rate": 0.01,
+        "mar_annual_rate": 0.02,
+        "benchmark_security_id": "BMK_1",
+        "var": {
+            "method": "HISTORICAL",
+            "confidence": 0.95,
+            "include_expected_shortfall": True,
+        },
+    }
+    if options_override:
+        options.update(options_override)
+
     return RiskRequest.model_validate(
         {
             "scope": {"as_of_date": "2025-01-31", "net_or_gross": "NET"},
             "periods": [{"type": "YTD", "name": "YTD"}],
             "metrics": metrics,
-            "options": {
-                "frequency": "DAILY",
-                "risk_free_mode": "ANNUAL_RATE",
-                "risk_free_annual_rate": 0.01,
-                "mar_annual_rate": 0.02,
-                "benchmark_security_id": "BMK_1",
-                "var": {
-                    "method": "HISTORICAL",
-                    "confidence": 0.95,
-                    "include_expected_shortfall": True,
-                },
-            },
+            "options": options,
         }
     )
 
@@ -230,3 +234,89 @@ async def test_calculate_risk_metric_errors_are_captured(service: RiskService):
     assert metrics["VOLATILITY"].details == {"error": "not enough points"}
     assert metrics["VAR"].value is None
     assert metrics["VAR"].details == {"error": "invalid var input"}
+
+
+async def test_calculate_risk_applies_weekly_resample_and_log_returns(service: RiskService):
+    base_returns_df = pd.DataFrame(
+        {
+            "date": pd.to_datetime(
+                ["2025-01-06", "2025-01-07", "2025-01-08", "2025-01-13", "2025-01-14"]
+            ),
+            "daily_ror_pct": [1.0, 1.0, -0.5, 0.2, 0.4],
+        }
+    )
+    perf_calc = MagicMock()
+    perf_calc.return_value.calculate_performance.return_value = base_returns_df
+
+    with (
+        patch(
+            "src.services.query_service.app.services.risk_service.resolve_period",
+            return_value=("YTD", date(2025, 1, 1), date(2025, 1, 31)),
+        ),
+        patch(
+            "src.services.query_service.app.services.risk_service.PerformanceCalculator",
+            new=perf_calc,
+        ),
+        patch(
+            "src.services.query_service.app.services.risk_service.calculate_volatility",
+            return_value=0.2,
+        ) as mock_vol,
+    ):
+        await service.calculate_risk(
+            "P1",
+            build_request(
+                ["VOLATILITY"],
+                options_override={"frequency": "WEEKLY", "use_log_returns": True},
+            ),
+        )
+
+    passed_series = mock_vol.call_args.args[0]
+    assert len(passed_series) == 2
+    expected_weekly = RiskService._resample_returns(
+        base_returns_df.set_index("date")["daily_ror_pct"], "WEEKLY"
+    )
+    expected_log = RiskService._to_log_returns(expected_weekly)
+    assert passed_series.tolist() == pytest.approx(expected_log.tolist())
+
+
+async def test_calculate_risk_scales_var_and_es_for_horizon_days(service: RiskService):
+    base_returns_df = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2025-01-02", "2025-01-03", "2025-01-06"]),
+            "daily_ror_pct": [1.0, -0.5, 0.8],
+        }
+    )
+    perf_calc = MagicMock()
+    perf_calc.return_value.calculate_performance.return_value = base_returns_df
+
+    with (
+        patch(
+            "src.services.query_service.app.services.risk_service.resolve_period",
+            return_value=("YTD", date(2025, 1, 1), date(2025, 1, 31)),
+        ),
+        patch(
+            "src.services.query_service.app.services.risk_service.PerformanceCalculator",
+            new=perf_calc,
+        ),
+        patch(
+            "src.services.query_service.app.services.risk_service.calculate_var",
+            return_value=2.0,
+        ) as mock_var,
+        patch(
+            "src.services.query_service.app.services.risk_service.calculate_expected_shortfall",
+            return_value=3.0,
+        ) as mock_es,
+    ):
+        response = await service.calculate_risk(
+            "P1",
+            build_request(
+                ["VAR"],
+                options_override={"var": {"horizon_days": 4, "include_expected_shortfall": True}},
+            ),
+        )
+
+    metric = response.results["YTD"].metrics["VAR"]
+    assert metric.value == pytest.approx(4.0)
+    assert metric.details == {"expected_shortfall": pytest.approx(6.0)}
+    assert mock_var.call_count == 1
+    assert mock_es.call_count == 1
