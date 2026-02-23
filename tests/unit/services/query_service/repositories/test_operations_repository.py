@@ -176,3 +176,94 @@ async def test_get_latest_valuation_job(
         "ORDER BY portfolio_valuation_jobs.valuation_date DESC, portfolio_valuation_jobs.id DESC"
         in compiled
     )
+
+
+async def test_get_lineage_keys_count_with_filters(
+    repository: OperationsRepository, mock_db_session: AsyncMock
+):
+    mock_execute_scalar_one(mock_db_session, 5)
+
+    value = await repository.get_lineage_keys_count(
+        portfolio_id="P1", reprocessing_status="CURRENT", security_id="S1"
+    )
+
+    assert value == 5
+    stmt = mock_db_session.execute.call_args[0][0]
+    compiled = str(stmt.compile(compile_kwargs={"literal_binds": True}))
+    assert "from position_state" in compiled.lower()
+    assert "position_state.status = 'CURRENT'" in compiled
+    assert "position_state.security_id = 'S1'" in compiled
+
+
+async def test_get_lineage_keys_query(repository: OperationsRepository, mock_db_session: AsyncMock):
+    mock_result = MagicMock()
+    mock_result.scalars.return_value.all.return_value = ["k1", "k2"]
+    mock_db_session.execute = AsyncMock(return_value=mock_result)
+
+    value = await repository.get_lineage_keys(portfolio_id="P1", skip=5, limit=10)
+
+    assert value == ["k1", "k2"]
+    stmt = mock_db_session.execute.call_args[0][0]
+    compiled = str(stmt.compile(compile_kwargs={"literal_binds": True}))
+    assert "ORDER BY position_state.security_id ASC" in compiled
+    assert "LIMIT 10 OFFSET 5" in compiled
+
+
+async def test_get_valuation_jobs_count_with_status(
+    repository: OperationsRepository, mock_db_session: AsyncMock
+):
+    mock_execute_scalar_one(mock_db_session, 7)
+
+    value = await repository.get_valuation_jobs_count(portfolio_id="P1", status="PENDING")
+
+    assert value == 7
+    stmt = mock_db_session.execute.call_args[0][0]
+    compiled = str(stmt.compile(compile_kwargs={"literal_binds": True}))
+    assert "from portfolio_valuation_jobs" in compiled.lower()
+    assert "portfolio_valuation_jobs.status = 'PENDING'" in compiled
+
+
+async def test_get_valuation_jobs_query(
+    repository: OperationsRepository, mock_db_session: AsyncMock
+):
+    mock_result = MagicMock()
+    mock_result.scalars.return_value.all.return_value = ["job1"]
+    mock_db_session.execute = AsyncMock(return_value=mock_result)
+
+    value = await repository.get_valuation_jobs(portfolio_id="P1", skip=0, limit=20, status=None)
+
+    assert value == ["job1"]
+    stmt = mock_db_session.execute.call_args[0][0]
+    compiled = str(stmt.compile(compile_kwargs={"literal_binds": True}))
+    assert "ORDER BY portfolio_valuation_jobs.valuation_date DESC" in compiled
+    assert "LIMIT 20 OFFSET 0" in compiled
+
+
+async def test_get_aggregation_jobs_count_with_status(
+    repository: OperationsRepository, mock_db_session: AsyncMock
+):
+    mock_execute_scalar_one(mock_db_session, 4)
+
+    value = await repository.get_aggregation_jobs_count(portfolio_id="P1", status="PROCESSING")
+
+    assert value == 4
+    stmt = mock_db_session.execute.call_args[0][0]
+    compiled = str(stmt.compile(compile_kwargs={"literal_binds": True}))
+    assert "from portfolio_aggregation_jobs" in compiled.lower()
+    assert "portfolio_aggregation_jobs.status = 'PROCESSING'" in compiled
+
+
+async def test_get_aggregation_jobs_query(
+    repository: OperationsRepository, mock_db_session: AsyncMock
+):
+    mock_result = MagicMock()
+    mock_result.scalars.return_value.all.return_value = ["agg1"]
+    mock_db_session.execute = AsyncMock(return_value=mock_result)
+
+    value = await repository.get_aggregation_jobs(portfolio_id="P1", skip=2, limit=5, status=None)
+
+    assert value == ["agg1"]
+    stmt = mock_db_session.execute.call_args[0][0]
+    compiled = str(stmt.compile(compile_kwargs={"literal_binds": True}))
+    assert "ORDER BY portfolio_aggregation_jobs.aggregation_date DESC" in compiled
+    assert "LIMIT 5 OFFSET 2" in compiled

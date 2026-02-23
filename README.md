@@ -185,10 +185,17 @@ make ci-local
 
     ```bash
     # Portfolio-level support overview
-    curl "http://localhost:8081/support/portfolios/PORT001/overview"
+    curl "http://localhost:8201/support/portfolios/PORT001/overview"
 
     # Key-level lineage (epoch/watermark + latest artifacts)
-    curl "http://localhost:8081/lineage/portfolios/PORT001/securities/SEC001"
+    curl "http://localhost:8201/lineage/portfolios/PORT001/securities/SEC001"
+
+    # Portfolio lineage key listing for support dashboards
+    curl "http://localhost:8201/lineage/portfolios/PORT001/keys?reprocessing_status=CURRENT&skip=0&limit=100"
+
+    # Valuation and aggregation support job queues
+    curl "http://localhost:8201/support/portfolios/PORT001/valuation-jobs?status=PENDING&skip=0&limit=100"
+    curl "http://localhost:8201/support/portfolios/PORT001/aggregation-jobs?status=PROCESSING&skip=0&limit=100"
     ```
 
 ## Code Quality

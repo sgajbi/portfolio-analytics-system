@@ -1,11 +1,17 @@
 import logging
+from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from portfolio_common.db import get_async_db_session
 
-from ..dtos.operations_dto import LineageResponse, SupportOverviewResponse
+from ..dtos.operations_dto import (
+    LineageKeyListResponse,
+    LineageResponse,
+    SupportJobListResponse,
+    SupportOverviewResponse,
+)
 from ..services.operations_service import OperationsService
 
 logger = logging.getLogger(__name__)
@@ -42,6 +48,66 @@ async def get_support_overview(
 
 
 @router.get(
+    "/support/portfolios/{portfolio_id}/valuation-jobs",
+    response_model=SupportJobListResponse,
+    summary="List valuation jobs for support workflows",
+    description=(
+        "Returns valuation jobs for a portfolio with pagination and optional status filtering. "
+        "Designed for operations/support dashboards."
+    ),
+)
+async def get_valuation_jobs(
+    portfolio_id: str,
+    status_filter: Optional[str] = Query(
+        None, alias="status", description="Optional job status filter (e.g., PENDING, PROCESSING)."
+    ),
+    skip: int = Query(0, ge=0, description="Pagination offset."),
+    limit: int = Query(100, ge=1, le=1000, description="Pagination limit."),
+    service: OperationsService = Depends(get_operations_service),
+):
+    try:
+        return await service.get_valuation_jobs(
+            portfolio_id=portfolio_id, skip=skip, limit=limit, status=status_filter
+        )
+    except Exception:
+        logger.exception("Failed to list valuation jobs for portfolio %s", portfolio_id)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected server error occurred while listing valuation jobs.",
+        )
+
+
+@router.get(
+    "/support/portfolios/{portfolio_id}/aggregation-jobs",
+    response_model=SupportJobListResponse,
+    summary="List aggregation jobs for support workflows",
+    description=(
+        "Returns aggregation jobs for a portfolio with pagination and optional status filtering. "
+        "Designed for operations/support dashboards."
+    ),
+)
+async def get_aggregation_jobs(
+    portfolio_id: str,
+    status_filter: Optional[str] = Query(
+        None, alias="status", description="Optional job status filter (e.g., PENDING, PROCESSING)."
+    ),
+    skip: int = Query(0, ge=0, description="Pagination offset."),
+    limit: int = Query(100, ge=1, le=1000, description="Pagination limit."),
+    service: OperationsService = Depends(get_operations_service),
+):
+    try:
+        return await service.get_aggregation_jobs(
+            portfolio_id=portfolio_id, skip=skip, limit=limit, status=status_filter
+        )
+    except Exception:
+        logger.exception("Failed to list aggregation jobs for portfolio %s", portfolio_id)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected server error occurred while listing aggregation jobs.",
+        )
+
+
+@router.get(
     "/lineage/portfolios/{portfolio_id}/securities/{security_id}",
     response_model=LineageResponse,
     summary="Get lineage state for a portfolio-security key",
@@ -66,4 +132,41 @@ async def get_lineage(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected server error occurred while building lineage response.",
+        )
+
+
+@router.get(
+    "/lineage/portfolios/{portfolio_id}/keys",
+    response_model=LineageKeyListResponse,
+    summary="List lineage keys for a portfolio",
+    description=(
+        "Returns current lineage keys (portfolio-security state rows) for a portfolio with "
+        "pagination and optional status/security filtering."
+    ),
+)
+async def get_lineage_keys(
+    portfolio_id: str,
+    reprocessing_status: Optional[str] = Query(
+        None, description="Optional status filter for lineage keys (e.g., CURRENT, REPROCESSING)."
+    ),
+    security_id: Optional[str] = Query(
+        None, description="Optional security filter to narrow lineage key results."
+    ),
+    skip: int = Query(0, ge=0, description="Pagination offset."),
+    limit: int = Query(100, ge=1, le=1000, description="Pagination limit."),
+    service: OperationsService = Depends(get_operations_service),
+):
+    try:
+        return await service.get_lineage_keys(
+            portfolio_id=portfolio_id,
+            skip=skip,
+            limit=limit,
+            reprocessing_status=reprocessing_status,
+            security_id=security_id,
+        )
+    except Exception:
+        logger.exception("Failed to list lineage keys for portfolio %s", portfolio_id)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected server error occurred while listing lineage keys.",
         )

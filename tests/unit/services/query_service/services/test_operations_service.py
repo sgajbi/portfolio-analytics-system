@@ -73,3 +73,69 @@ async def test_get_lineage_success(service: OperationsService, mock_ops_repo: As
     assert response.latest_position_history_date == date(2025, 8, 31)
     assert response.latest_daily_snapshot_date == date(2025, 8, 31)
     assert response.latest_valuation_job_status == "DONE"
+
+
+async def test_get_lineage_keys(service: OperationsService, mock_ops_repo: AsyncMock):
+    mock_ops_repo.get_lineage_keys_count.return_value = 1
+    mock_ops_repo.get_lineage_keys.return_value = [
+        type(
+            "PositionStateStub",
+            (),
+            {
+                "security_id": "S1",
+                "epoch": 2,
+                "watermark_date": date(2025, 8, 1),
+                "status": "CURRENT",
+            },
+        )()
+    ]
+
+    response = await service.get_lineage_keys(
+        "P1", skip=0, limit=10, reprocessing_status="CURRENT", security_id=None
+    )
+
+    assert response.total == 1
+    assert response.items[0].security_id == "S1"
+    assert response.items[0].reprocessing_status == "CURRENT"
+
+
+async def test_get_valuation_jobs(service: OperationsService, mock_ops_repo: AsyncMock):
+    mock_ops_repo.get_valuation_jobs_count.return_value = 1
+    mock_ops_repo.get_valuation_jobs.return_value = [
+        type(
+            "ValuationJobStub",
+            (),
+            {
+                "security_id": "S1",
+                "valuation_date": date(2025, 8, 31),
+                "status": "PENDING",
+                "epoch": 1,
+                "attempt_count": 0,
+                "failure_reason": None,
+            },
+        )()
+    ]
+
+    response = await service.get_valuation_jobs("P1", skip=0, limit=20, status="PENDING")
+
+    assert response.total == 1
+    assert response.items[0].job_type == "VALUATION"
+    assert response.items[0].security_id == "S1"
+    assert response.items[0].business_date == date(2025, 8, 31)
+
+
+async def test_get_aggregation_jobs(service: OperationsService, mock_ops_repo: AsyncMock):
+    mock_ops_repo.get_aggregation_jobs_count.return_value = 1
+    mock_ops_repo.get_aggregation_jobs.return_value = [
+        type(
+            "AggregationJobStub",
+            (),
+            {"aggregation_date": date(2025, 8, 31), "status": "PROCESSING"},
+        )()
+    ]
+
+    response = await service.get_aggregation_jobs("P1", skip=0, limit=20, status="PROCESSING")
+
+    assert response.total == 1
+    assert response.items[0].job_type == "AGGREGATION"
+    assert response.items[0].business_date == date(2025, 8, 31)

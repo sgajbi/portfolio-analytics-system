@@ -1,5 +1,5 @@
 from datetime import date
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -69,4 +69,73 @@ class LineageResponse(BaseModel):
         None,
         description="Status of the latest valuation job for current epoch.",
         examples=["PENDING", "PROCESSING", "DONE", "FAILED"],
+    )
+
+
+class LineageKeyRecord(BaseModel):
+    security_id: str = Field(
+        ..., description="Security identifier for the key.", examples=["AAPL.OQ"]
+    )
+    epoch: int = Field(..., description="Current active epoch for this key.", examples=[3])
+    watermark_date: date = Field(
+        ...,
+        description="Current watermark date for replay/reprocessing on this key.",
+        examples=["2025-11-01"],
+    )
+    reprocessing_status: str = Field(
+        ...,
+        description="Current key status.",
+        examples=["CURRENT", "REPROCESSING"],
+    )
+
+
+class LineageKeyListResponse(BaseModel):
+    portfolio_id: str = Field(..., description="Portfolio identifier.", examples=["PF-001"])
+    total: int = Field(..., description="Total matching keys for this portfolio.", examples=[24])
+    skip: int = Field(..., description="Pagination offset.", examples=[0])
+    limit: int = Field(..., description="Pagination limit.", examples=[50])
+    items: list[LineageKeyRecord] = Field(..., description="Current lineage key states.")
+
+
+class SupportJobRecord(BaseModel):
+    job_type: Literal["VALUATION", "AGGREGATION"] = Field(
+        ..., description="Type of support job.", examples=["VALUATION"]
+    )
+    business_date: date = Field(
+        ...,
+        description="Business date for the job (valuation_date or aggregation_date).",
+        examples=["2025-12-30"],
+    )
+    status: str = Field(
+        ..., description="Current job status.", examples=["PENDING", "PROCESSING", "DONE"]
+    )
+    security_id: Optional[str] = Field(
+        None,
+        description="Security identifier for valuation jobs.",
+        examples=["AAPL.OQ"],
+    )
+    epoch: Optional[int] = Field(
+        None,
+        description="Epoch for valuation jobs.",
+        examples=[3],
+    )
+    attempt_count: Optional[int] = Field(
+        None,
+        description="Current retry attempt count for valuation jobs.",
+        examples=[1],
+    )
+    failure_reason: Optional[str] = Field(
+        None,
+        description="Failure reason (when status=FAILED).",
+        examples=["Missing market price for security/date"],
+    )
+
+
+class SupportJobListResponse(BaseModel):
+    portfolio_id: str = Field(..., description="Portfolio identifier.", examples=["PF-001"])
+    total: int = Field(..., description="Total jobs matching the filter.", examples=[42])
+    skip: int = Field(..., description="Pagination offset.", examples=[0])
+    limit: int = Field(..., description="Pagination limit.", examples=[50])
+    items: list[SupportJobRecord] = Field(
+        ..., description="Operational jobs for support workflows."
     )

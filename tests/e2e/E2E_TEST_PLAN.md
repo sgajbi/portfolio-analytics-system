@@ -18,6 +18,7 @@ The following critical paths will be covered by the E2E test suite.
 - **`test_5_day_workflow.py` (Current)**: Simulates a realistic multi-day sequence of deposits, buys, sells, and dividends, verifying the final state and realized P&L calculations.
 - **`test_dual_currency_workflow.py`**: Validates the system's ability to handle a portfolio in one currency (e.g., USD) trading an instrument in another (e.g., EUR), ensuring all FX conversions for cost basis, P&L, and valuation are correct.
 - **`test_avco_workflow.py`**: Verifies the entire pipeline for a portfolio explicitly configured to use the Average Cost (AVCO) accounting method.
+- **`test_complex_portfolio_lifecycle.py`**: End-to-end real-world lifecycle with mixed cashflows, multi-currency trades, FX gaps, and cross-API consistency checks across Summary, Review, Integration Contract, Position Analytics, Support, and Lineage endpoints.
 
 ### Reprocessing Scenarios
 - **`test_reprocessing_workflow.py`**: Simulates an initial state over several days, then ingests a back-dated transaction. Asserts that the system correctly triggers an epoch increment, re-processes the history, and arrives at the correct final state with accurate P&L.

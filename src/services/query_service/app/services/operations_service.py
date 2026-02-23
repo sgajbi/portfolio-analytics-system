@@ -1,6 +1,13 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..dtos.operations_dto import LineageResponse, SupportOverviewResponse
+from ..dtos.operations_dto import (
+    LineageKeyListResponse,
+    LineageKeyRecord,
+    LineageResponse,
+    SupportJobListResponse,
+    SupportJobRecord,
+    SupportOverviewResponse,
+)
 from ..repositories.operations_repository import OperationsRepository
 
 
@@ -59,4 +66,92 @@ class OperationsService:
             latest_valuation_job_status=(
                 latest_valuation_job.status if latest_valuation_job else None
             ),
+        )
+
+    async def get_lineage_keys(
+        self,
+        portfolio_id: str,
+        skip: int,
+        limit: int,
+        reprocessing_status: str | None = None,
+        security_id: str | None = None,
+    ) -> LineageKeyListResponse:
+        total = await self.repo.get_lineage_keys_count(
+            portfolio_id=portfolio_id,
+            reprocessing_status=reprocessing_status,
+            security_id=security_id,
+        )
+        keys = await self.repo.get_lineage_keys(
+            portfolio_id=portfolio_id,
+            skip=skip,
+            limit=limit,
+            reprocessing_status=reprocessing_status,
+            security_id=security_id,
+        )
+        return LineageKeyListResponse(
+            portfolio_id=portfolio_id,
+            total=total,
+            skip=skip,
+            limit=limit,
+            items=[
+                LineageKeyRecord(
+                    security_id=k.security_id,
+                    epoch=k.epoch,
+                    watermark_date=k.watermark_date,
+                    reprocessing_status=k.status,
+                )
+                for k in keys
+            ],
+        )
+
+    async def get_valuation_jobs(
+        self, portfolio_id: str, skip: int, limit: int, status: str | None = None
+    ) -> SupportJobListResponse:
+        total = await self.repo.get_valuation_jobs_count(portfolio_id=portfolio_id, status=status)
+        jobs = await self.repo.get_valuation_jobs(
+            portfolio_id=portfolio_id, skip=skip, limit=limit, status=status
+        )
+        return SupportJobListResponse(
+            portfolio_id=portfolio_id,
+            total=total,
+            skip=skip,
+            limit=limit,
+            items=[
+                SupportJobRecord(
+                    job_type="VALUATION",
+                    business_date=job.valuation_date,
+                    status=job.status,
+                    security_id=job.security_id,
+                    epoch=job.epoch,
+                    attempt_count=job.attempt_count,
+                    failure_reason=job.failure_reason,
+                )
+                for job in jobs
+            ],
+        )
+
+    async def get_aggregation_jobs(
+        self, portfolio_id: str, skip: int, limit: int, status: str | None = None
+    ) -> SupportJobListResponse:
+        total = await self.repo.get_aggregation_jobs_count(portfolio_id=portfolio_id, status=status)
+        jobs = await self.repo.get_aggregation_jobs(
+            portfolio_id=portfolio_id, skip=skip, limit=limit, status=status
+        )
+        return SupportJobListResponse(
+            portfolio_id=portfolio_id,
+            total=total,
+            skip=skip,
+            limit=limit,
+            items=[
+                SupportJobRecord(
+                    job_type="AGGREGATION",
+                    business_date=job.aggregation_date,
+                    status=job.status,
+                    security_id=None,
+                    epoch=None,
+                    attempt_count=None,
+                    failure_reason=None,
+                )
+                for job in jobs
+            ],
         )

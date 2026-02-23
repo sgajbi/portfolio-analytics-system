@@ -1,0 +1,299 @@
+import uuid
+
+import pytest
+
+from .api_client import E2EApiClient
+
+
+@pytest.fixture(scope="module")
+def setup_complex_lifecycle_data(clean_db_module, e2e_api_client: E2EApiClient, poll_db_until):
+    """
+    Creates a realistic cross-service lifecycle:
+    - mixed activity types (deposit, buy/sell, dividend, fee)
+    - multi-currency instrument with FX rates containing gaps
+    - full pipeline validation through summary/review/integration/support APIs
+    """
+    portfolio_id = f"E2E_COMPLEX_{uuid.uuid4().hex[:8].upper()}"
+    as_of_date = "2025-09-05"
+    security_id = "SEC_SAP_EU"
+    cash_security_id = "CASH_USD"
+
+    payload = {
+        "sourceSystem": "UI_UPLOAD",
+        "mode": "UPSERT",
+        "businessDates": [
+            {"businessDate": "2025-09-01"},
+            {"businessDate": "2025-09-02"},
+            {"businessDate": "2025-09-03"},
+            {"businessDate": "2025-09-04"},
+            {"businessDate": as_of_date},
+        ],
+        "portfolios": [
+            {
+                "portfolioId": portfolio_id,
+                "baseCurrency": "USD",
+                "openDate": "2025-01-01",
+                "riskExposure": "Moderate",
+                "investmentTimeHorizon": "Long",
+                "portfolioType": "Discretionary",
+                "bookingCenter": "SG",
+                "cifId": "E2E_COMPLEX_CIF",
+                "status": "ACTIVE",
+            }
+        ],
+        "instruments": [
+            {
+                "securityId": cash_security_id,
+                "name": "US Dollar Cash",
+                "isin": "CASH_USD_E2E_COMPLEX",
+                "instrumentCurrency": "USD",
+                "productType": "Cash",
+                "assetClass": "Cash",
+            },
+            {
+                "securityId": security_id,
+                "name": "SAP SE",
+                "isin": "DE0007164600",
+                "instrumentCurrency": "EUR",
+                "productType": "Equity",
+                "assetClass": "Equity",
+                "sector": "Technology",
+                "countryOfRisk": "DE",
+            },
+        ],
+        "transactions": [
+            {
+                "transaction_id": f"{portfolio_id}_DEP_01",
+                "portfolio_id": portfolio_id,
+                "instrument_id": "CASH",
+                "security_id": cash_security_id,
+                "transaction_date": "2025-09-01T09:00:00Z",
+                "transaction_type": "DEPOSIT",
+                "quantity": 300000,
+                "price": 1,
+                "gross_transaction_amount": 300000,
+                "trade_currency": "USD",
+                "currency": "USD",
+            },
+            {
+                "transaction_id": f"{portfolio_id}_BUY_SAP",
+                "portfolio_id": portfolio_id,
+                "instrument_id": "SAP",
+                "security_id": security_id,
+                "transaction_date": "2025-09-01T10:00:00Z",
+                "transaction_type": "BUY",
+                "quantity": 1000,
+                "price": 100,
+                "gross_transaction_amount": 100000,
+                "trade_currency": "EUR",
+                "currency": "EUR",
+            },
+            {
+                "transaction_id": f"{portfolio_id}_CASH_OUT_BUY",
+                "portfolio_id": portfolio_id,
+                "instrument_id": "CASH",
+                "security_id": cash_security_id,
+                "transaction_date": "2025-09-01T10:00:00Z",
+                "transaction_type": "SELL",
+                "quantity": 110000,
+                "price": 1,
+                "gross_transaction_amount": 110000,
+                "trade_currency": "USD",
+                "currency": "USD",
+            },
+            {
+                "transaction_id": f"{portfolio_id}_DIV_SAP",
+                "portfolio_id": portfolio_id,
+                "instrument_id": "SAP",
+                "security_id": security_id,
+                "transaction_date": "2025-09-03T10:00:00Z",
+                "transaction_type": "DIVIDEND",
+                "quantity": 0,
+                "price": 0,
+                "gross_transaction_amount": 1000,
+                "trade_currency": "EUR",
+                "currency": "EUR",
+            },
+            {
+                "transaction_id": f"{portfolio_id}_CASH_IN_DIV",
+                "portfolio_id": portfolio_id,
+                "instrument_id": "CASH",
+                "security_id": cash_security_id,
+                "transaction_date": "2025-09-03T10:00:00Z",
+                "transaction_type": "BUY",
+                "quantity": 1120,
+                "price": 1,
+                "gross_transaction_amount": 1120,
+                "trade_currency": "USD",
+                "currency": "USD",
+            },
+            {
+                "transaction_id": f"{portfolio_id}_FEE",
+                "portfolio_id": portfolio_id,
+                "instrument_id": "CASH",
+                "security_id": cash_security_id,
+                "transaction_date": "2025-09-04T10:00:00Z",
+                "transaction_type": "FEE",
+                "quantity": 1,
+                "price": 120,
+                "gross_transaction_amount": 120,
+                "trade_currency": "USD",
+                "currency": "USD",
+            },
+            {
+                "transaction_id": f"{portfolio_id}_SELL_SAP",
+                "portfolio_id": portfolio_id,
+                "instrument_id": "SAP",
+                "security_id": security_id,
+                "transaction_date": "2025-09-05T10:00:00Z",
+                "transaction_type": "SELL",
+                "quantity": 200,
+                "price": 108,
+                "gross_transaction_amount": 21600,
+                "trade_currency": "EUR",
+                "currency": "EUR",
+            },
+            {
+                "transaction_id": f"{portfolio_id}_CASH_IN_SELL",
+                "portfolio_id": portfolio_id,
+                "instrument_id": "CASH",
+                "security_id": cash_security_id,
+                "transaction_date": "2025-09-05T10:00:00Z",
+                "transaction_type": "BUY",
+                "quantity": 24840,
+                "price": 1,
+                "gross_transaction_amount": 24840,
+                "trade_currency": "USD",
+                "currency": "USD",
+            },
+        ],
+        "marketPrices": [
+            {"securityId": security_id, "priceDate": as_of_date, "price": 112, "currency": "EUR"},
+            {"securityId": cash_security_id, "priceDate": as_of_date, "price": 1, "currency": "USD"},
+        ],
+        "fxRates": [
+            {"fromCurrency": "EUR", "toCurrency": "USD", "rateDate": "2025-09-01", "rate": 1.10},
+            {"fromCurrency": "EUR", "toCurrency": "USD", "rateDate": "2025-09-03", "rate": 1.12},
+            {"fromCurrency": "EUR", "toCurrency": "USD", "rateDate": "2025-09-05", "rate": 1.15},
+        ],
+    }
+
+    response = e2e_api_client.ingest("/ingest/portfolio-bundle", payload)
+    assert response.status_code == 202
+
+    poll_db_until(
+        query="SELECT 1 FROM portfolio_timeseries WHERE portfolio_id = :pid AND date = :dt",
+        params={"pid": portfolio_id, "dt": as_of_date},
+        validation_func=lambda r: r is not None,
+        timeout=180,
+        fail_message="Portfolio timeseries was not generated for complex lifecycle scenario.",
+    )
+
+    return {
+        "portfolio_id": portfolio_id,
+        "as_of_date": as_of_date,
+        "security_id": security_id,
+    }
+
+
+def test_complex_lifecycle_cross_api_consistency(
+    setup_complex_lifecycle_data, e2e_api_client: E2EApiClient
+):
+    portfolio_id = setup_complex_lifecycle_data["portfolio_id"]
+    as_of_date = setup_complex_lifecycle_data["as_of_date"]
+    security_id = setup_complex_lifecycle_data["security_id"]
+
+    summary_response = e2e_api_client.post_query(
+        f"/portfolios/{portfolio_id}/summary",
+        {
+            "as_of_date": as_of_date,
+            "period": {"type": "EXPLICIT", "from": "2025-09-01", "to": as_of_date},
+            "sections": ["WEALTH", "PNL", "INCOME", "ACTIVITY", "ALLOCATION"],
+            "allocation_dimensions": ["ASSET_CLASS", "CURRENCY", "SECTOR"],
+        },
+    )
+    summary = summary_response.json()
+    assert summary_response.status_code == 200
+    assert summary["wealth"]["total_market_value"] > 0
+    assert summary["incomeSummary"]["total_dividends"] > 0
+    assert summary["activitySummary"]["total_fees"] < 0
+    assert summary["pnlSummary"]["total_pnl"] is not None
+
+    review_response = e2e_api_client.post_query(
+        f"/portfolios/{portfolio_id}/review",
+        {
+            "as_of_date": as_of_date,
+            "sections": [
+                "OVERVIEW",
+                "ALLOCATION",
+                "PERFORMANCE",
+                "RISK_ANALYTICS",
+                "INCOME_AND_ACTIVITY",
+                "HOLDINGS",
+                "TRANSACTIONS",
+            ],
+        },
+    )
+    review = review_response.json()
+    assert review_response.status_code == 200
+    assert review["overview"]["total_market_value"] == pytest.approx(
+        summary["wealth"]["total_market_value"], rel=1e-4
+    )
+    assert review["transactions"]["transactionsByAssetClass"]
+    assert review["holdings"]["holdingsByAssetClass"]
+
+    integration_response = e2e_api_client.post_query(
+        f"/integration/portfolios/{portfolio_id}/core-snapshot",
+        {
+            "asOfDate": as_of_date,
+            "includeSections": ["OVERVIEW", "ALLOCATION", "HOLDINGS", "TRANSACTIONS"],
+            "consumerSystem": "PA",
+        },
+    )
+    integration_data = integration_response.json()
+    assert integration_response.status_code == 200
+    assert integration_data["contractVersion"] == "v1"
+    assert integration_data["consumerSystem"] == "PA"
+    assert integration_data["portfolio"]["portfolio_id"] == portfolio_id
+    assert integration_data["snapshot"]["portfolio_id"] == portfolio_id
+
+    support_response = e2e_api_client.query(f"/support/portfolios/{portfolio_id}/overview")
+    support_data = support_response.json()
+    assert support_response.status_code == 200
+    assert support_data["portfolio_id"] == portfolio_id
+    assert isinstance(support_data["pending_valuation_jobs"], int)
+    assert isinstance(support_data["pending_aggregation_jobs"], int)
+
+    lineage_response = e2e_api_client.query(
+        f"/lineage/portfolios/{portfolio_id}/securities/{security_id}"
+    )
+    lineage_data = lineage_response.json()
+    assert lineage_response.status_code == 200
+    assert lineage_data["portfolio_id"] == portfolio_id
+    assert lineage_data["security_id"] == security_id
+    assert lineage_data["epoch"] >= 0
+
+
+def test_complex_lifecycle_position_analytics_with_fx_gaps(
+    setup_complex_lifecycle_data, e2e_api_client: E2EApiClient
+):
+    portfolio_id = setup_complex_lifecycle_data["portfolio_id"]
+    as_of_date = setup_complex_lifecycle_data["as_of_date"]
+
+    response = e2e_api_client.post_query(
+        f"/portfolios/{portfolio_id}/positions-analytics",
+        {
+            "asOfDate": as_of_date,
+            "sections": ["BASE", "VALUATION", "INCOME", "PERFORMANCE", "INSTRUMENT_DETAILS"],
+            "performanceOptions": {"periods": ["YTD", "SI"]},
+        },
+    )
+    data = response.json()
+    assert response.status_code == 200
+    assert data["portfolioId"] == portfolio_id
+    assert data["totalMarketValue"] > 0
+    assert len(data["positions"]) >= 1
+
+    for position in data["positions"]:
+        assert "securityId" in position
+        assert "weight" in position

@@ -100,3 +100,108 @@ async def test_get_operations_service_dependency_factory():
 
     assert isinstance(service, OperationsService)
     assert service.repo is not None
+
+
+async def test_lineage_keys_success(async_test_client):
+    client, mock_service = async_test_client
+    mock_service.get_lineage_keys.return_value = {
+        "portfolio_id": "P1",
+        "total": 1,
+        "skip": 0,
+        "limit": 50,
+        "items": [
+            {
+                "security_id": "S1",
+                "epoch": 2,
+                "watermark_date": date(2025, 8, 1),
+                "reprocessing_status": "CURRENT",
+            }
+        ],
+    }
+
+    response = await client.get("/lineage/portfolios/P1/keys?reprocessing_status=CURRENT")
+
+    assert response.status_code == 200
+    assert response.json()["items"][0]["security_id"] == "S1"
+
+
+async def test_valuation_jobs_success(async_test_client):
+    client, mock_service = async_test_client
+    mock_service.get_valuation_jobs.return_value = {
+        "portfolio_id": "P1",
+        "total": 1,
+        "skip": 0,
+        "limit": 100,
+        "items": [
+            {
+                "job_type": "VALUATION",
+                "business_date": date(2025, 8, 31),
+                "status": "PENDING",
+                "security_id": "S1",
+                "epoch": 1,
+                "attempt_count": 0,
+                "failure_reason": None,
+            }
+        ],
+    }
+
+    response = await client.get("/support/portfolios/P1/valuation-jobs?status=PENDING")
+
+    assert response.status_code == 200
+    assert response.json()["items"][0]["job_type"] == "VALUATION"
+
+
+async def test_valuation_jobs_unexpected_maps_to_500(async_test_client):
+    client, mock_service = async_test_client
+    mock_service.get_valuation_jobs.side_effect = RuntimeError("boom")
+
+    response = await client.get("/support/portfolios/P1/valuation-jobs?status=PENDING")
+
+    assert response.status_code == 500
+    assert "valuation jobs" in response.json()["detail"].lower()
+
+
+async def test_aggregation_jobs_success(async_test_client):
+    client, mock_service = async_test_client
+    mock_service.get_aggregation_jobs.return_value = {
+        "portfolio_id": "P1",
+        "total": 1,
+        "skip": 0,
+        "limit": 100,
+        "items": [
+            {
+                "job_type": "AGGREGATION",
+                "business_date": date(2025, 8, 31),
+                "status": "PROCESSING",
+                "security_id": None,
+                "epoch": None,
+                "attempt_count": None,
+                "failure_reason": None,
+            }
+        ],
+    }
+
+    response = await client.get("/support/portfolios/P1/aggregation-jobs?status=PROCESSING")
+
+    assert response.status_code == 200
+    assert response.json()["items"][0]["job_type"] == "AGGREGATION"
+
+
+async def test_aggregation_jobs_unexpected_maps_to_500(async_test_client):
+    client, mock_service = async_test_client
+    mock_service.get_aggregation_jobs.side_effect = RuntimeError("boom")
+
+    response = await client.get("/support/portfolios/P1/aggregation-jobs?status=PROCESSING")
+
+    assert response.status_code == 500
+    assert "aggregation jobs" in response.json()["detail"].lower()
+
+
+async def test_lineage_keys_unexpected_maps_to_500(async_test_client):
+    client, mock_service = async_test_client
+    mock_service.get_lineage_keys.side_effect = RuntimeError("boom")
+
+    response = await client.get("/lineage/portfolios/P1/keys?reprocessing_status=CURRENT")
+
+    assert response.status_code == 500
+    assert "lineage keys" in response.json()["detail"].lower()
