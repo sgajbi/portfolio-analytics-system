@@ -86,6 +86,19 @@ async def test_get_transactions_invalid_sort_falls_back_to_default(
     assert "ORDER BY transactions.transaction_date DESC" in compiled_query
 
 
+async def test_get_transactions_invalid_sort_order_falls_back_to_desc(
+    repository: TransactionRepository, mock_db_session: AsyncMock
+):
+    await repository.get_transactions(
+        portfolio_id="P1", skip=0, limit=100, sort_by="quantity", sort_order="invalid"
+    )
+
+    executed_stmt = mock_db_session.execute.call_args[0][0]
+    compiled_query = str(executed_stmt.compile(compile_kwargs={"literal_binds": True}))
+
+    assert "ORDER BY transactions.quantity DESC" in compiled_query
+
+
 async def test_get_transactions_with_all_filters(
     repository: TransactionRepository, mock_db_session: AsyncMock
 ):
@@ -130,3 +143,15 @@ async def test_get_transactions_count(
     assert "count(transactions.id)" in compiled_query.lower()
     assert "transactions.portfolio_id = 'P1'" in compiled_query
     assert "transactions.security_id = 'S1'" in compiled_query
+
+
+async def test_get_transactions_count_returns_zero_when_scalar_none(
+    repository: TransactionRepository, mock_db_session: AsyncMock
+):
+    mock_result_scalar_none = MagicMock()
+    mock_result_scalar_none.scalar.return_value = None
+    mock_db_session.execute = AsyncMock(return_value=mock_result_scalar_none)
+
+    count = await repository.get_transactions_count(portfolio_id="P_EMPTY")
+
+    assert count == 0

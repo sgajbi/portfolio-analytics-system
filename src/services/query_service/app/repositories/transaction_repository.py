@@ -69,7 +69,8 @@ class TransactionRepository:
         if sort_by and sort_by in ALLOWED_SORT_FIELDS:
             sort_field = sort_by
 
-        sort_direction = desc if sort_order == "desc" else asc
+        normalized_sort_order = (sort_order or "desc").lower()
+        sort_direction = asc if normalized_sort_order == "asc" else desc
         order_clause = sort_direction(getattr(Transaction, sort_field))
 
         stmt = stmt.order_by(order_clause)
