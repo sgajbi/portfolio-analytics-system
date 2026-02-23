@@ -139,3 +139,25 @@ async def test_mwr_success(async_test_client):
     assert response.status_code == 200
     assert response.json()["summary"]["YTD"]["mwr"] == 4.2
     assert "X-Correlation-ID" in response.headers
+
+
+async def test_mwr_not_found_maps_to_404(async_test_client):
+    client, _, mock_mwr_service = async_test_client
+    mock_mwr_service.calculate_mwr.side_effect = ValueError("Portfolio P404 not found")
+
+    response = await client.post("/portfolios/P404/performance/mwr", json=mwr_request_payload())
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Portfolio P404 not found"
+    assert "X-Correlation-ID" in response.headers
+
+
+async def test_mwr_unexpected_maps_to_500(async_test_client):
+    client, _, mock_mwr_service = async_test_client
+    mock_mwr_service.calculate_mwr.side_effect = RuntimeError("unexpected")
+
+    response = await client.post("/portfolios/P500/performance/mwr", json=mwr_request_payload())
+
+    assert response.status_code == 500
+    assert "unexpected server error occurred" in response.json()["detail"].lower()
+    assert "X-Correlation-ID" in response.headers

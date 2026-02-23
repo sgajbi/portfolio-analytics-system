@@ -78,3 +78,14 @@ async def test_calculate_concentration_portfolio_not_found(async_test_client):
     
     assert response.status_code == 404
     assert response.json()["detail"] == f"Portfolio {portfolio_id} not found"
+
+
+async def test_calculate_concentration_unexpected_error(async_test_client):
+    client, mock_service = async_test_client
+    mock_service.calculate_concentration.side_effect = RuntimeError("boom")
+
+    request_payload = {"scope": {"as_of_date": "2025-08-31"}, "metrics": ["BULK"]}
+    response = await client.post("/portfolios/P1/concentration", json=request_payload)
+
+    assert response.status_code == 500
+    assert "concentration calculation" in response.json()["detail"].lower()

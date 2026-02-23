@@ -27,8 +27,7 @@ async def async_test_client():
     mock_service.get_position_analytics = AsyncMock(return_value=mock_response)
 
     app.dependency_overrides[get_position_analytics_service] = lambda: mock_service
-    
-    transport = httpx.ASGITransport(app=app)
+
     async with httpx.ASGITransport(app=app) as transport:
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
             yield client, mock_service
@@ -79,3 +78,14 @@ async def test_get_position_analytics_portfolio_not_found(async_test_client):
     
     assert response.status_code == 404
     assert response.json()["detail"] == f"Portfolio {portfolio_id} not found"
+
+
+async def test_get_position_analytics_unexpected_error(async_test_client):
+    client, mock_service = async_test_client
+    mock_service.get_position_analytics.side_effect = RuntimeError("boom")
+
+    request_payload = {"asOfDate": "2025-08-31", "sections": ["BASE"]}
+    response = await client.post("/portfolios/P1/positions-analytics", json=request_payload)
+
+    assert response.status_code == 500
+    assert "unexpected server error occurred" in response.json()["detail"].lower()
