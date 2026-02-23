@@ -13,6 +13,7 @@ from src.services.query_service.app.dtos.summary_dto import (
     IncomeSummary, ActivitySummary
 )
 from src.services.query_service.app.routers.summary import get_summary_service
+from sqlalchemy.ext.asyncio import AsyncSession
 
 pytestmark = pytest.mark.asyncio
 
@@ -116,3 +117,27 @@ async def test_get_portfolio_summary_not_found(async_test_client):
     
     assert response.status_code == 404
     assert response.json()["detail"] == f"Portfolio {portfolio_id} not found"
+
+
+async def test_get_portfolio_summary_unexpected_error_maps_to_500(async_test_client):
+    client, mock_service = async_test_client
+    mock_service.get_portfolio_summary.side_effect = RuntimeError("boom")
+
+    request_payload = {
+        "as_of_date": "2025-08-29",
+        "period": {"type": "YTD"},
+        "sections": ["WEALTH"],
+    }
+
+    response = await client.post("/portfolios/P1/summary", json=request_payload)
+
+    assert response.status_code == 500
+    assert "summary calculation" in response.json()["detail"].lower()
+
+
+async def test_get_summary_service_dependency_factory():
+    db = AsyncMock(spec=AsyncSession)
+    service = get_summary_service(db)
+
+    assert isinstance(service, SummaryService)
+    assert service.db is db
