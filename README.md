@@ -72,21 +72,8 @@ Follow these steps to set up the development environment.
 
 4.  **Install Dependencies**:
     ```bash
-    python -m pip install --upgrade pip wheel
-    pip install -e "src/libs/financial-calculator-engine"
-    pip install -e "src/libs/performance-calculator-engine"
-    pip install -e "src/libs/concentration-analytics-engine"
-    pip install -e "src/libs/risk-analytics-engine"
-    pip install -e "src/libs/portfolio-common" 
-    pip install -r src/services/ingestion_service/requirements.txt
-    pip install -r src/services/persistence_service/requirements.txt
-    pip install -r src/services/calculators/position_calculator/requirements.txt
-    pip install -r src/services/calculators/cashflow_calculator_service/requirements.txt
-    pip install -r src/services/calculators/cost_calculator_service/requirements.txt
-    pip install -r src/services/calculators/position_valuation_calculator/requirements.txt
-    pip install -r src/services/timeseries_generator_service/requirements.txt
-    pip install -r src/services/query_service/requirements.txt
-    pip install -r tests/requirements.txt
+    python -m pip install --upgrade pip
+    make install
     ```
 
 5.  **Set Up Environment Variables**:
@@ -139,23 +126,22 @@ Follow these steps to set up the development environment.
 
 ## Running Tests
 
-To run the full suite of unit and integration tests:
+To run the enforced unit test gate:
 
 ```bash
-pytest
-````
-
-To run tests for a specific directory:
-
-```bash
-pytest tests/unit/
-pytest tests/integration/
+make test
 ```
 
-To get a coverage report:
+To run the query-service unit suite directly:
 
 ```bash
-pytest --cov=src
+pytest tests/unit/services/query_service -q
+```
+
+To run the full local quality gate (lint + mypy + tests):
+
+```bash
+make check
 ```
 
 ## Verifying the Workflow
@@ -194,13 +180,12 @@ pytest --cov=src
 
 ## Code Quality
 
-This project uses `black` for formatting and `ruff` for linting.
+This project uses a DPM-aligned engineering baseline:
 
 ```bash
-# Format code
-black .
-# Lint code
-ruff check .
+make lint
+make typecheck
+make check
 ```
 
 ## Tools

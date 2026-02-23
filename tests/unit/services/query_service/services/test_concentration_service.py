@@ -7,10 +7,11 @@ from decimal import Decimal
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.services.query_service.app.services.concentration_service import ConcentrationService
 from src.services.query_service.app.dtos.concentration_dto import ConcentrationRequest
-from portfolio_common.database_models import Portfolio, DailyPositionSnapshot, Instrument, PositionState
-from portfolio_common.monitoring import (
-    CONCENTRATION_CALCULATION_DURATION_SECONDS,
-    CONCENTRATION_LOOKTHROUGH_REQUESTS_TOTAL
+from portfolio_common.database_models import (
+    Portfolio,
+    DailyPositionSnapshot,
+    Instrument,
+    PositionState,
 )
 
 pytestmark = pytest.mark.asyncio
@@ -27,11 +28,15 @@ def mock_dependencies():
     )
 
     mock_snapshot_1 = DailyPositionSnapshot(security_id="S1_JPM", market_value=Decimal("60000"))
-    mock_instrument_1 = Instrument(name="JPM Bond", issuer_id="JPM_ISSUER", ultimate_parent_issuer_id="JPM_PARENT")
+    mock_instrument_1 = Instrument(
+        name="JPM Bond", issuer_id="JPM_ISSUER", ultimate_parent_issuer_id="JPM_PARENT"
+    )
     mock_state_1 = PositionState(status="CURRENT")
 
     mock_snapshot_2 = DailyPositionSnapshot(security_id="S2_MSFT", market_value=Decimal("40000"))
-    mock_instrument_2 = Instrument(name="Microsoft Stock", issuer_id="MSFT_ISSUER", ultimate_parent_issuer_id="MSFT_PARENT")
+    mock_instrument_2 = Instrument(
+        name="Microsoft Stock", issuer_id="MSFT_ISSUER", ultimate_parent_issuer_id="MSFT_PARENT"
+    )
     mock_state_2 = PositionState(status="CURRENT")
 
     mock_position_repo.get_latest_positions_by_portfolio.return_value = [
@@ -39,15 +44,18 @@ def mock_dependencies():
         (mock_snapshot_2, mock_instrument_2, mock_state_2),
     ]
 
-    with patch(
-        "src.services.query_service.app.services.concentration_service.PortfolioRepository",
-        return_value=mock_portfolio_repo
-    ), patch(
-        "src.services.query_service.app.services.concentration_service.PositionRepository",
-        return_value=mock_position_repo
+    with (
+        patch(
+            "src.services.query_service.app.services.concentration_service.PortfolioRepository",
+            return_value=mock_portfolio_repo,
+        ),
+        patch(
+            "src.services.query_service.app.services.concentration_service.PositionRepository",
+            return_value=mock_position_repo,
+        ),
     ):
         service = ConcentrationService(AsyncMock(spec=AsyncSession))
-        yield { "service": service, "position_repo": mock_position_repo }
+        yield {"service": service, "position_repo": mock_position_repo}
 
 
 async def test_calculate_bulk_concentration(mock_dependencies):
@@ -58,11 +66,9 @@ async def test_calculate_bulk_concentration(mock_dependencies):
     """
     # ARRANGE
     service = mock_dependencies["service"]
-    request = ConcentrationRequest.model_validate({
-        "scope": {"as_of_date": "2025-08-31"},
-        "metrics": ["BULK"],
-        "options": {"bulk_top_n": [1]}
-    })
+    request = ConcentrationRequest.model_validate(
+        {"scope": {"as_of_date": "2025-08-31"}, "metrics": ["BULK"], "options": {"bulk_top_n": [1]}}
+    )
 
     # ACT
     response = await service.calculate_concentration("P1", request)
@@ -70,10 +76,10 @@ async def test_calculate_bulk_concentration(mock_dependencies):
     # ASSERT
     assert response.scope.as_of_date == date(2025, 8, 31)
     assert response.summary.portfolio_market_value == pytest.approx(100000.0)
-    
+
     bulk = response.bulk_concentration
     assert bulk is not None
-    
+
     assert bulk.single_position_weight == pytest.approx(0.6)
     assert bulk.hhi == pytest.approx(0.52)
     assert bulk.top_n_weights["1"] == pytest.approx(0.6)
@@ -87,11 +93,13 @@ async def test_calculate_issuer_concentration(mock_dependencies):
     """
     # ARRANGE
     service = mock_dependencies["service"]
-    request = ConcentrationRequest.model_validate({
-        "scope": {"as_of_date": "2025-08-31"},
-        "metrics": ["ISSUER"],
-        "options": {"issuer_top_n": 5}
-    })
+    request = ConcentrationRequest.model_validate(
+        {
+            "scope": {"as_of_date": "2025-08-31"},
+            "metrics": ["ISSUER"],
+            "options": {"issuer_top_n": 5},
+        }
+    )
 
     # ACT
     response = await service.calculate_concentration("P1", request)
@@ -121,12 +129,11 @@ async def test_calculate_concentration_for_empty_portfolio(mock_dependencies):
     # ARRANGE
     service = mock_dependencies["service"]
     mock_position_repo = mock_dependencies["position_repo"]
-    mock_position_repo.get_latest_positions_by_portfolio.return_value = [] 
+    mock_position_repo.get_latest_positions_by_portfolio.return_value = []
 
-    request = ConcentrationRequest.model_validate({
-        "scope": {"as_of_date": "2025-08-31"},
-        "metrics": ["BULK", "ISSUER"]
-    })
+    request = ConcentrationRequest.model_validate(
+        {"scope": {"as_of_date": "2025-08-31"}, "metrics": ["BULK", "ISSUER"]}
+    )
 
     # ACT
     response = await service.calculate_concentration("P1", request)
@@ -137,7 +144,10 @@ async def test_calculate_concentration_for_empty_portfolio(mock_dependencies):
     assert response.bulk_concentration.single_position_weight == 0.0
     assert response.issuer_concentration.top_exposures == []
 
-@patch('src.services.query_service.app.services.concentration_service.CONCENTRATION_CALCULATION_DURATION_SECONDS')
+
+@patch(
+    "src.services.query_service.app.services.concentration_service.CONCENTRATION_CALCULATION_DURATION_SECONDS"
+)
 async def test_calculate_concentration_records_metric(mock_metric_histogram, mock_dependencies):
     """
     GIVEN a valid request
@@ -146,11 +156,10 @@ async def test_calculate_concentration_records_metric(mock_metric_histogram, moc
     """
     # ARRANGE
     service = mock_dependencies["service"]
-    request = ConcentrationRequest.model_validate({
-        "scope": {"as_of_date": "2025-08-31"},
-        "metrics": ["BULK"]
-    })
-    
+    request = ConcentrationRequest.model_validate(
+        {"scope": {"as_of_date": "2025-08-31"}, "metrics": ["BULK"]}
+    )
+
     # ACT
     await service.calculate_concentration("P1", request)
 
@@ -159,12 +168,18 @@ async def test_calculate_concentration_records_metric(mock_metric_histogram, moc
     mock_metric_histogram.labels.return_value.time.return_value.__enter__.assert_called_once()
     mock_metric_histogram.labels.return_value.time.return_value.__exit__.assert_called_once()
 
-@patch('src.services.query_service.app.services.concentration_service.CONCENTRATION_LOOKTHROUGH_REQUESTS_TOTAL')
-@pytest.mark.parametrize("lookthrough_enabled, metrics, expected_calls", [
-    (True, ["ISSUER", "BULK"], 1),
-    (False, ["ISSUER", "BULK"], 0),
-    (True, ["BULK"], 0),
-])
+
+@patch(
+    "src.services.query_service.app.services.concentration_service.CONCENTRATION_LOOKTHROUGH_REQUESTS_TOTAL"
+)
+@pytest.mark.parametrize(
+    "lookthrough_enabled, metrics, expected_calls",
+    [
+        (True, ["ISSUER", "BULK"], 1),
+        (False, ["ISSUER", "BULK"], 0),
+        (True, ["BULK"], 0),
+    ],
+)
 async def test_calculate_concentration_records_lookthrough_metric(
     mock_metric_counter, lookthrough_enabled, metrics, expected_calls, mock_dependencies
 ):
@@ -175,11 +190,13 @@ async def test_calculate_concentration_records_lookthrough_metric(
     """
     # ARRANGE
     service = mock_dependencies["service"]
-    request = ConcentrationRequest.model_validate({
-        "scope": {"as_of_date": "2025-08-31"},
-        "metrics": metrics,
-        "options": {"lookthrough_enabled": lookthrough_enabled}
-    })
+    request = ConcentrationRequest.model_validate(
+        {
+            "scope": {"as_of_date": "2025-08-31"},
+            "metrics": metrics,
+            "options": {"lookthrough_enabled": lookthrough_enabled},
+        }
+    )
 
     # ACT
     await service.calculate_concentration("P1", request)

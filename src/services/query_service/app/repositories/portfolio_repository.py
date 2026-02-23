@@ -8,10 +8,12 @@ from portfolio_common.database_models import Portfolio
 
 logger = logging.getLogger(__name__)
 
+
 class PortfolioRepository:
     """
     Handles read-only database queries for portfolio data.
     """
+
     def __init__(self, db: AsyncSession):
         self.db = db
 
@@ -19,7 +21,7 @@ class PortfolioRepository:
         self,
         portfolio_id: Optional[str] = None,
         cif_id: Optional[str] = None,
-        booking_center: Optional[str] = None
+        booking_center: Optional[str] = None,
     ) -> List[Portfolio]:
         """
         Retrieves a list of portfolios with optional filters.

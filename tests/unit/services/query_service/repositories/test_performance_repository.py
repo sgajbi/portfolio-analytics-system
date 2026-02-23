@@ -8,6 +8,7 @@ from src.services.query_service.app.repositories.performance_repository import P
 
 pytestmark = pytest.mark.asyncio
 
+
 @pytest.fixture
 def mock_db_session() -> AsyncMock:
     """Provides a mock SQLAlchemy AsyncSession."""
@@ -17,12 +18,16 @@ def mock_db_session() -> AsyncMock:
     session.execute = AsyncMock(return_value=mock_result)
     return session
 
+
 @pytest.fixture
 def repository(mock_db_session: AsyncMock) -> PerformanceRepository:
     """Provides an instance of the repository with a mock session."""
     return PerformanceRepository(mock_db_session)
 
-async def test_get_portfolio_timeseries_for_range_constructs_correct_query(repository: PerformanceRepository, mock_db_session: AsyncMock):
+
+async def test_get_portfolio_timeseries_for_range_constructs_correct_query(
+    repository: PerformanceRepository, mock_db_session: AsyncMock
+):
     """
     GIVEN a portfolio ID and date range
     WHEN get_portfolio_timeseries_for_range is called
@@ -30,9 +35,7 @@ async def test_get_portfolio_timeseries_for_range_constructs_correct_query(repos
     """
     # ACT
     await repository.get_portfolio_timeseries_for_range(
-        portfolio_id="P1",
-        start_date=date(2025, 1, 1),
-        end_date=date(2025, 1, 31)
+        portfolio_id="P1", start_date=date(2025, 1, 1), end_date=date(2025, 1, 31)
     )
 
     # ASSERT
@@ -44,7 +47,7 @@ async def test_get_portfolio_timeseries_for_range_constructs_correct_query(repos
     assert "portfolio_timeseries.date >= '2025-01-01'" in compiled_query
     assert "portfolio_timeseries.date <= '2025-01-31'" in compiled_query
     assert "ORDER BY portfolio_timeseries.date ASC" in compiled_query
-    
+
     # Verify the critical epoch-filtering subquery components more robustly
     assert "portfolio_timeseries.epoch = (SELECT max(position_state.epoch)" in compiled_query
     assert "FROM position_state" in compiled_query

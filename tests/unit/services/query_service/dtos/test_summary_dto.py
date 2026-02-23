@@ -5,6 +5,7 @@ from datetime import date
 
 from src.services.query_service.app.dtos.summary_dto import SummaryRequest
 
+
 def test_summary_request_valid():
     """
     GIVEN a valid raw request dictionary
@@ -13,25 +14,18 @@ def test_summary_request_valid():
     """
     payload = {
         "as_of_date": "2025-08-29",
-        "period": {
-            "type": "YTD"
-        },
-        "sections": [
-            "WEALTH",
-            "ALLOCATION"
-        ],
-        "allocation_dimensions": [
-            "ASSET_CLASS",
-            "CURRENCY"
-        ]
+        "period": {"type": "YTD"},
+        "sections": ["WEALTH", "ALLOCATION"],
+        "allocation_dimensions": ["ASSET_CLASS", "CURRENCY"],
     }
-    
+
     request = SummaryRequest.model_validate(payload)
-    
+
     assert request.as_of_date == date(2025, 8, 29)
     assert request.period.type == "YTD"
     assert len(request.sections) == 2
     assert len(request.allocation_dimensions) == 2
+
 
 def test_summary_request_invalid_section_fails():
     """
@@ -42,11 +36,12 @@ def test_summary_request_invalid_section_fails():
     payload = {
         "as_of_date": "2025-08-29",
         "period": {"type": "YTD"},
-        "sections": ["WEALTH", "INVALID_SECTION"]
+        "sections": ["WEALTH", "INVALID_SECTION"],
     }
-    
+
     with pytest.raises(ValidationError):
         SummaryRequest.model_validate(payload)
+
 
 def test_summary_request_invalid_dimension_fails():
     """
@@ -58,11 +53,12 @@ def test_summary_request_invalid_dimension_fails():
         "as_of_date": "2025-08-29",
         "period": {"type": "YTD"},
         "sections": ["ALLOCATION"],
-        "allocation_dimensions": ["ASSET_CLASS", "INVALID_DIMENSION"]
+        "allocation_dimensions": ["ASSET_CLASS", "INVALID_DIMENSION"],
     }
-    
+
     with pytest.raises(ValidationError):
         SummaryRequest.model_validate(payload)
+
 
 def test_summary_request_missing_required_field_fails():
     """
@@ -73,7 +69,7 @@ def test_summary_request_missing_required_field_fails():
     payload = {
         # as_of_date is missing
         "period": {"type": "YTD"},
-        "sections": ["WEALTH"]
+        "sections": ["WEALTH"],
     }
 
     with pytest.raises(ValidationError):

@@ -1,7 +1,6 @@
 # tests/unit/services/query_service/services/test_instrument_service.py
 import pytest
 from unittest.mock import AsyncMock, patch
-from typing import List
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.services.query_service.app.services.instrument_service import InstrumentService
@@ -10,26 +9,34 @@ from portfolio_common.database_models import Instrument
 
 pytestmark = pytest.mark.asyncio
 
+
 @pytest.fixture
 def mock_instrument_repo() -> AsyncMock:
     """Provides a mock InstrumentRepository."""
     repo = AsyncMock(spec=InstrumentRepository)
-    
+
     # Mock the data returned by the repository
     repo.get_instruments.return_value = [
         Instrument(
-            security_id="SEC1", name="Test Instrument 1", isin="ISIN1", 
-            currency="USD", product_type="Equity"
+            security_id="SEC1",
+            name="Test Instrument 1",
+            isin="ISIN1",
+            currency="USD",
+            product_type="Equity",
         ),
         Instrument(
-            security_id="SEC2", name="Test Instrument 2", isin="ISIN2", 
-            currency="SGD", product_type="Bond"
+            security_id="SEC2",
+            name="Test Instrument 2",
+            isin="ISIN2",
+            currency="SGD",
+            product_type="Bond",
         ),
     ]
     repo.get_by_security_ids.return_value = repo.get_instruments.return_value
-    repo.get_instruments_count.return_value = 50 # Total count for pagination
-    
+    repo.get_instruments_count.return_value = 50  # Total count for pagination
+
     return repo
+
 
 async def test_get_instruments_by_ids(mock_instrument_repo: AsyncMock):
     """
@@ -41,7 +48,7 @@ async def test_get_instruments_by_ids(mock_instrument_repo: AsyncMock):
     # FIX: Use a valid Python module path (dots instead of slashes) for the patch.
     with patch(
         "src.services.query_service.app.services.instrument_service.InstrumentRepository",
-        return_value=mock_instrument_repo
+        return_value=mock_instrument_repo,
     ):
         service = InstrumentService(AsyncMock(spec=AsyncSession))
         security_ids = ["SEC1", "SEC2"]
@@ -54,6 +61,7 @@ async def test_get_instruments_by_ids(mock_instrument_repo: AsyncMock):
         assert len(response_dto) == 2
         assert response_dto[0].security_id == "SEC1"
 
+
 async def test_get_instruments(mock_instrument_repo: AsyncMock):
     """
     GIVEN pagination and filter parameters
@@ -65,17 +73,12 @@ async def test_get_instruments(mock_instrument_repo: AsyncMock):
     # FIX: Use a valid Python module path (dots instead of slashes) for the patch.
     with patch(
         "src.services.query_service.app.services.instrument_service.InstrumentRepository",
-        return_value=mock_instrument_repo
+        return_value=mock_instrument_repo,
     ):
         mock_db_session = AsyncMock(spec=AsyncSession)
         service = InstrumentService(mock_db_session)
-        
-        params = {
-            "skip": 10,
-            "limit": 20,
-            "security_id": "SEC1",
-            "product_type": "Equity"
-        }
+
+        params = {"skip": 10, "limit": 20, "security_id": "SEC1", "product_type": "Equity"}
 
         # ACT
         response_dto = await service.get_instruments(**params)
@@ -92,7 +95,7 @@ async def test_get_instruments(mock_instrument_repo: AsyncMock):
         assert response_dto.skip == 10
         assert response_dto.limit == 20
         assert len(response_dto.instruments) == 2
-        
+
         # 3. Assert the mapping from DB model to DTO is correct
         assert response_dto.instruments[0].security_id == "SEC1"
         assert response_dto.instruments[1].product_type == "Bond"

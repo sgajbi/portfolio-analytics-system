@@ -9,10 +9,12 @@ from portfolio_common.database_models import Portfolio
 
 logger = logging.getLogger(__name__)
 
+
 class PortfolioService:
     """
     Handles the business logic for querying portfolio data.
     """
+
     def __init__(self, db: AsyncSession):
         self.db = db
         self.repo = PortfolioRepository(db)
@@ -21,17 +23,17 @@ class PortfolioService:
         self,
         portfolio_id: Optional[str] = None,
         cif_id: Optional[str] = None,
-        booking_center: Optional[str] = None
+        booking_center: Optional[str] = None,
     ) -> PortfolioQueryResponse:
         """
         Retrieves a filtered list of portfolios.
         """
-        logger.info(f"Fetching portfolios with filters: portfolio_id={portfolio_id}, cif_id={cif_id}, booking_center={booking_center}")
+        logger.info(
+            f"Fetching portfolios with filters: portfolio_id={portfolio_id}, cif_id={cif_id}, booking_center={booking_center}"
+        )
 
         db_results = await self.repo.get_portfolios(
-            portfolio_id=portfolio_id,
-            cif_id=cif_id,
-            booking_center=booking_center
+            portfolio_id=portfolio_id, cif_id=cif_id, booking_center=booking_center
         )
 
         portfolios = [PortfolioRecord.model_validate(p) for p in db_results]

@@ -9,10 +9,12 @@ from portfolio_common.utils import async_timed
 
 logger = logging.getLogger(__name__)
 
+
 class InstrumentRepository:
     """
     Handles read-only database queries for instrument data.
     """
+
     def __init__(self, db: AsyncSession):
         self.db = db
 
@@ -26,9 +28,7 @@ class InstrumentRepository:
         return result.scalars().all()
 
     def _get_base_query(
-        self,
-        security_id: Optional[str] = None,
-        product_type: Optional[str] = None
+        self, security_id: Optional[str] = None, product_type: Optional[str] = None
     ):
         """
         Constructs a base query with all the common filters.
@@ -45,21 +45,21 @@ class InstrumentRepository:
         skip: int,
         limit: int,
         security_id: Optional[str] = None,
-        product_type: Optional[str] = None
+        product_type: Optional[str] = None,
     ) -> List[Instrument]:
         """
         Retrieves a paginated list of instruments with optional filters.
         """
         stmt = self._get_base_query(security_id, product_type)
-        results = await self.db.execute(stmt.order_by(Instrument.name.asc()).offset(skip).limit(limit))
+        results = await self.db.execute(
+            stmt.order_by(Instrument.name.asc()).offset(skip).limit(limit)
+        )
         instruments = results.scalars().all()
         logger.info(f"Found {len(instruments)} instruments with given filters.")
         return instruments
 
     async def get_instruments_count(
-        self,
-        security_id: Optional[str] = None,
-        product_type: Optional[str] = None
+        self, security_id: Optional[str] = None, product_type: Optional[str] = None
     ) -> int:
         """
         Returns the total count of instruments for the given filters.
