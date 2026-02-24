@@ -21,8 +21,8 @@ def get_review_service(db: AsyncSession = Depends(get_async_db_session)) -> Revi
     "/{portfolio_id}/review",
     response_model=PortfolioReviewResponse,
     response_model_by_alias=True,
-    # REMOVED: response_model_exclude_none=True
-    summary="Generate a Comprehensive Portfolio Review Report",
+    deprecated=True,
+    summary="Generate a Comprehensive Portfolio Review Report (Deprecated: moved to RAS)",
 )
 async def get_portfolio_review(
     portfolio_id: str,
@@ -30,6 +30,10 @@ async def get_portfolio_review(
     review_service: ReviewService = Depends(get_review_service),
 ):
     """
+    Deprecated: reporting endpoint ownership has moved to RAS.
+    Use `reporting-aggregation-service` endpoint:
+    `POST /reports/portfolios/{portfolio_id}/review`.
+
     Orchestrates and retrieves a consolidated, multi-section report for a portfolio,
     ensuring all data is calculated from a consistent, atomic snapshot of the
     portfolio's active data version.
