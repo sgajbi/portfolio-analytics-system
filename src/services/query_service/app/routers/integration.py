@@ -38,6 +38,8 @@ async def get_portfolio_core_snapshot(
         return await integration_service.get_portfolio_core_snapshot(portfolio_id, request)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    except PermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
     except Exception:
         logger.exception("Failed to build PAS integration snapshot for portfolio %s", portfolio_id)
         raise HTTPException(

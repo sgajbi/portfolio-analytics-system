@@ -32,5 +32,7 @@ Introduces a versioned PAS integration contract endpoint that provides a canonic
 
 ## Next Steps
 
-1. Add `v2` with explicit provenance metadata (`source_system`, `correlation_id`, `generated_at`).
-2. Add BFF-level adapters to map PAS contract into UI-specific view models.
+1. Completed via `RFC 043 - PAS Core Snapshot Contract Hardening (Freshness, Lineage, Section Governance)`:
+   - explicit provenance/freshness metadata,
+   - policy-driven section governance controls.
+2. Continue BFF-level adapters to map PAS contract into UI-specific view models.
