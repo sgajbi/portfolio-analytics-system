@@ -451,6 +451,22 @@ def test_get_effective_policy_uses_tenant_strictmode_rule_when_no_section_rules(
     assert response.policy_provenance.strict_mode is True
 
 
+def test_get_effective_policy_returns_context_sections_when_include_sections_not_provided(
+    service: IntegrationService, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setenv(
+        "PAS_INTEGRATION_SNAPSHOT_POLICY_JSON",
+        '{"strictMode":false,"consumers":{"PA":["OVERVIEW","HOLDINGS"]}}',
+    )
+    response = service.get_effective_policy(
+        consumer_system="PA",
+        tenant_id="default",
+        include_sections=None,
+    )
+    assert response.allowed_sections == ["OVERVIEW", "HOLDINGS"]
+    assert response.warnings == []
+
+
 def test_get_effective_policy_delegates_analytics_sections_to_pa_in_non_strict_mode(
     service: IntegrationService, monkeypatch: pytest.MonkeyPatch
 ):
