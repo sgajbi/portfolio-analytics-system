@@ -96,7 +96,9 @@ class PositionService:
                         market_value=fallback_valuation.get("market_value"),
                         unrealized_gain_loss=fallback_valuation.get("unrealized_gain_loss"),
                         market_value_local=fallback_valuation.get("market_value_local"),
-                        unrealized_gain_loss_local=fallback_valuation.get("unrealized_gain_loss_local"),
+                        unrealized_gain_loss_local=fallback_valuation.get(
+                            "unrealized_gain_loss_local"
+                        ),
                     )
                 else:
                     # Maintain valuation continuity while snapshot backfill catches up.

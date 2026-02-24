@@ -206,7 +206,9 @@ class PositionRepository:
         )
         return positions
 
-    async def get_latest_snapshot_valuation_map(self, portfolio_id: str) -> dict[str, dict[str, float | None]]:
+    async def get_latest_snapshot_valuation_map(
+        self, portfolio_id: str
+    ) -> dict[str, dict[str, float | None]]:
         """
         Returns latest available valuation fields by security from daily snapshots,
         regardless of epoch. Used to enrich fallback position-history rows.
@@ -218,7 +220,9 @@ class PositionRepository:
                 DailyPositionSnapshot.market_value.label("market_value"),
                 DailyPositionSnapshot.unrealized_gain_loss.label("unrealized_gain_loss"),
                 DailyPositionSnapshot.market_value_local.label("market_value_local"),
-                DailyPositionSnapshot.unrealized_gain_loss_local.label("unrealized_gain_loss_local"),
+                DailyPositionSnapshot.unrealized_gain_loss_local.label(
+                    "unrealized_gain_loss_local"
+                ),
                 func.row_number()
                 .over(
                     partition_by=DailyPositionSnapshot.security_id,

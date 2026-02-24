@@ -182,7 +182,8 @@ class CapabilitiesService:
                 enabled=policy_workflow_overrides.get(
                     "pa_performance_calculation",
                     all(
-                        feature_states[key] for key in _WORKFLOW_DEPENDENCIES["pa_performance_calculation"]
+                        feature_states[key]
+                        for key in _WORKFLOW_DEPENDENCIES["pa_performance_calculation"]
                     ),
                 ),
                 required_features=["pas.integration.performance_input"],
