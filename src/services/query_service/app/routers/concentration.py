@@ -13,7 +13,12 @@ router = APIRouter(prefix="/portfolios", tags=["Concentration Analytics"])
 @router.post(
     "/{portfolio_id}/concentration",
     response_model=ConcentrationResponse,
-    summary="Calculate On-the-Fly Portfolio Concentration Analytics",
+    summary="[Deprecated] Calculate On-the-Fly Portfolio Concentration Analytics",
+    description=(
+        "Deprecated: concentration analytics ownership has moved to PA. "
+        "Use PA analytics contracts for concentration metrics."
+    ),
+    deprecated=True,
 )
 async def calculate_concentration(
     portfolio_id: str,

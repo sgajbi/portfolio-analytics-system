@@ -21,8 +21,12 @@ def get_risk_service(db: AsyncSession = Depends(get_async_db_session)) -> RiskSe
     "/{portfolio_id}/risk",
     response_model=RiskResponse,
     response_model_exclude_none=True,
-    summary="Calculate On-the-Fly Portfolio Risk Analytics",
-    description="Calculates a set of portfolio risk metrics (e.g., Volatility, Sharpe, VaR) for one or more specified periods.",
+    summary="[Deprecated] Calculate On-the-Fly Portfolio Risk Analytics",
+    description=(
+        "Deprecated: advanced risk analytics ownership has moved to PA. "
+        "Use PA APIs for authoritative risk calculations."
+    ),
+    deprecated=True,
 )
 async def calculate_risk(
     portfolio_id: str, request: RiskRequest, risk_service: RiskService = Depends(get_risk_service)
