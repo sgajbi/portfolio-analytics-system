@@ -54,7 +54,9 @@ class SimulationService:
         session = await self.repo.close_session(session)
         return SimulationSessionResponse(session=session)
 
-    async def add_changes(self, session_id: str, changes: list[dict[str, Any]]) -> SimulationChangesResponse:
+    async def add_changes(
+        self, session_id: str, changes: list[dict[str, Any]]
+    ) -> SimulationChangesResponse:
         session = await self.repo.get_session(session_id)
         self._validate_session_active(session_id, session)
 
@@ -85,7 +87,9 @@ class SimulationService:
         if session is None:
             raise ValueError(f"Simulation session {session_id} not found")
 
-        baseline_results = await self.position_repo.get_latest_positions_by_portfolio(session.portfolio_id)
+        baseline_results = await self.position_repo.get_latest_positions_by_portfolio(
+            session.portfolio_id
+        )
         use_snapshot = True
         if not baseline_results:
             baseline_results = await self.position_repo.get_latest_position_history_by_portfolio(

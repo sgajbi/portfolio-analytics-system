@@ -61,9 +61,18 @@ def mock_dependencies():
     ]
 
     with (
-        patch("src.services.query_service.app.services.simulation_service.SimulationRepository", return_value=repo),
-        patch("src.services.query_service.app.services.simulation_service.PositionRepository", return_value=position_repo),
-        patch("src.services.query_service.app.services.simulation_service.InstrumentRepository", return_value=instrument_repo),
+        patch(
+            "src.services.query_service.app.services.simulation_service.SimulationRepository",
+            return_value=repo,
+        ),
+        patch(
+            "src.services.query_service.app.services.simulation_service.PositionRepository",
+            return_value=position_repo,
+        ),
+        patch(
+            "src.services.query_service.app.services.simulation_service.InstrumentRepository",
+            return_value=instrument_repo,
+        ),
     ):
         yield repo, position_repo, instrument_repo
 
@@ -76,7 +85,9 @@ async def test_create_session_returns_session_response(mock_dependencies):
     request = SimulationSessionCreateRequest(portfolio_id="P1", created_by="tester", ttl_hours=24)
     response = await service.create_session(request)
 
-    repo.create_session.assert_awaited_once_with(portfolio_id="P1", created_by="tester", ttl_hours=24)
+    repo.create_session.assert_awaited_once_with(
+        portfolio_id="P1", created_by="tester", ttl_hours=24
+    )
     assert response.session.session_id == "S1"
 
 

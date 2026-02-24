@@ -58,7 +58,9 @@ class SimulationRepository:
                 portfolio_id=session.portfolio_id,
                 security_id=item["security_id"],
                 transaction_type=item["transaction_type"],
-                quantity=(Decimal(str(item["quantity"])) if item.get("quantity") is not None else None),
+                quantity=(
+                    Decimal(str(item["quantity"])) if item.get("quantity") is not None else None
+                ),
                 price=(Decimal(str(item["price"])) if item.get("price") is not None else None),
                 amount=(Decimal(str(item["amount"])) if item.get("amount") is not None else None),
                 currency=item.get("currency"),
