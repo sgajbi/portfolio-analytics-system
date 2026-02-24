@@ -64,3 +64,26 @@ def test_capabilities_ignores_invalid_tenant_policy_json(monkeypatch):
 
     assert response.policy_version == "tenant-default-v1"
     assert response.supported_input_modes == ["pas_ref"]
+
+
+def test_capabilities_ignores_non_object_overrides_payload(monkeypatch):
+    monkeypatch.setenv("PAS_CAPABILITY_TENANT_OVERRIDES_JSON", '["invalid"]')
+    service = CapabilitiesService()
+
+    response = service.get_integration_capabilities(consumer_system="PA", tenant_id="tenant-a")
+
+    assert response.policy_version == "tenant-default-v1"
+    assert response.supported_input_modes == ["pas_ref", "inline_bundle"]
+
+
+def test_capabilities_ignores_invalid_tenant_entries_and_non_dict_workflow_override(monkeypatch):
+    monkeypatch.setenv(
+        "PAS_CAPABILITY_TENANT_OVERRIDES_JSON",
+        ('{"tenant-x":{"workflows":["invalid"],"policyVersion":"tenant-x-v1"},"tenant-y":"bad"}'),
+    )
+    service = CapabilitiesService()
+    response = service.get_integration_capabilities(consumer_system="PA", tenant_id="tenant-x")
+
+    workflow_map = {workflow.workflow_key: workflow.enabled for workflow in response.workflows}
+    assert response.policy_version == "tenant-x-v1"
+    assert workflow_map["portfolio_bulk_onboarding"] is True

@@ -1,6 +1,6 @@
-from datetime import UTC, date, datetime
-from unittest.mock import AsyncMock, patch
+from datetime import UTC, date, datetime, timedelta
 from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -190,6 +190,33 @@ async def test_get_portfolio_core_snapshot_rejects_disallowed_sections_in_strict
         await service.get_portfolio_core_snapshot("P1", request)
 
 
+async def test_get_portfolio_core_snapshot_rejects_pa_owned_analytics_sections_in_strict_mode(
+    service: IntegrationService,
+    mock_portfolio_service: AsyncMock,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    mock_portfolio_service.get_portfolio_by_id.return_value = {
+        "portfolio_id": "P1",
+        "base_currency": "USD",
+        "open_date": date(2025, 1, 1),
+    }
+    monkeypatch.setenv(
+        "PAS_INTEGRATION_SNAPSHOT_POLICY_JSON",
+        '{"consumers":{"PA":["OVERVIEW","RISK_ANALYTICS"]},"strictMode":true}',
+    )
+
+    request = PortfolioCoreSnapshotRequest.model_validate(
+        {
+            "asOfDate": "2026-02-23",
+            "consumerSystem": "PA",
+            "includeSections": ["OVERVIEW", "RISK_ANALYTICS"],
+        }
+    )
+
+    with pytest.raises(PermissionError, match="not owned by PAS core snapshot contract"):
+        await service.get_portfolio_core_snapshot("P1", request)
+
+
 async def test_get_portfolio_performance_input(
     service: IntegrationService,
     mock_portfolio_service: AsyncMock,
@@ -241,6 +268,66 @@ async def test_get_portfolio_performance_input(
     assert response.valuation_points[1].bod_cf == 5.0
 
 
+async def test_get_portfolio_performance_input_rejects_when_rows_missing(
+    service: IntegrationService,
+    mock_portfolio_service: AsyncMock,
+    mock_performance_repository: AsyncMock,
+):
+    mock_portfolio_service.get_portfolio_by_id.return_value = {
+        "portfolio_id": "P1",
+        "base_currency": "USD",
+        "open_date": date(2025, 1, 1),
+    }
+    mock_performance_repository.get_portfolio_timeseries_for_range.return_value = []
+    request = PortfolioPerformanceInputRequest.model_validate(
+        {"asOfDate": "2026-02-21", "consumerSystem": "PA", "lookbackDays": 365}
+    )
+
+    with pytest.raises(ValueError, match="No portfolio_timeseries rows found"):
+        await service.get_portfolio_performance_input("P1", request)
+
+
+async def test_get_portfolio_core_snapshot_future_as_of_sets_unknown_freshness(
+    service: IntegrationService,
+    mock_portfolio_service: AsyncMock,
+    mock_review_service: AsyncMock,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setenv("PAS_INTEGRATION_MAX_STALENESS_DAYS", "1")
+    mock_portfolio_service.get_portfolio_by_id.return_value = {
+        "portfolio_id": "P1",
+        "base_currency": "USD",
+        "open_date": date(2025, 1, 1),
+        "close_date": None,
+        "risk_exposure": "MODERATE",
+        "investment_time_horizon": "LONG_TERM",
+        "portfolio_type": "DISCRETIONARY",
+        "objective": "GROWTH",
+        "booking_center": "LON-01",
+        "cif_id": "CIF-1",
+        "is_leverage_allowed": False,
+        "advisor_id": "ADV-1",
+        "status": "ACTIVE",
+    }
+    mock_review_service.get_portfolio_review.return_value = {
+        "portfolio_id": "P1",
+        "as_of_date": date(2027, 1, 1),
+        "overview": None,
+        "allocation": None,
+        "performance": None,
+        "riskAnalytics": None,
+        "incomeAndActivity": None,
+        "holdings": None,
+        "transactions": None,
+    }
+    request = PortfolioCoreSnapshotRequest.model_validate(
+        {"asOfDate": "2027-01-01", "consumerSystem": "PA", "includeSections": ["OVERVIEW"]}
+    )
+
+    response = await service.get_portfolio_core_snapshot("P1", request)
+    assert response.metadata.freshness_status == "UNKNOWN"
+
+
 def test_get_effective_policy_returns_context(
     service: IntegrationService, monkeypatch: pytest.MonkeyPatch
 ):
@@ -284,3 +371,112 @@ def test_get_effective_policy_with_tenant_override(
     assert response.policy_provenance.policy_source == "tenant"
     assert response.policy_provenance.strict_mode is True
     assert response.allowed_sections == ["HOLDINGS"]
+
+
+def test_get_effective_policy_returns_warning_when_no_section_restriction(
+    service: IntegrationService, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setenv("PAS_INTEGRATION_SNAPSHOT_POLICY_JSON", '{"strictMode":false}')
+    response = service.get_effective_policy(
+        consumer_system="pa",
+        tenant_id="default",
+        include_sections=None,
+    )
+    assert response.consumer_system == "PA"
+    assert response.allowed_sections == []
+    assert "NO_ALLOWED_SECTION_OVERRIDE" in response.warnings
+    assert "NO_ALLOWED_SECTION_RESTRICTION" in response.warnings
+
+
+def test_get_effective_policy_handles_invalid_json_policy(
+    service: IntegrationService, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setenv("PAS_INTEGRATION_SNAPSHOT_POLICY_JSON", "{bad json")
+    response = service.get_effective_policy(
+        consumer_system="PA",
+        tenant_id="default",
+        include_sections=["OVERVIEW"],
+    )
+    assert response.allowed_sections == ["OVERVIEW"]
+
+
+def test_get_effective_policy_handles_non_dict_policy_payload(
+    service: IntegrationService, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setenv("PAS_INTEGRATION_SNAPSHOT_POLICY_JSON", '["not-a-dict"]')
+    response = service.get_effective_policy(
+        consumer_system="PA",
+        tenant_id="default",
+        include_sections=["OVERVIEW"],
+    )
+    assert response.allowed_sections == ["OVERVIEW"]
+
+
+def test_get_effective_policy_uses_tenant_default_sections_when_consumer_override_missing(
+    service: IntegrationService, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setenv(
+        "PAS_INTEGRATION_SNAPSHOT_POLICY_JSON",
+        (
+            '{"strictMode":false,"tenants":{"tenant-b":{"consumers":{},'
+            '"defaultSections":["overview","holdings"]}}}'
+        ),
+    )
+    response = service.get_effective_policy(
+        consumer_system="PA",
+        tenant_id="tenant-b",
+        include_sections=["OVERVIEW", "HOLDINGS", "TRANSACTIONS"],
+    )
+    assert response.policy_provenance.matched_rule_id == "tenant.tenant-b.defaultSections"
+    assert [str(item) for item in response.allowed_sections] == [
+        "ReviewSection.OVERVIEW",
+        "ReviewSection.HOLDINGS",
+        "ReviewSection.TRANSACTIONS",
+    ]
+
+
+def test_get_effective_policy_uses_tenant_strictmode_rule_when_no_section_rules(
+    service: IntegrationService, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setenv(
+        "PAS_INTEGRATION_SNAPSHOT_POLICY_JSON",
+        '{"tenants":{"tenant-c":{"strictMode":true}}}',
+    )
+    response = service.get_effective_policy(
+        consumer_system="PA",
+        tenant_id="tenant-c",
+        include_sections=None,
+    )
+    assert response.policy_provenance.matched_rule_id == "tenant.tenant-c.strictMode"
+    assert response.policy_provenance.strict_mode is True
+
+
+def test_get_effective_policy_delegates_analytics_sections_to_pa_in_non_strict_mode(
+    service: IntegrationService, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setenv(
+        "PAS_INTEGRATION_SNAPSHOT_POLICY_JSON",
+        '{"strictMode":false,"consumers":{"PA":["OVERVIEW","PERFORMANCE","RISK_ANALYTICS"]}}',
+    )
+    response = service.get_effective_policy(
+        consumer_system="PA",
+        tenant_id="default",
+        include_sections=["OVERVIEW", "PERFORMANCE", "RISK_ANALYTICS"],
+    )
+    assert response.allowed_sections == ["OVERVIEW"]
+    assert "ANALYTICS_SECTIONS_DELEGATED_TO_PA" in response.warnings
+
+
+def test_read_attr_or_key_supports_attr_dict_and_default():
+    obj = SimpleNamespace(portfolio_id="P1")
+    assert IntegrationService._read_attr_or_key(obj, "portfolio_id") == "P1"
+    assert IntegrationService._read_attr_or_key({"portfolio_id": "P2"}, "portfolio_id") == "P2"
+    assert IntegrationService._read_attr_or_key(123, "portfolio_id", "fallback") == "fallback"
+
+
+def test_resolve_freshness_status_returns_stale_for_old_as_of_date(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setenv("PAS_INTEGRATION_MAX_STALENESS_DAYS", "1")
+    stale_date = date.today() - timedelta(days=10)
+    assert IntegrationService._resolve_freshness_status(stale_date) == "STALE"

@@ -6,9 +6,9 @@ import os
 import subprocess
 import sys
 
-
 UNIT_ARGS = ["tests/unit/services/query_service"]
 INTEGRATION_LITE_ARGS = [
+    "tests/integration/services/query_service/test_capabilities_router_dependency.py",
     "tests/integration/services/query_service/test_concentration_router.py",
     "tests/integration/services/query_service/test_integration_router_dependency.py",
     "tests/integration/services/query_service/test_main_app.py",
@@ -43,7 +43,16 @@ def run(cmd: list[str]) -> None:
 def main() -> int:
     run_pytest(UNIT_ARGS, ".coverage.unit")
     run_pytest(INTEGRATION_LITE_ARGS, ".coverage.integration_lite")
-    run([sys.executable, "-m", "coverage", "combine", ".coverage.unit", ".coverage.integration_lite"])
+    run(
+        [
+            sys.executable,
+            "-m",
+            "coverage",
+            "combine",
+            ".coverage.unit",
+            ".coverage.integration_lite",
+        ]
+    )
     run([sys.executable, "-m", "coverage", "report", f"--fail-under={FAIL_UNDER}"])
     return 0
 
