@@ -91,3 +91,64 @@ async def test_get_projected_positions_success(async_test_client):
     body = response.json()
     assert body["session_id"] == "S1"
     assert body["positions"][0]["delta_quantity"] == 20.0
+
+
+async def test_create_simulation_session_unexpected_error_maps_to_500(async_test_client):
+    client, mock_service = async_test_client
+    mock_service.create_session.side_effect = RuntimeError("db unavailable")
+
+    response = await client.post(
+        "/simulation-sessions", json={"portfolio_id": "P1", "created_by": "tester"}
+    )
+
+    assert response.status_code == 500
+    assert "db unavailable" in response.json()["detail"]
+
+
+async def test_close_simulation_session_not_found_maps_to_404(async_test_client):
+    client, mock_service = async_test_client
+    mock_service.close_session.side_effect = ValueError("not found")
+
+    response = await client.delete("/simulation-sessions/S404")
+    assert response.status_code == 404
+
+
+async def test_delete_simulation_change_validation_maps_to_400(async_test_client):
+    client, mock_service = async_test_client
+    mock_service.delete_change.side_effect = ValueError("invalid")
+
+    response = await client.delete("/simulation-sessions/S1/changes/C404")
+    assert response.status_code == 400
+
+
+async def test_get_projected_positions_not_found_maps_to_404(async_test_client):
+    client, mock_service = async_test_client
+    mock_service.get_projected_positions.side_effect = ValueError("not found")
+
+    response = await client.get("/simulation-sessions/S404/projected-positions")
+    assert response.status_code == 404
+
+
+async def test_get_projected_summary_not_found_maps_to_404(async_test_client):
+    client, mock_service = async_test_client
+    mock_service.get_projected_summary.side_effect = ValueError("not found")
+
+    response = await client.get("/simulation-sessions/S404/projected-summary")
+    assert response.status_code == 404
+
+
+async def test_get_projected_summary_success(async_test_client):
+    client, mock_service = async_test_client
+    mock_service.get_projected_summary.return_value = {
+        "session_id": "S1",
+        "portfolio_id": "P1",
+        "total_baseline_positions": 2,
+        "total_proposed_positions": 3,
+        "net_delta_quantity": 25.0,
+    }
+
+    response = await client.get("/simulation-sessions/S1/projected-summary")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["session_id"] == "S1"
+    assert payload["net_delta_quantity"] == 25.0

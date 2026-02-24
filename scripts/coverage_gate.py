@@ -20,12 +20,13 @@ INTEGRATION_LITE_ARGS = [
     "tests/integration/services/query_service/test_reference_data_routers.py",
     "tests/integration/services/query_service/test_review_router.py",
     "tests/integration/services/query_service/test_risk_router_dependency.py",
+    "tests/integration/services/query_service/test_simulation_router_dependency.py",
     "tests/integration/services/query_service/test_summary_router.py",
     "tests/integration/services/query_service/test_transactions_router.py",
 ]
 
 SOURCE = "src/services/query_service/app"
-FAIL_UNDER = "84"
+FAIL_UNDER = "95"
 
 
 def run_pytest(args: list[str], coverage_file: str) -> None:
