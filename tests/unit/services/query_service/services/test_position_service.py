@@ -47,6 +47,7 @@ def mock_position_repo() -> AsyncMock:
     repo.get_latest_positions_by_portfolio.return_value = [
         (mock_snapshot, mock_instrument, mock_state)
     ]
+    repo.get_latest_position_history_by_portfolio.return_value = []
     # --- END FIX ---
     return repo
 
@@ -96,3 +97,43 @@ async def test_get_latest_positions(mock_position_repo: AsyncMock):
         assert response.positions[0].instrument_name == "Test Instrument"
         assert response.positions[0].reprocessing_status == "CURRENT"
         assert response.positions[0].asset_class == "Equity"
+
+
+async def test_get_latest_positions_falls_back_to_position_history(mock_position_repo: AsyncMock):
+    with patch(
+        "src.services.query_service.app.services.position_service.PositionRepository",
+        return_value=mock_position_repo,
+    ):
+        mock_position_repo.get_latest_positions_by_portfolio.return_value = []
+        mock_history_obj = PositionHistory(
+            security_id="S2",
+            quantity=Decimal("55"),
+            cost_basis=Decimal("5500"),
+            cost_basis_local=Decimal("5500"),
+            position_date=date(2025, 1, 2),
+            transaction_id="T2",
+        )
+        mock_instrument = Instrument(
+            name="Fallback Instrument",
+            isin="ISIN456",
+            currency="USD",
+            asset_class="Bond",
+            sector="N/A",
+            country_of_risk="US",
+        )
+        mock_state = PositionState(status="CURRENT")
+        mock_position_repo.get_latest_position_history_by_portfolio.return_value = [
+            (mock_history_obj, mock_instrument, mock_state)
+        ]
+
+        service = PositionService(AsyncMock())
+        response = await service.get_portfolio_positions(portfolio_id="P2")
+
+        mock_position_repo.get_latest_positions_by_portfolio.assert_awaited_once_with("P2")
+        mock_position_repo.get_latest_position_history_by_portfolio.assert_awaited_once_with("P2")
+        assert len(response.positions) == 1
+        assert response.positions[0].security_id == "S2"
+        assert response.positions[0].position_date == date(2025, 1, 2)
+        assert response.positions[0].instrument_name == "Fallback Instrument"
+        assert response.positions[0].asset_class == "Bond"
+        assert response.positions[0].valuation is None
