@@ -48,6 +48,7 @@ def mock_position_repo() -> AsyncMock:
         (mock_snapshot, mock_instrument, mock_state)
     ]
     repo.get_latest_position_history_by_portfolio.return_value = []
+    repo.get_latest_snapshot_valuation_map.return_value = {}
     # --- END FIX ---
     return repo
 
@@ -125,15 +126,26 @@ async def test_get_latest_positions_falls_back_to_position_history(mock_position
         mock_position_repo.get_latest_position_history_by_portfolio.return_value = [
             (mock_history_obj, mock_instrument, mock_state)
         ]
+        mock_position_repo.get_latest_snapshot_valuation_map.return_value = {
+            "S2": {
+                "market_price": Decimal("101.5"),
+                "market_value": Decimal("5582.5"),
+                "unrealized_gain_loss": Decimal("82.5"),
+                "market_value_local": Decimal("5582.5"),
+                "unrealized_gain_loss_local": Decimal("82.5"),
+            }
+        }
 
         service = PositionService(AsyncMock())
         response = await service.get_portfolio_positions(portfolio_id="P2")
 
         mock_position_repo.get_latest_positions_by_portfolio.assert_awaited_once_with("P2")
         mock_position_repo.get_latest_position_history_by_portfolio.assert_awaited_once_with("P2")
+        mock_position_repo.get_latest_snapshot_valuation_map.assert_awaited_once_with("P2")
         assert len(response.positions) == 1
         assert response.positions[0].security_id == "S2"
         assert response.positions[0].position_date == date(2025, 1, 2)
         assert response.positions[0].instrument_name == "Fallback Instrument"
         assert response.positions[0].asset_class == "Bond"
-        assert response.positions[0].valuation is None
+        assert response.positions[0].valuation is not None
+        assert response.positions[0].valuation.market_value == Decimal("5582.5")

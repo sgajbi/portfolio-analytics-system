@@ -7,7 +7,7 @@ import json
 import logging
 import time
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 from urllib import error, parse, request
 
@@ -18,6 +18,7 @@ LOGGER = logging.getLogger("demo_data_pack")
 class PortfolioExpectation:
     portfolio_id: str
     min_positions: int
+    min_valued_positions: int
     min_transactions: int
     expected_terminal_quantities: tuple[tuple[str, float], ...]
 
@@ -26,11 +27,13 @@ DEMO_EXPECTATIONS: tuple[PortfolioExpectation, ...] = (
     PortfolioExpectation(
         "DEMO_ADV_USD_001",
         1,
+        1,
         8,
         (("CASH_USD", 235350.0), ("SEC_AAPL_US", 800.0), ("SEC_UST_5Y", 120.0)),
     ),
     PortfolioExpectation(
         "DEMO_DPM_EUR_001",
+        1,
         1,
         7,
         (("CASH_EUR", 372400.0), ("SEC_SAP_DE", 1200.0), ("SEC_ETF_WORLD_USD", 1000.0)),
@@ -38,17 +41,20 @@ DEMO_EXPECTATIONS: tuple[PortfolioExpectation, ...] = (
     PortfolioExpectation(
         "DEMO_INCOME_CHF_001",
         1,
+        1,
         7,
         (("CASH_CHF", 246580.0), ("SEC_NOVN_CH", 1000.0), ("SEC_CORP_IG_USD", 90.0)),
     ),
     PortfolioExpectation(
         "DEMO_BALANCED_SGD_001",
         1,
+        1,
         7,
         (("CASH_SGD", 542500.0), ("SEC_SONY_JP", 1000.0), ("SEC_GOLD_ETC_USD", 500.0)),
     ),
     PortfolioExpectation(
         "DEMO_REBAL_USD_001",
+        1,
         1,
         8,
         (("CASH_USD", 125480.0), ("SEC_FUND_EM_EQ", 1800.0), ("SEC_CORP_IG_USD", 60.0)),
@@ -94,11 +100,23 @@ def _tx(
 
 
 def build_demo_bundle() -> dict[str, Any]:
-    dates = _business_dates(date(2025, 9, 1), date(2025, 9, 10))
-    today = date.today().isoformat()
-    if today not in dates:
-        dates.append(today)
-    as_of = dates[-1]
+    start_date = date.today() - timedelta(days=365)
+    end_date = date.today()
+    dates = _business_dates(start_date, end_date)
+    as_of = end_date.isoformat()
+    tx_anchor = date.fromisoformat(dates[0]) if dates else start_date
+
+    def tx_ts(day_offset: int, hour: int = 10) -> str:
+        stamp = datetime(
+            year=(tx_anchor + timedelta(days=day_offset)).year,
+            month=(tx_anchor + timedelta(days=day_offset)).month,
+            day=(tx_anchor + timedelta(days=day_offset)).day,
+            hour=hour,
+            minute=0,
+            second=0,
+            tzinfo=UTC,
+        )
+        return stamp.isoformat().replace("+00:00", "Z")
     portfolios = [
         {
             "portfolioId": "DEMO_ADV_USD_001",
@@ -177,43 +195,43 @@ def build_demo_bundle() -> dict[str, Any]:
         {"securityId": "SEC_GOLD_ETC_USD", "name": "Gold ETC", "isin": "JE00B1VS3770", "instrumentCurrency": "USD", "productType": "ETC", "assetClass": "Commodity"},
     ]
     txs = [
-        _tx("DEMO_ADV_DEP_01", "DEMO_ADV_USD_001", "CASH", "CASH_USD", "2025-09-01T09:00:00Z", "DEPOSIT", 500000, 1, 500000, "USD"),
-        _tx("DEMO_ADV_BUY_AAPL_01", "DEMO_ADV_USD_001", "AAPL", "SEC_AAPL_US", "2025-09-01T10:00:00Z", "BUY", 800, 185, 148000, "USD"),
-        _tx("DEMO_ADV_CASH_OUT_01", "DEMO_ADV_USD_001", "CASH", "CASH_USD", "2025-09-01T10:00:00Z", "SELL", 148000, 1, 148000, "USD"),
-        _tx("DEMO_ADV_BUY_UST_01", "DEMO_ADV_USD_001", "UST5Y", "SEC_UST_5Y", "2025-09-02T10:00:00Z", "BUY", 120, 980, 117600, "USD"),
-        _tx("DEMO_ADV_CASH_OUT_02", "DEMO_ADV_USD_001", "CASH", "CASH_USD", "2025-09-02T10:00:00Z", "SELL", 117600, 1, 117600, "USD"),
-        _tx("DEMO_ADV_DIV_01", "DEMO_ADV_USD_001", "AAPL", "SEC_AAPL_US", "2025-09-04T10:00:00Z", "DIVIDEND", 0, 0, 1200, "USD"),
-        _tx("DEMO_ADV_CASH_IN_01", "DEMO_ADV_USD_001", "CASH", "CASH_USD", "2025-09-04T10:00:00Z", "BUY", 1200, 1, 1200, "USD"),
-        _tx("DEMO_ADV_FEE_01", "DEMO_ADV_USD_001", "CASH", "CASH_USD", "2025-09-05T10:00:00Z", "FEE", 1, 250, 250, "USD"),
-        _tx("DEMO_DPM_DEP_01", "DEMO_DPM_EUR_001", "CASH", "CASH_EUR", "2025-09-01T09:00:00Z", "DEPOSIT", 600000, 1, 600000, "EUR"),
-        _tx("DEMO_DPM_BUY_SAP_01", "DEMO_DPM_EUR_001", "SAP", "SEC_SAP_DE", "2025-09-01T10:00:00Z", "BUY", 1500, 120, 180000, "EUR"),
-        _tx("DEMO_DPM_CASH_OUT_01", "DEMO_DPM_EUR_001", "CASH", "CASH_EUR", "2025-09-01T10:00:00Z", "SELL", 180000, 1, 180000, "EUR"),
-        _tx("DEMO_DPM_BUY_ETF_01", "DEMO_DPM_EUR_001", "WORLD_ETF", "SEC_ETF_WORLD_USD", "2025-09-02T10:00:00Z", "BUY", 1000, 95, 95000, "USD"),
-        _tx("DEMO_DPM_CASH_OUT_02", "DEMO_DPM_EUR_001", "CASH", "CASH_EUR", "2025-09-02T10:00:00Z", "SELL", 86000, 1, 86000, "EUR"),
-        _tx("DEMO_DPM_SELL_SAP_01", "DEMO_DPM_EUR_001", "SAP", "SEC_SAP_DE", "2025-09-05T10:00:00Z", "SELL", 300, 128, 38400, "EUR"),
-        _tx("DEMO_DPM_CASH_IN_01", "DEMO_DPM_EUR_001", "CASH", "CASH_EUR", "2025-09-05T10:00:00Z", "BUY", 38400, 1, 38400, "EUR"),
-        _tx("DEMO_INCOME_DEP_01", "DEMO_INCOME_CHF_001", "CASH", "CASH_CHF", "2025-09-01T09:00:00Z", "DEPOSIT", 420000, 1, 420000, "CHF"),
-        _tx("DEMO_INCOME_BUY_NOVN_01", "DEMO_INCOME_CHF_001", "NOVN", "SEC_NOVN_CH", "2025-09-01T10:00:00Z", "BUY", 1000, 92, 92000, "CHF"),
-        _tx("DEMO_INCOME_CASH_OUT_01", "DEMO_INCOME_CHF_001", "CASH", "CASH_CHF", "2025-09-01T10:00:00Z", "SELL", 92000, 1, 92000, "CHF"),
-        _tx("DEMO_INCOME_BUY_BOND_01", "DEMO_INCOME_CHF_001", "CORP_IG", "SEC_CORP_IG_USD", "2025-09-02T10:00:00Z", "BUY", 90, 1010, 90900, "USD"),
-        _tx("DEMO_INCOME_CASH_OUT_02", "DEMO_INCOME_CHF_001", "CASH", "CASH_CHF", "2025-09-02T10:00:00Z", "SELL", 82000, 1, 82000, "CHF"),
-        _tx("DEMO_INCOME_COUPON_01", "DEMO_INCOME_CHF_001", "CORP_IG", "SEC_CORP_IG_USD", "2025-09-06T10:00:00Z", "DIVIDEND", 0, 0, 650, "USD"),
-        _tx("DEMO_INCOME_CASH_IN_01", "DEMO_INCOME_CHF_001", "CASH", "CASH_CHF", "2025-09-06T10:00:00Z", "BUY", 580, 1, 580, "CHF"),
-        _tx("DEMO_BAL_DEP_01", "DEMO_BALANCED_SGD_001", "CASH", "CASH_SGD", "2025-09-01T09:00:00Z", "DEPOSIT", 700000, 1, 700000, "SGD"),
-        _tx("DEMO_BAL_BUY_SONY_01", "DEMO_BALANCED_SGD_001", "SONY", "SEC_SONY_JP", "2025-09-01T10:00:00Z", "BUY", 1200, 1750, 2100000, "JPY"),
-        _tx("DEMO_BAL_CASH_OUT_01", "DEMO_BALANCED_SGD_001", "CASH", "CASH_SGD", "2025-09-01T10:00:00Z", "SELL", 19800, 1, 19800, "SGD"),
-        _tx("DEMO_BAL_BUY_GOLD_01", "DEMO_BALANCED_SGD_001", "GOLD_ETC", "SEC_GOLD_ETC_USD", "2025-09-03T10:00:00Z", "BUY", 500, 210, 105000, "USD"),
-        _tx("DEMO_BAL_CASH_OUT_02", "DEMO_BALANCED_SGD_001", "CASH", "CASH_SGD", "2025-09-03T10:00:00Z", "SELL", 141000, 1, 141000, "SGD"),
-        _tx("DEMO_BAL_SELL_SONY_01", "DEMO_BALANCED_SGD_001", "SONY", "SEC_SONY_JP", "2025-09-08T10:00:00Z", "SELL", 200, 1820, 364000, "JPY"),
-        _tx("DEMO_BAL_CASH_IN_01", "DEMO_BALANCED_SGD_001", "CASH", "CASH_SGD", "2025-09-08T10:00:00Z", "BUY", 3300, 1, 3300, "SGD"),
-        _tx("DEMO_REBAL_DEP_01", "DEMO_REBAL_USD_001", "CASH", "CASH_USD", "2025-09-01T09:00:00Z", "DEPOSIT", 300000, 1, 300000, "USD"),
-        _tx("DEMO_REBAL_BUY_FUND_01", "DEMO_REBAL_USD_001", "EM_FUND", "SEC_FUND_EM_EQ", "2025-09-02T10:00:00Z", "BUY", 2000, 55, 110000, "USD"),
-        _tx("DEMO_REBAL_CASH_OUT_01", "DEMO_REBAL_USD_001", "CASH", "CASH_USD", "2025-09-02T10:00:00Z", "SELL", 110000, 1, 110000, "USD"),
-        _tx("DEMO_REBAL_BUY_BOND_01", "DEMO_REBAL_USD_001", "CORP_IG", "SEC_CORP_IG_USD", "2025-09-03T10:00:00Z", "BUY", 60, 1012, 60720, "USD"),
-        _tx("DEMO_REBAL_CASH_OUT_02", "DEMO_REBAL_USD_001", "CASH", "CASH_USD", "2025-09-03T10:00:00Z", "SELL", 60720, 1, 60720, "USD"),
-        _tx("DEMO_REBAL_TRANSFER_OUT_01", "DEMO_REBAL_USD_001", "EM_FUND", "SEC_FUND_EM_EQ", "2025-09-08T10:00:00Z", "TRANSFER_OUT", 200, 56, 11200, "USD"),
-        _tx("DEMO_REBAL_CASH_IN_01", "DEMO_REBAL_USD_001", "CASH", "CASH_USD", "2025-09-08T10:00:00Z", "BUY", 11200, 1, 11200, "USD"),
-        _tx("DEMO_REBAL_WITHDRAW_01", "DEMO_REBAL_USD_001", "CASH", "CASH_USD", "2025-09-09T10:00:00Z", "WITHDRAWAL", 15000, 1, 15000, "USD"),
+        _tx("DEMO_ADV_DEP_01", "DEMO_ADV_USD_001", "CASH", "CASH_USD", tx_ts(1, 9), "DEPOSIT", 500000, 1, 500000, "USD"),
+        _tx("DEMO_ADV_BUY_AAPL_01", "DEMO_ADV_USD_001", "AAPL", "SEC_AAPL_US", tx_ts(2), "BUY", 800, 185, 148000, "USD"),
+        _tx("DEMO_ADV_CASH_OUT_01", "DEMO_ADV_USD_001", "CASH", "CASH_USD", tx_ts(2), "SELL", 148000, 1, 148000, "USD"),
+        _tx("DEMO_ADV_BUY_UST_01", "DEMO_ADV_USD_001", "UST5Y", "SEC_UST_5Y", tx_ts(5), "BUY", 120, 980, 117600, "USD"),
+        _tx("DEMO_ADV_CASH_OUT_02", "DEMO_ADV_USD_001", "CASH", "CASH_USD", tx_ts(5), "SELL", 117600, 1, 117600, "USD"),
+        _tx("DEMO_ADV_DIV_01", "DEMO_ADV_USD_001", "AAPL", "SEC_AAPL_US", tx_ts(160), "DIVIDEND", 0, 0, 1200, "USD"),
+        _tx("DEMO_ADV_CASH_IN_01", "DEMO_ADV_USD_001", "CASH", "CASH_USD", tx_ts(160), "BUY", 1200, 1, 1200, "USD"),
+        _tx("DEMO_ADV_FEE_01", "DEMO_ADV_USD_001", "CASH", "CASH_USD", tx_ts(330), "FEE", 1, 250, 250, "USD"),
+        _tx("DEMO_DPM_DEP_01", "DEMO_DPM_EUR_001", "CASH", "CASH_EUR", tx_ts(1, 9), "DEPOSIT", 600000, 1, 600000, "EUR"),
+        _tx("DEMO_DPM_BUY_SAP_01", "DEMO_DPM_EUR_001", "SAP", "SEC_SAP_DE", tx_ts(3), "BUY", 1500, 120, 180000, "EUR"),
+        _tx("DEMO_DPM_CASH_OUT_01", "DEMO_DPM_EUR_001", "CASH", "CASH_EUR", tx_ts(3), "SELL", 180000, 1, 180000, "EUR"),
+        _tx("DEMO_DPM_BUY_ETF_01", "DEMO_DPM_EUR_001", "WORLD_ETF", "SEC_ETF_WORLD_USD", tx_ts(12), "BUY", 1000, 95, 95000, "USD"),
+        _tx("DEMO_DPM_CASH_OUT_02", "DEMO_DPM_EUR_001", "CASH", "CASH_EUR", tx_ts(12), "SELL", 86000, 1, 86000, "EUR"),
+        _tx("DEMO_DPM_SELL_SAP_01", "DEMO_DPM_EUR_001", "SAP", "SEC_SAP_DE", tx_ts(220), "SELL", 300, 128, 38400, "EUR"),
+        _tx("DEMO_DPM_CASH_IN_01", "DEMO_DPM_EUR_001", "CASH", "CASH_EUR", tx_ts(220), "BUY", 38400, 1, 38400, "EUR"),
+        _tx("DEMO_INCOME_DEP_01", "DEMO_INCOME_CHF_001", "CASH", "CASH_CHF", tx_ts(1, 9), "DEPOSIT", 420000, 1, 420000, "CHF"),
+        _tx("DEMO_INCOME_BUY_NOVN_01", "DEMO_INCOME_CHF_001", "NOVN", "SEC_NOVN_CH", tx_ts(4), "BUY", 1000, 92, 92000, "CHF"),
+        _tx("DEMO_INCOME_CASH_OUT_01", "DEMO_INCOME_CHF_001", "CASH", "CASH_CHF", tx_ts(4), "SELL", 92000, 1, 92000, "CHF"),
+        _tx("DEMO_INCOME_BUY_BOND_01", "DEMO_INCOME_CHF_001", "CORP_IG", "SEC_CORP_IG_USD", tx_ts(8), "BUY", 90, 1010, 90900, "USD"),
+        _tx("DEMO_INCOME_CASH_OUT_02", "DEMO_INCOME_CHF_001", "CASH", "CASH_CHF", tx_ts(8), "SELL", 82000, 1, 82000, "CHF"),
+        _tx("DEMO_INCOME_COUPON_01", "DEMO_INCOME_CHF_001", "CORP_IG", "SEC_CORP_IG_USD", tx_ts(190), "DIVIDEND", 0, 0, 650, "USD"),
+        _tx("DEMO_INCOME_CASH_IN_01", "DEMO_INCOME_CHF_001", "CASH", "CASH_CHF", tx_ts(190), "BUY", 580, 1, 580, "CHF"),
+        _tx("DEMO_BAL_DEP_01", "DEMO_BALANCED_SGD_001", "CASH", "CASH_SGD", tx_ts(1, 9), "DEPOSIT", 700000, 1, 700000, "SGD"),
+        _tx("DEMO_BAL_BUY_SONY_01", "DEMO_BALANCED_SGD_001", "SONY", "SEC_SONY_JP", tx_ts(3), "BUY", 1200, 1750, 2100000, "JPY"),
+        _tx("DEMO_BAL_CASH_OUT_01", "DEMO_BALANCED_SGD_001", "CASH", "CASH_SGD", tx_ts(3), "SELL", 19800, 1, 19800, "SGD"),
+        _tx("DEMO_BAL_BUY_GOLD_01", "DEMO_BALANCED_SGD_001", "GOLD_ETC", "SEC_GOLD_ETC_USD", tx_ts(30), "BUY", 500, 210, 105000, "USD"),
+        _tx("DEMO_BAL_CASH_OUT_02", "DEMO_BALANCED_SGD_001", "CASH", "CASH_SGD", tx_ts(30), "SELL", 141000, 1, 141000, "SGD"),
+        _tx("DEMO_BAL_SELL_SONY_01", "DEMO_BALANCED_SGD_001", "SONY", "SEC_SONY_JP", tx_ts(280), "SELL", 200, 1820, 364000, "JPY"),
+        _tx("DEMO_BAL_CASH_IN_01", "DEMO_BALANCED_SGD_001", "CASH", "CASH_SGD", tx_ts(280), "BUY", 3300, 1, 3300, "SGD"),
+        _tx("DEMO_REBAL_DEP_01", "DEMO_REBAL_USD_001", "CASH", "CASH_USD", tx_ts(1, 9), "DEPOSIT", 300000, 1, 300000, "USD"),
+        _tx("DEMO_REBAL_BUY_FUND_01", "DEMO_REBAL_USD_001", "EM_FUND", "SEC_FUND_EM_EQ", tx_ts(10), "BUY", 2000, 55, 110000, "USD"),
+        _tx("DEMO_REBAL_CASH_OUT_01", "DEMO_REBAL_USD_001", "CASH", "CASH_USD", tx_ts(10), "SELL", 110000, 1, 110000, "USD"),
+        _tx("DEMO_REBAL_BUY_BOND_01", "DEMO_REBAL_USD_001", "CORP_IG", "SEC_CORP_IG_USD", tx_ts(20), "BUY", 60, 1012, 60720, "USD"),
+        _tx("DEMO_REBAL_CASH_OUT_02", "DEMO_REBAL_USD_001", "CASH", "CASH_USD", tx_ts(20), "SELL", 60720, 1, 60720, "USD"),
+        _tx("DEMO_REBAL_TRANSFER_OUT_01", "DEMO_REBAL_USD_001", "EM_FUND", "SEC_FUND_EM_EQ", tx_ts(240), "TRANSFER_OUT", 200, 56, 11200, "USD"),
+        _tx("DEMO_REBAL_CASH_IN_01", "DEMO_REBAL_USD_001", "CASH", "CASH_USD", tx_ts(240), "BUY", 11200, 1, 11200, "USD"),
+        _tx("DEMO_REBAL_WITHDRAW_01", "DEMO_REBAL_USD_001", "CASH", "CASH_USD", tx_ts(340), "WITHDRAWAL", 15000, 1, 15000, "USD"),
     ]
     price_paths = {
         "SEC_AAPL_US": (184, 194, "USD"),
@@ -353,7 +371,13 @@ def _verify_portfolio(
             if abs(actual_quantity - expected_quantity) > 1e-6:
                 all_quantities_match = False
                 break
-        if total_transactions >= expected.min_transactions and holdings is not None and all_quantities_match:
+        if (
+            len(positions) >= expected.min_positions
+            and len(valued) >= expected.min_valued_positions
+            and total_transactions >= expected.min_transactions
+            and holdings is not None
+            and all_quantities_match
+        ):
             return {
                 "portfolio_id": expected.portfolio_id,
                 "positions": len(positions),
@@ -422,8 +446,8 @@ def main() -> int:
                 result["transactions"],
                 result["validated_holdings"],
             )
-        if not any(item["valued_positions"] > 0 for item in verification_results):
-            raise RuntimeError("Demo verification failed: no portfolio produced valued positions.")
+        if len(verification_results) != len(DEMO_EXPECTATIONS):
+            raise RuntimeError("Demo verification failed: not all demo portfolios were verified.")
     LOGGER.info("Demo data pack workflow completed.")
     return 0
 
