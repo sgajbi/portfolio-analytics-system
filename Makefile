@@ -1,4 +1,4 @@
-.PHONY: install lint typecheck openapi-gate test test-unit test-integration-lite test-e2e-smoke check coverage-gate ci-local docker-build clean
+.PHONY: install lint typecheck openapi-gate test test-unit test-integration-lite test-e2e-smoke security-audit check coverage-gate ci ci-local docker-build clean
 
 install:
 	python scripts/bootstrap_dev.py
@@ -25,10 +25,15 @@ test-integration-lite:
 test-e2e-smoke:
 	python -m pytest tests/e2e/test_query_service_observability.py tests/e2e/test_complex_portfolio_lifecycle.py -q
 
+security-audit:
+	python -m pip_audit
+
 check: lint typecheck openapi-gate test
 
 coverage-gate:
 	python scripts/coverage_gate.py
+
+ci: lint typecheck test-integration-lite coverage-gate security-audit
 
 ci-local: lint typecheck coverage-gate
 
