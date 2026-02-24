@@ -1,5 +1,5 @@
-from datetime import date
-from typing import List, Optional
+from datetime import date, datetime
+from typing import List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -57,7 +57,44 @@ class PortfolioCoreSnapshotResponse(BaseModel):
         ...,
         description="As-of snapshot payload assembled from PAS query capabilities.",
     )
+    metadata: "PortfolioCoreSnapshotMetadata" = Field(
+        ...,
+        description="Provenance, freshness, lineage, and section-governance metadata.",
+    )
 
     model_config = {
         "populate_by_name": True,
     }
+
+
+FreshnessStatus = Literal["FRESH", "STALE", "UNKNOWN"]
+
+
+class CoreSnapshotLineageRefs(BaseModel):
+    portfolio_id: str = Field(..., alias="portfolioId")
+    as_of_date: date = Field(..., alias="asOfDate")
+    correlation_id: Optional[str] = Field(None, alias="correlationId")
+
+    model_config = {"populate_by_name": True}
+
+
+class SectionGovernanceMetadata(BaseModel):
+    requested_sections: List[ReviewSection] = Field(..., alias="requestedSections")
+    effective_sections: List[ReviewSection] = Field(..., alias="effectiveSections")
+    dropped_sections: List[ReviewSection] = Field(default_factory=list, alias="droppedSections")
+    warnings: List[str] = Field(default_factory=list)
+
+    model_config = {"populate_by_name": True}
+
+
+class PortfolioCoreSnapshotMetadata(BaseModel):
+    generated_at: datetime = Field(..., alias="generatedAt")
+    source_as_of_date: date = Field(..., alias="sourceAsOfDate")
+    freshness_status: FreshnessStatus = Field(..., alias="freshnessStatus")
+    lineage_refs: CoreSnapshotLineageRefs = Field(..., alias="lineageRefs")
+    section_governance: SectionGovernanceMetadata = Field(..., alias="sectionGovernance")
+
+    model_config = {"populate_by_name": True}
+
+
+PortfolioCoreSnapshotResponse.model_rebuild()

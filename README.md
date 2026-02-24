@@ -202,6 +202,23 @@ make test-e2e-smoke
     curl "http://localhost:8201/integration/capabilities?consumerSystem=BFF&tenantId=default"
     ```
 
+    Core snapshot governance/freshness controls (optional):
+
+    - `PAS_INTEGRATION_SNAPSHOT_POLICY_JSON`: policy object for section governance.
+      Supports:
+      - `strictMode`
+      - `consumers` (consumer -> allowed sections)
+      - `tenants` (tenant overrides for `strictMode`, `consumers`, `defaultSections`)
+    - `PAS_DEFAULT_TENANT_ID`: tenant context used by integration snapshot policy resolution.
+    - `PAS_INTEGRATION_MAX_STALENESS_DAYS`: freshness threshold for `metadata.freshnessStatus`.
+
+    Core snapshot response includes `metadata` with:
+    - `generatedAt`
+    - `sourceAsOfDate`
+    - `freshnessStatus`
+    - `lineageRefs`
+    - `sectionGovernance` (`requestedSections`, `effectiveSections`, `droppedSections`, `warnings`)
+
     Integration capability policy overrides (optional):
 
     - `PAS_POLICY_VERSION`: default global policy version label.

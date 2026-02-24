@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import UTC, date, datetime
 from unittest.mock import AsyncMock
 
 import httpx
@@ -60,6 +60,22 @@ async def test_integration_snapshot_success(async_test_client):
             "holdings": None,
             "transactions": None,
         },
+        "metadata": {
+            "generatedAt": datetime(2026, 2, 24, tzinfo=UTC),
+            "sourceAsOfDate": date(2026, 2, 23),
+            "freshnessStatus": "FRESH",
+            "lineageRefs": {
+                "portfolioId": "P1",
+                "asOfDate": date(2026, 2, 23),
+                "correlationId": "QRY-123",
+            },
+            "sectionGovernance": {
+                "requestedSections": ["OVERVIEW", "HOLDINGS"],
+                "effectiveSections": ["OVERVIEW", "HOLDINGS"],
+                "droppedSections": [],
+                "warnings": [],
+            },
+        },
     }
 
     response = await client.post(
@@ -68,6 +84,7 @@ async def test_integration_snapshot_success(async_test_client):
 
     assert response.status_code == 200
     assert response.json()["contractVersion"] == "v1"
+    assert response.json()["metadata"]["freshnessStatus"] == "FRESH"
     assert "X-Correlation-ID" in response.headers
 
 
@@ -93,3 +110,15 @@ async def test_integration_snapshot_unexpected_maps_to_500(async_test_client):
 
     assert response.status_code == 500
     assert "integration snapshot" in response.json()["detail"].lower()
+
+
+async def test_integration_snapshot_policy_rejection_maps_to_403(async_test_client):
+    client, mock_service = async_test_client
+    mock_service.get_portfolio_core_snapshot.side_effect = PermissionError("sections not allowed")
+
+    response = await client.post(
+        "/integration/portfolios/P1/core-snapshot", json=snapshot_request_payload()
+    )
+
+    assert response.status_code == 403
+    assert "allowed" in response.json()["detail"].lower()
