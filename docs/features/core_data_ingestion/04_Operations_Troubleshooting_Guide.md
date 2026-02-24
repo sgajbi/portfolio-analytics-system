@@ -33,3 +33,32 @@ All logs from the `ingestion_service` are structured JSON, which is ideal for lo
 | **Kafka is Unavailable** | `503 Service Unavailable` on `/health/ready`. `500 Internal Server Error` on ingest endpoints. | `FATAL: Could not initialize Kafka producer` in service logs. | **Escalate to Ops.** The Kafka cluster is down or unreachable. Check the health of the `kafka` and `zookeeper` containers. |
 | **Malformed Client Payload** | `422 Unprocessable Entity` API response. | `pydantic.ValidationError` in service logs. | **Inform the client team.** The request body does not match the API schema. Provide them with the validation error from the logs. |
 | **Producer Failing to Publish** | `202 Accepted` responses, but no data appears downstream. | `Message delivery failed...` errors in service logs. `kafka_publish_errors_total` metric is increasing. | **Investigate Kafka health.** The cluster may be degraded (e.g., disk full, leader election issues). |
+
+## 4. Automated Demo Data Pack Bootstrap
+
+PAS startup includes a one-shot `demo_data_loader` container that:
+
+1. waits for ingestion/query readiness,
+2. ingests a realistic multi-portfolio bundle (if not already present),
+3. verifies downstream positions/transactions/review outputs.
+
+### Operational Commands
+
+```bash
+# View bootstrap execution and verification output
+docker compose logs --tail=200 demo_data_loader
+
+# Re-run manually against running PAS APIs
+python -m tools.demo_data_pack --ingestion-base-url http://localhost:8200 --query-base-url http://localhost:8201
+
+# Disable auto bootstrap for specific runs
+DEMO_DATA_PACK_ENABLED=false docker compose up -d
+```
+
+### Common Demo Loader Issues
+
+| Scenario | Symptom(s) | Action |
+| :--- | :--- | :--- |
+| Upstream not ready in time | `Timed out waiting for readiness endpoint` | Increase `--wait-seconds` or inspect unhealthy PAS services. |
+| Downstream pipeline lag | `Timed out verifying portfolio outputs` | Check calculator/aggregation service health and logs; re-run loader manually. |
+| Existing dirty data set | unexpected verification failures after many local experiments | Reset local volumes (`docker compose down -v`) and restart to rebuild canonical demo data. |

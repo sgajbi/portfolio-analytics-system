@@ -70,23 +70,54 @@ class PositionService:
         logger.info(f"Fetching latest positions for portfolio '{portfolio_id}'.")
 
         db_results = await self.repo.get_latest_positions_by_portfolio(portfolio_id)
+        using_snapshot_data = True
+        fallback_valuation_map: dict[str, dict[str, float | None]] = {}
+        if not db_results:
+            db_results = await self.repo.get_latest_position_history_by_portfolio(portfolio_id)
+            using_snapshot_data = False
+            fallback_valuation_map = await self.repo.get_latest_snapshot_valuation_map(portfolio_id)
 
         positions = []
-        for pos_snapshot, instrument, pos_state in db_results:
-            valuation_dto = ValuationData(
-                market_price=pos_snapshot.market_price,
-                market_value=pos_snapshot.market_value,
-                unrealized_gain_loss=pos_snapshot.unrealized_gain_loss,
-                market_value_local=pos_snapshot.market_value_local,
-                unrealized_gain_loss_local=pos_snapshot.unrealized_gain_loss_local,
-            )
+        for position_row, instrument, pos_state in db_results:
+            valuation_dto = None
+            if using_snapshot_data:
+                valuation_dto = ValuationData(
+                    market_price=position_row.market_price,
+                    market_value=position_row.market_value,
+                    unrealized_gain_loss=position_row.unrealized_gain_loss,
+                    market_value_local=position_row.market_value_local,
+                    unrealized_gain_loss_local=position_row.unrealized_gain_loss_local,
+                )
+            else:
+                fallback_valuation = fallback_valuation_map.get(position_row.security_id)
+                if fallback_valuation is not None:
+                    valuation_dto = ValuationData(
+                        market_price=fallback_valuation.get("market_price"),
+                        market_value=fallback_valuation.get("market_value"),
+                        unrealized_gain_loss=fallback_valuation.get("unrealized_gain_loss"),
+                        market_value_local=fallback_valuation.get("market_value_local"),
+                        unrealized_gain_loss_local=fallback_valuation.get(
+                            "unrealized_gain_loss_local"
+                        ),
+                    )
+                else:
+                    # Maintain valuation continuity while snapshot backfill catches up.
+                    valuation_dto = ValuationData(
+                        market_price=None,
+                        market_value=position_row.cost_basis,
+                        unrealized_gain_loss=0,
+                        market_value_local=position_row.cost_basis_local,
+                        unrealized_gain_loss_local=0,
+                    )
             position_dto = Position(
-                security_id=pos_snapshot.security_id,
-                quantity=pos_snapshot.quantity,
-                cost_basis=pos_snapshot.cost_basis,
-                cost_basis_local=pos_snapshot.cost_basis_local,
+                security_id=position_row.security_id,
+                quantity=position_row.quantity,
+                cost_basis=position_row.cost_basis,
+                cost_basis_local=position_row.cost_basis_local,
                 instrument_name=instrument.name if instrument else "N/A",
-                position_date=pos_snapshot.date,
+                position_date=(
+                    position_row.date if using_snapshot_data else position_row.position_date
+                ),
                 asset_class=instrument.asset_class if instrument else None,
                 valuation=valuation_dto,
                 reprocessing_status=pos_state.status if pos_state else None,

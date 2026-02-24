@@ -1,0 +1,45 @@
+from tools import demo_data_pack
+
+
+def test_build_demo_bundle_contains_multi_product_coverage():
+    bundle = demo_data_pack.build_demo_bundle()
+
+    assert len(bundle["portfolios"]) == 5
+    assert len(bundle["businessDates"]) >= 6
+    assert len(bundle["transactions"]) >= 36
+    assert len(bundle["marketPrices"]) > len(bundle["instruments"])
+    assert len(bundle["fxRates"]) >= 40
+
+    product_types = {item["productType"] for item in bundle["instruments"]}
+    assert {"Cash", "Equity", "Bond", "ETF", "Fund", "ETC"}.issubset(product_types)
+
+    tx_types = {item["transaction_type"] for item in bundle["transactions"]}
+    assert {"DEPOSIT", "BUY", "SELL", "DIVIDEND", "FEE"}.issubset(tx_types)
+
+
+def test_expectations_cover_five_portfolios_with_terminal_holdings():
+    expected_ids = {
+        "DEMO_ADV_USD_001",
+        "DEMO_DPM_EUR_001",
+        "DEMO_INCOME_CHF_001",
+        "DEMO_BALANCED_SGD_001",
+        "DEMO_REBAL_USD_001",
+    }
+    assert {item.portfolio_id for item in demo_data_pack.DEMO_EXPECTATIONS} == expected_ids
+    for item in demo_data_pack.DEMO_EXPECTATIONS:
+        assert item.min_transactions >= 7
+        assert len(item.expected_terminal_quantities) >= 3
+        assert all(quantity > 0 for _, quantity in item.expected_terminal_quantities)
+
+
+def test_all_demo_portfolios_exist_checks_every_expected_portfolio(monkeypatch):
+    seen: list[str] = []
+
+    def fake_exists(_query_base_url: str, portfolio_id: str) -> bool:
+        seen.append(portfolio_id)
+        return True
+
+    monkeypatch.setattr(demo_data_pack, "_portfolio_exists", fake_exists)
+
+    assert demo_data_pack._all_demo_portfolios_exist("http://query") is True
+    assert set(seen) == {item.portfolio_id for item in demo_data_pack.DEMO_EXPECTATIONS}

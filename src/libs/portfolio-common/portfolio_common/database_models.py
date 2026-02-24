@@ -38,6 +38,41 @@ class Portfolio(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
+
+class SimulationSession(Base):
+    __tablename__ = "simulation_sessions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    session_id = Column(String, unique=True, index=True, nullable=False)
+    portfolio_id = Column(String, ForeignKey("portfolios.portfolio_id"), index=True, nullable=False)
+    status = Column(String, nullable=False, server_default="ACTIVE")
+    version = Column(Integer, nullable=False, server_default="1")
+    created_by = Column(String, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class SimulationChange(Base):
+    __tablename__ = "simulation_changes"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    change_id = Column(String, unique=True, index=True, nullable=False)
+    session_id = Column(
+        String, ForeignKey("simulation_sessions.session_id"), index=True, nullable=False
+    )
+    portfolio_id = Column(String, index=True, nullable=False)
+    security_id = Column(String, index=True, nullable=False)
+    transaction_type = Column(String, nullable=False)
+    quantity = Column(Numeric(18, 10), nullable=True)
+    price = Column(Numeric(18, 10), nullable=True)
+    amount = Column(Numeric(18, 10), nullable=True)
+    currency = Column(String, nullable=True)
+    effective_date = Column(Date, nullable=True)
+    change_metadata = Column("metadata", JSON, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
 class PositionHistory(Base):
     __tablename__ = 'position_history'
 

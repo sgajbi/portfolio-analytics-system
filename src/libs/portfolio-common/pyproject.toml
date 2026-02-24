@@ -9,12 +9,12 @@ version = "0.1.0"
 description = "Common utilities, models, and configurations for the Portfolio Analytics System."
 requires-python = ">=3.11"
 dependencies = [
-    "pydantic==2.7.4",
-    "confluent-kafka[librdkafka]==2.4.0",
-    "SQLAlchemy==2.0.30",
+    "pydantic==2.12.5",
+    "confluent-kafka==2.12.0",
+    "SQLAlchemy==2.0.46",
     "python-dotenv==1.0.1",
-    "asyncpg==0.29.0",
-    "psycopg2-binary==2.9.9",
+    "asyncpg==0.30.0",
+    "psycopg2-binary==2.9.10",
     "tenacity==8.2.3",
     "alembic==1.13.1",
     "python-json-logger==2.0.7",

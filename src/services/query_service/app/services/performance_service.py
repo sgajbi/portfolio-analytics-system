@@ -68,7 +68,6 @@ class PerformanceService:
     async def calculate_performance(
         self, portfolio_id: str, request: PerformanceRequest
     ) -> PerformanceResponse:
-
         portfolio = await self.portfolio_repo.get_by_id(portfolio_id)
         if not portfolio:
             raise ValueError(f"Portfolio {portfolio_id} not found.")

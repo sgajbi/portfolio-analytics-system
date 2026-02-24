@@ -29,6 +29,14 @@ def snapshot_request_payload() -> dict:
     }
 
 
+def performance_input_request_payload() -> dict:
+    return {
+        "asOfDate": "2026-02-23",
+        "lookbackDays": 365,
+        "consumerSystem": "PA",
+    }
+
+
 async def test_integration_snapshot_success(async_test_client):
     client, mock_service = async_test_client
     mock_service.get_portfolio_core_snapshot.return_value = {
@@ -164,3 +172,49 @@ async def test_effective_policy_endpoint_success(async_test_client):
         tenant_id="tenant-a",
         include_sections=["OVERVIEW", "HOLDINGS"],
     )
+
+
+async def test_performance_input_success(async_test_client):
+    client, mock_service = async_test_client
+    mock_service.get_portfolio_performance_input.return_value = {
+        "contractVersion": "v1",
+        "sourceService": "portfolio-analytics-system",
+        "consumerSystem": "PA",
+        "portfolioId": "P1",
+        "baseCurrency": "USD",
+        "performanceStartDate": "2026-01-01",
+        "asOfDate": "2026-02-23",
+        "valuationPoints": [
+            {
+                "day": 1,
+                "perfDate": "2026-01-01",
+                "beginMv": 100.0,
+                "bodCf": 0.0,
+                "eodCf": 0.0,
+                "mgmtFees": 0.0,
+                "endMv": 101.0,
+            }
+        ],
+    }
+
+    response = await client.post(
+        "/integration/portfolios/P1/performance-input",
+        json=performance_input_request_payload(),
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["portfolioId"] == "P1"
+    assert payload["valuationPoints"][0]["endMv"] == 101.0
+
+
+async def test_performance_input_not_found_maps_to_404(async_test_client):
+    client, mock_service = async_test_client
+    mock_service.get_portfolio_performance_input.side_effect = ValueError("No rows")
+
+    response = await client.post(
+        "/integration/portfolios/P404/performance-input",
+        json=performance_input_request_payload(),
+    )
+
+    assert response.status_code == 404

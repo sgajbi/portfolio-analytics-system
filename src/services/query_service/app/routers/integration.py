@@ -10,6 +10,8 @@ from ..dtos.integration_dto import (
     EffectiveIntegrationPolicyResponse,
     PortfolioCoreSnapshotRequest,
     PortfolioCoreSnapshotResponse,
+    PortfolioPerformanceInputRequest,
+    PortfolioPerformanceInputResponse,
 )
 from ..dtos.review_dto import ReviewSection
 from ..services.integration_service import IntegrationService
@@ -80,3 +82,32 @@ async def get_effective_integration_policy(
         return cast(EffectiveIntegrationPolicyResponse, response)
     except PermissionError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
+
+
+@router.post(
+    "/portfolios/{portfolio_id}/performance-input",
+    response_model=PortfolioPerformanceInputResponse,
+    response_model_by_alias=True,
+    summary="Get PAS raw performance input series for PA calculation",
+    description=(
+        "Returns raw portfolio time-series inputs (market values, cashflows, fees) for PA-owned "
+        "performance calculation. No PAS performance metric outputs are returned."
+    ),
+)
+async def get_portfolio_performance_input(
+    portfolio_id: str,
+    request: PortfolioPerformanceInputRequest,
+    integration_service: IntegrationService = Depends(get_integration_service),
+):
+    try:
+        return await integration_service.get_portfolio_performance_input(portfolio_id, request)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    except Exception:
+        logger.exception(
+            "Failed to build PAS performance input series for portfolio %s", portfolio_id
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected server error occurred while building performance input series.",
+        )

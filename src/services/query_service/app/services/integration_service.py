@@ -2,7 +2,7 @@ import json
 import logging
 import os
 from dataclasses import dataclass
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,13 +16,22 @@ from ..dtos.integration_dto import (
     PortfolioCoreSnapshotMetadata,
     PortfolioCoreSnapshotRequest,
     PortfolioCoreSnapshotResponse,
+    PortfolioPerformanceInputPoint,
+    PortfolioPerformanceInputRequest,
+    PortfolioPerformanceInputResponse,
     SectionGovernanceMetadata,
 )
 from ..dtos.review_dto import PortfolioReviewRequest
+from ..repositories.performance_repository import PerformanceRepository
 from .portfolio_service import PortfolioService
 from .review_service import ReviewService
 
 logger = logging.getLogger(__name__)
+
+_PAS_CORE_SNAPSHOT_ANALYTICS_OWNERSHIP_RESTRICTED: set[str] = {
+    "PERFORMANCE",
+    "RISK_ANALYTICS",
+}
 
 
 @dataclass
@@ -43,6 +52,15 @@ class IntegrationService:
     def __init__(self, db: AsyncSession):
         self.portfolio_service = PortfolioService(db)
         self.review_service = ReviewService(db)
+        self.performance_repository = PerformanceRepository(db)
+
+    @staticmethod
+    def _read_attr_or_key(target: Any, key: str, default: Any = None) -> Any:
+        if hasattr(target, key):
+            return getattr(target, key)
+        if isinstance(target, dict):
+            return target.get(key, default)
+        return default
 
     @staticmethod
     def _load_policy() -> dict[str, Any]:
@@ -159,6 +177,24 @@ class IntegrationService:
                 )
             warnings.append("SECTIONS_FILTERED_BY_POLICY")
 
+        ownership_restricted = [
+            section
+            for section in effective_sections
+            if section in _PAS_CORE_SNAPSHOT_ANALYTICS_OWNERSHIP_RESTRICTED
+        ]
+        if ownership_restricted:
+            if context.strict_mode:
+                blocked = ", ".join(ownership_restricted)
+                raise PermissionError(
+                    "Requested analytics sections are not owned by PAS core snapshot contract: "
+                    f"{blocked}"
+                )
+            effective_sections = [
+                section for section in effective_sections if section not in ownership_restricted
+            ]
+            dropped_sections.extend(ownership_restricted)
+            warnings.append("ANALYTICS_SECTIONS_DELEGATED_TO_PA")
+
         return SectionGovernanceMetadata(
             requestedSections=requested_sections,
             effectiveSections=effective_sections,
@@ -229,6 +265,52 @@ class IntegrationService:
             portfolio=portfolio,
             snapshot=snapshot,
             metadata=metadata,
+        )
+
+    async def get_portfolio_performance_input(
+        self,
+        portfolio_id: str,
+        request: PortfolioPerformanceInputRequest,
+    ) -> PortfolioPerformanceInputResponse:
+        consumer_system = (request.consumer_system or "UNKNOWN").upper()
+        portfolio = await self.portfolio_service.get_portfolio_by_id(portfolio_id)
+
+        start_date = max(
+            self._read_attr_or_key(portfolio, "open_date"),
+            request.as_of_date - timedelta(days=request.lookback_days),
+        )
+        rows = await self.performance_repository.get_portfolio_timeseries_for_range(
+            portfolio_id=portfolio_id,
+            start_date=start_date,
+            end_date=request.as_of_date,
+        )
+        if not rows:
+            raise ValueError(
+                f"No portfolio_timeseries rows found for {portfolio_id} up to {request.as_of_date}."
+            )
+
+        points: list[PortfolioPerformanceInputPoint] = []
+        for index, row in enumerate(rows, start=1):
+            points.append(
+                PortfolioPerformanceInputPoint(
+                    day=index,
+                    perfDate=row.date,
+                    beginMv=float(row.bod_market_value),
+                    bodCf=float(row.bod_cashflow),
+                    eodCf=float(row.eod_cashflow),
+                    mgmtFees=float(row.fees),
+                    endMv=float(row.eod_market_value),
+                )
+            )
+
+        performance_start_date = points[0].perf_date
+        return PortfolioPerformanceInputResponse(
+            consumerSystem=consumer_system,
+            portfolioId=self._read_attr_or_key(portfolio, "portfolio_id"),
+            baseCurrency=self._read_attr_or_key(portfolio, "base_currency"),
+            performanceStartDate=performance_start_date,
+            asOfDate=request.as_of_date,
+            valuationPoints=points,
         )
 
     def get_effective_policy(
