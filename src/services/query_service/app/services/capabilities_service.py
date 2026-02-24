@@ -174,7 +174,10 @@ class CapabilitiesService:
                 workflow_key="advisor_workbench_overview",
                 enabled=policy_workflow_overrides.get(
                     "advisor_workbench_overview",
-                    all(feature_states[key] for key in _WORKFLOW_DEPENDENCIES["advisor_workbench_overview"]),
+                    all(
+                        feature_states[key]
+                        for key in _WORKFLOW_DEPENDENCIES["advisor_workbench_overview"]
+                    ),
                 ),
                 required_features=[
                     "pas.integration.core_snapshot",
@@ -185,7 +188,10 @@ class CapabilitiesService:
                 workflow_key="analytics_baseline_snapshot",
                 enabled=policy_workflow_overrides.get(
                     "analytics_baseline_snapshot",
-                    all(feature_states[key] for key in _WORKFLOW_DEPENDENCIES["analytics_baseline_snapshot"]),
+                    all(
+                        feature_states[key]
+                        for key in _WORKFLOW_DEPENDENCIES["analytics_baseline_snapshot"]
+                    ),
                 ),
                 required_features=[
                     "pas.analytics.baseline_performance",
@@ -196,7 +202,10 @@ class CapabilitiesService:
                 workflow_key="portfolio_bulk_onboarding",
                 enabled=policy_workflow_overrides.get(
                     "portfolio_bulk_onboarding",
-                    all(feature_states[key] for key in _WORKFLOW_DEPENDENCIES["portfolio_bulk_onboarding"]),
+                    all(
+                        feature_states[key]
+                        for key in _WORKFLOW_DEPENDENCIES["portfolio_bulk_onboarding"]
+                    ),
                 ),
                 required_features=["pas.ingestion.bulk_upload"],
             ),
