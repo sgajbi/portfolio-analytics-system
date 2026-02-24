@@ -44,6 +44,7 @@ minversion = "6.0"
 asyncio_default_fixture_loop_scope = "function"
 markers = [
     "asyncio: mark a test as being an asyncio test",
+    "dependency: mark test dependency ordering/grouping",
 ]
 filterwarnings = [
     "ignore:Please use `import python_multipart` instead.:PendingDeprecationWarning"
