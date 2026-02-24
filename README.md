@@ -88,7 +88,8 @@ Follow these steps to set up the development environment.
 ## Running the System
 
 1.  **Start Infrastructure**:
-    This command starts Kafka, Zookeeper, PostgreSQL, and Prometheus.
+    This command starts Kafka, Zookeeper, PostgreSQL, Prometheus, all PAS services,
+    and an automated one-shot demo data loader (`demo_data_loader`).
     ```bash
     docker compose up -d
     ```
@@ -161,11 +162,25 @@ make test-e2e-smoke
 
 ## Verifying the Workflow
 
-1.  **Ingest Data**:
-    Use the `ingest_data.py` tool to load sample data into the system.
+1.  **Ingest Data (Automated by Default)**:
+    PAS now auto-loads a deterministic demo data pack during startup via Docker Compose.
+    The `demo_data_loader` service ingests portfolios/instruments/transactions/prices/FX data
+    and validates downstream query outputs.
+
+    Check loader logs:
 
     ```bash
-    python -m tools.ingest_data --all
+    docker compose logs --tail=200 demo_data_loader
+    ```
+
+    Optional controls:
+
+    ```bash
+    # Disable auto demo data pack loading for a run
+    DEMO_DATA_PACK_ENABLED=false docker compose up -d
+
+    # Run manually against a running stack
+    python -m tools.demo_data_pack --ingestion-base-url http://localhost:8200 --query-base-url http://localhost:8201
     ```
 
     For UI/file-upload style onboarding, PAS also supports:
@@ -294,7 +309,7 @@ CI workflow shape:
 The `tools/` directory contains helpful scripts for development:
 
   * `kafka_setup.py`: Creates Kafka topics.
-  * `ingest_data.py`: Ingests sample data.
+  * `demo_data_pack.py`: Loads and validates a realistic multi-portfolio demo data pack.
   * `dlq_replayer.py`: Replays messages from a Dead Letter Queue.
   * `reprocess_tool.py`: Triggers reprocessing for specific transactions.
 

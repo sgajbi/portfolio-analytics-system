@@ -345,6 +345,43 @@ services:
     networks:
       - app_network
 
+  demo_data_loader:
+    build:
+      context: .
+      dockerfile: ./src/services/persistence_service/Dockerfile
+    hostname: demo_data_loader
+    container_name: demo_data_loader
+    environment:
+      DEMO_DATA_PACK_ENABLED: ${DEMO_DATA_PACK_ENABLED:-true}
+    depends_on:
+      ingestion_service:
+        condition: service_healthy
+      query_service:
+        condition: service_healthy
+      persistence_service:
+        condition: service_healthy
+      position_calculator_service:
+        condition: service_healthy
+      position_valuation_calculator:
+        condition: service_healthy
+      timeseries_generator_service:
+        condition: service_healthy
+    command: >
+      sh -c "
+      if [ \"$$DEMO_DATA_PACK_ENABLED\" = \"false\" ]; then
+        echo 'Demo data pack disabled via DEMO_DATA_PACK_ENABLED=false';
+        exit 0;
+      fi;
+      python -m tools.demo_data_pack
+      --ingestion-base-url http://ingestion_service:8000
+      --query-base-url http://query_service:8001
+      --wait-seconds 420
+      --poll-interval-seconds 3
+      "
+    restart: "no"
+    networks:
+      - app_network
+
   prometheus:
     image: prom/prometheus:v2.47.2
     container_name: prometheus
