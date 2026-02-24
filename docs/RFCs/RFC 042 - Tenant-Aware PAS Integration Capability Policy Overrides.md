@@ -1,0 +1,63 @@
+# RFC 042 - Tenant-Aware PAS Integration Capability Policy Overrides
+
+- Status: IMPLEMENTED
+- Date: 2026-02-24
+- Owners: PAS Query Service
+
+## Context
+
+`GET /integration/capabilities` is the contract used by BFF/UI and peer services
+to understand PAS feature/workflow availability. The previous implementation only
+supported global environment flags and one global policy version, which limited:
+
+- tenant-specific rollout control,
+- backend-driven configurability depth,
+- productized operating modes across clients.
+
+## Decision
+
+Add tenant-aware policy overrides to PAS capabilities resolution via:
+
+- `PAS_CAPABILITY_TENANT_OVERRIDES_JSON` environment variable.
+
+The service now resolves capabilities in this order:
+
+1. Global feature defaults from existing env flags.
+2. Tenant override block (if configured).
+3. Consumer-specific `supportedInputModes` override (with `default` fallback).
+
+Supported tenant override keys:
+
+- `policyVersion`
+- `features` (map: feature key -> boolean)
+- `workflows` (map: workflow key -> boolean)
+- `supportedInputModes` (map: consumer system key -> list of input modes)
+
+## Rationale
+
+- Keeps configurability in PAS backend, not in BFF/UI.
+- Improves integration readiness for multi-tenant deployments.
+- Preserves stable contract shape while enabling policy-driven behavior.
+
+## Consequences
+
+Positive:
+
+- Tenant-level capability behavior can be changed without code changes.
+- BFF/UI can remain contract-driven while PAS controls rollout semantics.
+
+Trade-offs:
+
+- Misconfigured override JSON could silently drift intent without tests.
+  Mitigated by validation + fallback behavior and unit coverage.
+
+## Tests
+
+Added/updated tests:
+
+- `tests/unit/services/query_service/services/test_capabilities_service.py`
+  - default behavior
+  - global env overrides
+  - tenant override application
+  - invalid override JSON fallback
+

@@ -202,6 +202,23 @@ make test-e2e-smoke
     curl "http://localhost:8201/integration/capabilities?consumerSystem=BFF&tenantId=default"
     ```
 
+    Integration capability policy overrides (optional):
+
+    - `PAS_POLICY_VERSION`: default global policy version label.
+    - `PAS_CAPABILITY_TENANT_OVERRIDES_JSON`: tenant-scoped policy overrides used by
+      `GET /integration/capabilities`.
+      Supported keys per tenant:
+      - `policyVersion`
+      - `features` (map of feature key -> boolean)
+      - `workflows` (map of workflow key -> boolean override)
+      - `supportedInputModes` (map of consumer system -> list, plus optional `default`)
+
+    Example:
+
+    ```bash
+    export PAS_CAPABILITY_TENANT_OVERRIDES_JSON='{"tenant-a":{"policyVersion":"tenant-a-v7","features":{"pas.ingestion.bulk_upload":false},"supportedInputModes":{"PA":["pas_ref"],"default":["pas_ref"]}}}'
+    ```
+
 2.  **Query the API**:
     Once the services have processed the data, you can query the `query-service` API endpoints.
 
