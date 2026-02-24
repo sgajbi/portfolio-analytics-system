@@ -1,11 +1,17 @@
 import logging
+from typing import cast
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from portfolio_common.db import get_async_db_session
 
-from ..dtos.integration_dto import PortfolioCoreSnapshotRequest, PortfolioCoreSnapshotResponse
+from ..dtos.integration_dto import (
+    EffectiveIntegrationPolicyResponse,
+    PortfolioCoreSnapshotRequest,
+    PortfolioCoreSnapshotResponse,
+)
+from ..dtos.review_dto import ReviewSection
 from ..services.integration_service import IntegrationService
 
 logger = logging.getLogger(__name__)
@@ -46,3 +52,31 @@ async def get_portfolio_core_snapshot(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected server error occurred while building integration snapshot.",
         )
+
+
+@router.get(
+    "/policy/effective",
+    response_model=EffectiveIntegrationPolicyResponse,
+    response_model_by_alias=True,
+    summary="Get effective PAS integration snapshot policy",
+    description=(
+        "Returns effective policy diagnostics and provenance for the given consumer and tenant "
+        "context, including strict-mode behavior and allowed sections."
+    ),
+)
+async def get_effective_integration_policy(
+    consumer_system: str = Query("BFF", alias="consumerSystem"),
+    tenant_id: str = Query("default", alias="tenantId"),
+    include_sections: list[ReviewSection] | None = Query(None, alias="includeSections"),
+    integration_service: IntegrationService = Depends(get_integration_service),
+) -> EffectiveIntegrationPolicyResponse:
+    try:
+        raw_sections = [section.value for section in include_sections] if include_sections else None
+        response = integration_service.get_effective_policy(
+            consumer_system=consumer_system,
+            tenant_id=tenant_id,
+            include_sections=raw_sections,
+        )
+        return cast(EffectiveIntegrationPolicyResponse, response)
+    except PermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))

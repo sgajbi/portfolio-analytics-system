@@ -1,5 +1,5 @@
 from datetime import UTC, date, datetime
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import httpx
 import pytest
@@ -75,6 +75,12 @@ async def test_integration_snapshot_success(async_test_client):
                 "droppedSections": [],
                 "warnings": [],
             },
+            "policyProvenance": {
+                "policyVersion": "tenant-default-v2",
+                "policySource": "global",
+                "matchedRuleId": "global.consumers.PA",
+                "strictMode": False,
+            },
         },
     }
 
@@ -85,6 +91,7 @@ async def test_integration_snapshot_success(async_test_client):
     assert response.status_code == 200
     assert response.json()["contractVersion"] == "v1"
     assert response.json()["metadata"]["freshnessStatus"] == "FRESH"
+    assert response.json()["metadata"]["policyProvenance"]["policyVersion"] == "tenant-default-v2"
     assert "X-Correlation-ID" in response.headers
 
 
@@ -122,3 +129,38 @@ async def test_integration_snapshot_policy_rejection_maps_to_403(async_test_clie
 
     assert response.status_code == 403
     assert "allowed" in response.json()["detail"].lower()
+
+
+async def test_effective_policy_endpoint_success(async_test_client):
+    client, mock_service = async_test_client
+    mock_service.get_effective_policy = MagicMock(
+        return_value={
+            "contractVersion": "v1",
+            "sourceService": "portfolio-analytics-system",
+            "consumerSystem": "PA",
+            "tenantId": "tenant-a",
+            "generatedAt": datetime(2026, 2, 24, tzinfo=UTC),
+            "policyProvenance": {
+                "policyVersion": "tenant-a-v3",
+                "policySource": "tenant",
+                "matchedRuleId": "tenant.tenant-a.consumers.PA",
+                "strictMode": False,
+            },
+            "allowedSections": ["OVERVIEW", "HOLDINGS"],
+            "warnings": [],
+        }
+    )
+
+    response = await client.get(
+        "/integration/policy/effective?consumerSystem=PA&tenantId=tenant-a&includeSections=OVERVIEW&includeSections=HOLDINGS"
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["policyProvenance"]["policySource"] == "tenant"
+    assert payload["allowedSections"] == ["OVERVIEW", "HOLDINGS"]
+    mock_service.get_effective_policy.assert_called_once_with(
+        consumer_system="PA",
+        tenant_id="tenant-a",
+        include_sections=["OVERVIEW", "HOLDINGS"],
+    )

@@ -93,6 +93,29 @@ class PortfolioCoreSnapshotMetadata(BaseModel):
     freshness_status: FreshnessStatus = Field(..., alias="freshnessStatus")
     lineage_refs: CoreSnapshotLineageRefs = Field(..., alias="lineageRefs")
     section_governance: SectionGovernanceMetadata = Field(..., alias="sectionGovernance")
+    policy_provenance: "PolicyProvenanceMetadata" = Field(..., alias="policyProvenance")
+
+    model_config = {"populate_by_name": True}
+
+
+class PolicyProvenanceMetadata(BaseModel):
+    policy_version: str = Field(..., alias="policyVersion")
+    policy_source: str = Field(..., alias="policySource")
+    matched_rule_id: str = Field(..., alias="matchedRuleId")
+    strict_mode: bool = Field(..., alias="strictMode")
+
+    model_config = {"populate_by_name": True}
+
+
+class EffectiveIntegrationPolicyResponse(BaseModel):
+    contract_version: str = Field("v1", alias="contractVersion")
+    source_service: str = Field("portfolio-analytics-system", alias="sourceService")
+    consumer_system: str = Field(..., alias="consumerSystem")
+    tenant_id: str = Field(..., alias="tenantId")
+    generated_at: datetime = Field(..., alias="generatedAt")
+    policy_provenance: PolicyProvenanceMetadata = Field(..., alias="policyProvenance")
+    allowed_sections: List[ReviewSection] = Field(default_factory=list, alias="allowedSections")
+    warnings: List[str] = Field(default_factory=list)
 
     model_config = {"populate_by_name": True}
 

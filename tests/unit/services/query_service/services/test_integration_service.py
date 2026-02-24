@@ -94,6 +94,8 @@ async def test_get_portfolio_core_snapshot(
     assert response.metadata.section_governance.requested_sections == ["OVERVIEW", "HOLDINGS"]
     assert response.metadata.section_governance.effective_sections == ["OVERVIEW", "HOLDINGS"]
     assert response.metadata.section_governance.dropped_sections == []
+    assert response.metadata.policy_provenance.policy_source in {"default", "global", "tenant"}
+    assert response.metadata.policy_provenance.matched_rule_id
     assert isinstance(response.metadata.generated_at, datetime)
     assert response.metadata.generated_at.tzinfo == UTC
 
@@ -171,3 +173,48 @@ async def test_get_portfolio_core_snapshot_rejects_disallowed_sections_in_strict
 
     with pytest.raises(PermissionError):
         await service.get_portfolio_core_snapshot("P1", request)
+
+
+def test_get_effective_policy_returns_context(
+    service: IntegrationService, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setenv(
+        "PAS_INTEGRATION_SNAPSHOT_POLICY_JSON",
+        '{"strictMode":false,"consumers":{"PA":["OVERVIEW","HOLDINGS"]}}',
+    )
+    monkeypatch.setenv("PAS_POLICY_VERSION", "tenant-default-v2")
+
+    response = service.get_effective_policy(
+        consumer_system="PA",
+        tenant_id="default",
+        include_sections=["OVERVIEW", "HOLDINGS", "TRANSACTIONS"],
+    )
+
+    assert response.consumer_system == "PA"
+    assert response.policy_provenance.policy_version == "tenant-default-v2"
+    assert response.policy_provenance.policy_source == "global"
+    assert response.policy_provenance.strict_mode is False
+    assert response.allowed_sections == ["OVERVIEW", "HOLDINGS"]
+    assert "SECTIONS_FILTERED_BY_POLICY" in response.warnings
+
+
+def test_get_effective_policy_with_tenant_override(
+    service: IntegrationService, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setenv(
+        "PAS_INTEGRATION_SNAPSHOT_POLICY_JSON",
+        (
+            '{"strictMode":false,"consumers":{"PA":["OVERVIEW"]},'
+            '"tenants":{"tenant-a":{"strictMode":true,"consumers":{"PA":["HOLDINGS"]}}}}'
+        ),
+    )
+
+    response = service.get_effective_policy(
+        consumer_system="PA",
+        tenant_id="tenant-a",
+        include_sections=["HOLDINGS"],
+    )
+
+    assert response.policy_provenance.policy_source == "tenant"
+    assert response.policy_provenance.strict_mode is True
+    assert response.allowed_sections == ["HOLDINGS"]
