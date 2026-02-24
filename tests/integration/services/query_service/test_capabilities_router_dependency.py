@@ -6,7 +6,10 @@ import pytest
 import pytest_asyncio
 
 from src.services.query_service.app.main import app
-from src.services.query_service.app.routers.capabilities import get_capabilities_service
+from src.services.query_service.app.routers.capabilities import (
+    get_capabilities_service,
+)
+from src.services.query_service.app.services.capabilities_service import CapabilitiesService
 
 pytestmark = pytest.mark.asyncio
 
@@ -44,3 +47,8 @@ async def test_capabilities_success(async_test_client):
         consumer_system="DPM",
         tenant_id="tenant-1",
     )
+
+
+def test_get_capabilities_service_returns_service_instance():
+    service = get_capabilities_service()
+    assert isinstance(service, CapabilitiesService)

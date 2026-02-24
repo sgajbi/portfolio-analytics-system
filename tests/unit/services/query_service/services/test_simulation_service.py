@@ -1,10 +1,11 @@
-import pytest
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
-from src.services.query_service.app.services.simulation_service import SimulationService
+import pytest
+
 from src.services.query_service.app.dtos.simulation_dto import SimulationSessionCreateRequest
+from src.services.query_service.app.services.simulation_service import SimulationService
 
 pytestmark = pytest.mark.asyncio
 
@@ -134,6 +135,20 @@ async def test_close_session_raises_when_not_found(mock_dependencies):
         await service.close_session("S404")
 
 
+async def test_close_session_returns_closed_session(mock_dependencies):
+    repo, _, _ = mock_dependencies
+    session_attrs = dict(repo.get_session.return_value.__dict__)
+    session_attrs["status"] = "CLOSED"
+    closed = SimpleNamespace(**session_attrs)
+    repo.close_session.return_value = closed
+    service = SimulationService(AsyncMock())
+
+    response = await service.close_session("S1")
+
+    assert response.session.status == "CLOSED"
+    repo.close_session.assert_awaited_once()
+
+
 async def test_add_changes_raises_when_session_inactive(mock_dependencies):
     repo, _, _ = mock_dependencies
     repo.get_session.return_value.status = "CLOSED"
@@ -254,6 +269,20 @@ async def test_projected_positions_filters_non_positive_after_changes(mock_depen
     response = await service.get_projected_positions("S1")
 
     assert response.positions == []
+
+
+async def test_get_projected_summary_computes_baseline_and_delta(mock_dependencies):
+    service = SimulationService(AsyncMock())
+    summary = await service.get_projected_summary("S1")
+
+    assert summary.total_baseline_positions == 1
+    assert summary.total_proposed_positions == 1
+    assert summary.net_delta_quantity == 10.0
+
+
+def test_validate_session_active_raises_when_session_missing():
+    with pytest.raises(ValueError, match="not found"):
+        SimulationService._validate_session_active("S404", None)
 
 
 @pytest.mark.parametrize(

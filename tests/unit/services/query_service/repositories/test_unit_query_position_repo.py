@@ -1,9 +1,10 @@
 # tests/unit/services/query_service/repositories/test_unit_query_position_repo.py
-import pytest
-from unittest.mock import AsyncMock, MagicMock
 from datetime import date
+from unittest.mock import AsyncMock, MagicMock
 
+import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from src.services.query_service.app.repositories.position_repository import PositionRepository
 
 pytestmark = pytest.mark.asyncio
@@ -105,3 +106,61 @@ async def test_get_position_history_without_date_filters(
     compiled_query = str(executed_stmt.compile(compile_kwargs={"literal_binds": True}))
     assert "position_history.position_date >=" not in compiled_query
     assert "position_history.position_date <=" not in compiled_query
+
+
+async def test_get_latest_position_history_by_portfolio_builds_ranked_query(
+    repository: PositionRepository, mock_db_session: AsyncMock
+):
+    await repository.get_latest_position_history_by_portfolio(portfolio_id="P1")
+
+    executed_stmt = mock_db_session.execute.call_args[0][0]
+    compiled_query = str(executed_stmt.compile(compile_kwargs={"literal_binds": True}))
+    assert "FROM position_history" in compiled_query
+    assert "JOIN position_state ON" in compiled_query
+    assert "position_history.epoch = position_state.epoch" in compiled_query
+    assert "row_number() OVER (PARTITION BY position_history.security_id" in compiled_query
+    assert (
+        "ORDER BY position_history.position_date DESC, position_history.id DESC" in compiled_query
+    )
+    assert "ON position_history.id = anon_1.position_history_id AND anon_1.rn = 1" in compiled_query
+
+
+async def test_get_latest_snapshot_valuation_map_skips_rows_without_security_id(
+    repository: PositionRepository, mock_db_session: AsyncMock
+):
+    mock_result = MagicMock()
+    mock_result.mappings.return_value.all.return_value = [
+        {
+            "security_id": "SEC_A",
+            "market_price": 101.0,
+            "market_value": 1212.0,
+            "unrealized_gain_loss": 112.0,
+            "market_value_local": 1212.0,
+            "unrealized_gain_loss_local": 112.0,
+        },
+        {
+            "security_id": None,
+            "market_price": 1.0,
+            "market_value": 1.0,
+            "unrealized_gain_loss": 1.0,
+            "market_value_local": 1.0,
+            "unrealized_gain_loss_local": 1.0,
+        },
+    ]
+    mock_db_session.execute = AsyncMock(return_value=mock_result)
+
+    valuation_map = await repository.get_latest_snapshot_valuation_map("P1")
+
+    assert valuation_map == {
+        "SEC_A": {
+            "market_price": 101.0,
+            "market_value": 1212.0,
+            "unrealized_gain_loss": 112.0,
+            "market_value_local": 1212.0,
+            "unrealized_gain_loss_local": 112.0,
+        }
+    }
+    executed_stmt = mock_db_session.execute.call_args[0][0]
+    compiled_query = str(executed_stmt.compile(compile_kwargs={"literal_binds": True}))
+    assert "FROM (" in compiled_query
+    assert "daily_position_snapshots.security_id AS security_id" in compiled_query

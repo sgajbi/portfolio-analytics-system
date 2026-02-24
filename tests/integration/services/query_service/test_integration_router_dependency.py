@@ -218,3 +218,29 @@ async def test_performance_input_not_found_maps_to_404(async_test_client):
     )
 
     assert response.status_code == 404
+    assert "no rows" in response.json()["detail"].lower()
+
+
+async def test_performance_input_unexpected_maps_to_500(async_test_client):
+    client, mock_service = async_test_client
+    mock_service.get_portfolio_performance_input.side_effect = RuntimeError("boom")
+
+    response = await client.post(
+        "/integration/portfolios/P500/performance-input",
+        json=performance_input_request_payload(),
+    )
+
+    assert response.status_code == 500
+    assert "performance input series" in response.json()["detail"].lower()
+
+
+async def test_effective_policy_permission_error_maps_to_403(async_test_client):
+    client, mock_service = async_test_client
+    mock_service.get_effective_policy = MagicMock(side_effect=PermissionError("forbidden"))
+
+    response = await client.get(
+        "/integration/policy/effective?consumerSystem=PA&tenantId=tenant-a&includeSections=OVERVIEW"
+    )
+
+    assert response.status_code == 403
+    assert "forbidden" in response.json()["detail"].lower()
