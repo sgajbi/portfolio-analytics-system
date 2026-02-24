@@ -26,7 +26,7 @@ INTEGRATION_LITE_ARGS = [
 ]
 
 SOURCE = "src/services/query_service/app"
-FAIL_UNDER = "95"
+FAIL_UNDER = "99"
 
 
 def run_pytest(args: list[str], coverage_file: str) -> None:
