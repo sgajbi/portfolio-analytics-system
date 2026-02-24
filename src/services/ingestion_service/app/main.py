@@ -1,6 +1,7 @@
 # services/ingestion_service/app/main.py
 import logging
 from contextlib import asynccontextmanager
+from uuid import uuid4
 
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
@@ -10,6 +11,8 @@ from portfolio_common.kafka_utils import get_kafka_producer
 from portfolio_common.logging_utils import (
     setup_logging,
     correlation_id_var,
+    request_id_var,
+    trace_id_var,
     generate_correlation_id,
 )
 from portfolio_common.health import create_health_router
@@ -73,16 +76,26 @@ logger.info("Prometheus metrics exposed at /metrics")
 # Correlation ID Middleware
 @app.middleware("http")
 async def add_correlation_id_middleware(request: Request, call_next):
-    correlation_id = request.headers.get("X-Correlation-ID")
+    correlation_id = request.headers.get("X-Correlation-Id") or request.headers.get("X-Correlation-ID")
     if not correlation_id:
         correlation_id = generate_correlation_id(SERVICE_PREFIX)
+    request_id = request.headers.get("X-Request-Id") or generate_correlation_id("REQ")
+    trace_id = request.headers.get("X-Trace-Id") or uuid4().hex
 
-    token = correlation_id_var.set(correlation_id)
+    correlation_token = correlation_id_var.set(correlation_id)
+    request_token = request_id_var.set(request_id)
+    trace_token = trace_id_var.set(trace_id)
 
     response = await call_next(request)
     response.headers["X-Correlation-ID"] = correlation_id
+    response.headers["X-Correlation-Id"] = correlation_id
+    response.headers["X-Request-Id"] = request_id
+    response.headers["X-Trace-Id"] = trace_id
+    response.headers["traceparent"] = f"00-{trace_id}-0000000000000001-01"
 
-    correlation_id_var.reset(token)
+    correlation_id_var.reset(correlation_token)
+    request_id_var.reset(request_token)
+    trace_id_var.reset(trace_token)
 
     return response
 
