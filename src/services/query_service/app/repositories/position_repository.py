@@ -205,3 +205,48 @@ class PositionRepository:
             f"Found {len(positions)} fallback position-history rows for portfolio '{portfolio_id}'."
         )
         return positions
+
+    async def get_latest_snapshot_valuation_map(
+        self, portfolio_id: str
+    ) -> dict[str, dict[str, float | None]]:
+        """
+        Returns latest available valuation fields by security from daily snapshots,
+        regardless of epoch. Used to enrich fallback position-history rows.
+        """
+        ranked_snapshot_subq = (
+            select(
+                DailyPositionSnapshot.security_id.label("security_id"),
+                DailyPositionSnapshot.market_price.label("market_price"),
+                DailyPositionSnapshot.market_value.label("market_value"),
+                DailyPositionSnapshot.unrealized_gain_loss.label("unrealized_gain_loss"),
+                DailyPositionSnapshot.market_value_local.label("market_value_local"),
+                DailyPositionSnapshot.unrealized_gain_loss_local.label(
+                    "unrealized_gain_loss_local"
+                ),
+                func.row_number()
+                .over(
+                    partition_by=DailyPositionSnapshot.security_id,
+                    order_by=(DailyPositionSnapshot.date.desc(), DailyPositionSnapshot.id.desc()),
+                )
+                .label("rn"),
+            )
+            .where(DailyPositionSnapshot.portfolio_id == portfolio_id)
+            .subquery()
+        )
+
+        stmt = select(ranked_snapshot_subq).where(ranked_snapshot_subq.c.rn == 1)
+        results = await self.db.execute(stmt)
+        rows = results.mappings().all()
+        valuation_map: dict[str, dict[str, float | None]] = {}
+        for row in rows:
+            security_id = row.get("security_id")
+            if not security_id:
+                continue
+            valuation_map[str(security_id)] = {
+                "market_price": row.get("market_price"),
+                "market_value": row.get("market_value"),
+                "unrealized_gain_loss": row.get("unrealized_gain_loss"),
+                "market_value_local": row.get("market_value_local"),
+                "unrealized_gain_loss_local": row.get("unrealized_gain_loss_local"),
+            }
+        return valuation_map

@@ -1,6 +1,6 @@
 # RFC 047 - Position Materialization Guarantees for Multi-Portfolio Demo Data
 
-- Status: Proposed
+- Status: Implemented
 - Date: 2026-02-24
 - Authors: PAS Engineering
 - Related:

@@ -71,9 +71,11 @@ class PositionService:
 
         db_results = await self.repo.get_latest_positions_by_portfolio(portfolio_id)
         using_snapshot_data = True
+        fallback_valuation_map: dict[str, dict[str, float | None]] = {}
         if not db_results:
             db_results = await self.repo.get_latest_position_history_by_portfolio(portfolio_id)
             using_snapshot_data = False
+            fallback_valuation_map = await self.repo.get_latest_snapshot_valuation_map(portfolio_id)
 
         positions = []
         for position_row, instrument, pos_state in db_results:
@@ -86,6 +88,27 @@ class PositionService:
                     market_value_local=position_row.market_value_local,
                     unrealized_gain_loss_local=position_row.unrealized_gain_loss_local,
                 )
+            else:
+                fallback_valuation = fallback_valuation_map.get(position_row.security_id)
+                if fallback_valuation is not None:
+                    valuation_dto = ValuationData(
+                        market_price=fallback_valuation.get("market_price"),
+                        market_value=fallback_valuation.get("market_value"),
+                        unrealized_gain_loss=fallback_valuation.get("unrealized_gain_loss"),
+                        market_value_local=fallback_valuation.get("market_value_local"),
+                        unrealized_gain_loss_local=fallback_valuation.get(
+                            "unrealized_gain_loss_local"
+                        ),
+                    )
+                else:
+                    # Maintain valuation continuity while snapshot backfill catches up.
+                    valuation_dto = ValuationData(
+                        market_price=None,
+                        market_value=position_row.cost_basis,
+                        unrealized_gain_loss=0,
+                        market_value_local=position_row.cost_basis_local,
+                        unrealized_gain_loss_local=0,
+                    )
             position_dto = Position(
                 security_id=position_row.security_id,
                 quantity=position_row.quantity,

@@ -120,4 +120,53 @@ class EffectiveIntegrationPolicyResponse(BaseModel):
     model_config = {"populate_by_name": True}
 
 
+class PortfolioPerformanceInputRequest(BaseModel):
+    as_of_date: date = Field(
+        ...,
+        alias="asOfDate",
+        description="Business date for which raw performance inputs should be returned.",
+        json_schema_extra={"example": "2026-02-24"},
+    )
+    lookback_days: int = Field(
+        400,
+        ge=30,
+        le=2000,
+        alias="lookbackDays",
+        description="Maximum days to look back when building the performance input series.",
+    )
+    consumer_system: Optional[str] = Field(
+        "PA",
+        alias="consumerSystem",
+        description="Optional caller system identifier (for audit/integration tracing).",
+        json_schema_extra={"example": "PA"},
+    )
+
+    model_config = {"populate_by_name": True}
+
+
+class PortfolioPerformanceInputPoint(BaseModel):
+    day: int
+    perf_date: date = Field(..., alias="perfDate")
+    begin_mv: float = Field(..., alias="beginMv")
+    bod_cf: float = Field(..., alias="bodCf")
+    eod_cf: float = Field(..., alias="eodCf")
+    mgmt_fees: float = Field(..., alias="mgmtFees")
+    end_mv: float = Field(..., alias="endMv")
+
+    model_config = {"populate_by_name": True}
+
+
+class PortfolioPerformanceInputResponse(BaseModel):
+    contract_version: str = Field("v1", alias="contractVersion")
+    source_service: str = Field("portfolio-analytics-system", alias="sourceService")
+    consumer_system: str | None = Field(default=None, alias="consumerSystem")
+    portfolio_id: str = Field(..., alias="portfolioId")
+    base_currency: str = Field(..., alias="baseCurrency")
+    performance_start_date: date = Field(..., alias="performanceStartDate")
+    as_of_date: date = Field(..., alias="asOfDate")
+    valuation_points: list[PortfolioPerformanceInputPoint] = Field(..., alias="valuationPoints")
+
+    model_config = {"populate_by_name": True}
+
+
 PortfolioCoreSnapshotResponse.model_rebuild()
