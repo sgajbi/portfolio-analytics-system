@@ -18,8 +18,12 @@ router = APIRouter(prefix="/portfolios", tags=["Performance"])
     "/{portfolio_id}/performance",
     response_model=PerformanceResponse,
     response_model_exclude_none=True,
-    summary="Calculate On-the-Fly Portfolio Performance (TWR)",
-    description="Calculates time-weighted return (TWR) for a portfolio over one or more specified periods, with support for various period types, breakdowns, and currency conversion.",
+    summary="[Deprecated] Calculate On-the-Fly Portfolio Performance (TWR)",
+    description=(
+        "Deprecated: advanced performance analytics ownership has moved to PA. "
+        "Use PA APIs for authoritative performance calculations."
+    ),
+    deprecated=True,
 )
 async def calculate_performance(
     portfolio_id: str, request: PerformanceRequest, db: AsyncSession = Depends(get_async_db_session)
@@ -50,10 +54,12 @@ async def calculate_performance(
 @router.post(
     "/{portfolio_id}/performance/mwr",
     response_model=MWRResponse,
-    # --- THIS IS THE FIX ---
-    # response_model_exclude_none=True, # REMOVED
-    # --- END FIX ---
-    summary="Calculate Money-Weighted Return (MWR / IRR) for a Portfolio",
+    summary="[Deprecated] Calculate Money-Weighted Return (MWR / IRR) for a Portfolio",
+    description=(
+        "Deprecated: advanced performance analytics ownership has moved to PA. "
+        "Use PA APIs for authoritative MWR calculations."
+    ),
+    deprecated=True,
 )
 async def calculate_mwr(
     portfolio_id: str, request: MWRRequest, db: AsyncSession = Depends(get_async_db_session)
