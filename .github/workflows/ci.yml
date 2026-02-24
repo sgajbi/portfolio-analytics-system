@@ -56,8 +56,14 @@ jobs:
       - name: Security Audit
         run: make security-audit
 
-      - name: Lint + Typecheck + Unit Tests
-        run: make check
+      - name: Lint
+        run: make lint
+
+      - name: Typecheck
+        run: make typecheck
+
+      - name: Unit Tests
+        run: make test-unit
 
   test-suites:
     name: Tests (${{ matrix.suite }})
