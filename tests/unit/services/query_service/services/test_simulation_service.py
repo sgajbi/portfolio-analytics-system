@@ -117,6 +117,37 @@ async def test_delete_change_returns_updated_changes(mock_dependencies):
     assert len(response.changes) == 1
 
 
+async def test_add_changes_returns_versioned_change_records(mock_dependencies):
+    repo, _, _ = mock_dependencies
+    added_rows = [
+        SimpleNamespace(
+            change_id="C9",
+            session_id="S1",
+            portfolio_id="P1",
+            security_id="SEC_MSFT_US",
+            transaction_type="BUY",
+            quantity=12,
+            amount=None,
+            price=300.0,
+            currency="USD",
+            effective_date=datetime(2025, 9, 12).date(),
+            change_metadata={"source": "unit"},
+            created_at=datetime.now(timezone.utc),
+        )
+    ]
+    repo.add_changes.return_value = (repo.get_session.return_value, added_rows)
+    service = SimulationService(AsyncMock())
+
+    response = await service.add_changes(
+        "S1", [{"security_id": "SEC_MSFT_US", "transaction_type": "BUY", "quantity": 12}]
+    )
+
+    repo.add_changes.assert_awaited_once()
+    assert response.session_id == "S1"
+    assert response.version == 2
+    assert response.changes[0].change_id == "C9"
+
+
 async def test_get_session_raises_when_not_found(mock_dependencies):
     repo, _, _ = mock_dependencies
     repo.get_session.return_value = None
@@ -124,6 +155,16 @@ async def test_get_session_raises_when_not_found(mock_dependencies):
 
     with pytest.raises(ValueError, match="not found"):
         await service.get_session("S404")
+
+
+async def test_get_session_returns_session_when_found(mock_dependencies):
+    repo, _, _ = mock_dependencies
+    service = SimulationService(AsyncMock())
+
+    response = await service.get_session("S1")
+
+    repo.get_session.assert_awaited_once_with("S1")
+    assert response.session.session_id == "S1"
 
 
 async def test_close_session_raises_when_not_found(mock_dependencies):

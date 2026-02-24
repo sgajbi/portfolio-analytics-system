@@ -1,14 +1,15 @@
 # tests/unit/services/query_service/services/test_performance_service.py
-import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
 from datetime import date
 from decimal import Decimal
-import pandas as pd
+from unittest.mock import AsyncMock, MagicMock, patch
 
-from sqlalchemy.ext.asyncio import AsyncSession
-from src.services.query_service.app.services.performance_service import PerformanceService
-from src.services.query_service.app.dtos.performance_dto import PerformanceRequest
+import pandas as pd
+import pytest
 from portfolio_common.database_models import Portfolio, PortfolioTimeseries
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from src.services.query_service.app.dtos.performance_dto import PerformanceRequest
+from src.services.query_service.app.services.performance_service import PerformanceService
 
 pytestmark = pytest.mark.asyncio
 
@@ -346,3 +347,54 @@ async def test_calculate_breakdowns_invalid_type_returns_empty(
     breakdowns = service._calculate_breakdowns(results_df, "UNKNOWN", request, portfolio)
 
     assert breakdowns == []
+
+
+async def test_calculate_performance_returns_empty_summary_when_periods_empty(
+    service: PerformanceService, mock_performance_repo: AsyncMock
+):
+    request = PerformanceRequest.model_validate(
+        {"scope": {"as_of_date": "2025-02-15", "net_or_gross": "NET"}, "periods": []}
+    )
+
+    response = await service.calculate_performance("P1", request)
+
+    mock_performance_repo.get_portfolio_timeseries_for_range.assert_not_called()
+    assert response.summary == {}
+    assert response.breakdowns is None
+
+
+async def test_calculate_breakdowns_daily_includes_attributes_when_requested(
+    service: PerformanceService,
+):
+    request = PerformanceRequest.model_validate(
+        {
+            "scope": {"as_of_date": "2025-02-15", "net_or_gross": "NET"},
+            "periods": [{"type": "YTD"}],
+            "options": {
+                "include_cumulative": True,
+                "include_annualized": False,
+                "include_attributes": True,
+            },
+        }
+    )
+    portfolio = Portfolio(portfolio_id="P1", open_date=date(2020, 1, 1))
+    results_df = pd.DataFrame(
+        [
+            {
+                "date": date(2025, 1, 1),
+                "daily_ror_pct": Decimal("1.0"),
+                "final_cumulative_ror_pct": Decimal("1.0"),
+                "bod_market_value": Decimal("100"),
+                "eod_market_value": Decimal("101"),
+                "bod_cashflow": Decimal("2"),
+                "eod_cashflow": Decimal("3"),
+                "fees": Decimal("0.5"),
+            }
+        ]
+    )
+
+    breakdowns = service._calculate_breakdowns(results_df, "DAILY", request, portfolio)
+
+    assert len(breakdowns) == 1
+    assert breakdowns[0].attributes is not None
+    assert breakdowns[0].attributes.total_cashflow == Decimal("5")
