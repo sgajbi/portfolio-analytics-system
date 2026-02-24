@@ -1,10 +1,14 @@
 from datetime import UTC, date, datetime
 from unittest.mock import AsyncMock, patch
+from types import SimpleNamespace
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.services.query_service.app.dtos.integration_dto import PortfolioCoreSnapshotRequest
+from src.services.query_service.app.dtos.integration_dto import (
+    PortfolioCoreSnapshotRequest,
+    PortfolioPerformanceInputRequest,
+)
 from src.services.query_service.app.services.integration_service import IntegrationService
 
 pytestmark = pytest.mark.asyncio
@@ -21,8 +25,15 @@ def mock_review_service() -> AsyncMock:
 
 
 @pytest.fixture
+def mock_performance_repository() -> AsyncMock:
+    return AsyncMock()
+
+
+@pytest.fixture
 def service(
-    mock_portfolio_service: AsyncMock, mock_review_service: AsyncMock
+    mock_portfolio_service: AsyncMock,
+    mock_review_service: AsyncMock,
+    mock_performance_repository: AsyncMock,
 ) -> IntegrationService:
     with (
         patch(
@@ -32,6 +43,10 @@ def service(
         patch(
             "src.services.query_service.app.services.integration_service.ReviewService",
             return_value=mock_review_service,
+        ),
+        patch(
+            "src.services.query_service.app.services.integration_service.PerformanceRepository",
+            return_value=mock_performance_repository,
         ),
     ):
         return IntegrationService(AsyncMock(spec=AsyncSession))
@@ -145,13 +160,13 @@ async def test_get_portfolio_core_snapshot_applies_policy_filter(
         {
             "asOfDate": "2026-02-23",
             "consumerSystem": "PA",
-            "includeSections": ["OVERVIEW", "HOLDINGS"],
+            "includeSections": ["OVERVIEW", "HOLDINGS", "PERFORMANCE"],
         }
     )
 
     response = await service.get_portfolio_core_snapshot("P1", request)
     assert response.metadata.section_governance.effective_sections == ["OVERVIEW"]
-    assert response.metadata.section_governance.dropped_sections == ["HOLDINGS"]
+    assert response.metadata.section_governance.dropped_sections == ["HOLDINGS", "PERFORMANCE"]
     assert response.metadata.section_governance.warnings == ["SECTIONS_FILTERED_BY_POLICY"]
 
 
@@ -173,6 +188,57 @@ async def test_get_portfolio_core_snapshot_rejects_disallowed_sections_in_strict
 
     with pytest.raises(PermissionError):
         await service.get_portfolio_core_snapshot("P1", request)
+
+
+async def test_get_portfolio_performance_input(
+    service: IntegrationService,
+    mock_portfolio_service: AsyncMock,
+    mock_performance_repository: AsyncMock,
+):
+    mock_portfolio_service.get_portfolio_by_id.return_value = {
+        "portfolio_id": "P1",
+        "base_currency": "USD",
+        "open_date": date(2025, 1, 1),
+        "close_date": None,
+        "risk_exposure": "MODERATE",
+        "investment_time_horizon": "LONG_TERM",
+        "portfolio_type": "DISCRETIONARY",
+        "objective": "GROWTH",
+        "booking_center": "LON-01",
+        "cif_id": "CIF-1",
+        "is_leverage_allowed": False,
+        "advisor_id": "ADV-1",
+        "status": "ACTIVE",
+    }
+    mock_performance_repository.get_portfolio_timeseries_for_range.return_value = [
+        SimpleNamespace(
+            date=date(2026, 2, 20),
+            bod_market_value=100.0,
+            bod_cashflow=0.0,
+            eod_cashflow=0.0,
+            fees=0.0,
+            eod_market_value=101.0,
+        ),
+        SimpleNamespace(
+            date=date(2026, 2, 21),
+            bod_market_value=101.0,
+            bod_cashflow=5.0,
+            eod_cashflow=0.0,
+            fees=0.1,
+            eod_market_value=106.0,
+        ),
+    ]
+    request = PortfolioPerformanceInputRequest.model_validate(
+        {"asOfDate": "2026-02-21", "consumerSystem": "PA", "lookbackDays": 365}
+    )
+
+    response = await service.get_portfolio_performance_input("P1", request)
+    assert response.portfolio_id == "P1"
+    assert response.base_currency == "USD"
+    assert response.performance_start_date == date(2026, 2, 20)
+    assert len(response.valuation_points) == 2
+    assert response.valuation_points[1].begin_mv == 101.0
+    assert response.valuation_points[1].bod_cf == 5.0
 
 
 def test_get_effective_policy_returns_context(

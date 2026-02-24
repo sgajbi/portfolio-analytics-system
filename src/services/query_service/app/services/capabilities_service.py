@@ -22,8 +22,7 @@ _FEATURE_ENV_DEFAULTS: dict[str, tuple[str, bool]] = {
     "pas.support.overview_api": ("PAS_CAP_SUPPORT_APIS_ENABLED", True),
     "pas.support.lineage_api": ("PAS_CAP_LINEAGE_APIS_ENABLED", True),
     "pas.ingestion.bulk_upload": ("PAS_CAP_UPLOAD_APIS_ENABLED", True),
-    "pas.analytics.baseline_performance": ("PAS_CAP_BASELINE_PERFORMANCE_ENABLED", True),
-    "pas.analytics.baseline_risk": ("PAS_CAP_BASELINE_RISK_ENABLED", True),
+    "pas.integration.performance_input": ("PAS_CAP_PERFORMANCE_INPUT_ENABLED", True),
 }
 
 _WORKFLOW_DEPENDENCIES: dict[str, list[str]] = {
@@ -31,10 +30,7 @@ _WORKFLOW_DEPENDENCIES: dict[str, list[str]] = {
         "pas.integration.core_snapshot",
         "pas.support.overview_api",
     ],
-    "analytics_baseline_snapshot": [
-        "pas.analytics.baseline_performance",
-        "pas.analytics.baseline_risk",
-    ],
+    "pa_performance_calculation": ["pas.integration.performance_input"],
     "portfolio_bulk_onboarding": ["pas.ingestion.bulk_upload"],
 }
 
@@ -156,16 +152,13 @@ class CapabilitiesService:
                 description="CSV/XLSX preview+commit onboarding APIs.",
             ),
             FeatureCapability(
-                key="pas.analytics.baseline_performance",
-                enabled=feature_states["pas.analytics.baseline_performance"],
+                key="pas.integration.performance_input",
+                enabled=feature_states["pas.integration.performance_input"],
                 owner_service="PAS",
-                description="Baseline performance metrics owned by PAS.",
-            ),
-            FeatureCapability(
-                key="pas.analytics.baseline_risk",
-                enabled=feature_states["pas.analytics.baseline_risk"],
-                owner_service="PAS",
-                description="Baseline risk metrics owned by PAS.",
+                description=(
+                    "Raw portfolio time-series input contract used by PA to compute "
+                    "performance metrics."
+                ),
             ),
         ]
 
@@ -185,18 +178,14 @@ class CapabilitiesService:
                 ],
             ),
             WorkflowCapability(
-                workflow_key="analytics_baseline_snapshot",
+                workflow_key="pa_performance_calculation",
                 enabled=policy_workflow_overrides.get(
-                    "analytics_baseline_snapshot",
+                    "pa_performance_calculation",
                     all(
-                        feature_states[key]
-                        for key in _WORKFLOW_DEPENDENCIES["analytics_baseline_snapshot"]
+                        feature_states[key] for key in _WORKFLOW_DEPENDENCIES["pa_performance_calculation"]
                     ),
                 ),
-                required_features=[
-                    "pas.analytics.baseline_performance",
-                    "pas.analytics.baseline_risk",
-                ],
+                required_features=["pas.integration.performance_input"],
             ),
             WorkflowCapability(
                 workflow_key="portfolio_bulk_onboarding",
