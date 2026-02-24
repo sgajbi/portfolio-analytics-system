@@ -152,3 +152,56 @@ class PositionRepository:
         positions = results.all()
         logger.info(f"Found {len(positions)} latest positions for portfolio '{portfolio_id}'.")
         return positions
+
+    async def get_latest_position_history_by_portfolio(self, portfolio_id: str) -> List[Any]:
+        """
+        Fallback query for latest positions per security using position_history
+        when daily snapshots are not yet materialized.
+        """
+        ranked_history_subq = (
+            select(
+                PositionHistory.id.label("position_history_id"),
+                func.row_number()
+                .over(
+                    partition_by=PositionHistory.security_id,
+                    order_by=(PositionHistory.position_date.desc(), PositionHistory.id.desc()),
+                )
+                .label("rn"),
+            )
+            .join(
+                PositionState,
+                and_(
+                    PositionHistory.portfolio_id == PositionState.portfolio_id,
+                    PositionHistory.security_id == PositionState.security_id,
+                    PositionHistory.epoch == PositionState.epoch,
+                ),
+            )
+            .where(PositionHistory.portfolio_id == portfolio_id)
+            .subquery()
+        )
+
+        stmt = (
+            select(PositionHistory, Instrument, PositionState)
+            .join(
+                ranked_history_subq,
+                and_(
+                    PositionHistory.id == ranked_history_subq.c.position_history_id,
+                    ranked_history_subq.c.rn == 1,
+                ),
+            )
+            .join(Instrument, Instrument.security_id == PositionHistory.security_id)
+            .join(
+                PositionState,
+                (PositionState.portfolio_id == PositionHistory.portfolio_id)
+                & (PositionState.security_id == PositionHistory.security_id)
+                & (PositionState.epoch == PositionHistory.epoch),
+            )
+            .filter(PositionHistory.quantity > 0)
+        )
+
+        results = await self.db.execute(stmt)
+        positions = results.all()
+        logger.info(
+            f"Found {len(positions)} fallback position-history rows for portfolio '{portfolio_id}'."
+        )
+        return positions
