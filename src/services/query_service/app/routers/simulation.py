@@ -22,7 +22,12 @@ def get_simulation_service(
     return SimulationService(db)
 
 
-@router.post("", response_model=SimulationSessionResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    response_model=SimulationSessionResponse,
+    status_code=status.HTTP_201_CREATED,
+    description="Create a simulation session for a portfolio.",
+)
 async def create_simulation_session(
     request: SimulationSessionCreateRequest,
     service: SimulationService = Depends(get_simulation_service),
@@ -33,7 +38,11 @@ async def create_simulation_session(
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc))
 
 
-@router.get("/{session_id}", response_model=SimulationSessionResponse)
+@router.get(
+    "/{session_id}",
+    response_model=SimulationSessionResponse,
+    description="Get simulation session metadata by session identifier.",
+)
 async def get_simulation_session(
     session_id: str,
     service: SimulationService = Depends(get_simulation_service),
@@ -44,7 +53,11 @@ async def get_simulation_session(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
 
 
-@router.delete("/{session_id}", response_model=SimulationSessionResponse)
+@router.delete(
+    "/{session_id}",
+    response_model=SimulationSessionResponse,
+    description="Close an active simulation session.",
+)
 async def close_simulation_session(
     session_id: str,
     service: SimulationService = Depends(get_simulation_service),
@@ -55,7 +68,11 @@ async def close_simulation_session(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
 
 
-@router.post("/{session_id}/changes", response_model=SimulationChangesResponse)
+@router.post(
+    "/{session_id}/changes",
+    response_model=SimulationChangesResponse,
+    description="Add or update simulation changes for a session.",
+)
 async def add_simulation_changes(
     session_id: str,
     request: SimulationChangeUpsertRequest,
@@ -68,7 +85,11 @@ async def add_simulation_changes(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
 
 
-@router.delete("/{session_id}/changes/{change_id}", response_model=SimulationChangesResponse)
+@router.delete(
+    "/{session_id}/changes/{change_id}",
+    response_model=SimulationChangesResponse,
+    description="Delete a simulation change from a session.",
+)
 async def delete_simulation_change(
     session_id: str,
     change_id: str,
@@ -80,7 +101,11 @@ async def delete_simulation_change(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
 
 
-@router.get("/{session_id}/projected-positions", response_model=ProjectedPositionsResponse)
+@router.get(
+    "/{session_id}/projected-positions",
+    response_model=ProjectedPositionsResponse,
+    description="Return projected positions after applying session changes.",
+)
 async def get_projected_positions(
     session_id: str,
     service: SimulationService = Depends(get_simulation_service),
@@ -91,7 +116,11 @@ async def get_projected_positions(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
 
 
-@router.get("/{session_id}/projected-summary", response_model=ProjectedSummaryResponse)
+@router.get(
+    "/{session_id}/projected-summary",
+    response_model=ProjectedSummaryResponse,
+    description="Return projected summary metrics for a simulation session.",
+)
 async def get_projected_summary(
     session_id: str,
     service: SimulationService = Depends(get_simulation_service),
