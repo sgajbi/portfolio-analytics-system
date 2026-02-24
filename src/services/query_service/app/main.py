@@ -28,6 +28,7 @@ from .routers import (
     integration,
     capabilities,
     lookups,
+    simulation,
 )
 
 SERVICE_PREFIX = "QRY"
@@ -112,3 +113,4 @@ app.include_router(operations.router)
 app.include_router(integration.router)
 app.include_router(capabilities.router)
 app.include_router(lookups.router)
+app.include_router(simulation.router)

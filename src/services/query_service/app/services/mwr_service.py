@@ -56,7 +56,6 @@ class MWRService:
     async def _process_single_period(
         self, portfolio_id: str, name: str, start_date: date, end_date: date, annualize: bool
     ) -> tuple[str, MWRResult]:
-
         # Fetch timeseries for market values and cashflows for the period concurrently
         ts_task = self.perf_repo.get_portfolio_timeseries_for_range(
             portfolio_id, start_date, end_date
