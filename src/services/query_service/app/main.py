@@ -64,7 +64,9 @@ logger.info("Prometheus metrics exposed at /metrics")
 
 @app.middleware("http")
 async def add_correlation_id_middleware(request: Request, call_next):
-    correlation_id = request.headers.get("X-Correlation-Id") or request.headers.get("X-Correlation-ID")
+    correlation_id = request.headers.get("X-Correlation-Id") or request.headers.get(
+        "X-Correlation-ID"
+    )
     if not correlation_id:
         correlation_id = generate_correlation_id(SERVICE_PREFIX)
     request_id = request.headers.get("X-Request-Id") or generate_correlation_id("REQ")
