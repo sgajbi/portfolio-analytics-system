@@ -26,7 +26,7 @@ test-e2e-smoke:
 	python -m pytest tests/e2e/test_query_service_observability.py tests/e2e/test_complex_portfolio_lifecycle.py -q
 
 security-audit:
-	python -m pip_audit
+	python -m pip_audit -r tests/requirements.txt
 
 check: lint typecheck openapi-gate test
 
