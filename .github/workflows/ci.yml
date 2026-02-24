@@ -62,6 +62,9 @@ jobs:
       - name: Typecheck
         run: make typecheck
 
+      - name: OpenAPI Gate
+        run: make openapi-gate
+
       - name: Unit Tests
         run: make test-unit
 
