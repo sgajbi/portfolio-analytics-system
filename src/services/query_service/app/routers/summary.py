@@ -21,7 +21,8 @@ def get_summary_service(db: AsyncSession = Depends(get_async_db_session)) -> Sum
     "/{portfolio_id}/summary",
     response_model=SummaryResponse,
     response_model_exclude_none=True,
-    summary="Get a Consolidated Portfolio Summary",
+    deprecated=True,
+    summary="Get a Consolidated Portfolio Summary (Deprecated: moved to RAS)",
 )
 async def get_portfolio_summary(
     portfolio_id: str,
@@ -30,6 +31,10 @@ async def get_portfolio_summary(
 ):
     """
     Retrieves a consolidated, dashboard-style summary for a portfolio.
+
+    Deprecated: reporting endpoint ownership has moved to RAS.
+    Use `reporting-aggregation-service` endpoint:
+    `POST /reports/portfolios/{portfolio_id}/summary`.
 
     This endpoint can calculate various sections in a single call:
     - **Wealth**: Total market value and cash balance.
