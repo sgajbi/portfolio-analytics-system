@@ -1,5 +1,5 @@
 from datetime import UTC, date, datetime
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import httpx
 import pytest
@@ -133,21 +133,23 @@ async def test_integration_snapshot_policy_rejection_maps_to_403(async_test_clie
 
 async def test_effective_policy_endpoint_success(async_test_client):
     client, mock_service = async_test_client
-    mock_service.get_effective_policy.return_value = {
-        "contractVersion": "v1",
-        "sourceService": "portfolio-analytics-system",
-        "consumerSystem": "PA",
-        "tenantId": "tenant-a",
-        "generatedAt": datetime(2026, 2, 24, tzinfo=UTC),
-        "policyProvenance": {
-            "policyVersion": "tenant-a-v3",
-            "policySource": "tenant",
-            "matchedRuleId": "tenant.tenant-a.consumers.PA",
-            "strictMode": False,
-        },
-        "allowedSections": ["OVERVIEW", "HOLDINGS"],
-        "warnings": [],
-    }
+    mock_service.get_effective_policy = MagicMock(
+        return_value={
+            "contractVersion": "v1",
+            "sourceService": "portfolio-analytics-system",
+            "consumerSystem": "PA",
+            "tenantId": "tenant-a",
+            "generatedAt": datetime(2026, 2, 24, tzinfo=UTC),
+            "policyProvenance": {
+                "policyVersion": "tenant-a-v3",
+                "policySource": "tenant",
+                "matchedRuleId": "tenant.tenant-a.consumers.PA",
+                "strictMode": False,
+            },
+            "allowedSections": ["OVERVIEW", "HOLDINGS"],
+            "warnings": [],
+        }
+    )
 
     response = await client.get(
         "/integration/policy/effective?consumerSystem=PA&tenantId=tenant-a&includeSections=OVERVIEW&includeSections=HOLDINGS"

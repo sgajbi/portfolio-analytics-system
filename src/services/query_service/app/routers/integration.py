@@ -1,4 +1,5 @@
 import logging
+from typing import cast
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -71,10 +72,11 @@ async def get_effective_integration_policy(
 ) -> EffectiveIntegrationPolicyResponse:
     try:
         raw_sections = [section.value for section in include_sections] if include_sections else None
-        return integration_service.get_effective_policy(
+        response = integration_service.get_effective_policy(
             consumer_system=consumer_system,
             tenant_id=tenant_id,
             include_sections=raw_sections,
         )
+        return cast(EffectiveIntegrationPolicyResponse, response)
     except PermissionError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
