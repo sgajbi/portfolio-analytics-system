@@ -56,7 +56,6 @@ class ReviewService:
     async def get_portfolio_review(
         self, portfolio_id: str, request: PortfolioReviewRequest
     ) -> PortfolioReviewResponse:
-
         with REVIEW_GENERATION_DURATION_SECONDS.labels(portfolio_id=portfolio_id).time():
             logger.info(f"Generating review for portfolio {portfolio_id}")
 
