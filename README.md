@@ -199,6 +199,8 @@ make test-e2e-smoke
       -H "Content-Type: application/json" \
       -d '{"asOfDate":"2026-02-23","includeSections":["OVERVIEW","ALLOCATION","HOLDINGS","TRANSACTIONS"],"consumerSystem":"PA"}'
 
+    curl "http://localhost:8201/integration/policy/effective?consumerSystem=PA&tenantId=default&includeSections=OVERVIEW&includeSections=HOLDINGS"
+
     curl "http://localhost:8201/integration/capabilities?consumerSystem=BFF&tenantId=default"
     ```
 
@@ -218,6 +220,7 @@ make test-e2e-smoke
     - `freshnessStatus`
     - `lineageRefs`
     - `sectionGovernance` (`requestedSections`, `effectiveSections`, `droppedSections`, `warnings`)
+    - `policyProvenance` (`policyVersion`, `policySource`, `matchedRuleId`, `strictMode`)
 
     Integration capability policy overrides (optional):
 
