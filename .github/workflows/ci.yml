@@ -65,6 +65,9 @@ jobs:
       - name: OpenAPI Gate
         run: make openapi-gate
 
+      - name: Migration Contract Smoke
+        run: make migration-smoke
+
       - name: Unit Tests
         run: make test-unit
 
