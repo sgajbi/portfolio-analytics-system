@@ -23,6 +23,26 @@ This repository adopts the platform-wide standard defined in pbwm-platform-docs/
 - Data growth assumptions are maintained per domain table and reviewed before capacity changes.
 - Retention and archival policies are defined for high-volume historical and supportability data.
 
+## Caching Policy Baseline
+
+- PAS does not allow hidden in-memory caches for persistence-critical transaction, position, or valuation state.
+- Any cache use must define TTL, invalidation ownership, and stale-read behavior before release.
+- Invalidation ownership remains with the service that owns the source domain entity and write path.
+
+## Availability Baseline
+
+- Internal SLO baseline: p95 synchronous query API latency < 500 ms for bounded read endpoints; error rate < 1%.
+- Recovery assumptions: RTO 30 minutes and RPO 15 minutes for persistent stores backing core PAS services.
+- Backup and restore validation is mandatory per environment and must be evidenced in runbooks/drills.
+
+## Scale Signal Metrics Coverage
+
+- PAS services expose `/metrics` for request latency/error/throughput and dependency counters.
+- Platform-shared CPU/memory, DB, and queue depth/lag signals are collected via:
+  - `pbwm-platform-docs/platform-stack/prometheus/prometheus.yml`
+  - `pbwm-platform-docs/platform-stack/docker-compose.yml`
+  - `pbwm-platform-docs/Platform Observability Standards.md`
+
 ## Deviation Rule
 
 Any deviation from this standard requires ADR/RFC with remediation timeline.
