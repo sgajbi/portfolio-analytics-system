@@ -11,6 +11,7 @@ from performance_calculator_engine.helpers import resolve_period
 
 from ..repositories.summary_repository import SummaryRepository
 from ..repositories.portfolio_repository import PortfolioRepository
+from ..precision_policy import quantize_money, quantize_performance, to_decimal
 from ..dtos.summary_dto import (
     SummaryRequest,
     SummaryResponse,
@@ -90,8 +91,12 @@ class SummaryService:
         return [
             AllocationGroup(
                 group=key,
-                market_value=value,  # Pydantic will convert Decimal to float
-                weight=round(float(value / total_market_value), 4),
+                market_value=float(quantize_money(value)),
+                weight=float(
+                    quantize_performance(
+                        to_decimal(value) / to_decimal(total_market_value)
+                    )
+                ),
             )
             for key, value in sorted(grouped_allocation.items())
         ]
