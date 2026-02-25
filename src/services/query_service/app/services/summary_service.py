@@ -1,32 +1,32 @@
 # src/services/query_service/app/services/summary_service.py
-import logging
 import asyncio
+import logging
+from collections import defaultdict
 from datetime import date, timedelta
 from decimal import Decimal
-from typing import List, Any, Dict
-from collections import defaultdict
+from typing import Any, Dict, List
 
-from sqlalchemy.ext.asyncio import AsyncSession
 from performance_calculator_engine.helpers import resolve_period
-
-from ..repositories.summary_repository import SummaryRepository
-from ..repositories.portfolio_repository import PortfolioRepository
-from ..precision_policy import quantize_money, quantize_performance, to_decimal
-from ..dtos.summary_dto import (
-    SummaryRequest,
-    SummaryResponse,
-    ResponseScope,
-    WealthSummary,
-    AllocationSummary,
-    AllocationGroup,
-    AllocationDimension,
-    SummarySection,
-    PnlSummary,
-    IncomeSummary,
-    ActivitySummary,
-)
 from portfolio_common.database_models import Cashflow
 from portfolio_common.monitoring import UNCLASSIFIED_ALLOCATION_MARKET_VALUE
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from ..dtos.summary_dto import (
+    ActivitySummary,
+    AllocationDimension,
+    AllocationGroup,
+    AllocationSummary,
+    IncomeSummary,
+    PnlSummary,
+    ResponseScope,
+    SummaryRequest,
+    SummaryResponse,
+    SummarySection,
+    WealthSummary,
+)
+from ..precision_policy import quantize_money, quantize_performance, to_decimal
+from ..repositories.portfolio_repository import PortfolioRepository
+from ..repositories.summary_repository import SummaryRepository
 
 logger = logging.getLogger(__name__)
 
