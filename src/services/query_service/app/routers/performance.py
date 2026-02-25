@@ -18,9 +18,7 @@ router = APIRouter(prefix="/portfolios", tags=["Performance"])
     ),
     deprecated=True,
 )
-async def calculate_performance(
-    portfolio_id: str, request: PerformanceRequest
-):
+async def calculate_performance(portfolio_id: str, request: PerformanceRequest):
     _ = (portfolio_id, request)
     raise_legacy_endpoint_gone(
         capability="performance_twr",
@@ -39,9 +37,7 @@ async def calculate_performance(
     ),
     deprecated=True,
 )
-async def calculate_mwr(
-    portfolio_id: str, request: MWRRequest
-):
+async def calculate_mwr(portfolio_id: str, request: MWRRequest):
     _ = (portfolio_id, request)
     raise_legacy_endpoint_gone(
         capability="performance_mwr",

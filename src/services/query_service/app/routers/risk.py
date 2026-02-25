@@ -17,9 +17,7 @@ router = APIRouter(prefix="/portfolios", tags=["Risk Analytics"])
     ),
     deprecated=True,
 )
-async def calculate_risk(
-    portfolio_id: str, request: RiskRequest
-):
+async def calculate_risk(portfolio_id: str, request: RiskRequest):
     _ = (portfolio_id, request)
     raise_legacy_endpoint_gone(
         capability="risk_analytics",
