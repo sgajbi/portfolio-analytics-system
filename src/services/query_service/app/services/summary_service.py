@@ -93,9 +93,7 @@ class SummaryService:
                 group=key,
                 market_value=float(quantize_money(value)),
                 weight=float(
-                    quantize_performance(
-                        to_decimal(value) / to_decimal(total_market_value)
-                    )
+                    quantize_performance(to_decimal(value) / to_decimal(total_market_value))
                 ),
             )
             for key, value in sorted(grouped_allocation.items())
