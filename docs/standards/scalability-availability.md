@@ -16,6 +16,13 @@ This repository adopts the platform-wide standard defined in pbwm-platform-docs/
 - Compliance matrix entry in pbwm-platform-docs/output/scalability-availability-compliance.md.
 - Service-specific tests covering resilience and concurrency-critical paths.
 
+## Database Scalability Fundamentals
+
+- Critical read/write paths require documented query plan review during change approval.
+- Index strategy is mandatory for high-volume transaction, valuation, and time-series access patterns.
+- Data growth assumptions are maintained per domain table and reviewed before capacity changes.
+- Retention and archival policies are defined for high-volume historical and supportability data.
+
 ## Deviation Rule
 
 Any deviation from this standard requires ADR/RFC with remediation timeline.
