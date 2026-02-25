@@ -12,10 +12,9 @@ pytest-asyncio
 # HTTP client for testing APIs
 requests==2.32.4
 httpx
-openpyxl
 
 # Database drivers (sync and async)
-psycopg2-binary==2.9.9
+psycopg2-binary==2.9.10
 asyncpg==0.29.0
 
 # Environment variable management
