@@ -2,10 +2,7 @@
 import pytest
 import pytest_asyncio
 import httpx
-import pandas as pd
-import numpy as np
 from datetime import date
-from decimal import Decimal
 
 from sqlalchemy.orm import Session
 from src.services.query_service.app.main import app
@@ -49,7 +46,7 @@ async def test_risk_endpoint_happy_path(
     """
     GIVEN a portfolio with a known time-series
     WHEN the /risk endpoint is called
-    THEN it should return a 200 OK response with correctly calculated risk metrics.
+    THEN it should return a 410 Gone migration response.
     """
     # ARRANGE
     portfolio_id = setup_risk_integration_data["portfolio_id"]
@@ -67,23 +64,10 @@ async def test_risk_endpoint_happy_path(
 
     # ACT
     response = await async_test_client.post(api_url, json=request_payload)
-    data = response.json()
+    data = response.json()["detail"]
 
     # ASSERT
-    assert response.status_code == 200
-    assert "TestPeriod" in data["results"]
-    metrics = data["results"]["TestPeriod"]["metrics"]
-
-    # Manually verify the calculations for our simple series [1, 2, -1]
-    returns = pd.Series([1.0, 2.0, -1.0])
-    
-    # Expected Volatility
-    expected_vol = (returns.std() / 100) * np.sqrt(252)
-    assert metrics["VOLATILITY"]["value"] == pytest.approx(expected_vol)
-
-    # Expected Sharpe
-    returns_dec = returns / 100
-    periodic_rf = (1 + 0.01)**(1 / 252) - 1
-    excess_returns = returns_dec - periodic_rf
-    expected_sharpe = (excess_returns.mean() / excess_returns.std()) * np.sqrt(252)
-    assert metrics["SHARPE"]["value"] == pytest.approx(expected_sharpe)
+    assert response.status_code == 410
+    assert data["code"] == "PAS_LEGACY_ENDPOINT_REMOVED"
+    assert data["target_service"] == "PA"
+    assert data["target_endpoint"] == "/portfolios/{portfolio_id}/risk"

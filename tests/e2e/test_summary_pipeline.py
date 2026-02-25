@@ -1,8 +1,6 @@
 # tests/e2e/test_summary_pipeline.py
 import pytest
-from decimal import Decimal
 from .api_client import E2EApiClient
-from datetime import date, timedelta
 
 # --- Test Data Constants ---
 PORTFOLIO_ID = "E2E_SUM_PORT_01"
@@ -62,7 +60,7 @@ def setup_summary_data(clean_db_module, e2e_api_client: E2EApiClient, poll_db_un
 
 def test_portfolio_summary_endpoint(setup_summary_data, e2e_api_client: E2EApiClient):
     """
-    Tests the full summary pipeline by calling the endpoint and verifying all calculations.
+    Verifies PAS summary endpoint is hard-disabled and directs callers to RAS.
     """
     portfolio_id = setup_summary_data["portfolio_id"]
     api_url = f"/portfolios/{portfolio_id}/summary"
@@ -74,36 +72,8 @@ def test_portfolio_summary_endpoint(setup_summary_data, e2e_api_client: E2EApiCl
     }
 
     response = e2e_api_client.post_query(api_url, request_payload)
-    data = response.json()
-    assert response.status_code == 200
-
-    # Expected Final State Calculations:
-    # Cash: 1M(dep) - 300k(buy) + 64k(sell) - 50(fee) + 400(div) - 10k(w/d) = 754,350
-    # MSFT shares: 1000(buy) - 200(sell) - 50(xfer) = 750
-    # IBM shares: 100(xfer)
-    # Wealth:
-    # Cash MV = 754,350
-    # MSFT MV = 750 * 340 = 255,000
-    # IBM MV = 100 * 155 = 15,500
-    # Total MV = 754350 + 255000 + 15500 = 1,024,850
-    assert data["wealth"]["total_market_value"] == pytest.approx(1024850.00)
-    assert data["wealth"]["total_cash"] == pytest.approx(754350.00)
-
-    # Activity & Income
-    activity = data["activitySummary"]
-    assert activity["total_deposits"] == pytest.approx(1000000.00)
-    assert activity["total_withdrawals"] == pytest.approx(-10000.00)
-    assert activity["total_transfers_in"] == pytest.approx(15000.00)
-    assert activity["total_transfers_out"] == pytest.approx(-16500.00)
-    assert activity["total_fees"] == pytest.approx(-50.00)
-    assert data["incomeSummary"]["total_dividends"] == pytest.approx(400.00)
-    
-    # P&L
-    # Realized P&L = 200 * (320 - 300) = 4000
-    # U-PNL start = 0
-    # U-PNL end: MSFT=750*(340-300)=30000. IBM=100*(155-150)=500. Total=30500
-    pnl = data["pnlSummary"]
-    assert pnl["net_new_money"] == pytest.approx(988500.00)
-    assert pnl["realized_pnl"] == pytest.approx(4000.00)
-    assert pnl["unrealized_pnl_change"] == pytest.approx(30500.00)
-    assert pnl["total_pnl"] == pytest.approx(34500.00)
+    data = response.json()["detail"]
+    assert response.status_code == 410
+    assert data["code"] == "PAS_LEGACY_ENDPOINT_REMOVED"
+    assert data["target_service"] == "RAS"
+    assert data["target_endpoint"] == "/reports/portfolios/{portfolio_id}/summary"

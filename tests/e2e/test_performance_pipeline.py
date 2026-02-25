@@ -1,7 +1,5 @@
 # tests/e2e/test_performance_pipeline.py
 import pytest
-from datetime import date
-from decimal import Decimal
 
 from tests.e2e.api_client import E2EApiClient
 from tests.conftest import poll_db_until
@@ -43,8 +41,7 @@ def setup_performance_data(clean_db_module, e2e_api_client: E2EApiClient, poll_d
 
 def test_advanced_performance_api(setup_performance_data, e2e_api_client: E2EApiClient):
     """
-    Tests the full pipeline by calling the new on-the-fly performance endpoint
-    with a request for multiple, complex period types.
+    Verifies PAS performance endpoint is hard-disabled and directs callers to PA.
     """
     # ARRANGE
     portfolio_id = setup_performance_data["portfolio_id"]
@@ -74,16 +71,11 @@ def test_advanced_performance_api(setup_performance_data, e2e_api_client: E2EApi
 
     # ACT
     response = e2e_api_client.post_query(api_url, request_payload)
-    data = response.json()
+    data = response.json()["detail"]
 
     # ASSERT
-    assert response.status_code == 200
-    assert data["scope"]["net_or_gross"] == "NET"
-    assert "Month To Date" in data["summary"]
-    assert "SpecificRange" in data["summary"]
-
-     # The "Month To Date" period in this test only covers one day with a valid return calculation.
-    # The assertion is updated to reflect the single-day return, not a linked return.
-    assert pytest.approx(data["summary"]["Month To Date"]["cumulative_return"], abs=1e-4) == 5.0    
-    assert pytest.approx(data["summary"]["SpecificRange"]["cumulative_return"], abs=1e-4) == 5.0
+    assert response.status_code == 410
+    assert data["code"] == "PAS_LEGACY_ENDPOINT_REMOVED"
+    assert data["target_service"] == "PA"
+    assert data["target_endpoint"] == "/portfolios/{portfolio_id}/performance"
  

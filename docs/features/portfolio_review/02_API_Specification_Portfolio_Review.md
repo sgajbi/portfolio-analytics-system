@@ -1,5 +1,9 @@
 # API Specification: Portfolio Review
 
+> Migration Notice (RFC 056): As of February 25, 2026, PAS hard-disables this
+> endpoint with `410 Gone`. Review/reporting ownership moved to RAS.
+> Use RAS `POST /reports/portfolios/{portfolio_id}/review`.
+
 This document provides the detailed technical specification for the Portfolio Review API endpoint.
 
 ## 1. Endpoint
