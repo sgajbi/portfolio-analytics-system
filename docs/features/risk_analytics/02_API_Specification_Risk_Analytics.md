@@ -1,5 +1,9 @@
 # API Specification: Risk Analytics
 
+> Migration Notice (RFC 056): As of February 25, 2026, PAS hard-disables this
+> endpoint with `410 Gone`. Authoritative risk analytics now belong to PA.
+> Use PA APIs instead of PAS for risk metrics.
+
 This document provides the detailed technical specification for the Risk Analytics API endpoint.
 
 ## 1. Endpoint

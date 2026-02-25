@@ -1,8 +1,6 @@
 # tests/e2e/test_review_pipeline.py
 import pytest
-from decimal import Decimal
 from .api_client import E2EApiClient
-from datetime import date, timedelta
 
 # --- Test Data Constants ---
 PORTFOLIO_ID = "E2E_REVIEW_01"
@@ -61,8 +59,7 @@ def setup_review_data(clean_db_module, e2e_api_client: E2EApiClient, poll_db_unt
 
 def test_portfolio_review_endpoint(setup_review_data, e2e_api_client: E2EApiClient):
     """
-    Tests the full review pipeline by calling the endpoint and verifying key
-    sections of the aggregated report.
+    Verifies PAS review endpoint is hard-disabled and directs callers to RAS.
     """
     portfolio_id = setup_review_data["portfolio_id"]
     api_url = f"/portfolios/{portfolio_id}/review"
@@ -75,61 +72,18 @@ def test_portfolio_review_endpoint(setup_review_data, e2e_api_client: E2EApiClie
 
     # ACT
     response = e2e_api_client.post_query(api_url, request_payload)
-    data = response.json()
+    data = response.json()["detail"]
 
     # ASSERT
-    assert response.status_code == 200
-    assert data["portfolio_id"] == portfolio_id
-
-    # --- Assert Overview Section ---
-    overview = data["overview"]
-    assert overview["total_market_value"] == pytest.approx(101270.00)
-    assert overview["total_cash"] == pytest.approx(75320.00)
-    assert overview["risk_profile"] == "Growth"
-    assert overview["pnl_summary"]["total_pnl"] == pytest.approx(1150.00)
-
-    # --- Assert Holdings Section ---
-    holdings = data["holdings"]["holdingsByAssetClass"]
-    assert "Equity" in holdings
-    assert "Fixed Income" in holdings
-    assert "Cash" in holdings
-    assert holdings["Equity"][0]["security_id"] == "SEC_AAPL"
-    assert holdings["Fixed Income"][0]["security_id"] == "SEC_BOND"
-
-    # --- Assert Transactions Section ---
-    transactions = data["transactions"]["transactionsByAssetClass"]
-    assert "Equity" in transactions
-    assert "Cash" in transactions
-    txn_ids_equity = {t["transaction_id"] for t in transactions["Equity"]}
-    assert "REVIEW_BUY_AAPL" in txn_ids_equity
-    assert "REVIEW_DIV_AAPL" in txn_ids_equity
-    assert "REVIEW_BUY_BOND" in transactions["Fixed Income"][0]["transaction_id"]
-    
-    # --- Assert Performance Section ---
-    performance = data["performance"]
-    assert performance is not None
-    assert "YTD" in performance["summary"]
-    assert "Since Inception" in performance["summary"]
-    ytd_perf = performance["summary"]["YTD"]
-    assert isinstance(ytd_perf["net_cumulative_return"], float)
-    assert isinstance(ytd_perf["gross_cumulative_return"], float)
-    # Corrected assertion: Gross return should be greater than or equal to Net return.
-    assert ytd_perf["gross_cumulative_return"] >= ytd_perf["net_cumulative_return"]
-    
-    # --- Assert Risk Analytics Section ---
-    risk = data["riskAnalytics"]
-    assert risk is not None
-    assert "YTD" in risk["results"]
-    ytd_risk_metrics = risk["results"]["YTD"]["metrics"]
-    assert "VOLATILITY" in ytd_risk_metrics
-    assert "SHARPE" in ytd_risk_metrics
-    assert isinstance(ytd_risk_metrics["VOLATILITY"]["value"], float)
+    assert response.status_code == 410
+    assert data["code"] == "PAS_LEGACY_ENDPOINT_REMOVED"
+    assert data["target_service"] == "RAS"
+    assert data["target_endpoint"] == "/reports/portfolios/{portfolio_id}/review"
 
 
 def test_portfolio_review_for_empty_portfolio(clean_db, e2e_api_client: E2EApiClient):
     """
-    Tests that the review endpoint returns a valid, zeroed-out report for a
-    portfolio that exists but has no transactions or holdings.
+    Verifies empty-portfolio calls also receive 410 migration guidance.
     """
     # ARRANGE
     empty_portfolio_id = "E2E_REVIEW_EMPTY_01"
@@ -154,21 +108,10 @@ def test_portfolio_review_for_empty_portfolio(clean_db, e2e_api_client: E2EApiCl
 
     # ACT
     response = e2e_api_client.post_query(api_url, request_payload)
-    data = response.json()
+    data = response.json()["detail"]
 
     # ASSERT
-    assert response.status_code == 200
-    assert data["portfolio_id"] == empty_portfolio_id
-
-    # Assert Overview is zeroed out
-    overview = data["overview"]
-    assert overview["total_market_value"] == 0.0
-    assert overview["total_cash"] == 0.0
-    assert overview["risk_profile"] == "Balanced" # Static data should still appear
-    assert overview["pnl_summary"]["total_pnl"] == 0.0
-    
-    # Assert other sections are empty/null as expected
-    assert data["holdings"]["holdingsByAssetClass"] == {}
-    assert data["transactions"]["transactionsByAssetClass"] == {}
-    assert data["performance"] is None # No timeseries data exists
-    assert data["riskAnalytics"] is None # No timeseries data exists
+    assert response.status_code == 410
+    assert data["code"] == "PAS_LEGACY_ENDPOINT_REMOVED"
+    assert data["target_service"] == "RAS"
+    assert data["target_endpoint"] == "/reports/portfolios/{portfolio_id}/review"

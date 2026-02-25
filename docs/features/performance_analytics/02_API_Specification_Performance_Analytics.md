@@ -1,6 +1,10 @@
 
 # API Specification: Performance Analytics
 
+> Migration Notice (RFC 056): As of February 25, 2026, PAS hard-disables these
+> endpoints with `410 Gone`. Authoritative performance analytics now belong to
+> PA. Use PA APIs instead of PAS for TWR/MWR.
+
 This document provides the detailed technical specification for the TWR and MWR API endpoints.
 
 * **Base URL:** `http://localhost:8001`

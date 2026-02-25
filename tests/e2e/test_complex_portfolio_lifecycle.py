@@ -212,12 +212,10 @@ def test_complex_lifecycle_cross_api_consistency(
             "allocation_dimensions": ["ASSET_CLASS", "CURRENCY", "SECTOR"],
         },
     )
-    summary = summary_response.json()
-    assert summary_response.status_code == 200
-    assert summary["wealth"]["total_market_value"] > 0
-    assert summary["incomeSummary"]["total_dividends"] > 0
-    assert summary["activitySummary"]["total_fees"] < 0
-    assert summary["pnlSummary"]["total_pnl"] is not None
+    summary = summary_response.json()["detail"]
+    assert summary_response.status_code == 410
+    assert summary["code"] == "PAS_LEGACY_ENDPOINT_REMOVED"
+    assert summary["target_service"] == "RAS"
 
     review_response = e2e_api_client.post_query(
         f"/portfolios/{portfolio_id}/review",
@@ -234,13 +232,10 @@ def test_complex_lifecycle_cross_api_consistency(
             ],
         },
     )
-    review = review_response.json()
-    assert review_response.status_code == 200
-    assert review["overview"]["total_market_value"] == pytest.approx(
-        summary["wealth"]["total_market_value"], rel=1e-4
-    )
-    assert review["transactions"]["transactionsByAssetClass"]
-    assert review["holdings"]["holdingsByAssetClass"]
+    review = review_response.json()["detail"]
+    assert review_response.status_code == 410
+    assert review["code"] == "PAS_LEGACY_ENDPOINT_REMOVED"
+    assert review["target_service"] == "RAS"
 
     integration_response = e2e_api_client.post_query(
         f"/integration/portfolios/{portfolio_id}/core-snapshot",
