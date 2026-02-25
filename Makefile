@@ -1,4 +1,4 @@
-.PHONY: install lint typecheck openapi-gate test test-unit test-integration-lite test-e2e-smoke security-audit check coverage-gate ci ci-local docker-build clean
+.PHONY: install lint typecheck openapi-gate migration-smoke migration-apply test test-unit test-integration-lite test-e2e-smoke security-audit check coverage-gate ci ci-local docker-build clean
 
 install:
 	python scripts/bootstrap_dev.py
@@ -12,6 +12,12 @@ typecheck:
 
 openapi-gate:
 	python scripts/openapi_quality_gate.py
+
+migration-smoke:
+	python scripts/migration_contract_check.py --mode alembic-sql
+
+migration-apply:
+	alembic upgrade head
 
 test:
 	$(MAKE) test-unit
@@ -33,7 +39,7 @@ check: lint typecheck openapi-gate test
 coverage-gate:
 	python scripts/coverage_gate.py
 
-ci: lint typecheck test-integration-lite coverage-gate security-audit
+ci: lint typecheck openapi-gate migration-smoke test-integration-lite coverage-gate security-audit
 
 ci-local: lint typecheck coverage-gate
 
