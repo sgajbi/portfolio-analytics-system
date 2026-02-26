@@ -1,7 +1,12 @@
 import json
 
+import pytest
+from fastapi import Request
+from fastapi.responses import Response
+
 from src.services.query_service.app.enterprise_readiness import (
     authorize_write_request,
+    build_enterprise_audit_middleware,
     is_feature_enabled,
     redact_sensitive,
     validate_enterprise_runtime_config,
@@ -68,11 +73,7 @@ def test_validate_enterprise_runtime_config_reports_rotation_issue(monkeypatch):
     issues = validate_enterprise_runtime_config()
     assert "secret_rotation_days_out_of_range" in issues
 
-import pytest
-from fastapi import Request
-from fastapi.responses import Response
 
-from src.services.query_service.app.enterprise_readiness import build_enterprise_audit_middleware
 
 
 def test_validate_enterprise_runtime_config_reports_missing_primary_key(monkeypatch):
@@ -154,3 +155,4 @@ async def test_enterprise_middleware_allows_write_with_minimum_headers(monkeypat
 
     response = await middleware(request, _call_next)
     assert response.status_code == 200
+
