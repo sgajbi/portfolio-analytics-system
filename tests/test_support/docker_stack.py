@@ -1,0 +1,153 @@
+from __future__ import annotations
+
+import os
+import subprocess
+import time
+from pathlib import Path
+from typing import Callable
+
+import requests
+
+
+class DockerStackError(RuntimeError):
+    """Raised when docker stack bring-up or health checks fail."""
+
+
+def should_build_images() -> bool:
+    return os.getenv("LOTUS_TESTS_DOCKER_BUILD", "false").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+def compose_up(
+    compose_file: str,
+    *,
+    build: bool,
+    retries: int = 1,
+    runner: Callable[..., subprocess.CompletedProcess] = subprocess.run,
+) -> None:
+    args = ["docker", "compose", "-f", compose_file, "up"]
+    if build:
+        args.append("--build")
+    args.append("-d")
+
+    attempts = max(1, retries + 1)
+    last_error: subprocess.CalledProcessError | None = None
+    for _ in range(attempts):
+        try:
+            runner(args, check=True, capture_output=True)
+            return
+        except subprocess.CalledProcessError as exc:
+            last_error = exc
+            stderr = (exc.stderr or b"").decode("utf-8", errors="ignore").lower()
+            if "already exists" in stderr:
+                runner(
+                    ["docker", "compose", "-f", compose_file, "down", "--remove-orphans"],
+                    check=False,
+                    capture_output=True,
+                )
+                continue
+            break
+
+    message = "docker compose up failed"
+    if last_error:
+        details = (last_error.stderr or b"").decode("utf-8", errors="ignore").strip()
+        message = f"{message}: {details}"
+    raise DockerStackError(message)
+
+
+def wait_for_migration_runner(
+    compose_file: str,
+    *,
+    timeout_seconds: int = 120,
+    poll_seconds: int = 2,
+    runner: Callable[..., subprocess.CompletedProcess] = subprocess.run,
+) -> None:
+    start = time.time()
+    while time.time() - start < timeout_seconds:
+        result = runner(
+            [
+                "docker",
+                "compose",
+                "-f",
+                compose_file,
+                "ps",
+                "--status=exited",
+                "-q",
+                "migration-runner",
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        container_id = result.stdout.strip()
+        if not container_id:
+            time.sleep(poll_seconds)
+            continue
+
+        exit_code_result = runner(
+            ["docker", "inspect", container_id, "--format", "{{.State.ExitCode}}"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        if exit_code_result.stdout.strip() == "0":
+            return
+
+        logs_result = runner(
+            ["docker", "compose", "-f", compose_file, "logs", "migration-runner"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        raise DockerStackError(
+            "migration-runner exited with non-zero status:\n" + logs_result.stdout
+        )
+
+    logs_result = runner(
+        ["docker", "compose", "-f", compose_file, "logs", "migration-runner"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    raise DockerStackError(
+        f"migration-runner did not complete within {timeout_seconds}s:\n{logs_result.stdout}"
+    )
+
+
+def wait_for_http_health(
+    service_name: str,
+    health_url: str,
+    *,
+    timeout_seconds: int = 120,
+    poll_seconds: int = 3,
+    get: Callable[..., requests.Response] = requests.get,
+) -> None:
+    start = time.time()
+    while time.time() - start < timeout_seconds:
+        try:
+            response = get(health_url, timeout=2)
+            if response.status_code == 200:
+                return
+        except requests.ConnectionError:
+            pass
+        time.sleep(poll_seconds)
+
+    raise DockerStackError(
+        f"Service '{service_name}' did not become healthy within {timeout_seconds} seconds."
+    )
+
+
+def compose_down(compose_file: str) -> None:
+    subprocess.run(
+        ["docker", "compose", "-f", compose_file, "down", "-v", "--remove-orphans"],
+        check=False,
+        capture_output=True,
+    )
+
+
+def resolve_compose_file(project_root: str) -> str:
+    return str(Path(project_root) / "docker-compose.yml")
