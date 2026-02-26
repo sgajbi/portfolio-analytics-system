@@ -84,3 +84,70 @@ async def test_calculate_performance_returns_core_local_summary(
     assert "YTD" in result.summary
     assert result.summary["YTD"].attributes is not None
     assert result.summary["YTD"].cumulative_return is None
+
+
+async def test_calculate_performance_returns_default_attributes_for_empty_period_slice(
+    service: PerformanceService,
+) -> None:
+    # Provide data outside requested explicit period to assert empty-slice behavior.
+    service.repo.get_portfolio_timeseries_for_range.return_value = [
+        SimpleNamespace(
+            date=date(2025, 2, 1),
+            bod_market_value=100,
+            eod_market_value=101,
+            bod_cashflow=0,
+            eod_cashflow=0,
+            fees=0,
+        )
+    ]
+    request = PerformanceRequest.model_validate(
+        {
+            "scope": {"as_of_date": "2025-03-31", "net_or_gross": "NET"},
+            "periods": [
+                {"type": "EXPLICIT", "name": "Jan", "from": "2025-01-01", "to": "2025-01-31"}
+            ],
+            "options": {"include_attributes": True},
+        }
+    )
+
+    result = await service.calculate_performance("P1", request)
+    attrs = result.summary["Jan"].attributes
+    assert attrs is not None
+    assert attrs.begin_market_value is None
+    assert attrs.end_market_value is None
+    assert attrs.total_cashflow is None
+
+
+async def test_calculate_performance_resolves_year_period_and_can_omit_attributes(
+    service: PerformanceService,
+) -> None:
+    request = PerformanceRequest.model_validate(
+        {
+            "scope": {"as_of_date": "2025-03-31", "net_or_gross": "NET"},
+            "periods": [{"type": "YEAR", "name": "FY24", "year": 2024}],
+            "options": {"include_attributes": False},
+        }
+    )
+
+    result = await service.calculate_performance("P1", request)
+    perf_result = result.summary["FY24"]
+    assert perf_result.start_date == date(2024, 1, 1)
+    assert perf_result.end_date == date(2024, 12, 31)
+    assert perf_result.attributes is None
+
+
+async def test_calculate_performance_with_no_periods_returns_empty_summary(
+    service: PerformanceService,
+) -> None:
+    request = PerformanceRequest.model_validate(
+        {
+            "scope": {"as_of_date": "2025-03-31", "net_or_gross": "NET"},
+            "periods": [],
+            "options": {"include_attributes": True},
+        }
+    )
+
+    result = await service.calculate_performance("P1", request)
+    assert result.summary == {}
+    assert result.breakdowns is None
+    service.repo.get_portfolio_timeseries_for_range.assert_not_called()
