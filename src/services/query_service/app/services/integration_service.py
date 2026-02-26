@@ -5,9 +5,8 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from portfolio_common.logging_utils import correlation_id_var
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..dtos.integration_dto import (
     CoreSnapshotLineageRefs,
@@ -31,6 +30,21 @@ logger = logging.getLogger(__name__)
 _PAS_CORE_SNAPSHOT_ANALYTICS_OWNERSHIP_RESTRICTED: set[str] = {
     "PERFORMANCE",
     "RISK_ANALYTICS",
+}
+
+_CONSUMER_CANONICAL_MAP: dict[str, str] = {
+    "PA": "lotus-performance",
+    "LOTUS-PERFORMANCE": "lotus-performance",
+    "PAS": "lotus-core",
+    "LOTUS-CORE": "lotus-core",
+    "DPM": "lotus-manage",
+    "LOTUS-MANAGE": "lotus-manage",
+    "LOTUS-ADVISE": "lotus-advise",
+    "RAS": "lotus-report",
+    "LOTUS-REPORT": "lotus-report",
+    "BFF": "lotus-gateway",
+    "AEA": "lotus-gateway",
+    "LOTUS-GATEWAY": "lotus-gateway",
 }
 
 
@@ -61,6 +75,27 @@ class IntegrationService:
         if isinstance(target, dict):
             return target.get(key, default)
         return default
+    @staticmethod
+    def _canonical_consumer_system(value: str | None) -> str:
+        raw = (value or "UNKNOWN").strip()
+        if not raw:
+            return "unknown"
+        key = raw.upper()
+        return _CONSUMER_CANONICAL_MAP.get(key, raw.lower())
+
+    @staticmethod
+    def _resolve_consumer_sections(
+        consumers: dict[str, Any] | None,
+        consumer_system: str,
+    ) -> tuple[list[str] | None, str | None]:
+        if not isinstance(consumers, dict):
+            return None, None
+        canonical = IntegrationService._canonical_consumer_system(consumer_system)
+        for key, value in consumers.items():
+            if IntegrationService._canonical_consumer_system(str(key)) == canonical:
+                return IntegrationService._normalize_sections(value), str(key)
+        return None, None
+
 
     @staticmethod
     def _load_policy() -> dict[str, Any]:
@@ -108,14 +143,13 @@ class IntegrationService:
         matched_rule_id = "default"
         warnings: list[str] = []
 
-        allowed_sections = self._normalize_sections(
-            policy.get("consumers", {}).get(consumer_system)
-            if isinstance(policy.get("consumers"), dict)
-            else None
+        allowed_sections, matched_consumer_key = self._resolve_consumer_sections(
+            policy.get("consumers"),
+            consumer_system,
         )
-        if isinstance(policy.get("consumers"), dict) and allowed_sections is not None:
+        if allowed_sections is not None:
             policy_source = "global"
-            matched_rule_id = f"global.consumers.{consumer_system}"
+            matched_rule_id = f"global.consumers.{matched_consumer_key}"
 
         tenants = policy.get("tenants")
         tenant_policy_raw = tenants.get(tenant_id) if isinstance(tenants, dict) else None
@@ -124,15 +158,21 @@ class IntegrationService:
                 tenant_policy_raw.get("strictMode"), default=strict_mode
             )
             tenant_consumers = tenant_policy_raw.get("consumers")
-            tenant_allowed = self._normalize_sections(
-                tenant_consumers.get(consumer_system)
-                if isinstance(tenant_consumers, dict)
-                else tenant_policy_raw.get("defaultSections")
+            tenant_allowed, tenant_match_key = self._resolve_consumer_sections(
+                tenant_consumers if isinstance(tenant_consumers, dict) else None,
+                consumer_system,
             )
+            if tenant_allowed is None:
+                tenant_allowed = self._normalize_sections(
+                    tenant_policy_raw.get("defaultSections")
+                )
             if tenant_allowed is not None:
                 allowed_sections = tenant_allowed
                 policy_source = "tenant"
-                matched_rule_id = f"tenant.{tenant_id}.consumers.{consumer_system}"
+                if tenant_match_key is not None:
+                    matched_rule_id = f"tenant.{tenant_id}.consumers.{tenant_match_key}"
+                else:
+                    matched_rule_id = f"tenant.{tenant_id}.defaultSections"
             elif isinstance(tenant_policy_raw.get("defaultSections"), list):
                 policy_source = "tenant"
                 matched_rule_id = f"tenant.{tenant_id}.defaultSections"
@@ -216,7 +256,7 @@ class IntegrationService:
     async def get_portfolio_core_snapshot(
         self, portfolio_id: str, request: PortfolioCoreSnapshotRequest
     ) -> PortfolioCoreSnapshotResponse:
-        consumer_system = (request.consumer_system or "UNKNOWN").upper()
+        consumer_system = self._canonical_consumer_system(request.consumer_system)
         tenant_id = os.getenv("PAS_DEFAULT_TENANT_ID", "default")
         requested_sections = [section.value for section in request.include_sections]
         policy_context = self._resolve_policy_context(
@@ -272,7 +312,7 @@ class IntegrationService:
         portfolio_id: str,
         request: PortfolioPerformanceInputRequest,
     ) -> PortfolioPerformanceInputResponse:
-        consumer_system = (request.consumer_system or "UNKNOWN").upper()
+        consumer_system = self._canonical_consumer_system(request.consumer_system)
         portfolio = await self.portfolio_service.get_portfolio_by_id(portfolio_id)
 
         start_date = max(
@@ -319,7 +359,7 @@ class IntegrationService:
         tenant_id: str,
         include_sections: list[str] | None,
     ) -> EffectiveIntegrationPolicyResponse:
-        normalized_consumer = consumer_system.upper()
+        normalized_consumer = self._canonical_consumer_system(consumer_system)
         policy_context = self._resolve_policy_context(
             tenant_id=tenant_id,
             consumer_system=normalized_consumer,
@@ -327,12 +367,21 @@ class IntegrationService:
 
         if include_sections:
             requested_sections = [section.upper() for section in include_sections]
-            governance = self._resolve_governance(
-                requested_sections=requested_sections,
-                context=policy_context,
-            )
-            allowed_sections = governance.effective_sections
-            warnings = governance.warnings
+            if (
+                policy_context.policy_source == "tenant"
+                and policy_context.matched_rule_id.endswith(".defaultSections")
+            ):
+                # Tenant defaults are advisory for policy visibility, not hard filters
+                # when the caller explicitly requests include sections.
+                allowed_sections = requested_sections
+                warnings = list(policy_context.warnings)
+            else:
+                governance = self._resolve_governance(
+                    requested_sections=requested_sections,
+                    context=policy_context,
+                )
+                allowed_sections = governance.effective_sections
+                warnings = governance.warnings
         elif policy_context.allowed_sections is not None:
             allowed_sections = policy_context.allowed_sections
             warnings = list(policy_context.warnings)
