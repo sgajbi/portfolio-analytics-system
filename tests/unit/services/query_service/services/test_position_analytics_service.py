@@ -312,3 +312,28 @@ async def test_enrich_position_income_fx_forward_fill(mock_dependencies):
 async def test_get_position_analytics_service_factory():
     service = get_position_analytics_service(AsyncMock(spec=AsyncSession))
     assert isinstance(service, PositionAnalyticsService)
+
+async def test_calculate_performance_returns_empty_result_for_period_without_data(mock_dependencies):
+    service = mock_dependencies["service"]
+    request = PositionAnalyticsRequest(
+        asOfDate=date(2025, 8, 31),
+        sections=["PERFORMANCE"],
+        performanceOptions={"periods": ["MTD"]},
+    )
+    mock_dependencies["perf_repo"].get_position_timeseries_for_range.return_value = [
+        SimpleNamespace(
+            date=date(2025, 7, 1),
+            bod_market_value=Decimal("100"),
+            eod_market_value=Decimal("101"),
+            bod_cashflow_position=Decimal("0"),
+            eod_cashflow_position=Decimal("0"),
+            fees=Decimal("0"),
+        )
+    ]
+
+    result = await service._calculate_performance(
+        "P1", "SEC1", "USD", "USD", date(2023, 1, 1), request
+    )
+    assert result is not None
+    assert result["MTD"].local_return is None
+    assert result["MTD"].base_return is None

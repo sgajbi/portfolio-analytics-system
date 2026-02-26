@@ -207,3 +207,21 @@ async def test_calculate_concentration_records_lookthrough_metric(
         mock_metric_counter.labels.return_value.inc.assert_called_once()
     else:
         mock_metric_counter.labels.assert_not_called()
+
+async def test_calculate_concentration_raises_when_portfolio_missing(mock_dependencies):
+    service = mock_dependencies["service"]
+    service.portfolio_repo.get_by_id.return_value = None
+    request = ConcentrationRequest.model_validate(
+        {"scope": {"as_of_date": "2025-08-31"}, "metrics": ["BULK"]}
+    )
+    with pytest.raises(ValueError, match="Portfolio P404 not found"):
+        await service.calculate_concentration("P404", request)
+
+
+def test_get_concentration_service_factory():
+    from src.services.query_service.app.services.concentration_service import (
+        get_concentration_service,
+    )
+
+    service = get_concentration_service(AsyncMock(spec=AsyncSession))
+    assert isinstance(service, ConcentrationService)

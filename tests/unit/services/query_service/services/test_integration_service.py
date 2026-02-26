@@ -500,3 +500,47 @@ def test_resolve_freshness_status_returns_stale_for_old_as_of_date(
     monkeypatch.setenv("PAS_INTEGRATION_MAX_STALENESS_DAYS", "1")
     stale_date = date.today() - timedelta(days=10)
     assert IntegrationService._resolve_freshness_status(stale_date) == "STALE"
+
+def test_canonical_consumer_system_handles_blank_value():
+    assert IntegrationService._canonical_consumer_system("   ") == "unknown"
+
+
+async def test_get_portfolio_core_snapshot_raises_when_policy_filters_all_sections(
+    service: IntegrationService,
+    mock_portfolio_service: AsyncMock,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    mock_portfolio_service.get_portfolio_by_id.return_value = {
+        "portfolio_id": "P1",
+        "base_currency": "USD",
+        "open_date": date(2025, 1, 1),
+    }
+    monkeypatch.setenv(
+        "PAS_INTEGRATION_SNAPSHOT_POLICY_JSON",
+        '{"consumers":{"lotus-performance":["ALLOCATION"]},"strictMode":false}',
+    )
+    request = PortfolioCoreSnapshotRequest.model_validate(
+        {
+            "asOfDate": "2026-02-23",
+            "consumerSystem": "lotus-performance",
+            "includeSections": ["OVERVIEW"],
+        }
+    )
+
+    with pytest.raises(PermissionError, match="No includeSections are allowed"):
+        await service.get_portfolio_core_snapshot("P1", request)
+
+
+def test_get_effective_policy_sets_tenant_default_rule_marker(
+    service: IntegrationService, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setenv(
+        "PAS_INTEGRATION_SNAPSHOT_POLICY_JSON",
+        '{"tenants":{"tenant-z":{"defaultSections":[]}}}',
+    )
+    response = service.get_effective_policy(
+        consumer_system="lotus-performance",
+        tenant_id="tenant-z",
+        include_sections=["OVERVIEW"],
+    )
+    assert response.policy_provenance.matched_rule_id == "tenant.tenant-z.defaultSections"

@@ -75,6 +75,7 @@ class IntegrationService:
         if isinstance(target, dict):
             return target.get(key, default)
         return default
+
     @staticmethod
     def _canonical_consumer_system(value: str | None) -> str:
         raw = (value or "UNKNOWN").strip()
@@ -95,7 +96,6 @@ class IntegrationService:
             if IntegrationService._canonical_consumer_system(str(key)) == canonical:
                 return IntegrationService._normalize_sections(value), str(key)
         return None, None
-
 
     @staticmethod
     def _load_policy() -> dict[str, Any]:
@@ -163,9 +163,7 @@ class IntegrationService:
                 consumer_system,
             )
             if tenant_allowed is None:
-                tenant_allowed = self._normalize_sections(
-                    tenant_policy_raw.get("defaultSections")
-                )
+                tenant_allowed = self._normalize_sections(tenant_policy_raw.get("defaultSections"))
             if tenant_allowed is not None:
                 allowed_sections = tenant_allowed
                 policy_source = "tenant"
@@ -367,9 +365,8 @@ class IntegrationService:
 
         if include_sections:
             requested_sections = [section.upper() for section in include_sections]
-            if (
-                policy_context.policy_source == "tenant"
-                and policy_context.matched_rule_id.endswith(".defaultSections")
+            if policy_context.policy_source == "tenant" and policy_context.matched_rule_id.endswith(
+                ".defaultSections"
             ):
                 # Tenant defaults are advisory for policy visibility, not hard filters
                 # when the caller explicitly requests include sections.
