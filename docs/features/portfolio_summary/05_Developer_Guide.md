@@ -30,7 +30,7 @@ Execute the following `curl` commands in your Git Bash terminal.
 ```bash
 # Ingest a test portfolio
 curl -X 'POST' \
-  'http://localhost:8000/ingest/portfolios' \
+  'http://localhost:8200/ingest/portfolios' \
   -H 'Content-Type: application/json' \
   -d '{
   "portfolios": [{"portfolioId": "SUMMARY_DEV_01", "baseCurrency": "USD", "openDate": "2025-01-01", "cifId": "SUM_DEV_CIF", "status": "ACTIVE", "riskExposure":"High", "investmentTimeHorizon":"Long", "portfolioType":"Discretionary", "bookingCenter":"SG"}]
@@ -38,7 +38,7 @@ curl -X 'POST' \
 
 # Ingest instruments, including one with full data and one with missing data (for "Unclassified" testing)
 curl -X 'POST' \
-  'http://localhost:8000/ingest/instruments' \
+  'http://localhost:8200/ingest/instruments' \
   -H 'Content-Type: application/json' \
   -d '{
   "instruments": [
@@ -50,7 +50,7 @@ curl -X 'POST' \
 
 # Ingest a business date to trigger valuation
 curl -X 'POST' \
-  'http://localhost:8000/ingest/business-dates' \
+  'http://localhost:8200/ingest/business-dates' \
   -H 'Content-Type: application/json' \
   -d '{
   "business_dates": [{"businessDate": "2025-08-29"}]
@@ -58,7 +58,7 @@ curl -X 'POST' \
 
 # Ingest transactions to create positions
 curl -X 'POST' \
-  'http://localhost:8000/ingest/transactions' \
+  'http://localhost:8200/ingest/transactions' \
   -H 'Content-Type: application/json' \
   -d '{
   "transactions": [
@@ -70,7 +70,7 @@ curl -X 'POST' \
 
 # Ingest market prices for valuation
 curl -X 'POST' \
-  'http://localhost:8000/ingest/market-prices' \
+  'http://localhost:8200/ingest/market-prices' \
   -H 'Content-Type: application/json' \
   -d '{
   "market_prices": [
@@ -89,7 +89,7 @@ Once the pipeline has run, you can call the endpoint with a valid request body.
 
 ```bash
 curl -X 'POST' \
-  'http://localhost:8001/portfolios/SUMMARY_DEV_01/summary' \
+  'http://localhost:8201/portfolios/SUMMARY_DEV_01/summary' \
   -H 'Content-Type: application/json' \
   -d '{
   "as_of_date": "2025-08-29",

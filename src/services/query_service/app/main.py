@@ -1,9 +1,11 @@
 # services/query-service/app/main.py
 import logging
+import time
 from contextlib import asynccontextmanager
 from uuid import uuid4
 
 from fastapi import FastAPI, Request, status
+from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
 from portfolio_common.health import create_health_router
 from portfolio_common.logging_utils import (
@@ -13,6 +15,7 @@ from portfolio_common.logging_utils import (
     setup_logging,
     trace_id_var,
 )
+from portfolio_common.monitoring import HTTP_REQUEST_LATENCY_SECONDS, HTTP_REQUESTS_TOTAL
 from prometheus_fastapi_instrumentator import Instrumentator
 
 from .enterprise_readiness import (
@@ -40,6 +43,7 @@ from .routers import (
 )
 
 SERVICE_PREFIX = "QRY"
+SERVICE_NAME = "query_service"
 setup_logging()
 logger = logging.getLogger(__name__)
 validate_enterprise_runtime_config()
@@ -69,6 +73,31 @@ Instrumentator().instrument(app).expose(app)
 logger.info("Prometheus metrics exposed at /metrics")
 
 
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+    schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        description=app.description,
+        routes=app.routes,
+    )
+    metrics_response = (
+        schema.get("paths", {})
+        .get("/metrics", {})
+        .get("get", {})
+        .get("responses", {})
+        .get("200")
+    )
+    if isinstance(metrics_response, dict):
+        metrics_response["content"] = {"text/plain": {"schema": {"type": "string"}}}
+    app.openapi_schema = schema
+    return app.openapi_schema
+
+
+app.openapi = custom_openapi
+
+
 @app.middleware("http")
 async def add_correlation_id_middleware(request: Request, call_next):
     correlation_id = request.headers.get("X-Correlation-Id") or request.headers.get(
@@ -94,10 +123,42 @@ async def add_correlation_id_middleware(request: Request, call_next):
     return response
 
 
+@app.middleware("http")
+async def emit_http_observability(request: Request, call_next):
+    start = time.perf_counter()
+    response = await call_next(request)
+    elapsed = time.perf_counter() - start
+
+    labels = {
+        "service": SERVICE_NAME,
+        "method": request.method,
+        "path": request.url.path,
+    }
+    HTTP_REQUEST_LATENCY_SECONDS.labels(**labels).observe(elapsed)
+    HTTP_REQUESTS_TOTAL.labels(status=str(response.status_code), **labels).inc()
+
+    logger.info(
+        "http_request_completed",
+        extra={
+            "method": request.method,
+            "path": request.url.path,
+            "status_code": response.status_code,
+            "duration_ms": round(elapsed * 1000, 2),
+        },
+    )
+    return response
+
+
 # Global Exception Handler
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception):
-    correlation_id = correlation_id_var.get()
+    correlation_id = (
+        request.headers.get("X-Correlation-Id")
+        or request.headers.get("X-Correlation-ID")
+        or correlation_id_var.get()
+    )
+    if correlation_id == "<not-set>":
+        correlation_id = generate_correlation_id(SERVICE_PREFIX)
     logger.critical(
         f"Unhandled exception for request {request.method} {request.url}",
         exc_info=exc,

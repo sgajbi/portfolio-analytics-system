@@ -1,16 +1,22 @@
 # src/services/query_service/app/routers/performance.py
-from fastapi import APIRouter
-from ..dtos.performance_dto import PerformanceRequest, PerformanceResponse
-from ..dtos.mwr_dto import MWRRequest, MWRResponse
-from .legacy_gone import raise_legacy_endpoint_gone
+from fastapi import APIRouter, status
+from ..dtos.performance_dto import PerformanceRequest
+from ..dtos.mwr_dto import MWRRequest
+from .legacy_gone import legacy_gone_response, raise_legacy_endpoint_gone
 
 router = APIRouter(prefix="/portfolios", tags=["Performance"])
 
 
 @router.post(
     "/{portfolio_id}/performance",
-    response_model=PerformanceResponse,
-    response_model_exclude_none=True,
+    status_code=status.HTTP_410_GONE,
+    responses={
+        status.HTTP_410_GONE: legacy_gone_response(
+            capability="performance_twr",
+            target_service="PA",
+            target_endpoint="/portfolios/{portfolio_id}/performance",
+        )
+    },
     summary="[Deprecated] Calculate On-the-Fly Portfolio Performance (TWR)",
     description=(
         "Deprecated: advanced performance analytics ownership has moved to PA. "
@@ -29,7 +35,14 @@ async def calculate_performance(portfolio_id: str, request: PerformanceRequest):
 
 @router.post(
     "/{portfolio_id}/performance/mwr",
-    response_model=MWRResponse,
+    status_code=status.HTTP_410_GONE,
+    responses={
+        status.HTTP_410_GONE: legacy_gone_response(
+            capability="performance_mwr",
+            target_service="PA",
+            target_endpoint="/portfolios/{portfolio_id}/performance/mwr",
+        )
+    },
     summary="[Deprecated] Calculate Money-Weighted Return (MWR / IRR) for a Portfolio",
     description=(
         "Deprecated: advanced performance analytics ownership has moved to PA. "

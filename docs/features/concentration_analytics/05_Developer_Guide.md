@@ -31,7 +31,7 @@ Execute the following `curl` commands in your terminal.
 # --- Define Variables ---
 export PORTFOLIO_ID="DEV_CONC_01"
 export AS_OF_DATE="2025-08-31"
-export HOST="http://localhost:8000"
+export HOST="http://localhost:8200"
 
 # --- Ingest Static Data ---
 # 1. Portfolio
@@ -59,7 +59,7 @@ Once the pipeline has run, you can call the endpoint with a valid request body.
 
 ```bash
 curl -X 'POST' \
-  "http://localhost:8001/portfolios/$PORTFOLIO_ID/concentration" \
+  "http://localhost:8201/portfolios/$PORTFOLIO_ID/concentration" \
   -H 'Content-Type: application/json' \
   -d '{
   "scope": {

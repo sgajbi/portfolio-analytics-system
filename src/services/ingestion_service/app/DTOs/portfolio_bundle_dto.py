@@ -1,6 +1,6 @@
 from typing import List, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from .business_date_dto import BusinessDate
 from .fx_rate_dto import FxRate
@@ -27,6 +27,24 @@ class PortfolioBundleIngestionRequest(BaseModel):
     transactions: List[Transaction] = Field(default_factory=list)
     market_prices: List[MarketPrice] = Field(default_factory=list, alias="marketPrices")
     fx_rates: List[FxRate] = Field(default_factory=list, alias="fxRates")
+
+    @model_validator(mode="after")
+    def validate_non_empty_bundle(self):
+        if not any(
+            [
+                self.business_dates,
+                self.portfolios,
+                self.instruments,
+                self.transactions,
+                self.market_prices,
+                self.fx_rates,
+            ]
+        ):
+            raise ValueError(
+                "Portfolio bundle must include at least one non-empty entity list "
+                "(businessDates, portfolios, instruments, transactions, marketPrices, fxRates)."
+            )
+        return self
 
     model_config = {
         "populate_by_name": True,

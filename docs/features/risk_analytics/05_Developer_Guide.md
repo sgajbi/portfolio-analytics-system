@@ -31,7 +31,7 @@ Execute the following `curl` commands in your Git Bash terminal.
 ```bash
 # Ingest a test portfolio
 curl -X 'POST' \
-  'http://localhost:8000/ingest/portfolios' \
+  'http://localhost:8200/ingest/portfolios' \
   -H 'Content-Type: application/json' \
   -d '{
   "portfolios": [{"portfolioId": "RISK_DEV_01", "baseCurrency": "USD", "openDate": "2025-01-01", "cifId": "RISK_DEV_CIF", "status": "ACTIVE", "riskExposure":"High", "investmentTimeHorizon":"Long", "portfolioType":"Discretionary", "bookingCenter":"SG"}]
@@ -39,7 +39,7 @@ curl -X 'POST' \
 
 # Ingest an instrument for the portfolio
 curl -X 'POST' \
-  'http://localhost:8000/ingest/instruments' \
+  'http://localhost:8200/ingest/instruments' \
   -H 'Content-Type: application/json' \
   -d '{
   "instruments": [{"securityId": "RISK_SEC_01", "name": "Risk Dev Stock", "isin": "US_RISK_DEV", "instrumentCurrency": "USD", "productType": "Equity"}]
@@ -47,7 +47,7 @@ curl -X 'POST' \
 
 # Ingest business dates to trigger valuation
 curl -X 'POST' \
-  'http://localhost:8000/ingest/business-dates' \
+  'http://localhost:8200/ingest/business-dates' \
   -H 'Content-Type: application/json' \
   -d '{
   "business_dates": [{"businessDate": "2025-08-25"}, {"businessDate": "2025-08-26"}, {"businessDate": "2025-08-27"}]
@@ -55,14 +55,14 @@ curl -X 'POST' \
 
 # Ingest a transaction and prices to generate time-series data
 curl -X 'POST' \
-  'http://localhost:8000/ingest/transactions' \
+  'http://localhost:8200/ingest/transactions' \
   -H 'Content-Type: application/json' \
   -d '{
   "transactions": [{"transaction_id": "RISK_TXN_01", "portfolio_id": "RISK_DEV_01", "security_id": "RISK_SEC_01", "transaction_date": "2025-08-25T10:00:00Z", "transaction_type": "BUY", "quantity": 100, "price": 100, "gross_transaction_amount": 10000, "trade_currency": "USD", "currency": "USD"}]
 }'
 
 curl -X 'POST' \
-  'http://localhost:8000/ingest/market-prices' \
+  'http://localhost:8200/ingest/market-prices' \
   -H 'Content-Type: application/json' \
   -d '{
   "market_prices": [
@@ -81,7 +81,7 @@ Once the pipeline has run, you can call the endpoint with a valid request body.
 
 ```bash
 curl -X 'POST' \
-  'http://localhost:8001/portfolios/RISK_DEV_01/risk' \
+  'http://localhost:8201/portfolios/RISK_DEV_01/risk' \
   -H 'Content-Type: application/json' \
   -d '{
   "scope": { "as_of_date": "2025-08-27" },

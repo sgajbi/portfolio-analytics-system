@@ -219,6 +219,31 @@ async def test_ingest_portfolio_bundle_endpoint(
     assert mock_kafka_producer.publish_message.call_count == 6
 
 
+async def test_ingest_portfolio_bundle_rejects_empty_payload(
+    async_test_client: httpx.AsyncClient, mock_kafka_producer: MagicMock
+):
+    response = await async_test_client.post("/ingest/portfolio-bundle", json={})
+
+    assert response.status_code == 422
+    assert "at least one non-empty entity list" in response.text
+    mock_kafka_producer.publish_message.assert_not_called()
+
+
+async def test_ingest_portfolio_bundle_rejects_metadata_only_payload(
+    async_test_client: httpx.AsyncClient, mock_kafka_producer: MagicMock
+):
+    payload = {
+        "sourceSystem": "UI_UPLOAD",
+        "mode": "UPSERT",
+    }
+
+    response = await async_test_client.post("/ingest/portfolio-bundle", json=payload)
+
+    assert response.status_code == 422
+    assert "at least one non-empty entity list" in response.text
+    mock_kafka_producer.publish_message.assert_not_called()
+
+
 def _xlsx_upload_bytes(headers: list[str], rows: list[list[object]]) -> bytes:
     workbook = Workbook()
     worksheet = workbook.active
