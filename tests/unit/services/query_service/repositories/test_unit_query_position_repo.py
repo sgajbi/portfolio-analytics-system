@@ -164,3 +164,23 @@ async def test_get_latest_snapshot_valuation_map_skips_rows_without_security_id(
     compiled_query = str(executed_stmt.compile(compile_kwargs={"literal_binds": True}))
     assert "FROM (" in compiled_query
     assert "daily_position_snapshots.security_id AS security_id" in compiled_query
+
+
+async def test_portfolio_exists_true(repository: PositionRepository, mock_db_session: AsyncMock):
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = "P1"
+    mock_db_session.execute = AsyncMock(return_value=mock_result)
+
+    exists = await repository.portfolio_exists("P1")
+
+    assert exists is True
+
+
+async def test_portfolio_exists_false(repository: PositionRepository, mock_db_session: AsyncMock):
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = None
+    mock_db_session.execute = AsyncMock(return_value=mock_result)
+
+    exists = await repository.portfolio_exists("P404")
+
+    assert exists is False

@@ -267,3 +267,71 @@ async def test_get_aggregation_jobs_query(
     compiled = str(stmt.compile(compile_kwargs={"literal_binds": True}))
     assert "ORDER BY portfolio_aggregation_jobs.aggregation_date DESC" in compiled
     assert "LIMIT 5 OFFSET 2" in compiled
+
+
+async def test_portfolio_exists_true(repository: OperationsRepository, mock_db_session: AsyncMock):
+    mock_execute_scalar_one_or_none(mock_db_session, "P1")
+
+    exists = await repository.portfolio_exists("P1")
+
+    assert exists is True
+
+
+async def test_portfolio_exists_false(repository: OperationsRepository, mock_db_session: AsyncMock):
+    mock_execute_scalar_one_or_none(mock_db_session, None)
+
+    exists = await repository.portfolio_exists("P404")
+
+    assert exists is False
+
+
+async def test_get_lineage_keys_query_with_filters(
+    repository: OperationsRepository, mock_db_session: AsyncMock
+):
+    mock_result = MagicMock()
+    mock_result.scalars.return_value.all.return_value = ["k1"]
+    mock_db_session.execute = AsyncMock(return_value=mock_result)
+
+    value = await repository.get_lineage_keys(
+        portfolio_id="P1", skip=0, limit=10, reprocessing_status="CURRENT", security_id="S1"
+    )
+
+    assert value == ["k1"]
+    stmt = mock_db_session.execute.call_args[0][0]
+    compiled = str(stmt.compile(compile_kwargs={"literal_binds": True}))
+    assert "position_state.status = 'CURRENT'" in compiled
+    assert "position_state.security_id = 'S1'" in compiled
+
+
+async def test_get_valuation_jobs_query_with_status(
+    repository: OperationsRepository, mock_db_session: AsyncMock
+):
+    mock_result = MagicMock()
+    mock_result.scalars.return_value.all.return_value = ["job1"]
+    mock_db_session.execute = AsyncMock(return_value=mock_result)
+
+    value = await repository.get_valuation_jobs(
+        portfolio_id="P1", skip=0, limit=20, status="PENDING"
+    )
+
+    assert value == ["job1"]
+    stmt = mock_db_session.execute.call_args[0][0]
+    compiled = str(stmt.compile(compile_kwargs={"literal_binds": True}))
+    assert "portfolio_valuation_jobs.status = 'PENDING'" in compiled
+
+
+async def test_get_aggregation_jobs_query_with_status(
+    repository: OperationsRepository, mock_db_session: AsyncMock
+):
+    mock_result = MagicMock()
+    mock_result.scalars.return_value.all.return_value = ["agg1"]
+    mock_db_session.execute = AsyncMock(return_value=mock_result)
+
+    value = await repository.get_aggregation_jobs(
+        portfolio_id="P1", skip=0, limit=20, status="PROCESSING"
+    )
+
+    assert value == ["agg1"]
+    stmt = mock_db_session.execute.call_args[0][0]
+    compiled = str(stmt.compile(compile_kwargs={"literal_binds": True}))
+    assert "portfolio_aggregation_jobs.status = 'PROCESSING'" in compiled

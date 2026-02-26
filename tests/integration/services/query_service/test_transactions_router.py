@@ -95,3 +95,13 @@ async def test_get_transactions_unhandled_error_is_globally_mapped(async_test_cl
     body = response.json()
     assert body["error"] == "Internal Server Error"
     assert "correlation_id" in body
+
+
+async def test_get_transactions_not_found_maps_to_404(async_test_client):
+    client, mock_service = async_test_client
+    mock_service.get_transactions.side_effect = ValueError("portfolio missing")
+
+    response = await client.get("/portfolios/P404/transactions")
+
+    assert response.status_code == 404
+    assert "portfolio missing" in response.json()["detail"].lower()

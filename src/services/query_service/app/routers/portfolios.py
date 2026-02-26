@@ -71,4 +71,3 @@ async def get_portfolio_by_id(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Portfolio with id {portfolio_id} not found",
         )
-

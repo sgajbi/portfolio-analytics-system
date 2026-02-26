@@ -1,12 +1,16 @@
 from datetime import UTC, date, datetime
 from unittest.mock import AsyncMock, MagicMock
+from sqlalchemy.ext.asyncio import AsyncSession
 
 import httpx
 import pytest
 import pytest_asyncio
 
 from src.services.query_service.app.main import app
-from src.services.query_service.app.routers.integration import get_integration_service
+from src.services.query_service.app.routers.integration import (
+    IntegrationService,
+    get_integration_service,
+)
 
 pytestmark = pytest.mark.asyncio
 
@@ -244,3 +248,11 @@ async def test_effective_policy_permission_error_maps_to_403(async_test_client):
 
     assert response.status_code == 403
     assert "forbidden" in response.json()["detail"].lower()
+
+
+async def test_get_integration_service_dependency_factory():
+    db = AsyncMock(spec=AsyncSession)
+
+    service = get_integration_service(db)
+
+    assert isinstance(service, IntegrationService)

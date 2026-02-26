@@ -205,3 +205,43 @@ async def test_lineage_keys_unexpected_maps_to_500(async_test_client):
 
     assert response.status_code == 500
     assert "lineage keys" in response.json()["detail"].lower()
+
+
+async def test_support_overview_not_found_maps_to_404(async_test_client):
+    client, mock_service = async_test_client
+    mock_service.get_support_overview.side_effect = ValueError("not found")
+
+    response = await client.get("/support/portfolios/P404/overview")
+
+    assert response.status_code == 404
+    assert "not found" in response.json()["detail"].lower()
+
+
+async def test_valuation_jobs_not_found_maps_to_404(async_test_client):
+    client, mock_service = async_test_client
+    mock_service.get_valuation_jobs.side_effect = ValueError("not found")
+
+    response = await client.get("/support/portfolios/P404/valuation-jobs?status=PENDING")
+
+    assert response.status_code == 404
+    assert "not found" in response.json()["detail"].lower()
+
+
+async def test_aggregation_jobs_not_found_maps_to_404(async_test_client):
+    client, mock_service = async_test_client
+    mock_service.get_aggregation_jobs.side_effect = ValueError("not found")
+
+    response = await client.get("/support/portfolios/P404/aggregation-jobs?status=PROCESSING")
+
+    assert response.status_code == 404
+    assert "not found" in response.json()["detail"].lower()
+
+
+async def test_lineage_keys_not_found_maps_to_404(async_test_client):
+    client, mock_service = async_test_client
+    mock_service.get_lineage_keys.side_effect = ValueError("not found")
+
+    response = await client.get("/lineage/portfolios/P404/keys?reprocessing_status=CURRENT")
+
+    assert response.status_code == 404
+    assert "not found" in response.json()["detail"].lower()
