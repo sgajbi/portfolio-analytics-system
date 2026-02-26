@@ -17,6 +17,7 @@ router = APIRouter(prefix="/portfolios", tags=["Position Analytics"])
     "/{portfolio_id}/positions-analytics",
     response_model=PositionAnalyticsResponse,
     response_model_exclude_none=True,
+    responses={status.HTTP_404_NOT_FOUND: {"description": "Portfolio not found."}},
     summary="Retrieve Detailed Position-Level Analytics",
     description=(
         "Provides a detailed, multi-section breakdown of analytics for all "

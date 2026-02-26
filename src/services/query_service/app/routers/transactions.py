@@ -1,13 +1,14 @@
 # services/query-service/app/routers/transactions.py
 from datetime import date
-from typing import Optional, Dict
-from fastapi import APIRouter, Depends, Query
+from typing import Dict, Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from portfolio_common.db import get_async_db_session
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from portfolio_common.db import get_async_db_session
-from ..services.transaction_service import TransactionService
+from ..dependencies import pagination_params, sorting_params
 from ..dtos.transaction_dto import PaginatedTransactionResponse
-from ..dependencies import pagination_params, sorting_params  # <-- IMPORT NEW DEPENDENCY
+from ..services.transaction_service import TransactionService
 
 router = APIRouter(prefix="/portfolios", tags=["Transactions"])
 
@@ -15,6 +16,7 @@ router = APIRouter(prefix="/portfolios", tags=["Transactions"])
 @router.get(
     "/{portfolio_id}/transactions",
     response_model=PaginatedTransactionResponse,
+    responses={status.HTTP_404_NOT_FOUND: {"description": "Portfolio not found."}},
     summary="Get Transactions for a Portfolio",
     description=(
         "Returns transactions for a portfolio with filters, pagination, and sorting. "
@@ -31,15 +33,18 @@ async def get_transactions(
         None, description="The end date for the date range filter (inclusive)."
     ),
     pagination: Dict[str, int] = Depends(pagination_params),
-    sorting: Dict[str, Optional[str]] = Depends(sorting_params),  # <-- USE NEW DEPENDENCY
+    sorting: Dict[str, Optional[str]] = Depends(sorting_params),
     db: AsyncSession = Depends(get_async_db_session),
 ):
     service = TransactionService(db)
-    return await service.get_transactions(
-        portfolio_id=portfolio_id,
-        security_id=security_id,
-        start_date=start_date,
-        end_date=end_date,
-        **pagination,
-        **sorting,
-    )
+    try:
+        return await service.get_transactions(
+            portfolio_id=portfolio_id,
+            security_id=security_id,
+            start_date=start_date,
+            end_date=end_date,
+            **pagination,
+            **sorting,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))

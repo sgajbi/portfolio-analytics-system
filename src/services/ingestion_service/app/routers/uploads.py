@@ -1,12 +1,11 @@
 import logging
 
-from fastapi import APIRouter, Depends, File, Form, UploadFile, status
-
 from app.DTOs.upload_dto import UploadCommitResponse, UploadEntityType, UploadPreviewResponse
 from app.services.upload_ingestion_service import (
     UploadIngestionService,
     get_upload_ingestion_service,
 )
+from fastapi import APIRouter, Depends, File, Form, UploadFile, status
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -16,6 +15,11 @@ router = APIRouter()
     "/ingest/uploads/preview",
     response_model=UploadPreviewResponse,
     status_code=status.HTTP_200_OK,
+    responses={
+        status.HTTP_400_BAD_REQUEST: {
+            "description": "Invalid upload file format or content.",
+        }
+    },
     tags=["Bulk Uploads"],
     summary="Preview and validate bulk upload data",
     description=(
@@ -53,6 +57,11 @@ async def preview_upload(
     "/ingest/uploads/commit",
     response_model=UploadCommitResponse,
     status_code=status.HTTP_202_ACCEPTED,
+    responses={
+        status.HTTP_400_BAD_REQUEST: {
+            "description": "Invalid upload file format or content.",
+        }
+    },
     tags=["Bulk Uploads"],
     summary="Commit validated bulk upload data",
     description=(

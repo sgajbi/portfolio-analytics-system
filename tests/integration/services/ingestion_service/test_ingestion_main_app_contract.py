@@ -33,3 +33,12 @@ async def test_metrics_include_http_series_samples(async_test_client):
     metrics_text = metrics_response.text
     assert "http_requests_total{" in metrics_text
     assert "http_request_latency_seconds_count{" in metrics_text
+
+
+async def test_openapi_declares_upload_400_contracts(async_test_client):
+    response = await async_test_client.get("/openapi.json")
+
+    assert response.status_code == 200
+    paths = response.json()["paths"]
+    assert "400" in paths["/ingest/uploads/preview"]["post"]["responses"]
+    assert "400" in paths["/ingest/uploads/commit"]["post"]["responses"]
