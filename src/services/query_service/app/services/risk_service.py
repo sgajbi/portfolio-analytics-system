@@ -121,3 +121,4 @@ class RiskService:
             )
 
         return RiskResponse.model_validate(response.json())
+
