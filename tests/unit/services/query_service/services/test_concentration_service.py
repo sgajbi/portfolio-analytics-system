@@ -208,6 +208,7 @@ async def test_calculate_concentration_records_lookthrough_metric(
     else:
         mock_metric_counter.labels.assert_not_called()
 
+
 async def test_calculate_concentration_raises_when_portfolio_missing(mock_dependencies):
     service = mock_dependencies["service"]
     service.portfolio_repo.get_by_id.return_value = None

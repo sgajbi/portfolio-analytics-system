@@ -143,6 +143,7 @@ async def test_calculate_performance_raises_on_remote_error(service: Performance
         with pytest.raises(RuntimeError, match="lotus-performance request failed"):
             await service.calculate_performance("P1", _request())
 
+
 def test_period_to_pa_type_rejects_unsupported_value() -> None:
     with pytest.raises(ValueError, match="Unsupported period type"):
         PerformanceService._period_to_pa_type("BAD")
@@ -165,7 +166,9 @@ def test_extract_breakdown_results_returns_empty_for_unknown_breakdown() -> None
 
 def test_extract_breakdown_results_handles_invalid_period_date() -> None:
     results = PerformanceService._extract_breakdown_results(
-        period_payload={"breakdowns": {"daily": [{"period": "bad", "summary": {"period_return_pct": 1.2}}]}},
+        period_payload={
+            "breakdowns": {"daily": [{"period": "bad", "summary": {"period_return_pct": 1.2}}]}
+        },
         breakdown="DAILY",
         default_start=date(2025, 1, 1),
         default_end=date(2025, 1, 2),
@@ -174,7 +177,9 @@ def test_extract_breakdown_results_handles_invalid_period_date() -> None:
     assert results[0].start_date == date(2025, 1, 2)
 
 
-async def test_calculate_performance_returns_empty_when_no_periods(service: PerformanceService) -> None:
+async def test_calculate_performance_returns_empty_when_no_periods(
+    service: PerformanceService,
+) -> None:
     request = PerformanceRequest.model_validate(
         {
             "scope": {"as_of_date": "2025-03-31", "net_or_gross": "NET"},
@@ -191,12 +196,16 @@ async def test_calculate_performance_returns_empty_when_no_periods(service: Perf
     assert result.breakdowns is None
 
 
-async def test_calculate_performance_handles_missing_remote_period_payload(service: PerformanceService) -> None:
+async def test_calculate_performance_handles_missing_remote_period_payload(
+    service: PerformanceService,
+) -> None:
     response = SimpleNamespace()
     response.status_code = 200
     response.json = lambda: {"results_by_period": {}}
 
-    with patch("src.services.query_service.app.services.performance_service.httpx.AsyncClient") as client_cls:
+    with patch(
+        "src.services.query_service.app.services.performance_service.httpx.AsyncClient"
+    ) as client_cls:
         client = AsyncMock()
         client.__aenter__.return_value = client
         client.post.return_value = response

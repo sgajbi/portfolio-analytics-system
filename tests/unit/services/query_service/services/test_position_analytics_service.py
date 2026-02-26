@@ -313,7 +313,10 @@ async def test_get_position_analytics_service_factory():
     service = get_position_analytics_service(AsyncMock(spec=AsyncSession))
     assert isinstance(service, PositionAnalyticsService)
 
-async def test_calculate_performance_returns_empty_result_for_period_without_data(mock_dependencies):
+
+async def test_calculate_performance_returns_empty_result_for_period_without_data(
+    mock_dependencies,
+):
     service = mock_dependencies["service"]
     request = PositionAnalyticsRequest(
         asOfDate=date(2025, 8, 31),

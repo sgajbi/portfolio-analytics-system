@@ -146,6 +146,7 @@ async def test_get_instruments_count(repository: InstrumentRepository, mock_db_s
     assert "count(*)" in compiled_query.lower()
     assert "WHERE instruments.product_type = 'Bond'" in compiled_query
 
+
 async def test_get_by_security_ids_returns_empty_for_empty_input(
     repository: InstrumentRepository,
     mock_db_session: AsyncMock,

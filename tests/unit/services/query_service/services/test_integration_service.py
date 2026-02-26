@@ -501,6 +501,7 @@ def test_resolve_freshness_status_returns_stale_for_old_as_of_date(
     stale_date = date.today() - timedelta(days=10)
     assert IntegrationService._resolve_freshness_status(stale_date) == "STALE"
 
+
 def test_canonical_consumer_system_handles_blank_value():
     assert IntegrationService._canonical_consumer_system("   ") == "unknown"
 

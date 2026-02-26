@@ -177,6 +177,7 @@ async def test_build_returns_series_returns_empty_when_no_periods(service: RiskS
 
     assert await service._build_returns_series("P1", request) == []
 
+
 def test_risk_period_to_pa_type_rejects_unsupported_value() -> None:
     with pytest.raises(ValueError, match="Unsupported period type"):
         RiskService._period_to_pa_type("BAD")
@@ -228,7 +229,9 @@ async def test_build_returns_series_handles_year_period(service: RiskService) ->
         }
     )
 
-    with patch("src.services.query_service.app.services.risk_service.httpx.AsyncClient") as client_cls:
+    with patch(
+        "src.services.query_service.app.services.risk_service.httpx.AsyncClient"
+    ) as client_cls:
         client = AsyncMock()
         client.__aenter__.return_value = client
         client.post.return_value = pa_response
@@ -239,7 +242,9 @@ async def test_build_returns_series_handles_year_period(service: RiskService) ->
     assert returns == [{"date": "2025-01-02", "value": 1.0}]
 
 
-async def test_build_returns_series_raises_on_performance_remote_error(service: RiskService) -> None:
+async def test_build_returns_series_raises_on_performance_remote_error(
+    service: RiskService,
+) -> None:
     service.portfolio_repo.get_by_id.return_value = SimpleNamespace(
         open_date=date(2024, 1, 1), base_currency="USD"
     )
@@ -255,7 +260,9 @@ async def test_build_returns_series_raises_on_performance_remote_error(service: 
     ]
     pa_response = SimpleNamespace(status_code=502, text="upstream")
 
-    with patch("src.services.query_service.app.services.risk_service.httpx.AsyncClient") as client_cls:
+    with patch(
+        "src.services.query_service.app.services.risk_service.httpx.AsyncClient"
+    ) as client_cls:
         client = AsyncMock()
         client.__aenter__.return_value = client
         client.post.return_value = pa_response
@@ -265,7 +272,9 @@ async def test_build_returns_series_raises_on_performance_remote_error(service: 
             await service._build_returns_series("P1", _request())
 
 
-async def test_build_returns_series_returns_empty_when_period_payload_missing(service: RiskService) -> None:
+async def test_build_returns_series_returns_empty_when_period_payload_missing(
+    service: RiskService,
+) -> None:
     service.portfolio_repo.get_by_id.return_value = SimpleNamespace(
         open_date=date(2024, 1, 1), base_currency="USD"
     )
@@ -281,7 +290,9 @@ async def test_build_returns_series_returns_empty_when_period_payload_missing(se
     ]
     pa_response = SimpleNamespace(status_code=200, json=lambda: {"results_by_period": {}})
 
-    with patch("src.services.query_service.app.services.risk_service.httpx.AsyncClient") as client_cls:
+    with patch(
+        "src.services.query_service.app.services.risk_service.httpx.AsyncClient"
+    ) as client_cls:
         client = AsyncMock()
         client.__aenter__.return_value = client
         client.post.return_value = pa_response

@@ -74,8 +74,6 @@ def test_validate_enterprise_runtime_config_reports_rotation_issue(monkeypatch):
     assert "secret_rotation_days_out_of_range" in issues
 
 
-
-
 def test_validate_enterprise_runtime_config_reports_missing_primary_key(monkeypatch):
     monkeypatch.setenv("ENTERPRISE_ENFORCE_AUTHZ", "true")
     monkeypatch.delenv("ENTERPRISE_PRIMARY_KEY_ID", raising=False)
@@ -155,4 +153,3 @@ async def test_enterprise_middleware_allows_write_with_minimum_headers(monkeypat
 
     response = await middleware(request, _call_next)
     assert response.status_code == 200
-

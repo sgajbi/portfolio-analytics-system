@@ -100,6 +100,7 @@ async def test_get_instruments(mock_instrument_repo: AsyncMock):
         assert response_dto.instruments[0].security_id == "SEC1"
         assert response_dto.instruments[1].product_type == "Bond"
 
+
 async def test_get_instruments_by_ids_returns_empty_when_ids_empty(mock_instrument_repo: AsyncMock):
     with patch(
         "src.services.query_service.app.services.instrument_service.InstrumentRepository",

@@ -113,6 +113,7 @@ async def test_calculate_mwr_happy_path(mock_dependencies: dict):
     assert result.attributes.external_withdrawals == Decimal("0")
     assert result.attributes.cashflow_count == 1
 
+
 async def test_calculate_mwr_raises_when_portfolio_missing(mock_dependencies: dict):
     service = mock_dependencies["service"]
     mock_dependencies["portfolio_repo"].get_by_id.return_value = None
