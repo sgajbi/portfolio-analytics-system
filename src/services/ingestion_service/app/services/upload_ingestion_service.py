@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import csv
+from csv import Error as CsvError
 from dataclasses import dataclass
 from io import BytesIO, StringIO
 from typing import Any, Literal
+from zipfile import BadZipFile
 
 from fastapi import Depends, HTTPException, status
 from openpyxl import load_workbook
+from openpyxl.utils.exceptions import InvalidFileException
 from pydantic import BaseModel, ValidationError
 
 from app.DTOs.business_date_dto import BusinessDate
@@ -121,9 +124,20 @@ class UploadIngestionService:
         self, filename: str, content: bytes
     ) -> tuple[Literal["csv", "xlsx"], list[dict[str, Any]]]:
         file_format = _detect_format(filename)
-        if file_format == "csv":
-            return file_format, _parse_csv(content)
-        return file_format, _parse_xlsx(content)
+        try:
+            if file_format == "csv":
+                return file_format, _parse_csv(content)
+            return file_format, _parse_xlsx(content)
+        except (UnicodeDecodeError, CsvError) as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid CSV content: {exc}",
+            ) from exc
+        except (BadZipFile, InvalidFileException, ValueError) as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid XLSX content: {exc}",
+            ) from exc
 
     def _validate_rows(
         self, entity_type: UploadEntityType, filename: str, content: bytes
@@ -247,3 +261,5 @@ def get_upload_ingestion_service(
     ingestion_service: IngestionService = Depends(get_ingestion_service),
 ) -> UploadIngestionService:
     return UploadIngestionService(ingestion_service)
+
+
