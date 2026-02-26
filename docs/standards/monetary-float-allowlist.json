@@ -1,7 +1,7 @@
 {
   "description": "Approved baseline monetary-float findings. New findings fail CI.",
   "policy_version": "1.1.0",
-  "generated_at": "2026-02-25T14:51:35Z",
+  "generated_at": "2026-02-26T09:21:08Z",
   "allowlist": [
     {
       "finding": "scripts/check_monetary_float_usage.py:112:\"justification\": \"Temporary approved monetary float usage; migrate to Decimal.\",",
@@ -364,34 +364,40 @@
       "review_by": "2026-08-24"
     },
     {
-      "finding": "src/services/query_service/app/services/integration_service.py:298:beginMv=float(row.bod_market_value),",
+      "finding": "src/services/query_service/app/services/integration_service.py:336:beginMv=float(row.bod_market_value),",
       "justification": "Temporary approved monetary float usage; migrate to Decimal.",
       "owner": "platform-governance",
-      "review_by": "2026-08-24"
+      "review_by": "2026-08-25"
     },
     {
-      "finding": "src/services/query_service/app/services/integration_service.py:302:endMv=float(row.eod_market_value),",
+      "finding": "src/services/query_service/app/services/integration_service.py:340:endMv=float(row.eod_market_value),",
       "justification": "Temporary approved monetary float usage; migrate to Decimal.",
       "owner": "platform-governance",
-      "review_by": "2026-08-24"
+      "review_by": "2026-08-25"
     },
     {
-      "finding": "src/services/query_service/app/services/performance_service.py:186:day_return = float(row[DAILY_ROR_PCT])",
+      "finding": "src/services/query_service/app/services/performance_service.py:105:return float(annualized)",
       "justification": "Temporary approved monetary float usage; migrate to Decimal.",
       "owner": "platform-governance",
-      "review_by": "2026-08-24"
+      "review_by": "2026-08-25"
     },
     {
-      "finding": "src/services/query_service/app/services/performance_service.py:187:cumulative_return_to_date = float(row[FINAL_CUMULATIVE_ROR_PCT])",
+      "finding": "src/services/query_service/app/services/performance_service.py:251:float(portfolio_return.get(\"base\"))",
       "justification": "Temporary approved monetary float usage; migrate to Decimal.",
       "owner": "platform-governance",
-      "review_by": "2026-08-24"
+      "review_by": "2026-08-25"
     },
     {
-      "finding": "src/services/query_service/app/services/performance_service.py:243:period_cumulative_return = float(period_results_df.iloc[-1][FINAL_CUMULATIVE_ROR_PCT])",
+      "finding": "src/services/query_service/app/services/performance_service.py:72:\"begin_mv\": float(row.bod_market_value or 0),",
       "justification": "Temporary approved monetary float usage; migrate to Decimal.",
       "owner": "platform-governance",
-      "review_by": "2026-08-24"
+      "review_by": "2026-08-25"
+    },
+    {
+      "finding": "src/services/query_service/app/services/performance_service.py:76:\"end_mv\": float(row.eod_market_value or 0),",
+      "justification": "Temporary approved monetary float usage; migrate to Decimal.",
+      "owner": "platform-governance",
+      "review_by": "2026-08-25"
     },
     {
       "finding": "src/services/query_service/app/services/position_analytics_service.py:119:fx_series = pd.Series({r.rate_date: r.rate for r in fx_rates_db}).astype(float)",
@@ -464,6 +470,18 @@
       "justification": "Temporary approved monetary float usage; migrate to Decimal.",
       "owner": "platform-governance",
       "review_by": "2026-08-24"
+    },
+    {
+      "finding": "src/services/query_service/app/services/risk_service.py:56:\"begin_mv\": float(row.bod_market_value or 0),",
+      "justification": "Temporary approved monetary float usage; migrate to Decimal.",
+      "owner": "platform-governance",
+      "review_by": "2026-08-25"
+    },
+    {
+      "finding": "src/services/query_service/app/services/risk_service.py:60:\"end_mv\": float(row.eod_market_value or 0),",
+      "justification": "Temporary approved monetary float usage; migrate to Decimal.",
+      "owner": "platform-governance",
+      "review_by": "2026-08-25"
     },
     {
       "finding": "src/services/query_service/app/services/simulation_service.py:111:\"cost_basis\": float(row.cost_basis) if row.cost_basis is not None else None,",

@@ -1,4 +1,4 @@
-# RFC 029 - DPM Engineering Baseline Alignment
+# RFC 029 - lotus-manage Engineering Baseline Alignment
 
 - Status: Proposed
 - Date: 2026-02-23
@@ -18,7 +18,7 @@ This slows delivery and increases integration risk across platform services.
 
 ## Decision
 
-Adopt a DPM-style baseline now, with a phased strictness model:
+Adopt a lotus-manage-style baseline now, with a phased strictness model:
 
 1. Add unified CI workflow with:
    - workflow lint
@@ -27,7 +27,7 @@ Adopt a DPM-style baseline now, with a phased strictness model:
 2. Add repo `Makefile` with:
    - `install`, `lint`, `typecheck`, `test`, `check`, `docker-build`
 3. Add repo `mypy.ini` and `ruff` config in `pyproject.toml`
-4. Add PR auto-merge workflow matching DPM pattern
+4. Add PR auto-merge workflow matching lotus-manage pattern
 5. Apply `main` branch protection requiring CI checks and PR review
 
 ## Phase Strategy
@@ -52,7 +52,7 @@ Adopt a DPM-style baseline now, with a phased strictness model:
 
 ### Positive
 
-- immediate CI and quality standardization with DPM-compatible workflow shape
+- immediate CI and quality standardization with lotus-manage-compatible workflow shape
 - deterministic local commands for developers and AI agents
 - reduced drift in tooling across backend repositories
 

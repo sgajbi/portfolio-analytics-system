@@ -1,8 +1,8 @@
 # API Specification: Portfolio Summary
 
-> Migration Notice (RFC 056): As of February 25, 2026, PAS hard-disables this
-> endpoint with `410 Gone`. Summary/reporting ownership moved to RAS.
-> Use RAS `POST /reports/portfolios/{portfolio_id}/summary`.
+> Migration Notice (RFC 056): As of February 25, 2026, lotus-core hard-disables this
+> endpoint with `410 Gone`. Summary/reporting ownership moved to lotus-report.
+> Use lotus-report `POST /reports/portfolios/{portfolio_id}/summary`.
 
 This document provides the detailed technical specification for the Portfolio Summary API endpoint.
 

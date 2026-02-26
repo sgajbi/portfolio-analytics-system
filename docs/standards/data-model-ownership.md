@@ -11,12 +11,12 @@
 
 ## Service Boundaries
 
-- PAS exposes standardized core data APIs.
-- PA consumes PAS APIs for advanced analytics.
-- RAS consumes PAS and PA APIs for reporting aggregation.
+- lotus-core exposes standardized core data APIs.
+- lotus-performance consumes lotus-core APIs for advanced analytics.
+- lotus-report consumes lotus-core and lotus-performance APIs for reporting aggregation.
 
 ## Schema Rules
 
 - Entity names follow canonical glossary vocabulary.
-- Ownership stays within PAS database boundary; no cross-service shared DB.
+- Ownership stays within lotus-core database boundary; no cross-service shared DB.
 

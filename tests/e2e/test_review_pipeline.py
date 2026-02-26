@@ -59,7 +59,7 @@ def setup_review_data(clean_db_module, e2e_api_client: E2EApiClient, poll_db_unt
 
 def test_portfolio_review_endpoint(setup_review_data, e2e_api_client: E2EApiClient):
     """
-    Verifies PAS review endpoint is hard-disabled and directs callers to RAS.
+    Verifies lotus-core review endpoint is hard-disabled and directs callers to lotus-report.
     """
     portfolio_id = setup_review_data["portfolio_id"]
     api_url = f"/portfolios/{portfolio_id}/review"
@@ -77,7 +77,7 @@ def test_portfolio_review_endpoint(setup_review_data, e2e_api_client: E2EApiClie
     # ASSERT
     assert response.status_code == 410
     assert data["code"] == "PAS_LEGACY_ENDPOINT_REMOVED"
-    assert data["target_service"] == "RAS"
+    assert data["target_service"] == "lotus-report"
     assert data["target_endpoint"] == "/reports/portfolios/{portfolio_id}/review"
 
 
@@ -113,5 +113,5 @@ def test_portfolio_review_for_empty_portfolio(clean_db, e2e_api_client: E2EApiCl
     # ASSERT
     assert response.status_code == 410
     assert data["code"] == "PAS_LEGACY_ENDPOINT_REMOVED"
-    assert data["target_service"] == "RAS"
+    assert data["target_service"] == "lotus-report"
     assert data["target_endpoint"] == "/reports/portfolios/{portfolio_id}/review"

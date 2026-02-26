@@ -41,7 +41,7 @@ def setup_performance_data(clean_db_module, e2e_api_client: E2EApiClient, poll_d
 
 def test_advanced_performance_api(setup_performance_data, e2e_api_client: E2EApiClient):
     """
-    Verifies PAS performance endpoint is hard-disabled and directs callers to PA.
+    Verifies lotus-core performance endpoint is hard-disabled and directs callers to lotus-performance.
     """
     # ARRANGE
     portfolio_id = setup_performance_data["portfolio_id"]
@@ -76,6 +76,6 @@ def test_advanced_performance_api(setup_performance_data, e2e_api_client: E2EApi
     # ASSERT
     assert response.status_code == 410
     assert data["code"] == "PAS_LEGACY_ENDPOINT_REMOVED"
-    assert data["target_service"] == "PA"
+    assert data["target_service"] == "lotus-performance"
     assert data["target_endpoint"] == "/portfolios/{portfolio_id}/performance"
  

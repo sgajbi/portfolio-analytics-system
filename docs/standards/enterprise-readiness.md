@@ -1,4 +1,4 @@
-# Enterprise Readiness Baseline (PAS)
+# Enterprise Readiness Baseline (lotus-core)
 
 - Standard reference: `lotus-platform/Enterprise Readiness Standard.md`
 - Scope: core portfolio data query service, ingestion and reference-data aligned governance.

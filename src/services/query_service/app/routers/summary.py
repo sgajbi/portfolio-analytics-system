@@ -1,5 +1,6 @@
 # src/services/query_service/app/routers/summary.py
 from fastapi import APIRouter, status
+
 from ..dtos.summary_dto import SummaryRequest
 from .legacy_gone import legacy_gone_response, raise_legacy_endpoint_gone
 
@@ -12,12 +13,12 @@ router = APIRouter(prefix="/portfolios", tags=["Portfolio Summary"])
     responses={
         status.HTTP_410_GONE: legacy_gone_response(
             capability="portfolio_summary_report",
-            target_service="RAS",
+            target_service="lotus-report",
             target_endpoint="/reports/portfolios/{portfolio_id}/summary",
         )
     },
     deprecated=True,
-    summary="Get a Consolidated Portfolio Summary (Deprecated: moved to RAS)",
+    summary="Get a Consolidated Portfolio Summary (Deprecated: moved to lotus-report)",
 )
 async def get_portfolio_summary(
     portfolio_id: str,
@@ -26,7 +27,7 @@ async def get_portfolio_summary(
     """
     Retrieves a consolidated, dashboard-style summary for a portfolio.
 
-    Deprecated: reporting endpoint ownership has moved to RAS.
+    Deprecated: reporting endpoint ownership has moved to lotus-report.
     Use `lotus-report` endpoint:
     `POST /reports/portfolios/{portfolio_id}/summary`.
 
@@ -37,6 +38,6 @@ async def get_portfolio_summary(
     _ = (portfolio_id, request)
     raise_legacy_endpoint_gone(
         capability="portfolio_summary_report",
-        target_service="RAS",
+        target_service="lotus-report",
         target_endpoint="/reports/portfolios/{portfolio_id}/summary",
     )

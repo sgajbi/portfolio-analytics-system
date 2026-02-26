@@ -43,7 +43,7 @@ async def test_calculate_concentration_success(async_test_client):
     assert response.status_code == 410
     detail = response.json()["detail"]
     assert detail["code"] == "PAS_LEGACY_ENDPOINT_REMOVED"
-    assert detail["target_service"] == "PA"
+    assert detail["target_service"] == "lotus-performance"
     assert detail["target_endpoint"] == "/portfolios/{portfolio_id}/concentration"
 
     mock_service.calculate_concentration.assert_not_awaited()
@@ -62,7 +62,7 @@ async def test_calculate_concentration_portfolio_not_found(async_test_client):
     response = await client.post(f"/portfolios/{portfolio_id}/concentration", json=request_payload)
 
     assert response.status_code == 410
-    assert response.json()["detail"]["target_service"] == "PA"
+    assert response.json()["detail"]["target_service"] == "lotus-performance"
     mock_service.calculate_concentration.assert_not_awaited()
 
 
@@ -73,5 +73,5 @@ async def test_calculate_concentration_unexpected_error(async_test_client):
     response = await client.post("/portfolios/P1/concentration", json=request_payload)
 
     assert response.status_code == 410
-    assert response.json()["detail"]["target_service"] == "PA"
+    assert response.json()["detail"]["target_service"] == "lotus-performance"
     mock_service.calculate_concentration.assert_not_awaited()

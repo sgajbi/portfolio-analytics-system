@@ -112,3 +112,17 @@ async def test_calculate_mwr_happy_path(mock_dependencies: dict):
     assert result.attributes.external_contributions == Decimal("5000")
     assert result.attributes.external_withdrawals == Decimal("0")
     assert result.attributes.cashflow_count == 1
+
+
+async def test_calculate_mwr_raises_when_portfolio_missing(mock_dependencies: dict):
+    service = mock_dependencies["service"]
+    mock_dependencies["portfolio_repo"].get_by_id.return_value = None
+    request = MWRRequest.model_validate(
+        {
+            "scope": {"as_of_date": "2025-01-31"},
+            "periods": [{"type": "MTD", "name": "Test MTD"}],
+            "options": {"annualize": False},
+        }
+    )
+    with pytest.raises(ValueError, match="Portfolio P404 not found"):
+        await service.calculate_mwr("P404", request)

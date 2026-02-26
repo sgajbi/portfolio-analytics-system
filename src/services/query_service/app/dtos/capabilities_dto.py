@@ -4,7 +4,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 
-ConsumerSystem = Literal["BFF", "PA", "DPM", "UI", "UNKNOWN"]
+ConsumerSystem = Literal["lotus-gateway", "lotus-performance", "lotus-manage", "UI", "UNKNOWN"]
 
 
 class FeatureCapability(BaseModel):
@@ -40,7 +40,7 @@ class IntegrationCapabilitiesResponse(BaseModel):
             "example": {
                 "contractVersion": "v1",
                 "sourceService": "lotus-core",
-                "consumerSystem": "BFF",
+                "consumerSystem": "lotus-gateway",
                 "tenantId": "default",
                 "generatedAt": "2026-02-23T21:00:00Z",
                 "asOfDate": "2026-02-23",
@@ -50,8 +50,8 @@ class IntegrationCapabilitiesResponse(BaseModel):
                     {
                         "key": "pas.integration.core_snapshot",
                         "enabled": True,
-                        "owner_service": "PAS",
-                        "description": "Core portfolio snapshot API for PA and DPM.",
+                        "owner_service": "lotus-core",
+                        "description": "Core portfolio snapshot API for lotus-performance and lotus-manage.",
                     }
                 ],
                 "workflows": [

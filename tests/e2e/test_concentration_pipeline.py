@@ -52,7 +52,7 @@ def setup_concentration_data(clean_db_module, e2e_api_client: E2EApiClient, poll
 
 def test_bulk_concentration_e2e(setup_concentration_data, e2e_api_client: E2EApiClient):
     """
-    Verifies PAS concentration endpoint is hard-disabled and directs callers to PA.
+    Verifies lotus-core concentration endpoint is hard-disabled and directs callers to lotus-performance.
     """
     portfolio_id = setup_concentration_data["portfolio_id"]
     api_url = f"/portfolios/{portfolio_id}/concentration"
@@ -69,12 +69,12 @@ def test_bulk_concentration_e2e(setup_concentration_data, e2e_api_client: E2EApi
     # ASSERT
     assert response.status_code == 410
     assert data["code"] == "PAS_LEGACY_ENDPOINT_REMOVED"
-    assert data["target_service"] == "PA"
+    assert data["target_service"] == "lotus-performance"
     assert data["target_endpoint"] == "/portfolios/{portfolio_id}/concentration"
 
 def test_issuer_concentration_e2e(setup_concentration_data, e2e_api_client: E2EApiClient):
     """
-    Verifies PAS concentration endpoint is hard-disabled and directs callers to PA.
+    Verifies lotus-core concentration endpoint is hard-disabled and directs callers to lotus-performance.
     """
     portfolio_id = setup_concentration_data["portfolio_id"]
     api_url = f"/portfolios/{portfolio_id}/concentration"
@@ -91,5 +91,5 @@ def test_issuer_concentration_e2e(setup_concentration_data, e2e_api_client: E2EA
     # ASSERT
     assert response.status_code == 410
     assert data["code"] == "PAS_LEGACY_ENDPOINT_REMOVED"
-    assert data["target_service"] == "PA"
+    assert data["target_service"] == "lotus-performance"
     assert data["target_endpoint"] == "/portfolios/{portfolio_id}/concentration"

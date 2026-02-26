@@ -99,3 +99,14 @@ async def test_get_instruments(mock_instrument_repo: AsyncMock):
         # 3. Assert the mapping from DB model to DTO is correct
         assert response_dto.instruments[0].security_id == "SEC1"
         assert response_dto.instruments[1].product_type == "Bond"
+
+
+async def test_get_instruments_by_ids_returns_empty_when_ids_empty(mock_instrument_repo: AsyncMock):
+    with patch(
+        "src.services.query_service.app.services.instrument_service.InstrumentRepository",
+        return_value=mock_instrument_repo,
+    ):
+        service = InstrumentService(AsyncMock(spec=AsyncSession))
+        result = await service.get_instruments_by_ids([])
+        assert result == []
+        mock_instrument_repo.get_by_security_ids.assert_not_awaited()

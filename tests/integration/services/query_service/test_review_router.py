@@ -29,7 +29,7 @@ async def test_get_portfolio_review_success(async_test_client):
     assert response.status_code == 410
     detail = response.json()["detail"]
     assert detail["code"] == "PAS_LEGACY_ENDPOINT_REMOVED"
-    assert detail["target_service"] == "RAS"
+    assert detail["target_service"] == "lotus-report"
     assert detail["target_endpoint"] == "/reports/portfolios/{portfolio_id}/review"
 
 
@@ -46,7 +46,7 @@ async def test_get_portfolio_review_not_found(async_test_client):
     response = await client.post(f"/portfolios/{portfolio_id}/review", json=request_payload)
 
     assert response.status_code == 410
-    assert response.json()["detail"]["target_service"] == "RAS"
+    assert response.json()["detail"]["target_service"] == "lotus-report"
 
 
 async def test_get_portfolio_review_unexpected_maps_to_500(async_test_client):
@@ -58,7 +58,7 @@ async def test_get_portfolio_review_unexpected_maps_to_500(async_test_client):
     response = await client.post(f"/portfolios/{portfolio_id}/review", json=request_payload)
 
     assert response.status_code == 410
-    assert response.json()["detail"]["target_service"] == "RAS"
+    assert response.json()["detail"]["target_service"] == "lotus-report"
     assert "X-Correlation-ID" in response.headers
 
 

@@ -2,17 +2,17 @@ RFC-050: Query Service Simulation Coverage Hardening Wave 1
 
 Status: Implemented
 Date: 2026-02-24
-Owner: PAS Team
+Owner: lotus-core Team
 
 ## Context
 
-The PAS query-service coverage gate currently reports 94% and the lowest-covered modules are concentrated in simulation flows:
+The lotus-core query-service coverage gate currently reports 94% and the lowest-covered modules are concentrated in simulation flows:
 
 - `app/repositories/simulation_repository.py`
 - `app/services/simulation_service.py`
 - `app/routers/simulation.py`
 
-These modules are central to sandbox proposal workflows consumed by AEA and need stronger regression protection.
+These modules are central to sandbox proposal workflows consumed by lotus-gateway and need stronger regression protection.
 
 ## Problem Statement
 
@@ -38,7 +38,7 @@ Add a focused simulation test hardening wave:
 
 In scope:
 
-- PAS query-service tests and RFC documentation.
+- lotus-core query-service tests and RFC documentation.
 - Test dependency update in `tests/requirements.txt`.
 
 Out of scope:
@@ -60,4 +60,4 @@ Out of scope:
 
 ## Follow-up
 
-Wave 2 should target remaining lower-coverage query-service modules (integration, position, capabilities, and operations routers/services) to move PAS from 94% toward the platform 99% target.
+Wave 2 should target remaining lower-coverage query-service modules (integration, position, capabilities, and operations routers/services) to move lotus-core from 94% toward the platform 99% target.

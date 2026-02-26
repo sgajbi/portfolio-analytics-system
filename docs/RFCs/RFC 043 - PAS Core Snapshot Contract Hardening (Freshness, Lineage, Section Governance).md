@@ -1,13 +1,13 @@
-# RFC 043 - PAS Core Snapshot Contract Hardening (Freshness, Lineage, Section Governance)
+# RFC 043 - lotus-core Core Snapshot Contract Hardening (Freshness, Lineage, Section Governance)
 
 - Status: IMPLEMENTED
 - Date: 2026-02-24
-- Owners: PAS Query Service
+- Owners: lotus-core Query Service
 
 ## Context
 
-`POST /integration/portfolios/{portfolio_id}/core-snapshot` is the canonical PAS boundary for
-PA, DPM, and BFF composition. The current response shape is stable but lacks explicit:
+`POST /integration/portfolios/{portfolio_id}/core-snapshot` is the canonical lotus-core boundary for
+lotus-performance, lotus-manage, and lotus-gateway composition. The current response shape is stable but lacks explicit:
 
 1. freshness/provenance metadata,
 2. section governance metadata,
@@ -27,13 +27,13 @@ Harden the existing contract while preserving endpoint semantics:
    - consumer-specific allowed section lists
    - tenant override allowed section lists
    - strict mode for disallowed section requests (`403`)
-3. Keep policy enforcement in PAS backend; consumers do not implement section entitlement logic.
+3. Keep policy enforcement in lotus-core backend; consumers do not implement section entitlement logic.
 
 ## Rationale
 
-1. Strengthens integration readiness for BFF/PA/DPM and support workflows.
+1. Strengthens integration readiness for lotus-gateway/lotus-performance/lotus-manage and support workflows.
 2. Improves productized behavior through backend-driven policy control.
-3. Preserves PAS service boundary as canonical snapshot owner.
+3. Preserves lotus-core service boundary as canonical snapshot owner.
 
 ## Consequences
 
@@ -41,7 +41,7 @@ Positive:
 
 1. Consumers get explicit freshness/provenance semantics.
 2. Section control behavior is deterministic and testable.
-3. Contract drift risk is reduced by invariants in PAS test suites.
+3. Contract drift risk is reduced by invariants in lotus-core test suites.
 
 Trade-offs:
 

@@ -8,10 +8,12 @@ def test_capabilities_default_flags(monkeypatch):
     monkeypatch.delenv("PAS_CAPABILITY_TENANT_OVERRIDES_JSON", raising=False)
 
     service = CapabilitiesService()
-    response = service.get_integration_capabilities(consumer_system="BFF", tenant_id="default")
+    response = service.get_integration_capabilities(
+        consumer_system="lotus-gateway", tenant_id="default"
+    )
 
     assert response.contract_version == "v1"
-    assert response.consumer_system == "BFF"
+    assert response.consumer_system == "lotus-gateway"
     assert response.policy_version == "tenant-default-v1"
     assert "pas_ref" in response.supported_input_modes
     assert all(feature.enabled for feature in response.features[:2])
@@ -23,7 +25,9 @@ def test_capabilities_env_override(monkeypatch):
     monkeypatch.delenv("PAS_CAPABILITY_TENANT_OVERRIDES_JSON", raising=False)
 
     service = CapabilitiesService()
-    response = service.get_integration_capabilities(consumer_system="PA", tenant_id="tenant-x")
+    response = service.get_integration_capabilities(
+        consumer_system="lotus-performance", tenant_id="tenant-x"
+    )
 
     feature_map = {feature.key: feature.enabled for feature in response.features}
     assert feature_map["pas.ingestion.bulk_upload"] is False
@@ -39,13 +43,15 @@ def test_capabilities_tenant_policy_override(monkeypatch):
             '{"tenant-a":{"policyVersion":"tenant-a-v7",'
             '"features":{"pas.ingestion.bulk_upload":false,"pas.support.lineage_api":false},'
             '"workflows":{"portfolio_bulk_onboarding":false},'
-            '"supportedInputModes":{"PA":["pas_ref"],"default":["pas_ref"]}}}'
+            '"supportedInputModes":{"lotus-performance":["pas_ref"],"default":["pas_ref"]}}}'
         ),
     )
     monkeypatch.setenv("PAS_CAP_UPLOAD_APIS_ENABLED", "true")
 
     service = CapabilitiesService()
-    response = service.get_integration_capabilities(consumer_system="PA", tenant_id="tenant-a")
+    response = service.get_integration_capabilities(
+        consumer_system="lotus-performance", tenant_id="tenant-a"
+    )
     feature_map = {feature.key: feature.enabled for feature in response.features}
     workflow_map = {workflow.workflow_key: workflow.enabled for workflow in response.workflows}
 
@@ -60,7 +66,9 @@ def test_capabilities_ignores_invalid_tenant_policy_json(monkeypatch):
     monkeypatch.setenv("PAS_CAPABILITY_TENANT_OVERRIDES_JSON", "not-json")
 
     service = CapabilitiesService()
-    response = service.get_integration_capabilities(consumer_system="BFF", tenant_id="tenant-a")
+    response = service.get_integration_capabilities(
+        consumer_system="lotus-gateway", tenant_id="tenant-a"
+    )
 
     assert response.policy_version == "tenant-default-v1"
     assert response.supported_input_modes == ["pas_ref"]
@@ -70,7 +78,9 @@ def test_capabilities_ignores_non_object_overrides_payload(monkeypatch):
     monkeypatch.setenv("PAS_CAPABILITY_TENANT_OVERRIDES_JSON", '["invalid"]')
     service = CapabilitiesService()
 
-    response = service.get_integration_capabilities(consumer_system="PA", tenant_id="tenant-a")
+    response = service.get_integration_capabilities(
+        consumer_system="lotus-performance", tenant_id="tenant-a"
+    )
 
     assert response.policy_version == "tenant-default-v1"
     assert response.supported_input_modes == ["pas_ref", "inline_bundle"]
@@ -82,7 +92,9 @@ def test_capabilities_ignores_invalid_tenant_entries_and_non_dict_workflow_overr
         ('{"tenant-x":{"workflows":["invalid"],"policyVersion":"tenant-x-v1"},"tenant-y":"bad"}'),
     )
     service = CapabilitiesService()
-    response = service.get_integration_capabilities(consumer_system="PA", tenant_id="tenant-x")
+    response = service.get_integration_capabilities(
+        consumer_system="lotus-performance", tenant_id="tenant-x"
+    )
 
     workflow_map = {workflow.workflow_key: workflow.enabled for workflow in response.workflows}
     assert response.policy_version == "tenant-x-v1"

@@ -16,7 +16,7 @@ router = APIRouter()
     summary="Ingest a complete portfolio bundle",
     description=(
         "Accepts a mixed payload (portfolio, instruments, transactions, market prices, FX rates, "
-        "business dates) for UI/manual/file-based onboarding and publishes to existing PAS topics."
+        "business dates) for UI/manual/file-based onboarding and publishes to existing lotus-core topics."
     ),
 )
 async def ingest_portfolio_bundle(

@@ -1,17 +1,17 @@
-# RFC 039 - PAS Canonical Lookup Catalog APIs
+# RFC 039 - lotus-core Canonical Lookup Catalog APIs
 
 - Status: IMPLEMENTED
 - Date: 2026-02-23
-- Owners: PAS Query Service
+- Owners: lotus-core Query Service
 
 ## Context
 
-UI and BFF require stable selector catalogs for portfolios, instruments, and currencies.
-Previously, BFF had to derive these lookups from low-level PAS APIs, which duplicated mapping logic outside PAS.
+UI and lotus-gateway require stable selector catalogs for portfolios, instruments, and currencies.
+Previously, lotus-gateway had to derive these lookups from low-level lotus-core APIs, which duplicated mapping logic outside lotus-core.
 
 ## Decision
 
-Add canonical PAS lookup endpoints in Query Service:
+Add canonical lotus-core lookup endpoints in Query Service:
 
 - `GET /lookups/portfolios`
 - `GET /lookups/instruments?limit=...`
@@ -34,20 +34,20 @@ Implementation notes:
 
 ## Rationale
 
-- PAS remains the system of record for reference-data lookups.
-- BFF/UI integration contracts become simpler and more consistent.
+- lotus-core remains the system of record for reference-data lookups.
+- lotus-gateway/UI integration contracts become simpler and more consistent.
 - Selector vocabulary is centralized and governed at backend level.
 
 ## Consequences
 
 Positive:
-- Reduced duplication in BFF and UI layers.
-- Better domain boundary: lookup catalogs owned by PAS.
+- Reduced duplication in lotus-gateway and UI layers.
+- Better domain boundary: lookup catalogs owned by lotus-core.
 
 Trade-offs:
 - Currency lookup currently derives from available reference data rather than a dedicated currency master.
 
 ## Follow-ups
 
-- Add a PAS-managed currency master endpoint when master-data service is introduced.
+- Add a lotus-core-managed currency master endpoint when master-data service is introduced.
 - Add tenant/book-center scoped lookup filters when entitlement model is introduced.

@@ -2,15 +2,15 @@
 
 - Status: IMPLEMENTED
 - Date: 2026-02-23
-- Owners: PAS Query Service
+- Owners: lotus-core Query Service
 
 ## Context
 
-Lookup APIs now power UI/BFF selector behavior. Regressions in item shape, sorting, search filtering, or source scoping can break UX and create subtle cross-service contract drift.
+Lookup APIs now power UI/lotus-gateway selector behavior. Regressions in item shape, sorting, search filtering, or source scoping can break UX and create subtle cross-service contract drift.
 
 ## Decision
 
-Add a dedicated PAS integration test gate for lookup contract invariants:
+Add a dedicated lotus-core integration test gate for lookup contract invariants:
 
 - New test suite: `tests/integration/services/query_service/test_lookup_contract_router.py`
 - Asserts:
@@ -25,8 +25,8 @@ Add a dedicated PAS integration test gate for lookup contract invariants:
 ## Rationale
 
 - Makes selector contract breakages explicit and fast to detect.
-- Prevents accidental behavior drift during PAS API evolution.
-- Keeps BFF/UI integrations stable without needing heavy end-to-end runs.
+- Prevents accidental behavior drift during lotus-core API evolution.
+- Keeps lotus-gateway/UI integrations stable without needing heavy end-to-end runs.
 
 ## Consequences
 

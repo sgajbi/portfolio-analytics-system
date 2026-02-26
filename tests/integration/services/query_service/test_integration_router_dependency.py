@@ -29,7 +29,7 @@ def snapshot_request_payload() -> dict:
     return {
         "asOfDate": "2026-02-23",
         "includeSections": ["OVERVIEW", "HOLDINGS"],
-        "consumerSystem": "PA",
+        "consumerSystem": "lotus-performance",
     }
 
 
@@ -37,7 +37,7 @@ def performance_input_request_payload() -> dict:
     return {
         "asOfDate": "2026-02-23",
         "lookbackDays": 365,
-        "consumerSystem": "PA",
+        "consumerSystem": "lotus-performance",
     }
 
 
@@ -45,7 +45,7 @@ async def test_integration_snapshot_success(async_test_client):
     client, mock_service = async_test_client
     mock_service.get_portfolio_core_snapshot.return_value = {
         "contractVersion": "v1",
-        "consumerSystem": "PA",
+        "consumerSystem": "lotus-performance",
         "portfolio": {
             "portfolio_id": "P1",
             "base_currency": "USD",
@@ -90,7 +90,7 @@ async def test_integration_snapshot_success(async_test_client):
             "policyProvenance": {
                 "policyVersion": "tenant-default-v2",
                 "policySource": "global",
-                "matchedRuleId": "global.consumers.PA",
+                "matchedRuleId": "global.consumers.lotus-performance",
                 "strictMode": False,
             },
         },
@@ -149,13 +149,13 @@ async def test_effective_policy_endpoint_success(async_test_client):
         return_value={
             "contractVersion": "v1",
             "sourceService": "lotus-core",
-            "consumerSystem": "PA",
+            "consumerSystem": "lotus-performance",
             "tenantId": "tenant-a",
             "generatedAt": datetime(2026, 2, 24, tzinfo=UTC),
             "policyProvenance": {
                 "policyVersion": "tenant-a-v3",
                 "policySource": "tenant",
-                "matchedRuleId": "tenant.tenant-a.consumers.PA",
+                "matchedRuleId": "tenant.tenant-a.consumers.lotus-performance",
                 "strictMode": False,
             },
             "allowedSections": ["OVERVIEW", "HOLDINGS"],
@@ -164,7 +164,7 @@ async def test_effective_policy_endpoint_success(async_test_client):
     )
 
     response = await client.get(
-        "/integration/policy/effective?consumerSystem=PA&tenantId=tenant-a&includeSections=OVERVIEW&includeSections=HOLDINGS"
+        "/integration/policy/effective?consumerSystem=lotus-performance&tenantId=tenant-a&includeSections=OVERVIEW&includeSections=HOLDINGS"
     )
 
     assert response.status_code == 200
@@ -172,7 +172,7 @@ async def test_effective_policy_endpoint_success(async_test_client):
     assert payload["policyProvenance"]["policySource"] == "tenant"
     assert payload["allowedSections"] == ["OVERVIEW", "HOLDINGS"]
     mock_service.get_effective_policy.assert_called_once_with(
-        consumer_system="PA",
+        consumer_system="lotus-performance",
         tenant_id="tenant-a",
         include_sections=["OVERVIEW", "HOLDINGS"],
     )
@@ -183,7 +183,7 @@ async def test_performance_input_success(async_test_client):
     mock_service.get_portfolio_performance_input.return_value = {
         "contractVersion": "v1",
         "sourceService": "lotus-core",
-        "consumerSystem": "PA",
+        "consumerSystem": "lotus-performance",
         "portfolioId": "P1",
         "baseCurrency": "USD",
         "performanceStartDate": "2026-01-01",
@@ -243,7 +243,7 @@ async def test_effective_policy_permission_error_maps_to_403(async_test_client):
     mock_service.get_effective_policy = MagicMock(side_effect=PermissionError("forbidden"))
 
     response = await client.get(
-        "/integration/policy/effective?consumerSystem=PA&tenantId=tenant-a&includeSections=OVERVIEW"
+        "/integration/policy/effective?consumerSystem=lotus-performance&tenantId=tenant-a&includeSections=OVERVIEW"
     )
 
     assert response.status_code == 403

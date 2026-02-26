@@ -1,4 +1,4 @@
-# Durability and Consistency Standard (PAS)
+# Durability and Consistency Standard (lotus-core)
 
 - Standard reference: `lotus-platform/Durability and Consistency Standard.md`
 - Scope: core portfolio data processing, durable ingestion, canonical query outputs.

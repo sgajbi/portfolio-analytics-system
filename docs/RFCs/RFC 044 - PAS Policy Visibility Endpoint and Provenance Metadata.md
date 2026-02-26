@@ -1,12 +1,12 @@
-# RFC 044 - PAS Policy Visibility Endpoint and Provenance Metadata
+# RFC 044 - lotus-core Policy Visibility Endpoint and Provenance Metadata
 
 - Status: IMPLEMENTED
 - Date: 2026-02-24
-- Owners: PAS Query Service
+- Owners: lotus-core Query Service
 
 ## Context
 
-PAS core snapshot policy governance is now enforced by backend policy configuration.
+lotus-core core snapshot policy governance is now enforced by backend policy configuration.
 The next gap is visibility: consumers and operators need an explicit API to inspect
 effective policy resolution and provenance for tenant/consumer contexts.
 
@@ -18,19 +18,19 @@ effective policy resolution and provenance for tenant/consumer contexts.
    - `policySource`
    - `matchedRuleId`
    - `strictMode`
-3. Keep policy decisioning and provenance in PAS backend only.
+3. Keep policy decisioning and provenance in lotus-core backend only.
 
 ## Rationale
 
 1. Improves supportability for policy-governed integration behavior.
-2. Enables BFF/UI observability without shifting policy logic to clients.
+2. Enables lotus-gateway/UI observability without shifting policy logic to clients.
 3. Makes policy rollout behavior deterministic and testable.
 
 ## Consequences
 
 Positive:
 
-1. Operators can inspect effective policy context directly from PAS.
+1. Operators can inspect effective policy context directly from lotus-core.
 2. Snapshot behavior is easier to explain and debug.
 
 Trade-offs:

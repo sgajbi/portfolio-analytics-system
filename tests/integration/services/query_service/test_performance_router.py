@@ -46,7 +46,7 @@ async def test_performance_success(async_test_client):
     assert response.headers["X-Correlation-ID"] == "corr-test-123"
     detail = response.json()["detail"]
     assert detail["code"] == "PAS_LEGACY_ENDPOINT_REMOVED"
-    assert detail["target_service"] == "PA"
+    assert detail["target_service"] == "lotus-performance"
     assert detail["target_endpoint"] == "/portfolios/{portfolio_id}/performance"
 
 
@@ -56,7 +56,7 @@ async def test_performance_not_found_maps_to_404(async_test_client):
     response = await client.post("/portfolios/P404/performance", json=performance_request_payload())
 
     assert response.status_code == 410
-    assert response.json()["detail"]["target_service"] == "PA"
+    assert response.json()["detail"]["target_service"] == "lotus-performance"
     assert "X-Correlation-ID" in response.headers
 
 
@@ -66,7 +66,7 @@ async def test_performance_unexpected_maps_to_500(async_test_client):
     response = await client.post("/portfolios/P500/performance", json=performance_request_payload())
 
     assert response.status_code == 410
-    assert response.json()["detail"]["target_service"] == "PA"
+    assert response.json()["detail"]["target_service"] == "lotus-performance"
     assert "X-Correlation-ID" in response.headers
 
 
@@ -77,7 +77,7 @@ async def test_mwr_success(async_test_client):
 
     assert response.status_code == 410
     detail = response.json()["detail"]
-    assert detail["target_service"] == "PA"
+    assert detail["target_service"] == "lotus-performance"
     assert detail["target_endpoint"] == "/portfolios/{portfolio_id}/performance/mwr"
     assert "X-Correlation-ID" in response.headers
 
@@ -88,7 +88,7 @@ async def test_mwr_not_found_maps_to_404(async_test_client):
     response = await client.post("/portfolios/P404/performance/mwr", json=mwr_request_payload())
 
     assert response.status_code == 410
-    assert response.json()["detail"]["target_service"] == "PA"
+    assert response.json()["detail"]["target_service"] == "lotus-performance"
     assert "X-Correlation-ID" in response.headers
 
 
@@ -98,5 +98,5 @@ async def test_mwr_unexpected_maps_to_500(async_test_client):
     response = await client.post("/portfolios/P500/performance/mwr", json=mwr_request_payload())
 
     assert response.status_code == 410
-    assert response.json()["detail"]["target_service"] == "PA"
+    assert response.json()["detail"]["target_service"] == "lotus-performance"
     assert "X-Correlation-ID" in response.headers

@@ -46,3 +46,12 @@ def test_intermediate_precision_preserved_before_final_quantize() -> None:
     value = normalize_input("0.123456789012", "performance")
     assert value == Decimal("0.123456789012")
     assert quantize_performance(value) == Decimal("0.123457")
+
+
+def test_to_decimal_none_defaults_zero() -> None:
+    assert to_decimal(None) == Decimal("0")
+
+
+def test_normalize_input_rejects_unsupported_semantic_type() -> None:
+    with pytest.raises(ValueError, match="Unsupported semantic type"):
+        normalize_input("1.0", "unsupported")

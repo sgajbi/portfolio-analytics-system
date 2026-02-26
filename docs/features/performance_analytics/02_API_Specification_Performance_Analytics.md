@@ -1,9 +1,9 @@
 
 # API Specification: Performance Analytics
 
-> Migration Notice (RFC 056): As of February 25, 2026, PAS hard-disables these
+> Migration Notice (RFC 056): As of February 25, 2026, lotus-core hard-disables these
 > endpoints with `410 Gone`. Authoritative performance analytics now belong to
-> PA. Use PA APIs instead of PAS for TWR/MWR.
+> lotus-performance. Use lotus-performance APIs instead of lotus-core for TWR/MWR.
 
 This document provides the detailed technical specification for the TWR and MWR API endpoints.
 

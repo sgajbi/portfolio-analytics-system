@@ -6,7 +6,7 @@
 
 ## Summary
 
-This RFC addresses oversized API contracts and inconsistent domain wording by defining a decomposition path aligned to BFF-first delivery.
+This RFC addresses oversized API contracts and inconsistent domain wording by defining a decomposition path aligned to lotus-gateway-first delivery.
 
 ## Current Pain Points
 
@@ -17,7 +17,7 @@ This RFC addresses oversized API contracts and inconsistent domain wording by de
 ## Proposal
 
 1. Keep `review` as an orchestrated convenience API.
-2. Formalize smaller domain APIs as first-class BFF building blocks:
+2. Formalize smaller domain APIs as first-class lotus-gateway building blocks:
    - overview
    - holdings
    - performance
@@ -36,4 +36,4 @@ This RFC addresses oversized API contracts and inconsistent domain wording by de
 
 1. Phase 1: improve docs/examples for high-traffic DTOs.
 2. Phase 2: publish decomposed endpoints and mark `review` as composed aggregate.
-3. Phase 3: move composition policy to BFF as it matures.
+3. Phase 3: move composition policy to lotus-gateway as it matures.

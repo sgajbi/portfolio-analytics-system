@@ -4,7 +4,7 @@
 Accepted
 
 ## Context
-UI-led onboarding requires file-based upload flows that can validate data before publishing events into PAS. Existing ingestion APIs accept JSON payloads but do not provide row-level validation feedback for CSV/XLSX uploads.
+UI-led onboarding requires file-based upload flows that can validate data before publishing events into lotus-core. Existing ingestion APIs accept JSON payloads but do not provide row-level validation feedback for CSV/XLSX uploads.
 
 ## Decision
 Add two ingestion APIs in `ingestion_service`:
@@ -31,7 +31,7 @@ Supported entities:
 ## Rationale
 - Reuses canonical DTO validation to avoid divergence between JSON and file ingestion.
 - Preserves existing downstream event contracts and consumers.
-- Enables UI/BFF guided correction loops with deterministic error reporting.
+- Enables UI/lotus-gateway guided correction loops with deterministic error reporting.
 
 ## Implementation Notes
 - Parser supports `.csv` and `.xlsx`.

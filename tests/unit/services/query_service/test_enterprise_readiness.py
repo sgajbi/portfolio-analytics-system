@@ -1,7 +1,12 @@
 import json
 
+import pytest
+from fastapi import Request
+from fastapi.responses import Response
+
 from src.services.query_service.app.enterprise_readiness import (
     authorize_write_request,
+    build_enterprise_audit_middleware,
     is_feature_enabled,
     redact_sensitive,
     validate_enterprise_runtime_config,
@@ -67,3 +72,84 @@ def test_validate_enterprise_runtime_config_reports_rotation_issue(monkeypatch):
     monkeypatch.setenv("ENTERPRISE_SECRET_ROTATION_DAYS", "120")
     issues = validate_enterprise_runtime_config()
     assert "secret_rotation_days_out_of_range" in issues
+
+
+def test_validate_enterprise_runtime_config_reports_missing_primary_key(monkeypatch):
+    monkeypatch.setenv("ENTERPRISE_ENFORCE_AUTHZ", "true")
+    monkeypatch.delenv("ENTERPRISE_PRIMARY_KEY_ID", raising=False)
+    issues = validate_enterprise_runtime_config()
+    assert "missing_primary_key_id" in issues
+
+
+def test_validate_enterprise_runtime_config_raises_when_enforced(monkeypatch):
+    monkeypatch.setenv("ENTERPRISE_POLICY_VERSION", " ")
+    monkeypatch.setenv("ENTERPRISE_ENFORCE_RUNTIME_CONFIG", "true")
+    with pytest.raises(RuntimeError, match="enterprise_runtime_config_invalid"):
+        validate_enterprise_runtime_config()
+
+
+def test_authorize_write_request_allows_non_write_method(monkeypatch):
+    monkeypatch.setenv("ENTERPRISE_ENFORCE_AUTHZ", "true")
+    allowed, reason = authorize_write_request("GET", "/integration", {})
+    assert allowed is True
+    assert reason is None
+
+
+def test_redact_sensitive_handles_list_values():
+    value = [{"token": "x"}, {"safe": 1}]
+    redacted = redact_sensitive(value)
+    assert redacted[0]["token"] == "***REDACTED***"
+    assert redacted[1]["safe"] == 1
+
+
+@pytest.mark.asyncio
+async def test_enterprise_middleware_denies_write_without_headers(monkeypatch):
+    monkeypatch.setenv("ENTERPRISE_ENFORCE_AUTHZ", "true")
+    middleware = build_enterprise_audit_middleware()
+    scope = {
+        "type": "http",
+        "method": "POST",
+        "path": "/api/v1/integration",
+        "headers": [(b"content-length", b"0")],
+        "query_string": b"",
+        "server": ("testserver", 80),
+        "client": ("127.0.0.1", 1234),
+        "scheme": "http",
+    }
+    request = Request(scope)
+
+    async def _call_next(_: Request) -> Response:
+        return Response(status_code=200)
+
+    response = await middleware(request, _call_next)
+    assert response.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_enterprise_middleware_allows_write_with_minimum_headers(monkeypatch):
+    monkeypatch.setenv("ENTERPRISE_ENFORCE_AUTHZ", "true")
+    middleware = build_enterprise_audit_middleware()
+    scope = {
+        "type": "http",
+        "method": "POST",
+        "path": "/api/v1/integration",
+        "headers": [
+            (b"content-length", b"0"),
+            (b"x-actor-id", b"a1"),
+            (b"x-tenant-id", b"t1"),
+            (b"x-role", b"ops"),
+            (b"x-correlation-id", b"c1"),
+            (b"x-service-identity", b"lotus-gateway"),
+        ],
+        "query_string": b"",
+        "server": ("testserver", 80),
+        "client": ("127.0.0.1", 1234),
+        "scheme": "http",
+    }
+    request = Request(scope)
+
+    async def _call_next(_: Request) -> Response:
+        return Response(status_code=200)
+
+    response = await middleware(request, _call_next)
+    assert response.status_code == 200

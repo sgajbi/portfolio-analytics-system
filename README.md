@@ -88,7 +88,7 @@ Follow these steps to set up the development environment.
 ## Running the System
 
 1.  **Start Infrastructure**:
-    This command starts Kafka, Zookeeper, PostgreSQL, Prometheus, all PAS services,
+    This command starts Kafka, Zookeeper, PostgreSQL, Prometheus, all lotus-core services,
     and an automated one-shot demo data loader (`demo_data_loader`).
     ```bash
     docker compose up -d
@@ -163,7 +163,7 @@ make test-e2e-smoke
 ## Verifying the Workflow
 
 1.  **Ingest Data (Automated by Default)**:
-    PAS now auto-loads a deterministic demo data pack during startup via Docker Compose.
+    lotus-core now auto-loads a deterministic demo data pack during startup via Docker Compose.
     The `demo_data_loader` service ingests portfolios/instruments/transactions/prices/FX data
     and validates downstream query outputs.
 
@@ -183,7 +183,7 @@ make test-e2e-smoke
     python -m tools.demo_data_pack --ingestion-base-url http://localhost:8200 --query-base-url http://localhost:8201
     ```
 
-    For UI/file-upload style onboarding, PAS also supports:
+    For UI/file-upload style onboarding, lotus-core also supports:
 
     ```bash
     curl -X POST "http://localhost:8200/ingest/portfolio-bundle" \
@@ -207,16 +207,16 @@ make test-e2e-smoke
       -F "file=@./samples/transactions.csv"
     ```
 
-    For PA/DPM style integration contracts, PAS query-service supports:
+    For lotus-performance/lotus-manage style integration contracts, lotus-core query-service supports:
 
     ```bash
     curl -X POST "http://localhost:8201/integration/portfolios/PORT001/core-snapshot" \
       -H "Content-Type: application/json" \
-      -d '{"asOfDate":"2026-02-23","includeSections":["OVERVIEW","ALLOCATION","HOLDINGS","TRANSACTIONS"],"consumerSystem":"PA"}'
+      -d '{"asOfDate":"2026-02-23","includeSections":["OVERVIEW","ALLOCATION","HOLDINGS","TRANSACTIONS"],"consumerSystem":"lotus-performance"}'
 
-    curl "http://localhost:8201/integration/policy/effective?consumerSystem=PA&tenantId=default&includeSections=OVERVIEW&includeSections=HOLDINGS"
+    curl "http://localhost:8201/integration/policy/effective?consumerSystem=lotus-performance&tenantId=default&includeSections=OVERVIEW&includeSections=HOLDINGS"
 
-    curl "http://localhost:8201/integration/capabilities?consumerSystem=BFF&tenantId=default"
+    curl "http://localhost:8201/integration/capabilities?consumerSystem=lotus-gateway&tenantId=default"
     ```
 
     Core snapshot governance/freshness controls (optional):
@@ -251,7 +251,7 @@ make test-e2e-smoke
     Example:
 
     ```bash
-    export PAS_CAPABILITY_TENANT_OVERRIDES_JSON='{"tenant-a":{"policyVersion":"tenant-a-v7","features":{"pas.ingestion.bulk_upload":false},"supportedInputModes":{"PA":["pas_ref"],"default":["pas_ref"]}}}'
+    export PAS_CAPABILITY_TENANT_OVERRIDES_JSON='{"tenant-a":{"policyVersion":"tenant-a-v7","features":{"pas.ingestion.bulk_upload":false},"supportedInputModes":{"lotus-performance":["pas_ref"],"default":["pas_ref"]}}}'
     ```
 
 2.  **Query the API**:
@@ -279,7 +279,7 @@ make test-e2e-smoke
 
 ## Code Quality
 
-This project uses a DPM-aligned engineering baseline:
+This project uses a lotus-manage-aligned engineering baseline:
 
 ```bash
 make lint

@@ -1,7 +1,7 @@
 # RFC 055 - Query Service Unit Pyramid Wave 4 Contract Hardening
 
 ## Problem Statement
-PAS query-service satisfies coverage gates but remains below platform unit-test ratio targets in the overall PAS pyramid.
+lotus-core query-service satisfies coverage gates but remains below platform unit-test ratio targets in the overall lotus-core pyramid.
 
 ## Root Cause
 - Unit test volume is still light relative to integration and e2e counts.

@@ -1,4 +1,4 @@
-"""Automated PAS demo data pack ingest + verification."""
+"""Automated lotus-core demo data pack ingest + verification."""
 
 from __future__ import annotations
 
@@ -390,7 +390,7 @@ def _verify_portfolio(
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="PAS demo data pack bootstrap")
+    parser = argparse.ArgumentParser(description="lotus-core demo data pack bootstrap")
     parser.add_argument("--ingestion-base-url", default="http://localhost:8200")
     parser.add_argument("--query-base-url", default="http://localhost:8201")
     parser.add_argument("--wait-seconds", type=int, default=300)

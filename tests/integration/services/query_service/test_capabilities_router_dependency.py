@@ -20,7 +20,7 @@ async def async_test_client():
     mock_service.get_integration_capabilities.return_value = {
         "contractVersion": "v1",
         "sourceService": "lotus-core",
-        "consumerSystem": "DPM",
+        "consumerSystem": "lotus-manage",
         "tenantId": "tenant-1",
         "generatedAt": datetime(2026, 2, 23, tzinfo=UTC),
         "asOfDate": date(2026, 2, 23),
@@ -38,13 +38,13 @@ async def async_test_client():
 
 async def test_capabilities_success(async_test_client):
     client, mock_service = async_test_client
-    response = await client.get("/integration/capabilities?consumerSystem=DPM&tenantId=tenant-1")
+    response = await client.get("/integration/capabilities?consumerSystem=lotus-manage&tenantId=tenant-1")
     assert response.status_code == 200
     body = response.json()
-    assert body["consumerSystem"] == "DPM"
+    assert body["consumerSystem"] == "lotus-manage"
     assert body["policyVersion"] == "tenant-1-v2"
     mock_service.get_integration_capabilities.assert_called_once_with(
-        consumer_system="DPM",
+        consumer_system="lotus-manage",
         tenant_id="tenant-1",
     )
 

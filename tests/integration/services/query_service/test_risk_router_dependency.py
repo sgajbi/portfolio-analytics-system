@@ -31,7 +31,7 @@ async def test_risk_success(async_test_client):
     assert response.status_code == 410
     detail = response.json()["detail"]
     assert detail["code"] == "PAS_LEGACY_ENDPOINT_REMOVED"
-    assert detail["target_service"] == "PA"
+    assert detail["target_service"] == "lotus-performance"
     assert detail["target_endpoint"] == "/portfolios/{portfolio_id}/risk"
     assert "X-Correlation-ID" in response.headers
 
@@ -42,7 +42,7 @@ async def test_risk_not_found_maps_to_404(async_test_client):
     response = await client.post("/portfolios/P404/risk", json=risk_request_payload())
 
     assert response.status_code == 410
-    assert response.json()["detail"]["target_service"] == "PA"
+    assert response.json()["detail"]["target_service"] == "lotus-performance"
 
 
 async def test_risk_unexpected_maps_to_500(async_test_client):
@@ -51,4 +51,4 @@ async def test_risk_unexpected_maps_to_500(async_test_client):
     response = await client.post("/portfolios/P500/risk", json=risk_request_payload())
 
     assert response.status_code == 410
-    assert response.json()["detail"]["target_service"] == "PA"
+    assert response.json()["detail"]["target_service"] == "lotus-performance"

@@ -32,9 +32,9 @@ def get_integration_service(
     response_model=PortfolioCoreSnapshotResponse,
     response_model_by_alias=True,
     responses={status.HTTP_404_NOT_FOUND: {"description": "Portfolio not found."}},
-    summary="Get PAS core snapshot contract for downstream services",
+    summary="Get lotus-core core snapshot contract for downstream services",
     description=(
-        "Returns a versioned PAS snapshot contract for PA/DPM style consumers. "
+        "Returns a versioned lotus-core snapshot contract for lotus-performance/lotus-manage style consumers. "
         "Supports as-of snapshot controls and section-level payload selection."
     ),
 )
@@ -50,7 +50,9 @@ async def get_portfolio_core_snapshot(
     except PermissionError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
     except Exception:
-        logger.exception("Failed to build PAS integration snapshot for portfolio %s", portfolio_id)
+        logger.exception(
+            "Failed to build lotus-core integration snapshot for portfolio %s", portfolio_id
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected server error occurred while building integration snapshot.",
@@ -61,14 +63,14 @@ async def get_portfolio_core_snapshot(
     "/policy/effective",
     response_model=EffectiveIntegrationPolicyResponse,
     response_model_by_alias=True,
-    summary="Get effective PAS integration snapshot policy",
+    summary="Get effective lotus-core integration snapshot policy",
     description=(
         "Returns effective policy diagnostics and provenance for the given consumer and tenant "
         "context, including strict-mode behavior and allowed sections."
     ),
 )
 async def get_effective_integration_policy(
-    consumer_system: str = Query("BFF", alias="consumerSystem"),
+    consumer_system: str = Query("lotus-gateway", alias="consumerSystem"),
     tenant_id: str = Query("default", alias="tenantId"),
     include_sections: list[ReviewSection] | None = Query(None, alias="includeSections"),
     integration_service: IntegrationService = Depends(get_integration_service),
@@ -90,10 +92,10 @@ async def get_effective_integration_policy(
     response_model=PortfolioPerformanceInputResponse,
     response_model_by_alias=True,
     responses={status.HTTP_404_NOT_FOUND: {"description": "Portfolio not found."}},
-    summary="Get PAS raw performance input series for PA calculation",
+    summary="Get lotus-core raw performance input series for lotus-performance calculation",
     description=(
-        "Returns raw portfolio time-series inputs (market values, cashflows, fees) for PA-owned "
-        "performance calculation. No PAS performance metric outputs are returned."
+        "Returns raw portfolio time-series inputs (market values, cashflows, fees) for lotus-performance-owned "
+        "performance calculation. No lotus-core performance metric outputs are returned."
     ),
 )
 async def get_portfolio_performance_input(
@@ -107,7 +109,7 @@ async def get_portfolio_performance_input(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
     except Exception:
         logger.exception(
-            "Failed to build PAS performance input series for portfolio %s", portfolio_id
+            "Failed to build lotus-core performance input series for portfolio %s", portfolio_id
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
