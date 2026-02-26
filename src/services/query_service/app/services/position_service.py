@@ -2,16 +2,17 @@
 import logging
 from datetime import date
 from typing import Optional
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..repositories.position_repository import PositionRepository
 from ..dtos.position_dto import (
-    Position,
-    PortfolioPositionsResponse,
-    PositionHistoryRecord,
     PortfolioPositionHistoryResponse,
+    PortfolioPositionsResponse,
+    Position,
+    PositionHistoryRecord,
 )
 from ..dtos.valuation_dto import ValuationData
+from ..repositories.position_repository import PositionRepository
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +39,9 @@ class PositionService:
         logger.info(
             f"Fetching position history for security '{security_id}' in portfolio '{portfolio_id}'."
         )
+
+        if not await self.repo.portfolio_exists(portfolio_id):
+            raise ValueError(f"Portfolio with id {portfolio_id} not found")
 
         db_results = await self.repo.get_position_history_by_security(
             portfolio_id=portfolio_id,
@@ -68,6 +72,9 @@ class PositionService:
         Retrieves and formats the latest positions for a given portfolio.
         """
         logger.info(f"Fetching latest positions for portfolio '{portfolio_id}'.")
+
+        if not await self.repo.portfolio_exists(portfolio_id):
+            raise ValueError(f"Portfolio with id {portfolio_id} not found")
 
         db_results = await self.repo.get_latest_positions_by_portfolio(portfolio_id)
         using_snapshot_data = True

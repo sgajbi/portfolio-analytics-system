@@ -4,9 +4,13 @@ from unittest.mock import AsyncMock
 import httpx
 import pytest
 import pytest_asyncio
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.services.query_service.app.main import app
-from src.services.query_service.app.routers.portfolios import get_portfolio_service
+from src.services.query_service.app.routers.portfolios import (
+    PortfolioService,
+    get_portfolio_service,
+)
 
 pytestmark = pytest.mark.asyncio
 
@@ -92,3 +96,11 @@ async def test_get_portfolio_by_id_not_found_maps_to_404(async_test_client):
 
     assert response.status_code == 404
     assert "not found" in response.json()["detail"].lower()
+
+
+async def test_get_portfolio_service_dependency_factory():
+    db = AsyncMock(spec=AsyncSession)
+
+    service = get_portfolio_service(db)
+
+    assert isinstance(service, PortfolioService)

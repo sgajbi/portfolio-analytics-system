@@ -1,13 +1,13 @@
 # src/services/query_service/app/routers/simulation.py
 from fastapi import APIRouter, Depends, HTTPException, status
+from portfolio_common.db import get_async_db_session
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from portfolio_common.db import get_async_db_session
 from ..dtos.simulation_dto import (
     ProjectedPositionsResponse,
     ProjectedSummaryResponse,
-    SimulationChangeUpsertRequest,
     SimulationChangesResponse,
+    SimulationChangeUpsertRequest,
     SimulationSessionCreateRequest,
     SimulationSessionResponse,
 )
@@ -41,6 +41,9 @@ async def create_simulation_session(
 @router.get(
     "/{session_id}",
     response_model=SimulationSessionResponse,
+    responses={
+        status.HTTP_404_NOT_FOUND: {"description": "Simulation session not found."},
+    },
     description="Get simulation session metadata by session identifier.",
 )
 async def get_simulation_session(
@@ -56,6 +59,9 @@ async def get_simulation_session(
 @router.delete(
     "/{session_id}",
     response_model=SimulationSessionResponse,
+    responses={
+        status.HTTP_404_NOT_FOUND: {"description": "Simulation session not found."},
+    },
     description="Close an active simulation session.",
 )
 async def close_simulation_session(
@@ -71,6 +77,11 @@ async def close_simulation_session(
 @router.post(
     "/{session_id}/changes",
     response_model=SimulationChangesResponse,
+    responses={
+        status.HTTP_400_BAD_REQUEST: {
+            "description": "Simulation session is inactive or change request is invalid."
+        },
+    },
     description="Add or update simulation changes for a session.",
 )
 async def add_simulation_changes(
@@ -88,6 +99,11 @@ async def add_simulation_changes(
 @router.delete(
     "/{session_id}/changes/{change_id}",
     response_model=SimulationChangesResponse,
+    responses={
+        status.HTTP_400_BAD_REQUEST: {
+            "description": "Simulation session is inactive or change request is invalid."
+        },
+    },
     description="Delete a simulation change from a session.",
 )
 async def delete_simulation_change(
@@ -104,6 +120,9 @@ async def delete_simulation_change(
 @router.get(
     "/{session_id}/projected-positions",
     response_model=ProjectedPositionsResponse,
+    responses={
+        status.HTTP_404_NOT_FOUND: {"description": "Simulation session not found."},
+    },
     description="Return projected positions after applying session changes.",
 )
 async def get_projected_positions(
@@ -119,6 +138,9 @@ async def get_projected_positions(
 @router.get(
     "/{session_id}/projected-summary",
     response_model=ProjectedSummaryResponse,
+    responses={
+        status.HTTP_404_NOT_FOUND: {"description": "Simulation session not found."},
+    },
     description="Return projected summary metrics for a simulation session.",
 )
 async def get_projected_summary(

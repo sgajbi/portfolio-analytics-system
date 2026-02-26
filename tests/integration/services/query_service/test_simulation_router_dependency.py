@@ -4,9 +4,13 @@ from unittest.mock import AsyncMock
 import httpx
 import pytest
 import pytest_asyncio
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.services.query_service.app.main import app
-from src.services.query_service.app.routers.simulation import get_simulation_service
+from src.services.query_service.app.routers.simulation import (
+    SimulationService,
+    get_simulation_service,
+)
 
 pytestmark = pytest.mark.asyncio
 
@@ -154,3 +158,11 @@ async def test_get_projected_summary_success(async_test_client):
     payload = response.json()
     assert payload["session_id"] == "S1"
     assert payload["net_delta_quantity"] == 25.0
+
+
+async def test_get_simulation_service_dependency_factory():
+    db = AsyncMock(spec=AsyncSession)
+
+    service = get_simulation_service(db)
+
+    assert isinstance(service, SimulationService)

@@ -155,3 +155,45 @@ async def test_get_transactions_count_returns_zero_when_scalar_none(
     count = await repository.get_transactions_count(portfolio_id="P_EMPTY")
 
     assert count == 0
+
+
+async def test_portfolio_exists_true(repository: TransactionRepository, mock_db_session: AsyncMock):
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = "P1"
+    mock_db_session.execute = AsyncMock(return_value=mock_result)
+
+    exists = await repository.portfolio_exists("P1")
+
+    assert exists is True
+
+
+async def test_portfolio_exists_false(
+    repository: TransactionRepository, mock_db_session: AsyncMock
+):
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = None
+    mock_db_session.execute = AsyncMock(return_value=mock_result)
+
+    exists = await repository.portfolio_exists("P404")
+
+    assert exists is False
+
+
+async def test_get_transactions_count_with_date_filters(
+    repository: TransactionRepository, mock_db_session: AsyncMock
+):
+    mock_result = MagicMock()
+    mock_result.scalar.return_value = 2
+    mock_db_session.execute = AsyncMock(return_value=mock_result)
+
+    count = await repository.get_transactions_count(
+        portfolio_id="P1",
+        start_date=date(2025, 1, 1),
+        end_date=date(2025, 1, 31),
+    )
+
+    assert count == 2
+    executed_stmt = mock_db_session.execute.call_args[0][0]
+    compiled_query = str(executed_stmt.compile(compile_kwargs={"literal_binds": True}))
+    assert "date(transactions.transaction_date) >= '2025-01-01'" in compiled_query
+    assert "date(transactions.transaction_date) <= '2025-01-31'" in compiled_query

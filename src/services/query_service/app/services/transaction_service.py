@@ -2,10 +2,11 @@
 import logging
 from datetime import date
 from typing import Optional
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..dtos.transaction_dto import PaginatedTransactionResponse, TransactionRecord
 from ..repositories.transaction_repository import TransactionRepository
-from ..dtos.transaction_dto import TransactionRecord, PaginatedTransactionResponse
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +35,9 @@ class TransactionService:
         Retrieves a paginated and filtered list of transactions for a portfolio.
         """
         logger.info(f"Fetching transactions for portfolio '{portfolio_id}'.")
+
+        if not await self.repo.portfolio_exists(portfolio_id):
+            raise ValueError(f"Portfolio with id {portfolio_id} not found")
 
         total_count = await self.repo.get_transactions_count(
             portfolio_id=portfolio_id,

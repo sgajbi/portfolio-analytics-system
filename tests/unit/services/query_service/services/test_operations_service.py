@@ -11,7 +11,9 @@ pytestmark = pytest.mark.asyncio
 
 @pytest.fixture
 def mock_ops_repo() -> AsyncMock:
-    return AsyncMock()
+    repo = AsyncMock()
+    repo.portfolio_exists.return_value = True
+    return repo
 
 
 @pytest.fixture
@@ -139,3 +141,12 @@ async def test_get_aggregation_jobs(service: OperationsService, mock_ops_repo: A
     assert response.total == 1
     assert response.items[0].job_type == "AGGREGATION"
     assert response.items[0].business_date == date(2025, 8, 31)
+
+
+async def test_get_support_overview_raises_when_portfolio_missing(
+    service: OperationsService, mock_ops_repo: AsyncMock
+):
+    mock_ops_repo.portfolio_exists.return_value = False
+
+    with pytest.raises(ValueError, match="Portfolio with id P404 not found"):
+        await service.get_support_overview("P404")

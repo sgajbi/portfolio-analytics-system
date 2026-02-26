@@ -15,7 +15,12 @@ class OperationsService:
     def __init__(self, db: AsyncSession):
         self.repo = OperationsRepository(db)
 
+    async def _ensure_portfolio_exists(self, portfolio_id: str) -> None:
+        if not await self.repo.portfolio_exists(portfolio_id):
+            raise ValueError(f"Portfolio with id {portfolio_id} not found")
+
     async def get_support_overview(self, portfolio_id: str) -> SupportOverviewResponse:
+        await self._ensure_portfolio_exists(portfolio_id)
         current_epoch = await self.repo.get_current_portfolio_epoch(portfolio_id)
         active_reprocessing_keys = await self.repo.get_active_reprocessing_keys_count(portfolio_id)
         pending_valuation_jobs = await self.repo.get_pending_valuation_jobs_count(portfolio_id)
@@ -39,7 +44,8 @@ class OperationsService:
         position_state = await self.repo.get_position_state(portfolio_id, security_id)
         if not position_state:
             raise ValueError(
-                f"Lineage state not found for portfolio '{portfolio_id}' and security '{security_id}'"
+                "Lineage state not found for portfolio "
+                f"'{portfolio_id}' and security '{security_id}'"
             )
 
         latest_history_date = await self.repo.get_latest_position_history_date(
@@ -76,6 +82,7 @@ class OperationsService:
         reprocessing_status: str | None = None,
         security_id: str | None = None,
     ) -> LineageKeyListResponse:
+        await self._ensure_portfolio_exists(portfolio_id)
         total = await self.repo.get_lineage_keys_count(
             portfolio_id=portfolio_id,
             reprocessing_status=reprocessing_status,
@@ -107,6 +114,7 @@ class OperationsService:
     async def get_valuation_jobs(
         self, portfolio_id: str, skip: int, limit: int, status: str | None = None
     ) -> SupportJobListResponse:
+        await self._ensure_portfolio_exists(portfolio_id)
         total = await self.repo.get_valuation_jobs_count(portfolio_id=portfolio_id, status=status)
         jobs = await self.repo.get_valuation_jobs(
             portfolio_id=portfolio_id, skip=skip, limit=limit, status=status
@@ -133,6 +141,7 @@ class OperationsService:
     async def get_aggregation_jobs(
         self, portfolio_id: str, skip: int, limit: int, status: str | None = None
     ) -> SupportJobListResponse:
+        await self._ensure_portfolio_exists(portfolio_id)
         total = await self.repo.get_aggregation_jobs_count(portfolio_id=portfolio_id, status=status)
         jobs = await self.repo.get_aggregation_jobs(
             portfolio_id=portfolio_id, skip=skip, limit=limit, status=status

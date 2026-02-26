@@ -1,13 +1,14 @@
 # tests/integration/services/ingestion-service/test_ingestion_routers.py
+from io import BytesIO
+from unittest.mock import MagicMock
+
+import httpx
 import pytest
 import pytest_asyncio
-from unittest.mock import MagicMock
-import httpx
-from io import BytesIO
 from openpyxl import Workbook
+from portfolio_common.kafka_utils import KafkaProducer, get_kafka_producer
 
 from src.services.ingestion_service.app.main import app
-from portfolio_common.kafka_utils import get_kafka_producer, KafkaProducer
 
 # Mark all tests in this file as async
 pytestmark = pytest.mark.asyncio
@@ -330,6 +331,7 @@ async def test_upload_commit_xlsx_rejects_invalid_without_partial(
     assert response.status_code == 422
     mock_kafka_producer.publish_message.assert_not_called()
 
+
 async def test_upload_preview_rejects_malformed_xlsx(
     async_test_client: httpx.AsyncClient, mock_kafka_producer: MagicMock
 ):
@@ -392,6 +394,7 @@ async def test_upload_commit_rejects_malformed_xlsx(
     assert "Invalid XLSX content" in response.text
     mock_kafka_producer.publish_message.assert_not_called()
 
+
 async def test_upload_commit_rejects_bad_encoding_csv(
     async_test_client: httpx.AsyncClient, mock_kafka_producer: MagicMock
 ):
@@ -406,4 +409,18 @@ async def test_upload_commit_rejects_bad_encoding_csv(
 
     assert response.status_code == 400
     assert "Invalid CSV content" in response.text
+    mock_kafka_producer.publish_message.assert_not_called()
+
+
+async def test_reprocess_transactions_rejects_empty_transaction_ids(
+    async_test_client: httpx.AsyncClient, mock_kafka_producer: MagicMock
+):
+    mock_kafka_producer.publish_message.reset_mock()
+
+    response = await async_test_client.post(
+        "/reprocess/transactions",
+        json={"transaction_ids": []},
+    )
+
+    assert response.status_code == 422
     mock_kafka_producer.publish_message.assert_not_called()

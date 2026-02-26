@@ -16,6 +16,7 @@ pytestmark = pytest.mark.asyncio
 def mock_transaction_repo() -> AsyncMock:
     """Provides a mock TransactionRepository."""
     repo = AsyncMock(spec=TransactionRepository)
+    repo.portfolio_exists.return_value = True
     # FIX: Provide full, valid data for the mock objects
     repo.get_transactions.return_value = [
         Transaction(
@@ -140,3 +141,15 @@ async def test_get_transactions_maps_cashflow_dto_correctly(mock_transaction_rep
         assert retrieved_cashflow.is_position_flow is True
         assert retrieved_cashflow.is_portfolio_flow is True
         assert hasattr(retrieved_cashflow, "level") is False
+
+
+async def test_get_transactions_raises_when_portfolio_missing(mock_transaction_repo: AsyncMock):
+    with patch(
+        "src.services.query_service.app.services.transaction_service.TransactionRepository",
+        return_value=mock_transaction_repo,
+    ):
+        mock_transaction_repo.portfolio_exists.return_value = False
+        service = TransactionService(AsyncMock(spec=AsyncSession))
+
+        with pytest.raises(ValueError, match="Portfolio with id P404 not found"):
+            await service.get_transactions(portfolio_id="P404", skip=0, limit=10)
