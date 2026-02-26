@@ -83,11 +83,7 @@ def custom_openapi():
         routes=app.routes,
     )
     metrics_response = (
-        schema.get("paths", {})
-        .get("/metrics", {})
-        .get("get", {})
-        .get("responses", {})
-        .get("200")
+        schema.get("paths", {}).get("/metrics", {}).get("get", {}).get("responses", {}).get("200")
     )
     if isinstance(metrics_response, dict):
         metrics_response["content"] = {"text/plain": {"schema": {"type": "string"}}}
