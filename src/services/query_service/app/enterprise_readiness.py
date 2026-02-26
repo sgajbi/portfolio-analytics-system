@@ -6,6 +6,7 @@ from typing import Any, Awaitable, Callable
 
 from fastapi import Request, Response
 from fastapi.responses import JSONResponse
+from portfolio_common.logging_utils import correlation_id_var
 
 logger = logging.getLogger("enterprise_readiness")
 MiddlewareNext = Callable[[Request], Awaitable[Response]]
@@ -181,12 +182,17 @@ def build_enterprise_audit_middleware() -> MiddlewareCallable:
             request.method, request.url.path, dict(request.headers)
         )
         if not authorized:
+            deny_correlation_id = (
+                request.headers.get("X-Correlation-Id")
+                or request.headers.get("X-Correlation-ID")
+                or correlation_id_var.get()
+            )
             emit_audit_event(
                 action=f"DENY {request.method} {request.url.path}",
                 actor_id=request.headers.get("X-Actor-Id", "unknown"),
                 tenant_id=request.headers.get("X-Tenant-Id", "default"),
                 role=request.headers.get("X-Role", "unknown"),
-                correlation_id=request.headers.get("X-Correlation-Id"),
+                correlation_id=deny_correlation_id,
                 metadata={"reason": reason},
             )
             return JSONResponse(
@@ -196,12 +202,18 @@ def build_enterprise_audit_middleware() -> MiddlewareCallable:
         response = await call_next(request)
         response.headers["X-Enterprise-Policy-Version"] = enterprise_policy_version()
         if request.method in _WRITE_METHODS:
+            write_correlation_id = (
+                request.headers.get("X-Correlation-Id")
+                or request.headers.get("X-Correlation-ID")
+                or response.headers.get("X-Correlation-ID")
+                or correlation_id_var.get()
+            )
             emit_audit_event(
                 action=f"{request.method} {request.url.path}",
                 actor_id=request.headers.get("X-Actor-Id", "unknown"),
                 tenant_id=request.headers.get("X-Tenant-Id", "default"),
                 role=request.headers.get("X-Role", "unknown"),
-                correlation_id=request.headers.get("X-Correlation-Id"),
+                correlation_id=write_correlation_id,
                 metadata={"status_code": response.status_code},
             )
         return response

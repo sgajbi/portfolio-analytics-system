@@ -1,15 +1,21 @@
 # src/services/query_service/app/routers/review.py
-from fastapi import APIRouter
-from ..dtos.review_dto import PortfolioReviewRequest, PortfolioReviewResponse
-from .legacy_gone import raise_legacy_endpoint_gone
+from fastapi import APIRouter, status
+from ..dtos.review_dto import PortfolioReviewRequest
+from .legacy_gone import legacy_gone_response, raise_legacy_endpoint_gone
 
 router = APIRouter(prefix="/portfolios", tags=["Portfolio Review"])
 
 
 @router.post(
     "/{portfolio_id}/review",
-    response_model=PortfolioReviewResponse,
-    response_model_by_alias=True,
+    status_code=status.HTTP_410_GONE,
+    responses={
+        status.HTTP_410_GONE: legacy_gone_response(
+            capability="portfolio_review_report",
+            target_service="RAS",
+            target_endpoint="/reports/portfolios/{portfolio_id}/review",
+        )
+    },
     deprecated=True,
     summary="Generate a Comprehensive Portfolio Review Report (Deprecated: moved to RAS)",
 )

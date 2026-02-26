@@ -118,7 +118,7 @@ services:
       - ./src/services/ingestion_service/app:/app/app
       - ./src/libs/portfolio-common:/app/src/libs/portfolio-common
     command: >
-      uvicorn app.main:app --host 0.0.0.0 --port 8000 --timeout-keep-alive 30
+      uvicorn app.main:app --host 0.0.0.0 --port 8000 --timeout-keep-alive 30 --no-access-log
     networks:
       - app_network
     healthcheck:
@@ -152,7 +152,7 @@ services:
       - ./src/libs/portfolio-common:/app/src/libs/portfolio-common
       - ./src/libs/risk-analytics-engine:/app/src/libs/risk-analytics-engine
       - ./src/libs/concentration-analytics-engine:/app/src/libs/concentration-analytics-engine
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8001
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8001 --no-access-log
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8001/health/ready || exit 1"]

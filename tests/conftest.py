@@ -81,9 +81,11 @@ def docker_services(request):
 
         # Manual polling for service health
         print("\n--- Waiting for API services to become healthy ---")
+        ingestion_base_url = os.getenv("E2E_INGESTION_URL", "http://localhost:8200").rstrip("/")
+        query_base_url = os.getenv("E2E_QUERY_URL", "http://localhost:8201").rstrip("/")
         services_to_check = {
-            "ingestion_service": "http://localhost:8000/health/ready",
-            "query_service": "http://localhost:8001/health/ready"
+            "ingestion_service": f"{ingestion_base_url}/health/ready",
+            "query_service": f"{query_base_url}/health/ready",
         }
         
         for service_name, health_url in services_to_check.items():
