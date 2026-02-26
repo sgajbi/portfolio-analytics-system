@@ -66,3 +66,7 @@ docker-compose.override.yml
 
 # Jupyter Notebook
 .ipynb_checkpoints
+
+# Local QA evidence artifacts
+output/qa-*/
+output/
