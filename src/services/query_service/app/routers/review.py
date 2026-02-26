@@ -9,6 +9,7 @@ router = APIRouter(prefix="/portfolios", tags=["Portfolio Review"])
 
 @router.post(
     "/{portfolio_id}/review",
+    include_in_schema=False,
     status_code=status.HTTP_410_GONE,
     responses={
         status.HTTP_410_GONE: legacy_gone_response(

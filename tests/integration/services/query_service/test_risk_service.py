@@ -101,7 +101,7 @@ async def test_risk_endpoint_happy_path(
     """
     # ARRANGE
     portfolio_id = setup_risk_integration_data["portfolio_id"]
-    api_url = f"/portfolios/{portfolio_id}/risk"
+    api_url = f"/analytics/risk/calculate"
 
     request_payload = {
         "scope": {"as_of_date": "2025-03-31"},
@@ -117,5 +117,6 @@ async def test_risk_endpoint_happy_path(
     # ASSERT
     assert response.status_code == 410
     assert data["code"] == "PAS_LEGACY_ENDPOINT_REMOVED"
-    assert data["target_service"] == "lotus-performance"
-    assert data["target_endpoint"] == "/portfolios/{portfolio_id}/risk"
+    assert data["target_service"] == "lotus-risk"
+    assert data["target_endpoint"] == "/analytics/risk/calculate"
+

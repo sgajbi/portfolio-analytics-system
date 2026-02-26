@@ -10,6 +10,7 @@ router = APIRouter(prefix="/portfolios", tags=["Performance"])
 
 @router.post(
     "/{portfolio_id}/performance",
+    include_in_schema=False,
     status_code=status.HTTP_410_GONE,
     responses={
         status.HTTP_410_GONE: legacy_gone_response(
@@ -36,6 +37,7 @@ async def calculate_performance(portfolio_id: str, request: PerformanceRequest):
 
 @router.post(
     "/{portfolio_id}/performance/mwr",
+    include_in_schema=False,
     status_code=status.HTTP_410_GONE,
     responses={
         status.HTTP_410_GONE: legacy_gone_response(
