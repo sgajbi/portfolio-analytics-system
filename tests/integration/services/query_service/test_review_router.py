@@ -62,10 +62,10 @@ async def test_get_portfolio_review_unexpected_maps_to_500(async_test_client):
     assert "X-Correlation-ID" in response.headers
 
 
-async def test_review_openapi_declares_410_contract(async_test_client):
+async def test_review_openapi_hides_legacy_route(async_test_client):
     client = async_test_client
     response = await client.get("/openapi.json")
 
     assert response.status_code == 200
-    review_responses = response.json()["paths"]["/portfolios/{portfolio_id}/review"]["post"]["responses"]
-    assert "410" in review_responses
+    assert "/portfolios/{portfolio_id}/review" not in response.json()["paths"]
+

@@ -126,3 +126,16 @@ async def test_openapi_declares_portfolio_not_found_contracts(async_test_client)
         in paths["/integration/portfolios/{portfolio_id}/performance-input"]["post"]["responses"]
     )
     assert "404" in paths["/portfolios/{portfolio_id}/positions-analytics"]["post"]["responses"]
+
+
+async def test_openapi_hides_migrated_legacy_endpoints(async_test_client):
+    response = await async_test_client.get("/openapi.json")
+    assert response.status_code == 200
+    paths = response.json()["paths"]
+
+    assert "/portfolios/{portfolio_id}/summary" not in paths
+    assert "/portfolios/{portfolio_id}/review" not in paths
+    assert "/portfolios/{portfolio_id}/risk" not in paths
+    assert "/portfolios/{portfolio_id}/concentration" not in paths
+    assert "/portfolios/{portfolio_id}/performance" not in paths
+    assert "/portfolios/{portfolio_id}/performance/mwr" not in paths
