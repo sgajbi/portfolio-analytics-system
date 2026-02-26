@@ -1,7 +1,7 @@
 
 # Portfolio Analytics System
 
-This system provides a comprehensive suite of services for portfolio analytics, including position tracking, valuation, performance calculation, and risk analysis. It is designed as a distributed, event-driven architecture using Kafka for messaging and PostgreSQL for data persistence.
+This system provides a comprehensive suite of services for portfolio analytics, including position tracking, valuation, and core performance inputs. Advanced risk analytics are sourced from lotus-risk via API integration. It is designed as a distributed, event-driven architecture using Kafka for messaging and PostgreSQL for data persistence.
 
 Platform architecture governance source:
 - `https://github.com/sgajbi/lotus-platform` (cross-cutting and multi-service decisions)
@@ -329,4 +329,5 @@ Standards documentation:
 
 - `docs/standards/migration-contract.md`
 - `docs/standards/data-model-ownership.md`
+
 
