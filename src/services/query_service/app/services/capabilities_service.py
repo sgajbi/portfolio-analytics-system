@@ -213,4 +213,3 @@ class CapabilitiesService:
             features=features,
             workflows=workflows,
         )
-

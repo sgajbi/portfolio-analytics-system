@@ -59,7 +59,9 @@ async def test_add_simulation_changes_validation_maps_to_400(async_test_client):
 
     response = await client.post(
         "/simulation-sessions/S1/changes",
-        json={"changes": [{"security_id": "SEC_AAPL_US", "transaction_type": "BUY", "quantity": 10}]},
+        json={
+            "changes": [{"security_id": "SEC_AAPL_US", "transaction_type": "BUY", "quantity": 10}]
+        },
     )
 
     assert response.status_code == 400

@@ -52,4 +52,3 @@ async def test_capabilities_success(async_test_client):
 def test_get_capabilities_service_returns_service_instance():
     service = get_capabilities_service()
     assert isinstance(service, CapabilitiesService)
-

@@ -244,4 +244,3 @@ async def test_effective_policy_permission_error_maps_to_403(async_test_client):
 
     assert response.status_code == 403
     assert "forbidden" in response.json()["detail"].lower()
-

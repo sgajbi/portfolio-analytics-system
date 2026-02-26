@@ -34,4 +34,3 @@ async def get_portfolio_summary(
         target_service="RAS",
         target_endpoint="/reports/portfolios/{portfolio_id}/summary",
     )
-

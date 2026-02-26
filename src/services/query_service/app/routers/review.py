@@ -32,4 +32,3 @@ async def get_portfolio_review(
         target_service="RAS",
         target_endpoint="/reports/portfolios/{portfolio_id}/review",
     )
-

@@ -170,4 +170,3 @@ class PortfolioPerformanceInputResponse(BaseModel):
 
 
 PortfolioCoreSnapshotResponse.model_rebuild()
-
