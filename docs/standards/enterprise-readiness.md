@@ -1,6 +1,6 @@
 # Enterprise Readiness Baseline (PAS)
 
-- Standard reference: `pbwm-platform-docs/Enterprise Readiness Standard.md`
+- Standard reference: `lotus-platform/Enterprise Readiness Standard.md`
 - Scope: core portfolio data query service, ingestion and reference-data aligned governance.
 - Change control: RFC for cross-cutting policy updates; ADR for repo-level temporary exceptions.
 
@@ -60,3 +60,4 @@ Evidence:
 ## Deviations
 
 - Deviations require ADR with mitigation plan and expiry review date.
+

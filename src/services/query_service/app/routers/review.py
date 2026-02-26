@@ -19,7 +19,7 @@ async def get_portfolio_review(
 ):
     """
     Deprecated: reporting endpoint ownership has moved to RAS.
-    Use `reporting-aggregation-service` endpoint:
+    Use `lotus-report` endpoint:
     `POST /reports/portfolios/{portfolio_id}/review`.
 
     Orchestrates and retrieves a consolidated, multi-section report for a portfolio,
@@ -32,3 +32,4 @@ async def get_portfolio_review(
         target_service="RAS",
         target_endpoint="/reports/portfolios/{portfolio_id}/review",
     )
+

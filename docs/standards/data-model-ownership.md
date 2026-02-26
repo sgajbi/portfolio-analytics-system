@@ -1,6 +1,6 @@
 # Data Model Ownership
 
-- Service: `portfolio-analytics-system`
+- Service: `lotus-core`
 - Ownership: canonical core portfolio data model and persistence.
 
 ## Owned Domains
@@ -19,3 +19,4 @@
 
 - Entity names follow canonical glossary vocabulary.
 - Ownership stays within PAS database boundary; no cross-service shared DB.
+

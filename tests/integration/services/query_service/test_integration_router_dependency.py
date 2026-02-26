@@ -144,7 +144,7 @@ async def test_effective_policy_endpoint_success(async_test_client):
     mock_service.get_effective_policy = MagicMock(
         return_value={
             "contractVersion": "v1",
-            "sourceService": "portfolio-analytics-system",
+            "sourceService": "lotus-core",
             "consumerSystem": "PA",
             "tenantId": "tenant-a",
             "generatedAt": datetime(2026, 2, 24, tzinfo=UTC),
@@ -178,7 +178,7 @@ async def test_performance_input_success(async_test_client):
     client, mock_service = async_test_client
     mock_service.get_portfolio_performance_input.return_value = {
         "contractVersion": "v1",
-        "sourceService": "portfolio-analytics-system",
+        "sourceService": "lotus-core",
         "consumerSystem": "PA",
         "portfolioId": "P1",
         "baseCurrency": "USD",
@@ -244,3 +244,4 @@ async def test_effective_policy_permission_error_maps_to_403(async_test_client):
 
     assert response.status_code == 403
     assert "forbidden" in response.json()["detail"].lower()
+

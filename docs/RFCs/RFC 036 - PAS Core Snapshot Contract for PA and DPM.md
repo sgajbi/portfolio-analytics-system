@@ -1,7 +1,7 @@
 # RFC 036 - PAS Core Snapshot Contract for PA and DPM
 
 - Date: 2026-02-23
-- Services Affected: `query-service`, `performanceAnalytics`, `dpm-rebalance-engine`, BFF
+- Services Affected: `query-service`, `lotus-performance`, `lotus-advise`, BFF
 - Status: Implemented (v1)
 
 ## Summary
@@ -36,3 +36,4 @@ Introduces a versioned PAS integration contract endpoint that provides a canonic
    - explicit provenance/freshness metadata,
    - policy-driven section governance controls.
 2. Continue BFF-level adapters to map PAS contract into UI-specific view models.
+

@@ -4,7 +4,7 @@
 This system provides a comprehensive suite of services for portfolio analytics, including position tracking, valuation, performance calculation, and risk analysis. It is designed as a distributed, event-driven architecture using Kafka for messaging and PostgreSQL for data persistence.
 
 Platform architecture governance source:
-- `https://github.com/sgajbi/pbwm-platform-docs` (cross-cutting and multi-service decisions)
+- `https://github.com/sgajbi/lotus-platform` (cross-cutting and multi-service decisions)
 
 ## Table of Contents
 
@@ -60,7 +60,7 @@ Follow these steps to set up the development environment.
 1.  **Clone the Repository**:
     ```bash
     git clone <your-repository-url>
-    cd portfolio-analytics-system
+    cd lotus-core
     ```
 
 2.  **Create a Virtual Environment**:
@@ -329,3 +329,4 @@ Standards documentation:
 
 - `docs/standards/migration-contract.md`
 - `docs/standards/data-model-ownership.md`
+
