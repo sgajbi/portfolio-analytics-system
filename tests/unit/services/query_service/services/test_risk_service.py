@@ -168,3 +168,43 @@ async def test_calculate_risk_raises_on_remote_error(service: RiskService) -> No
         with pytest.raises(RuntimeError, match="lotus-risk request failed"):
             await service.calculate_risk("P1", _request())
 
+
+async def test_build_returns_series_returns_empty_when_no_periods(service: RiskService) -> None:
+    service.portfolio_repo.get_by_id.return_value = SimpleNamespace(open_date=date(2024, 1, 1))
+    request = RiskRequest.model_validate(
+        {
+            "scope": {"as_of_date": "2025-03-31", "net_or_gross": "NET"},
+            "periods": [],
+            "metrics": ["VOLATILITY"],
+        }
+    )
+
+    assert await service._build_returns_series("P1", request) == []
+
+
+async def test_build_returns_series_returns_empty_when_calculator_empty(
+    service: RiskService,
+) -> None:
+    service.portfolio_repo.get_by_id.return_value = SimpleNamespace(open_date=date(2024, 1, 1))
+    service.perf_repo.get_portfolio_timeseries_for_range.return_value = [
+        SimpleNamespace(
+            date=date(2025, 1, 2),
+            bod_market_value=100,
+            eod_market_value=101,
+            bod_cashflow=0,
+            eod_cashflow=0,
+            fees=0,
+        )
+    ]
+
+    with (
+        patch(
+            "src.services.query_service.app.services.risk_service.resolve_period",
+            return_value=("YTD", date(2025, 1, 1), date(2025, 3, 31)),
+        ),
+        patch(
+            "src.services.query_service.app.services.risk_service.PerformanceCalculator"
+        ) as calc_cls,
+    ):
+        calc_cls.return_value.calculate_performance.return_value = pd.DataFrame()
+        assert await service._build_returns_series("P1", _request()) == []
