@@ -2,37 +2,41 @@
 import logging
 from contextlib import asynccontextmanager
 from uuid import uuid4
+
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
+from portfolio_common.health import create_health_router
+from portfolio_common.logging_utils import (
+    correlation_id_var,
+    generate_correlation_id,
+    request_id_var,
+    setup_logging,
+    trace_id_var,
+)
 from prometheus_fastapi_instrumentator import Instrumentator
 
-from portfolio_common.logging_utils import (
-    setup_logging,
-    correlation_id_var,
-    request_id_var,
-    trace_id_var,
-    generate_correlation_id,
+from .enterprise_readiness import (
+    build_enterprise_audit_middleware,
+    validate_enterprise_runtime_config,
 )
-from portfolio_common.health import create_health_router
-from .enterprise_readiness import build_enterprise_audit_middleware, validate_enterprise_runtime_config
 from .routers import (
-    positions,
-    transactions,
-    instruments,
-    prices,
-    fx_rates,
-    portfolios,
-    performance,
-    risk,
-    summary,
-    review,
-    concentration,
-    positions_analytics,
-    operations,
-    integration,
     capabilities,
+    concentration,
+    fx_rates,
+    instruments,
+    integration,
     lookups,
+    operations,
+    performance,
+    portfolios,
+    positions,
+    positions_analytics,
+    prices,
+    review,
+    risk,
     simulation,
+    summary,
+    transactions,
 )
 
 SERVICE_PREFIX = "QRY"
