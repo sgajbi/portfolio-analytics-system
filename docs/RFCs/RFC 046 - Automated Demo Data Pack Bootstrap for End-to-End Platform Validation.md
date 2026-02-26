@@ -7,7 +7,7 @@
   - `docs/RFCs/RFC 035 - PAS PA DPM Responsibility and Integration Contract.md`
   - `docs/RFCs/RFC 036 - PAS Core Snapshot Contract for PA and DPM.md`
   - `docs/RFCs/RFC 043 - PAS Core Snapshot Contract Hardening (Freshness, Lineage, Section Governance).md`
-  - `pbwm-platform-docs/Local Development Runbook.md`
+  - `lotus-platform/Local Development Runbook.md`
 
 ## 1. Problem Statement
 
@@ -110,7 +110,7 @@ Mitigations:
 2. Add compose service for auto bootstrap.
 3. Add tests validating payload coverage and idempotent flow behavior.
 4. Update PAS README/runbook sections for startup and troubleshooting.
-5. Add cross-repo clarification in `pbwm-platform-docs` if startup workflow changes.
+5. Add cross-repo clarification in `lotus-platform` if startup workflow changes.
 
 ## 9. Success Criteria
 
@@ -118,3 +118,4 @@ Mitigations:
 2. Demo portfolios are visible through PAS query APIs and BFF/UI screens.
 3. Core lifecycle outputs (positions, valuations, analytics-ready endpoints) are available after bootstrap.
 4. Re-running bootstrap does not create unintended duplicate business records.
+

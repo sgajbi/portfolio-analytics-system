@@ -5,7 +5,10 @@ import httpx
 from unittest.mock import AsyncMock
 
 from src.services.query_service.app.main import app
-from src.services.query_service.app.services.concentration_service import get_concentration_service, ConcentrationService
+from src.services.query_service.app.services.concentration_service import (
+    get_concentration_service,
+    ConcentrationService,
+)
 
 pytestmark = pytest.mark.asyncio
 
@@ -13,15 +16,15 @@ pytestmark = pytest.mark.asyncio
 @pytest_asyncio.fixture
 async def async_test_client():
     """Provides an httpx.AsyncClient with the ConcentrationService dependency mocked."""
-    
+
     mock_service = AsyncMock(spec=ConcentrationService)
 
     app.dependency_overrides[get_concentration_service] = lambda: mock_service
-    
+
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         yield client, mock_service
-    
+
     del app.dependency_overrides[get_concentration_service]
 
 
@@ -33,10 +36,7 @@ async def test_calculate_concentration_success(async_test_client):
     """
     client, mock_service = async_test_client
     portfolio_id = "P1_MOCK"
-    request_payload = {
-        "scope": {"as_of_date": "2025-08-31"},
-        "metrics": ["BULK"]
-    }
+    request_payload = {"scope": {"as_of_date": "2025-08-31"}, "metrics": ["BULK"]}
 
     response = await client.post(f"/portfolios/{portfolio_id}/concentration", json=request_payload)
 
@@ -45,7 +45,7 @@ async def test_calculate_concentration_success(async_test_client):
     assert detail["code"] == "PAS_LEGACY_ENDPOINT_REMOVED"
     assert detail["target_service"] == "PA"
     assert detail["target_endpoint"] == "/portfolios/{portfolio_id}/concentration"
-    
+
     mock_service.calculate_concentration.assert_not_awaited()
 
 
@@ -56,14 +56,11 @@ async def test_calculate_concentration_portfolio_not_found(async_test_client):
     """
     client, mock_service = async_test_client
     portfolio_id = "P_NOT_FOUND"
-    
-    request_payload = {
-        "scope": {"as_of_date": "2025-08-31"},
-        "metrics": ["BULK"]
-    }
-    
+
+    request_payload = {"scope": {"as_of_date": "2025-08-31"}, "metrics": ["BULK"]}
+
     response = await client.post(f"/portfolios/{portfolio_id}/concentration", json=request_payload)
-    
+
     assert response.status_code == 410
     assert response.json()["detail"]["target_service"] == "PA"
     mock_service.calculate_concentration.assert_not_awaited()

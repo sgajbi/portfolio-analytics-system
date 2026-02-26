@@ -203,7 +203,7 @@ class CapabilitiesService:
 
         return IntegrationCapabilitiesResponse(
             contractVersion="v1",
-            sourceService="portfolio-analytics-system",
+            sourceService="lotus-core",
             consumerSystem=consumer_system,
             tenantId=tenant_id,
             generatedAt=datetime.now(UTC),

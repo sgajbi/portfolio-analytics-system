@@ -39,7 +39,7 @@ class IntegrationCapabilitiesResponse(BaseModel):
         "json_schema_extra": {
             "example": {
                 "contractVersion": "v1",
-                "sourceService": "portfolio-analytics-system",
+                "sourceService": "lotus-core",
                 "consumerSystem": "BFF",
                 "tenantId": "default",
                 "generatedAt": "2026-02-23T21:00:00Z",

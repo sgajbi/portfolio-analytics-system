@@ -109,7 +109,7 @@ class PolicyProvenanceMetadata(BaseModel):
 
 class EffectiveIntegrationPolicyResponse(BaseModel):
     contract_version: str = Field("v1", alias="contractVersion")
-    source_service: str = Field("portfolio-analytics-system", alias="sourceService")
+    source_service: str = Field("lotus-core", alias="sourceService")
     consumer_system: str = Field(..., alias="consumerSystem")
     tenant_id: str = Field(..., alias="tenantId")
     generated_at: datetime = Field(..., alias="generatedAt")
@@ -158,7 +158,7 @@ class PortfolioPerformanceInputPoint(BaseModel):
 
 class PortfolioPerformanceInputResponse(BaseModel):
     contract_version: str = Field("v1", alias="contractVersion")
-    source_service: str = Field("portfolio-analytics-system", alias="sourceService")
+    source_service: str = Field("lotus-core", alias="sourceService")
     consumer_system: str | None = Field(default=None, alias="consumerSystem")
     portfolio_id: str = Field(..., alias="portfolioId")
     base_currency: str = Field(..., alias="baseCurrency")

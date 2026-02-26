@@ -1,6 +1,6 @@
 # Migration Contract Standard
 
-- Service: `portfolio-analytics-system`
+- Service: `lotus-core`
 - Persistence mode: Alembic-managed relational schema.
 - Migration policy: versioned, deterministic, forward-only in production.
 
@@ -19,3 +19,4 @@
 
 - Production rollback is forward-fix oriented; never edit applied migration files.
 - If migration issues are found, publish a new corrective migration revision.
+

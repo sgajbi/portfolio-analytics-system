@@ -1,6 +1,6 @@
 # Durability and Consistency Standard (PAS)
 
-- Standard reference: `pbwm-platform-docs/Durability and Consistency Standard.md`
+- Standard reference: `lotus-platform/Durability and Consistency Standard.md`
 - Scope: core portfolio data processing, durable ingestion, canonical query outputs.
 - Change control: RFC required for policy changes; ADR required for temporary exceptions.
 
@@ -65,4 +65,5 @@
 ## Deviations
 
 - Deviations from strong consistency for core writes require ADR and expiry review date.
+
 

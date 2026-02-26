@@ -21,7 +21,7 @@ async def get_portfolio_summary(
     Retrieves a consolidated, dashboard-style summary for a portfolio.
 
     Deprecated: reporting endpoint ownership has moved to RAS.
-    Use `reporting-aggregation-service` endpoint:
+    Use `lotus-report` endpoint:
     `POST /reports/portfolios/{portfolio_id}/summary`.
 
     This endpoint can calculate various sections in a single call:

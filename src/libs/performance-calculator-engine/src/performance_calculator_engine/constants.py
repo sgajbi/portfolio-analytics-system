@@ -8,7 +8,7 @@ BOD_CASHFLOW = "bod_cashflow"
 EOD_CASHFLOW = "eod_cashflow"
 FEES = "fees"
 
-# --- Intermediate & Output Field Names (ported from performanceAnalytics logic) ---
+# --- Intermediate & Output Field Names (ported from lotus-performance logic) ---
 SIGN = "sign"
 DAILY_ROR_PCT = "daily_ror_pct"
 TEMP_LONG_CUM_ROR_PCT = "temp_long_cum_ror_pct"

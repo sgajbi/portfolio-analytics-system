@@ -1,7 +1,7 @@
 # RFC 035 - PAS PA DPM Responsibility and Integration Contract
 
 - Date: 2026-02-23
-- Services Affected: `portfolio-analytics-system`, `performanceAnalytics`, `dpm-rebalance-engine`, UI, BFF
+- Services Affected: `lotus-core`, `lotus-performance`, `lotus-advise`, UI, BFF
 - Status: Proposed (with PAS Phase 1 implemented)
 
 ## Summary
@@ -56,3 +56,4 @@ Define non-overlapping responsibilities and integration contracts across PAS, PA
 1. Add BFF contract definitions for PAS-connected and direct-input modes.
 2. Add canonical glossary mapping across PAS/PA/DPM DTOs.
 3. Add API-level provenance fields (`source_system`, `as_of_date`, `correlation_id`) for cross-service auditability.
+

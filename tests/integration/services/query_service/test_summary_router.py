@@ -7,12 +7,14 @@ from src.services.query_service.app.main import app
 
 pytestmark = pytest.mark.asyncio
 
+
 @pytest_asyncio.fixture
 async def async_test_client():
     """Provides an httpx.AsyncClient for the query service app with mocked dependencies."""
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         yield client
+
 
 async def test_get_portfolio_summary_success_all_sections(async_test_client):
     """
@@ -25,7 +27,7 @@ async def test_get_portfolio_summary_success_all_sections(async_test_client):
     request_payload = {
         "as_of_date": "2025-08-29",
         "period": {"type": "YTD"},
-        "sections": ["WEALTH", "PNL", "INCOME", "ACTIVITY"]
+        "sections": ["WEALTH", "PNL", "INCOME", "ACTIVITY"],
     }
 
     response = await client.post(f"/portfolios/{portfolio_id}/summary", json=request_payload)
@@ -35,6 +37,7 @@ async def test_get_portfolio_summary_success_all_sections(async_test_client):
     assert detail["code"] == "PAS_LEGACY_ENDPOINT_REMOVED"
     assert detail["target_service"] == "RAS"
     assert detail["target_endpoint"] == "/reports/portfolios/{portfolio_id}/summary"
+
 
 async def test_get_portfolio_summary_not_found(async_test_client):
     """
@@ -47,11 +50,11 @@ async def test_get_portfolio_summary_not_found(async_test_client):
     request_payload = {
         "as_of_date": "2025-08-29",
         "period": {"type": "YTD"},
-        "sections": ["WEALTH"]
+        "sections": ["WEALTH"],
     }
-    
+
     response = await client.post(f"/portfolios/{portfolio_id}/summary", json=request_payload)
-    
+
     assert response.status_code == 410
     assert response.json()["detail"]["target_service"] == "RAS"
 

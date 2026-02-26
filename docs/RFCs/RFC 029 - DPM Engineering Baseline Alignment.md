@@ -6,7 +6,7 @@
 
 ## Context
 
-`portfolio-analytics-system` currently lacks a consistent top-level engineering baseline compared to `dpm-rebalance-engine`:
+`lotus-core` currently lacks a consistent top-level engineering baseline compared to `lotus-advise`:
 
 - no repository-level CI workflow for lint/typecheck/tests/docker
 - no repository-level `Makefile` standard commands
@@ -73,3 +73,4 @@ Adopt a DPM-style baseline now, with a phased strictness model:
 - full-repo lint debt cleanup
 - full-repo mypy adoption
 - e2e docker-compose CI parity for all services in this change
+

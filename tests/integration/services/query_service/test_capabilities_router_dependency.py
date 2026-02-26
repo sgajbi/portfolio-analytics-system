@@ -19,7 +19,7 @@ async def async_test_client():
     mock_service = MagicMock()
     mock_service.get_integration_capabilities.return_value = {
         "contractVersion": "v1",
-        "sourceService": "portfolio-analytics-system",
+        "sourceService": "lotus-core",
         "consumerSystem": "DPM",
         "tenantId": "tenant-1",
         "generatedAt": datetime(2026, 2, 23, tzinfo=UTC),
