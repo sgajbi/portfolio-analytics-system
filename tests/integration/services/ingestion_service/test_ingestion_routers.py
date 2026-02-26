@@ -329,3 +329,81 @@ async def test_upload_commit_xlsx_rejects_invalid_without_partial(
 
     assert response.status_code == 422
     mock_kafka_producer.publish_message.assert_not_called()
+
+async def test_upload_preview_rejects_malformed_xlsx(
+    async_test_client: httpx.AsyncClient, mock_kafka_producer: MagicMock
+):
+    mock_kafka_producer.publish_message.reset_mock()
+    fake_xlsx = b"not-a-real-xlsx"
+
+    response = await async_test_client.post(
+        "/ingest/uploads/preview",
+        files={
+            "file": (
+                "fake.xlsx",
+                fake_xlsx,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        },
+        data={"entityType": "instruments", "sampleSize": "10"},
+    )
+
+    assert response.status_code == 400
+    assert "Invalid XLSX content" in response.text
+    mock_kafka_producer.publish_message.assert_not_called()
+
+
+async def test_upload_preview_rejects_bad_encoding_csv(
+    async_test_client: httpx.AsyncClient, mock_kafka_producer: MagicMock
+):
+    mock_kafka_producer.publish_message.reset_mock()
+    bad_csv = b"transaction_id,portfolio_id\n\xff\xfe\xfd,PORT1"
+
+    response = await async_test_client.post(
+        "/ingest/uploads/preview",
+        files={"file": ("bad-encoding.csv", bad_csv, "text/csv")},
+        data={"entityType": "transactions", "sampleSize": "10"},
+    )
+
+    assert response.status_code == 400
+    assert "Invalid CSV content" in response.text
+    mock_kafka_producer.publish_message.assert_not_called()
+
+
+async def test_upload_commit_rejects_malformed_xlsx(
+    async_test_client: httpx.AsyncClient, mock_kafka_producer: MagicMock
+):
+    mock_kafka_producer.publish_message.reset_mock()
+    fake_xlsx = b"not-a-real-xlsx"
+
+    response = await async_test_client.post(
+        "/ingest/uploads/commit",
+        files={
+            "file": (
+                "fake.xlsx",
+                fake_xlsx,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        },
+        data={"entityType": "instruments", "allowPartial": "false"},
+    )
+
+    assert response.status_code == 400
+    assert "Invalid XLSX content" in response.text
+    mock_kafka_producer.publish_message.assert_not_called()
+
+async def test_upload_commit_rejects_bad_encoding_csv(
+    async_test_client: httpx.AsyncClient, mock_kafka_producer: MagicMock
+):
+    mock_kafka_producer.publish_message.reset_mock()
+    bad_csv = b"transaction_id,portfolio_id\n\xff\xfe\xfd,PORT1"
+
+    response = await async_test_client.post(
+        "/ingest/uploads/commit",
+        files={"file": ("bad-encoding.csv", bad_csv, "text/csv")},
+        data={"entityType": "transactions", "allowPartial": "false"},
+    )
+
+    assert response.status_code == 400
+    assert "Invalid CSV content" in response.text
+    mock_kafka_producer.publish_message.assert_not_called()
