@@ -2,38 +2,16 @@
 
 from __future__ import annotations
 
-import os
 import subprocess
 import sys
+from pathlib import Path
 
-UNIT_ARGS = ["tests/unit/services/query_service"]
-INTEGRATION_LITE_ARGS = [
-    "tests/integration/services/query_service/test_capabilities_router_dependency.py",
-    "tests/integration/services/query_service/test_concentration_router.py",
-    "tests/integration/services/query_service/test_integration_router_dependency.py",
-    "tests/integration/services/query_service/test_main_app.py",
-    "tests/integration/services/query_service/test_performance_router.py",
-    "tests/integration/services/query_service/test_portfolios_router_dependency.py",
-    "tests/integration/services/query_service/test_position_analytics_router.py",
-    "tests/integration/services/query_service/test_positions_router_dependency.py",
-    "tests/integration/services/query_service/test_operations_router_dependency.py",
-    "tests/integration/services/query_service/test_reference_data_routers.py",
-    "tests/integration/services/query_service/test_review_router.py",
-    "tests/integration/services/query_service/test_risk_router_dependency.py",
-    "tests/integration/services/query_service/test_simulation_router_dependency.py",
-    "tests/integration/services/query_service/test_summary_router.py",
-    "tests/integration/services/query_service/test_transactions_router.py",
-]
+# Ensure repository root is importable when script runs directly.
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
-SOURCE = "src/services/query_service/app"
 FAIL_UNDER = "99"
-
-
-def run_pytest(args: list[str], coverage_file: str) -> None:
-    env = os.environ.copy()
-    env["COVERAGE_FILE"] = coverage_file
-    cmd = [sys.executable, "-m", "pytest", *args, f"--cov={SOURCE}", "--cov-report="]
-    subprocess.run(cmd, check=True, env=env)
 
 
 def run(cmd: list[str]) -> None:
@@ -41,16 +19,29 @@ def run(cmd: list[str]) -> None:
 
 
 def main() -> int:
-    run_pytest(UNIT_ARGS, ".coverage.unit")
-    run_pytest(INTEGRATION_LITE_ARGS, ".coverage.integration_lite")
+    from scripts.test_manifest import run_suite
+
+    for artifact in REPO_ROOT.glob(".coverage*"):
+        if artifact.is_file():
+            artifact.unlink()
+
+    if run_suite("unit", with_coverage=True, coverage_file=".coverage.unit") != 0:
+        return 1
+    if (
+        run_suite(
+            "integration-lite",
+            with_coverage=True,
+            coverage_file=".coverage.integration_lite",
+        )
+        != 0
+    ):
+        return 1
     run(
         [
             sys.executable,
             "-m",
             "coverage",
             "combine",
-            ".coverage.unit",
-            ".coverage.integration_lite",
         ]
     )
     run([sys.executable, "-m", "coverage", "report", f"--fail-under={FAIL_UNDER}"])

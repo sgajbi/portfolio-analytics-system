@@ -142,6 +142,14 @@ To run the integration-lite suite used in CI coverage:
 make test-integration-lite
 ```
 
+Test suite composition is centrally managed in `scripts/test_manifest.py`.
+Use this to inspect or validate exact CI test scope:
+
+```bash
+python scripts/test_manifest.py --suite integration-lite --print-args
+python scripts/test_manifest.py --suite integration-lite --validate-only
+```
+
 To run the query-service unit suite directly:
 
 ```bash

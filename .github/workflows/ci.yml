@@ -80,9 +80,7 @@ jobs:
       matrix:
         include:
           - suite: unit
-            args: tests/unit/services/query_service
           - suite: integration-lite
-            args: tests/integration/services/query_service/test_capabilities_router_dependency.py tests/integration/services/query_service/test_concentration_router.py tests/integration/services/query_service/test_integration_router_dependency.py tests/integration/services/query_service/test_main_app.py tests/integration/services/query_service/test_performance_router.py tests/integration/services/query_service/test_portfolios_router_dependency.py tests/integration/services/query_service/test_position_analytics_router.py tests/integration/services/query_service/test_positions_router_dependency.py tests/integration/services/query_service/test_operations_router_dependency.py tests/integration/services/query_service/test_reference_data_routers.py tests/integration/services/query_service/test_lookup_contract_router.py tests/integration/services/query_service/test_review_router.py tests/integration/services/query_service/test_risk_router_dependency.py tests/integration/services/query_service/test_simulation_router_dependency.py tests/integration/services/query_service/test_summary_router.py tests/integration/services/query_service/test_transactions_router.py
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -99,10 +97,8 @@ jobs:
           make install
 
       - name: Run ${{ matrix.suite }} tests with coverage data
-        env:
-          COVERAGE_FILE: .coverage.${{ matrix.suite }}
         run: |
-          python -m pytest ${{ matrix.args }} --cov=src/services/query_service/app --cov-report=
+          python scripts/test_manifest.py --suite ${{ matrix.suite }} --with-coverage --coverage-file .coverage.${{ matrix.suite }}
 
       - name: Upload coverage data (${{ matrix.suite }})
         uses: actions/upload-artifact@v4
