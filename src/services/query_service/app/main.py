@@ -14,6 +14,7 @@ from portfolio_common.logging_utils import (
     generate_correlation_id,
 )
 from portfolio_common.health import create_health_router
+from .enterprise_readiness import build_enterprise_audit_middleware, validate_enterprise_runtime_config
 from .routers import (
     positions,
     transactions,
@@ -37,6 +38,7 @@ from .routers import (
 SERVICE_PREFIX = "QRY"
 setup_logging()
 logger = logging.getLogger(__name__)
+validate_enterprise_runtime_config()
 
 
 @asynccontextmanager
@@ -56,6 +58,7 @@ app = FastAPI(
     version="0.2.0",
     lifespan=lifespan,
 )
+app.middleware("http")(build_enterprise_audit_middleware())
 
 # --- Prometheus Metrics Instrumentation ---
 Instrumentator().instrument(app).expose(app)
