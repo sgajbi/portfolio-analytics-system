@@ -92,14 +92,14 @@ async def test_get_portfolio_core_snapshot(
     request = PortfolioCoreSnapshotRequest.model_validate(
         {
             "asOfDate": "2026-02-23",
-            "consumerSystem": "PA",
+            "consumerSystem": "lotus-performance",
             "includeSections": ["OVERVIEW", "HOLDINGS"],
         }
     )
 
     response = await service.get_portfolio_core_snapshot("P1", request)
 
-    assert response.consumer_system == "PA"
+    assert response.consumer_system == "lotus-performance"
     assert response.contract_version == "v1"
     assert response.portfolio.portfolio_id == "P1"
     assert response.snapshot.portfolio_id == "P1"
@@ -153,13 +153,13 @@ async def test_get_portfolio_core_snapshot_applies_policy_filter(
     }
     monkeypatch.setenv(
         "PAS_INTEGRATION_SNAPSHOT_POLICY_JSON",
-        '{"consumers":{"PA":["OVERVIEW"]},"strictMode":false}',
+        '{"consumers":{"lotus-performance":["OVERVIEW"]},"strictMode":false}',
     )
 
     request = PortfolioCoreSnapshotRequest.model_validate(
         {
             "asOfDate": "2026-02-23",
-            "consumerSystem": "PA",
+            "consumerSystem": "lotus-performance",
             "includeSections": ["OVERVIEW", "HOLDINGS", "PERFORMANCE"],
         }
     )
@@ -176,12 +176,12 @@ async def test_get_portfolio_core_snapshot_rejects_disallowed_sections_in_strict
 ):
     monkeypatch.setenv(
         "PAS_INTEGRATION_SNAPSHOT_POLICY_JSON",
-        '{"consumers":{"PA":["OVERVIEW"]},"strictMode":true}',
+        '{"consumers":{"lotus-performance":["OVERVIEW"]},"strictMode":true}',
     )
     request = PortfolioCoreSnapshotRequest.model_validate(
         {
             "asOfDate": "2026-02-23",
-            "consumerSystem": "PA",
+            "consumerSystem": "lotus-performance",
             "includeSections": ["OVERVIEW", "HOLDINGS"],
         }
     )
@@ -202,18 +202,18 @@ async def test_get_portfolio_core_snapshot_rejects_pa_owned_analytics_sections_i
     }
     monkeypatch.setenv(
         "PAS_INTEGRATION_SNAPSHOT_POLICY_JSON",
-        '{"consumers":{"PA":["OVERVIEW","RISK_ANALYTICS"]},"strictMode":true}',
+        '{"consumers":{"lotus-performance":["OVERVIEW","RISK_ANALYTICS"]},"strictMode":true}',
     )
 
     request = PortfolioCoreSnapshotRequest.model_validate(
         {
             "asOfDate": "2026-02-23",
-            "consumerSystem": "PA",
+            "consumerSystem": "lotus-performance",
             "includeSections": ["OVERVIEW", "RISK_ANALYTICS"],
         }
     )
 
-    with pytest.raises(PermissionError, match="not owned by PAS core snapshot contract"):
+    with pytest.raises(PermissionError, match="not owned by lotus-core core snapshot contract"):
         await service.get_portfolio_core_snapshot("P1", request)
 
 
@@ -256,7 +256,7 @@ async def test_get_portfolio_performance_input(
         ),
     ]
     request = PortfolioPerformanceInputRequest.model_validate(
-        {"asOfDate": "2026-02-21", "consumerSystem": "PA", "lookbackDays": 365}
+        {"asOfDate": "2026-02-21", "consumerSystem": "lotus-performance", "lookbackDays": 365}
     )
 
     response = await service.get_portfolio_performance_input("P1", request)
@@ -280,7 +280,7 @@ async def test_get_portfolio_performance_input_rejects_when_rows_missing(
     }
     mock_performance_repository.get_portfolio_timeseries_for_range.return_value = []
     request = PortfolioPerformanceInputRequest.model_validate(
-        {"asOfDate": "2026-02-21", "consumerSystem": "PA", "lookbackDays": 365}
+        {"asOfDate": "2026-02-21", "consumerSystem": "lotus-performance", "lookbackDays": 365}
     )
 
     with pytest.raises(ValueError, match="No portfolio_timeseries rows found"):
@@ -321,7 +321,11 @@ async def test_get_portfolio_core_snapshot_future_as_of_sets_unknown_freshness(
         "transactions": None,
     }
     request = PortfolioCoreSnapshotRequest.model_validate(
-        {"asOfDate": "2027-01-01", "consumerSystem": "PA", "includeSections": ["OVERVIEW"]}
+        {
+            "asOfDate": "2027-01-01",
+            "consumerSystem": "lotus-performance",
+            "includeSections": ["OVERVIEW"],
+        }
     )
 
     response = await service.get_portfolio_core_snapshot("P1", request)
@@ -333,17 +337,17 @@ def test_get_effective_policy_returns_context(
 ):
     monkeypatch.setenv(
         "PAS_INTEGRATION_SNAPSHOT_POLICY_JSON",
-        '{"strictMode":false,"consumers":{"PA":["OVERVIEW","HOLDINGS"]}}',
+        '{"strictMode":false,"consumers":{"lotus-performance":["OVERVIEW","HOLDINGS"]}}',
     )
     monkeypatch.setenv("PAS_POLICY_VERSION", "tenant-default-v2")
 
     response = service.get_effective_policy(
-        consumer_system="PA",
+        consumer_system="lotus-performance",
         tenant_id="default",
         include_sections=["OVERVIEW", "HOLDINGS", "TRANSACTIONS"],
     )
 
-    assert response.consumer_system == "PA"
+    assert response.consumer_system == "lotus-performance"
     assert response.policy_provenance.policy_version == "tenant-default-v2"
     assert response.policy_provenance.policy_source == "global"
     assert response.policy_provenance.strict_mode is False
@@ -357,13 +361,13 @@ def test_get_effective_policy_with_tenant_override(
     monkeypatch.setenv(
         "PAS_INTEGRATION_SNAPSHOT_POLICY_JSON",
         (
-            '{"strictMode":false,"consumers":{"PA":["OVERVIEW"]},'
-            '"tenants":{"tenant-a":{"strictMode":true,"consumers":{"PA":["HOLDINGS"]}}}}'
+            '{"strictMode":false,"consumers":{"lotus-performance":["OVERVIEW"]},'
+            '"tenants":{"tenant-a":{"strictMode":true,"consumers":{"lotus-performance":["HOLDINGS"]}}}}'
         ),
     )
 
     response = service.get_effective_policy(
-        consumer_system="PA",
+        consumer_system="lotus-performance",
         tenant_id="tenant-a",
         include_sections=["HOLDINGS"],
     )
@@ -382,7 +386,7 @@ def test_get_effective_policy_returns_warning_when_no_section_restriction(
         tenant_id="default",
         include_sections=None,
     )
-    assert response.consumer_system == "PA"
+    assert response.consumer_system == "lotus-performance"
     assert response.allowed_sections == []
     assert "NO_ALLOWED_SECTION_OVERRIDE" in response.warnings
     assert "NO_ALLOWED_SECTION_RESTRICTION" in response.warnings
@@ -393,7 +397,7 @@ def test_get_effective_policy_handles_invalid_json_policy(
 ):
     monkeypatch.setenv("PAS_INTEGRATION_SNAPSHOT_POLICY_JSON", "{bad json")
     response = service.get_effective_policy(
-        consumer_system="PA",
+        consumer_system="lotus-performance",
         tenant_id="default",
         include_sections=["OVERVIEW"],
     )
@@ -405,7 +409,7 @@ def test_get_effective_policy_handles_non_dict_policy_payload(
 ):
     monkeypatch.setenv("PAS_INTEGRATION_SNAPSHOT_POLICY_JSON", '["not-a-dict"]')
     response = service.get_effective_policy(
-        consumer_system="PA",
+        consumer_system="lotus-performance",
         tenant_id="default",
         include_sections=["OVERVIEW"],
     )
@@ -423,7 +427,7 @@ def test_get_effective_policy_uses_tenant_default_sections_when_consumer_overrid
         ),
     )
     response = service.get_effective_policy(
-        consumer_system="PA",
+        consumer_system="lotus-performance",
         tenant_id="tenant-b",
         include_sections=["OVERVIEW", "HOLDINGS", "TRANSACTIONS"],
     )
@@ -443,7 +447,7 @@ def test_get_effective_policy_uses_tenant_strictmode_rule_when_no_section_rules(
         '{"tenants":{"tenant-c":{"strictMode":true}}}',
     )
     response = service.get_effective_policy(
-        consumer_system="PA",
+        consumer_system="lotus-performance",
         tenant_id="tenant-c",
         include_sections=None,
     )
@@ -456,10 +460,10 @@ def test_get_effective_policy_returns_context_sections_when_include_sections_not
 ):
     monkeypatch.setenv(
         "PAS_INTEGRATION_SNAPSHOT_POLICY_JSON",
-        '{"strictMode":false,"consumers":{"PA":["OVERVIEW","HOLDINGS"]}}',
+        '{"strictMode":false,"consumers":{"lotus-performance":["OVERVIEW","HOLDINGS"]}}',
     )
     response = service.get_effective_policy(
-        consumer_system="PA",
+        consumer_system="lotus-performance",
         tenant_id="default",
         include_sections=None,
     )
@@ -472,10 +476,10 @@ def test_get_effective_policy_delegates_analytics_sections_to_pa_in_non_strict_m
 ):
     monkeypatch.setenv(
         "PAS_INTEGRATION_SNAPSHOT_POLICY_JSON",
-        '{"strictMode":false,"consumers":{"PA":["OVERVIEW","PERFORMANCE","RISK_ANALYTICS"]}}',
+        '{"strictMode":false,"consumers":{"lotus-performance":["OVERVIEW","PERFORMANCE","RISK_ANALYTICS"]}}',
     )
     response = service.get_effective_policy(
-        consumer_system="PA",
+        consumer_system="lotus-performance",
         tenant_id="default",
         include_sections=["OVERVIEW", "PERFORMANCE", "RISK_ANALYTICS"],
     )

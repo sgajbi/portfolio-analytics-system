@@ -46,7 +46,7 @@ class PolicyContext:
 
 class IntegrationService:
     """
-    Provides PAS integration contracts for downstream services (e.g., PA, DPM).
+    Provides lotus-core integration contracts for downstream services (e.g., lotus-performance, lotus-manage).
     """
 
     def __init__(self, db: AsyncSession):
@@ -173,7 +173,7 @@ class IntegrationService:
             if context.strict_mode:
                 dropped = ", ".join(dropped_sections)
                 raise PermissionError(
-                    f"Requested sections are not allowed by PAS snapshot policy: {dropped}"
+                    f"Requested sections are not allowed by lotus-core snapshot policy: {dropped}"
                 )
             warnings.append("SECTIONS_FILTERED_BY_POLICY")
 
@@ -186,7 +186,7 @@ class IntegrationService:
             if context.strict_mode:
                 blocked = ", ".join(ownership_restricted)
                 raise PermissionError(
-                    "Requested analytics sections are not owned by PAS core snapshot contract: "
+                    "Requested analytics sections are not owned by lotus-core core snapshot contract: "
                     f"{blocked}"
                 )
             effective_sections = [
@@ -231,7 +231,7 @@ class IntegrationService:
 
         if not effective_sections:
             raise PermissionError(
-                "No includeSections are allowed by PAS snapshot policy for the current context."
+                "No includeSections are allowed by lotus-core snapshot policy for the current context."
             )
 
         portfolio = await self.portfolio_service.get_portfolio_by_id(portfolio_id)

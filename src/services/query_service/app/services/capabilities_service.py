@@ -35,9 +35,9 @@ _WORKFLOW_DEPENDENCIES: dict[str, list[str]] = {
 }
 
 _DEFAULT_INPUT_MODES_BY_CONSUMER: dict[str, list[str]] = {
-    "PA": ["pas_ref", "inline_bundle"],
-    "DPM": ["pas_ref", "inline_bundle"],
-    "BFF": ["pas_ref"],
+    "lotus-performance": ["pas_ref", "inline_bundle"],
+    "lotus-manage": ["pas_ref", "inline_bundle"],
+    "lotus-gateway": ["pas_ref"],
     "UI": ["pas_ref"],
     "UNKNOWN": ["pas_ref"],
 }
@@ -130,33 +130,33 @@ class CapabilitiesService:
             FeatureCapability(
                 key="pas.integration.core_snapshot",
                 enabled=feature_states["pas.integration.core_snapshot"],
-                owner_service="PAS",
-                description="Core portfolio snapshot API for PA, DPM, and BFF.",
+                owner_service="lotus-core",
+                description="Core portfolio snapshot API for lotus-performance, lotus-manage, and lotus-gateway.",
             ),
             FeatureCapability(
                 key="pas.support.overview_api",
                 enabled=feature_states["pas.support.overview_api"],
-                owner_service="PAS",
+                owner_service="lotus-core",
                 description="Support diagnostics and operational support APIs.",
             ),
             FeatureCapability(
                 key="pas.support.lineage_api",
                 enabled=feature_states["pas.support.lineage_api"],
-                owner_service="PAS",
+                owner_service="lotus-core",
                 description="Lineage and epoch/watermark traceability APIs.",
             ),
             FeatureCapability(
                 key="pas.ingestion.bulk_upload",
                 enabled=feature_states["pas.ingestion.bulk_upload"],
-                owner_service="PAS",
+                owner_service="lotus-core",
                 description="CSV/XLSX preview+commit onboarding APIs.",
             ),
             FeatureCapability(
                 key="pas.integration.performance_input",
                 enabled=feature_states["pas.integration.performance_input"],
-                owner_service="PAS",
+                owner_service="lotus-core",
                 description=(
-                    "Raw portfolio time-series input contract used by PA to compute "
+                    "Raw portfolio time-series input contract used by lotus-performance to compute "
                     "performance metrics."
                 ),
             ),

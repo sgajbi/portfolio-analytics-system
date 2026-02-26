@@ -215,7 +215,7 @@ def test_complex_lifecycle_cross_api_consistency(
     summary = summary_response.json()["detail"]
     assert summary_response.status_code == 410
     assert summary["code"] == "PAS_LEGACY_ENDPOINT_REMOVED"
-    assert summary["target_service"] == "RAS"
+    assert summary["target_service"] == "lotus-report"
 
     review_response = e2e_api_client.post_query(
         f"/portfolios/{portfolio_id}/review",
@@ -235,20 +235,20 @@ def test_complex_lifecycle_cross_api_consistency(
     review = review_response.json()["detail"]
     assert review_response.status_code == 410
     assert review["code"] == "PAS_LEGACY_ENDPOINT_REMOVED"
-    assert review["target_service"] == "RAS"
+    assert review["target_service"] == "lotus-report"
 
     integration_response = e2e_api_client.post_query(
         f"/integration/portfolios/{portfolio_id}/core-snapshot",
         {
             "asOfDate": as_of_date,
             "includeSections": ["OVERVIEW", "ALLOCATION", "HOLDINGS", "TRANSACTIONS"],
-            "consumerSystem": "PA",
+            "consumerSystem": "lotus-performance",
         },
     )
     integration_data = integration_response.json()
     assert integration_response.status_code == 200
     assert integration_data["contractVersion"] == "v1"
-    assert integration_data["consumerSystem"] == "PA"
+    assert integration_data["consumerSystem"] == "lotus-performance"
     assert integration_data["portfolio"]["portfolio_id"] == portfolio_id
     assert integration_data["snapshot"]["portfolio_id"] == portfolio_id
 

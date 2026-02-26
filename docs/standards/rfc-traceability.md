@@ -17,7 +17,7 @@ remain active but are not fully closed.
   - `src/services/timeseries_generator_service/app/consumers/position_timeseries_consumer.py`
   - `tests/e2e/E2E_TEST_PLAN.md`
 
-## RFC-0030 - CI Coverage Gate and DPM Pipeline Parity Phase 2
+## RFC-0030 - CI Coverage Gate and lotus-manage Pipeline Parity Phase 2
 
 - Coverage gate and CI parity evidence:
   - `.github/workflows/ci.yml`

@@ -36,7 +36,7 @@ All logs from the `ingestion_service` are structured JSON, which is ideal for lo
 
 ## 4. Automated Demo Data Pack Bootstrap
 
-PAS startup includes a one-shot `demo_data_loader` container that:
+lotus-core startup includes a one-shot `demo_data_loader` container that:
 
 1. waits for ingestion/query readiness,
 2. ingests a realistic multi-portfolio bundle (if not already present),
@@ -48,7 +48,7 @@ PAS startup includes a one-shot `demo_data_loader` container that:
 # View bootstrap execution and verification output
 docker compose logs --tail=200 demo_data_loader
 
-# Re-run manually against running PAS APIs
+# Re-run manually against running lotus-core APIs
 python -m tools.demo_data_pack --ingestion-base-url http://localhost:8200 --query-base-url http://localhost:8201
 
 # Disable auto bootstrap for specific runs
@@ -59,6 +59,6 @@ DEMO_DATA_PACK_ENABLED=false docker compose up -d
 
 | Scenario | Symptom(s) | Action |
 | :--- | :--- | :--- |
-| Upstream not ready in time | `Timed out waiting for readiness endpoint` | Increase `--wait-seconds` or inspect unhealthy PAS services. |
+| Upstream not ready in time | `Timed out waiting for readiness endpoint` | Increase `--wait-seconds` or inspect unhealthy lotus-core services. |
 | Downstream pipeline lag | `Timed out verifying portfolio outputs` | Check calculator/aggregation service health and logs; re-run loader manually. |
 | Existing dirty data set | unexpected verification failures after many local experiments | Reset local volumes (`docker compose down -v`) and restart to rebuild canonical demo data. |

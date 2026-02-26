@@ -11,7 +11,7 @@ class PortfolioCoreSnapshotRequest(BaseModel):
     as_of_date: date = Field(
         ...,
         alias="asOfDate",
-        description="Business date for which the PAS snapshot should be generated.",
+        description="Business date for which the lotus-core snapshot should be generated.",
         json_schema_extra={"example": "2026-02-23"},
     )
     include_sections: List[ReviewSection] = Field(
@@ -29,7 +29,7 @@ class PortfolioCoreSnapshotRequest(BaseModel):
         None,
         alias="consumerSystem",
         description="Optional caller system identifier (for audit/integration tracing).",
-        json_schema_extra={"example": "PA"},
+        json_schema_extra={"example": "lotus-performance"},
     )
 
     model_config = {
@@ -51,11 +51,11 @@ class PortfolioCoreSnapshotResponse(BaseModel):
     )
     portfolio: PortfolioRecord = Field(
         ...,
-        description="Canonical PAS portfolio record (system-of-record view).",
+        description="Canonical lotus-core portfolio record (system-of-record view).",
     )
     snapshot: PortfolioReviewResponse = Field(
         ...,
-        description="As-of snapshot payload assembled from PAS query capabilities.",
+        description="As-of snapshot payload assembled from lotus-core query capabilities.",
     )
     metadata: "PortfolioCoreSnapshotMetadata" = Field(
         ...,
@@ -135,10 +135,10 @@ class PortfolioPerformanceInputRequest(BaseModel):
         description="Maximum days to look back when building the performance input series.",
     )
     consumer_system: Optional[str] = Field(
-        "PA",
+        "lotus-performance",
         alias="consumerSystem",
         description="Optional caller system identifier (for audit/integration tracing).",
-        json_schema_extra={"example": "PA"},
+        json_schema_extra={"example": "lotus-performance"},
     )
 
     model_config = {"populate_by_name": True}

@@ -37,7 +37,7 @@ def _filter_limit_sort_items(
     "/portfolios",
     response_model=LookupResponse,
     summary="Portfolio Lookup Catalog",
-    description="Returns portfolio selector options for BFF/UI portfolio selection workflows.",
+    description="Returns portfolio selector options for lotus-gateway/UI portfolio selection workflows.",
 )
 async def get_portfolio_lookups(
     cif_id: str | None = Query(
@@ -71,7 +71,7 @@ async def get_portfolio_lookups(
     "/instruments",
     response_model=LookupResponse,
     summary="Instrument Lookup Catalog",
-    description="Returns instrument selector options for BFF/UI trade and intake workflows.",
+    description="Returns instrument selector options for lotus-gateway/UI trade and intake workflows.",
 )
 async def get_instrument_lookups(
     limit: int = Query(default=200, ge=1, le=1000),

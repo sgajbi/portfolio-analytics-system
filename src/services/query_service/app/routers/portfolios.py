@@ -22,7 +22,7 @@ def get_portfolio_service(
     summary="Get Portfolio Details",
     description=(
         "Returns portfolios with optional filtering by portfolio ID, CIF, and booking center. "
-        "Used by UI/BFF for portfolio discovery and navigation."
+        "Used by UI/lotus-gateway for portfolio discovery and navigation."
     ),
 )
 async def get_portfolios(

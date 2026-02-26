@@ -1,13 +1,13 @@
-# RFC 042 - Tenant-Aware PAS Integration Capability Policy Overrides
+# RFC 042 - Tenant-Aware lotus-core Integration Capability Policy Overrides
 
 - Status: IMPLEMENTED
 - Date: 2026-02-24
-- Owners: PAS Query Service
+- Owners: lotus-core Query Service
 
 ## Context
 
-`GET /integration/capabilities` is the contract used by BFF/UI and peer services
-to understand PAS feature/workflow availability. The previous implementation only
+`GET /integration/capabilities` is the contract used by lotus-gateway/UI and peer services
+to understand lotus-core feature/workflow availability. The previous implementation only
 supported global environment flags and one global policy version, which limited:
 
 - tenant-specific rollout control,
@@ -16,7 +16,7 @@ supported global environment flags and one global policy version, which limited:
 
 ## Decision
 
-Add tenant-aware policy overrides to PAS capabilities resolution via:
+Add tenant-aware policy overrides to lotus-core capabilities resolution via:
 
 - `PAS_CAPABILITY_TENANT_OVERRIDES_JSON` environment variable.
 
@@ -35,7 +35,7 @@ Supported tenant override keys:
 
 ## Rationale
 
-- Keeps configurability in PAS backend, not in BFF/UI.
+- Keeps configurability in lotus-core backend, not in lotus-gateway/UI.
 - Improves integration readiness for multi-tenant deployments.
 - Preserves stable contract shape while enabling policy-driven behavior.
 
@@ -44,7 +44,7 @@ Supported tenant override keys:
 Positive:
 
 - Tenant-level capability behavior can be changed without code changes.
-- BFF/UI can remain contract-driven while PAS controls rollout semantics.
+- lotus-gateway/UI can remain contract-driven while lotus-core controls rollout semantics.
 
 Trade-offs:
 

@@ -1,5 +1,6 @@
 # src/services/query_service/app/routers/review.py
 from fastapi import APIRouter, status
+
 from ..dtos.review_dto import PortfolioReviewRequest
 from .legacy_gone import legacy_gone_response, raise_legacy_endpoint_gone
 
@@ -12,19 +13,19 @@ router = APIRouter(prefix="/portfolios", tags=["Portfolio Review"])
     responses={
         status.HTTP_410_GONE: legacy_gone_response(
             capability="portfolio_review_report",
-            target_service="RAS",
+            target_service="lotus-report",
             target_endpoint="/reports/portfolios/{portfolio_id}/review",
         )
     },
     deprecated=True,
-    summary="Generate a Comprehensive Portfolio Review Report (Deprecated: moved to RAS)",
+    summary="Generate a Comprehensive Portfolio Review Report (Deprecated: moved to lotus-report)",
 )
 async def get_portfolio_review(
     portfolio_id: str,
     request: PortfolioReviewRequest,
 ):
     """
-    Deprecated: reporting endpoint ownership has moved to RAS.
+    Deprecated: reporting endpoint ownership has moved to lotus-report.
     Use `lotus-report` endpoint:
     `POST /reports/portfolios/{portfolio_id}/review`.
 
@@ -35,6 +36,6 @@ async def get_portfolio_review(
     _ = (portfolio_id, request)
     raise_legacy_endpoint_gone(
         capability="portfolio_review_report",
-        target_service="RAS",
+        target_service="lotus-report",
         target_endpoint="/reports/portfolios/{portfolio_id}/review",
     )

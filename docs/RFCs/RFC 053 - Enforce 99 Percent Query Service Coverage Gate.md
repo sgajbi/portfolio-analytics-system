@@ -1,7 +1,7 @@
 # RFC 053 - Enforce 99 Percent Query Service Coverage Gate
 
 ## Problem Statement
-PAS query-service coverage is measured at 99%, but the enforced gate still allows 95%, which permits regression below platform quality expectations.
+lotus-core query-service coverage is measured at 99%, but the enforced gate still allows 95%, which permits regression below platform quality expectations.
 
 ## Root Cause
 `scripts/coverage_gate.py` was not updated after coverage hardening wave 2.

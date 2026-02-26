@@ -1,8 +1,8 @@
-# RFC 048 - One-Year Demo History and Valuation Continuity for PA UI
+# RFC 048 - One-Year Demo History and Valuation Continuity for lotus-performance UI
 
 - Status: Implemented
 - Date: 2026-02-24
-- Authors: PAS Engineering
+- Authors: lotus-core Engineering
 - Related:
   - `docs/RFCs/RFC 046 - Automated Demo Data Pack Bootstrap for End-to-End Platform Validation.md`
   - `docs/RFCs/RFC 047 - Position Materialization Guarantees for Multi-Portfolio Demo Data.md`
@@ -13,7 +13,7 @@ Demo data was not sufficient for reliable year-scale portfolio analytics and UI 
 
 1. Demo history was short and static.
 2. Fallback holdings from `position_history` lacked valuation fields when latest snapshots lagged.
-3. Result: PA/BFF/UI workflows surfaced null valuation context for multiple demo portfolios.
+3. Result: lotus-performance/lotus-gateway/UI workflows surfaced null valuation context for multiple demo portfolios.
 
 ## 2. Root Cause
 
@@ -31,7 +31,7 @@ Demo data was not sufficient for reliable year-scale portfolio analytics and UI 
 
 ## 4. Architectural Impact
 
-1. Improves end-to-end demo determinism and usability for PA/BFF/UI.
+1. Improves end-to-end demo determinism and usability for lotus-performance/lotus-gateway/UI.
 2. Makes holdings valuation non-null under degraded snapshot materialization conditions.
 3. Reduces false-negative UI failures due to asynchronous valuation backfill timing.
 
@@ -45,4 +45,4 @@ Demo data was not sufficient for reliable year-scale portfolio analytics and UI 
 1. Update `tools/demo_data_pack.py` to generate one-year dates and dynamic transaction timestamps.
 2. Enable `--force-ingest` for compose demo loader.
 3. Extend query position fallback valuation behavior.
-4. Verify via API checks on demo portfolios and BFF portfolio-360 output.
+4. Verify via API checks on demo portfolios and lotus-gateway portfolio-360 output.

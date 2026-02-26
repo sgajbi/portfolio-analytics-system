@@ -1,18 +1,18 @@
-# ADR 003 - Integration Capabilities API in PAS Query Service
+# ADR 003 - Integration Capabilities API in lotus-core Query Service
 
 - Status: Accepted
 - Date: 2026-02-23
 
 ## Context
 
-PAS must expose backend-driven capability metadata to support:
-1. BFF/UI feature visibility and workflow control.
-2. PA/DPM integration negotiation and dual input mode support.
+lotus-core must expose backend-driven capability metadata to support:
+1. lotus-gateway/UI feature visibility and workflow control.
+2. lotus-performance/lotus-manage integration negotiation and dual input mode support.
 3. Architectural rule that policy complexity remains in backend services.
 
 ## Decision
 
-Implement `GET /integration/capabilities` in PAS query-service with:
+Implement `GET /integration/capabilities` in lotus-core query-service with:
 1. consumer-aware capability resolution (`consumerSystem`)
 2. tenant-aware context (`tenantId`)
 3. policy/capability metadata response including supported input modes.
@@ -22,9 +22,9 @@ Initial implementation resolves feature flags from environment variables. This i
 ## Consequences
 
 ### Positive
-1. BFF/UI can consume explicit backend capability contracts.
+1. lotus-gateway/UI can consume explicit backend capability contracts.
 2. Integration behavior is discoverable and testable.
-3. Aligns PAS with platform RFCs for backend configurability.
+3. Aligns lotus-core with platform RFCs for backend configurability.
 
 ### Negative
 1. Environment-driven flag model is not yet centralized.
@@ -32,5 +32,5 @@ Initial implementation resolves feature flags from environment variables. This i
 
 ## Links
 
-1. `docs/RFCs/RFC 038 - PAS Integration Capabilities API.md`
+1. `docs/RFCs/RFC 038 - lotus-core Integration Capabilities API.md`
 2. `src/services/query_service/app/routers/capabilities.py`

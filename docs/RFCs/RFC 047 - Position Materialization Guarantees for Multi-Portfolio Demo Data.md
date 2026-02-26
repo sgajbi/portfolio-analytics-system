@@ -2,13 +2,13 @@
 
 - Status: Implemented
 - Date: 2026-02-24
-- Authors: PAS Engineering
+- Authors: lotus-core Engineering
 - Related:
   - `docs/RFCs/RFC 046 - Automated Demo Data Pack Bootstrap for End-to-End Platform Validation.md`
 
 ## 1. Problem Statement
 
-During automated demo data bootstrap verification, PAS successfully persisted transactions for all demo portfolios, but only a subset produced open positions through `GET /portfolios/{portfolio_id}/positions`.
+During automated demo data bootstrap verification, lotus-core successfully persisted transactions for all demo portfolios, but only a subset produced open positions through `GET /portfolios/{portfolio_id}/positions`.
 
 Observed example:
 
@@ -36,7 +36,7 @@ Further root-cause analysis is required in position calculator, valuation calcul
 
 ## 4. Architectural Impact
 
-1. Improves PAS reliability as canonical holdings source for BFF/UI and downstream PA/DPM.
+1. Improves lotus-core reliability as canonical holdings source for lotus-gateway/UI and downstream lotus-performance/lotus-manage.
 2. Increases trust in demo bootstrap as a valid readiness signal.
 3. Reduces false confidence from transaction-only success without holdings materialization.
 

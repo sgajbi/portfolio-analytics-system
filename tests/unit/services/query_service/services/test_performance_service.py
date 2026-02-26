@@ -1,11 +1,10 @@
-# tests/unit/services/query_service/services/test_performance_service.py
+# ruff: noqa: E501
 from datetime import date
-from decimal import Decimal
-from unittest.mock import AsyncMock, MagicMock, patch
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
 
-import pandas as pd
 import pytest
-from portfolio_common.database_models import Portfolio, PortfolioTimeseries
+from portfolio_common.database_models import Portfolio
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.services.query_service.app.dtos.performance_dto import PerformanceRequest
@@ -15,272 +14,52 @@ pytestmark = pytest.mark.asyncio
 
 
 @pytest.fixture
-def mock_portfolio_repo() -> AsyncMock:
-    repo = AsyncMock()
-    repo.get_by_id.return_value = Portfolio(portfolio_id="P1", open_date=date(2020, 1, 1))
-    return repo
-
-
-@pytest.fixture
-def mock_performance_repo() -> AsyncMock:
-    repo = AsyncMock()
-    repo.get_portfolio_timeseries_for_range.return_value = [
-        PortfolioTimeseries(
-            date=date(2025, 1, 15),
-            bod_market_value=1,
-            eod_market_value=1,
-            bod_cashflow=1,
-            eod_cashflow=1,
-            fees=1,
-        )
-    ]
-    return repo
-
-
-@pytest.fixture
-def mock_performance_calculator() -> MagicMock:
-    mock_calc = MagicMock()
-    # Simulate the engine returning a DataFrame with a calculated result
-    mock_df = pd.DataFrame(
-        [
-            {
-                "final_cumulative_ror_pct": 5.5,
-                "bod_market_value": Decimal("1000"),
-                "eod_market_value": Decimal("1055"),
-                "bod_cashflow": Decimal("0"),
-                "eod_cashflow": Decimal("0"),
-                "fees": Decimal("0"),
-            }
-        ]
-    )
-    mock_calc.return_value.calculate_performance.return_value = mock_df
-    return mock_calc
-
-
-@pytest.fixture
-def service(mock_portfolio_repo: AsyncMock, mock_performance_repo: AsyncMock) -> PerformanceService:
-    """Provides a PerformanceService instance with mocked repositories."""
+def service() -> PerformanceService:
     with (
         patch(
-            "src.services.query_service.app.services.performance_service.PortfolioRepository",
-            return_value=mock_portfolio_repo,
-        ),
+            "src.services.query_service.app.services.performance_service.PortfolioRepository"
+        ) as portfolio_repo_cls,
         patch(
-            "src.services.query_service.app.services.performance_service.PerformanceRepository",
-            return_value=mock_performance_repo,
-        ),
+            "src.services.query_service.app.services.performance_service.PerformanceRepository"
+        ) as perf_repo_cls,
     ):
-        # The db session itself can be a simple mock as the repos are mocked
-        return PerformanceService(AsyncMock(spec=AsyncSession))
-
-
-async def test_calculate_performance_happy_path(
-    service: PerformanceService,
-    mock_portfolio_repo: AsyncMock,
-    mock_performance_repo: AsyncMock,
-    mock_performance_calculator: MagicMock,
-):
-    """
-    GIVEN a valid performance request
-    WHEN calculate_performance is called
-    THEN it should orchestrate calls to repos and the engine correctly.
-    """
-    # ARRANGE
-    request = PerformanceRequest.model_validate(
-        {
-            "scope": {"as_of_date": "2025-02-15", "net_or_gross": "NET"},
-            "periods": [{"type": "YTD"}],
-            "options": {"include_attributes": True},
-        }
-    )
-
-    with patch(
-        "src.services.query_service.app.services.performance_service.PerformanceCalculator",
-        new=mock_performance_calculator,
-    ):
-        # ACT
-        response = await service.calculate_performance("P1", request)
-
-        # ASSERT
-        # 1. Verify Repositories were called
-        mock_portfolio_repo.get_by_id.assert_called_once_with("P1")
-        mock_performance_repo.get_portfolio_timeseries_for_range.assert_called_once()
-
-        # 2. Verify the Engine was called
-        mock_performance_calculator.assert_called_once()
-        mock_performance_calculator.return_value.calculate_performance.assert_called_once()
-
-        # 3. Verify the response is correctly assembled
-        assert "YTD" in response.summary
-        summary_result = response.summary["YTD"]
-        assert summary_result.cumulative_return == 5.5
-        assert summary_result.attributes is not None
-        assert summary_result.attributes.begin_market_value == Decimal("1000")
-
-
-async def test_calculate_performance_with_daily_breakdown(
-    service: PerformanceService, mock_performance_calculator: MagicMock
-):
-    """
-    GIVEN a performance request with a daily breakdown
-    WHEN calculate_performance is called
-    THEN the response should contain a correctly formatted breakdowns section.
-    """
-    # ARRANGE
-    request = PerformanceRequest.model_validate(
-        {
-            "scope": {"as_of_date": "2025-02-15", "net_or_gross": "NET"},
-            "periods": [{"type": "YTD", "name": "YTD_With_Breakdown", "breakdown": "DAILY"}],
-            "options": {"include_cumulative": True, "include_annualized": True},
-        }
-    )
-
-    # Mock the engine to return a multi-day DataFrame
-    mock_df = pd.DataFrame(
-        [
-            {
-                "date": date(2025, 1, 1),
-                "daily_ror_pct": Decimal("1.0"),
-                "final_cumulative_ror_pct": Decimal("1.0"),
-            },
-            {
-                "date": date(2025, 1, 2),
-                "daily_ror_pct": Decimal("0.5"),
-                "final_cumulative_ror_pct": Decimal("1.505"),
-            },
+        portfolio_repo = AsyncMock()
+        perf_repo = AsyncMock()
+        portfolio_repo.get_by_id.return_value = Portfolio(
+            portfolio_id="P1", open_date=date(2020, 1, 1)
+        )
+        perf_repo.get_portfolio_timeseries_for_range.return_value = [
+            SimpleNamespace(
+                date=date(2025, 1, 2),
+                bod_market_value=100,
+                eod_market_value=101,
+                bod_cashflow=0,
+                eod_cashflow=0,
+                fees=0,
+            ),
+            SimpleNamespace(
+                date=date(2025, 1, 3),
+                bod_market_value=101,
+                eod_market_value=102,
+                bod_cashflow=0,
+                eod_cashflow=0,
+                fees=0,
+            ),
         ]
-    )
-    mock_performance_calculator.return_value.calculate_performance.return_value = mock_df
+        portfolio_repo_cls.return_value = portfolio_repo
+        perf_repo_cls.return_value = perf_repo
 
-    with patch(
-        "src.services.query_service.app.services.performance_service.PerformanceCalculator",
-        new=mock_performance_calculator,
-    ):
-        # ACT
-        response = await service.calculate_performance("P1", request)
-
-        # ASSERT
-        assert response.breakdowns is not None
-        assert "YTD_With_Breakdown" in response.breakdowns
-
-        breakdown_result = response.breakdowns["YTD_With_Breakdown"]
-        assert breakdown_result.breakdown_type == "DAILY"
-        assert len(breakdown_result.results) == 2
-
-        # Check the content of the first daily result
-        day1_result = breakdown_result.results[0]
-        assert day1_result.start_date == date(2025, 1, 1)
-        assert day1_result.cumulative_return == 1.0
-        assert (
-            day1_result.annualized_return == 1.0
-        )  # Annualized equals cumulative for short periods
+        svc = PerformanceService(AsyncMock(spec=AsyncSession))
+        svc.portfolio_repo = portfolio_repo
+        svc.repo = perf_repo
+        return svc
 
 
-async def test_calculate_performance_raises_for_missing_portfolio(
-    service: PerformanceService, mock_portfolio_repo: AsyncMock
-):
-    """
-    GIVEN a request for a non-existent portfolio
-    WHEN calculate_performance is called
-    THEN it should raise a ValueError.
-    """
-    # ARRANGE
-    mock_portfolio_repo.get_by_id.return_value = None
-    request = PerformanceRequest.model_validate(
-        {"scope": {"as_of_date": "2025-01-01"}, "periods": [{"type": "YTD"}]}
-    )
-
-    # ACT & ASSERT
-    with pytest.raises(ValueError, match="Portfolio P_NONEXISTENT not found"):
-        await service.calculate_performance("P_NONEXISTENT", request)
-
-
-async def test_aggregate_attributes_empty_dataframe_returns_defaults(
-    service: PerformanceService,
-):
-    result = service._aggregate_attributes(pd.DataFrame())
-    assert result.begin_market_value is None
-    assert result.end_market_value is None
-    assert result.total_cashflow is None
-
-
-async def test_calculate_performance_returns_empty_when_no_timeseries(
-    service: PerformanceService, mock_performance_repo: AsyncMock
-):
-    request = PerformanceRequest.model_validate(
-        {"scope": {"as_of_date": "2025-02-15", "net_or_gross": "NET"}, "periods": [{"type": "YTD"}]}
-    )
-    mock_performance_repo.get_portfolio_timeseries_for_range.return_value = []
-
-    response = await service.calculate_performance("P1", request)
-
-    assert response.summary == {}
-    assert response.breakdowns is None
-
-
-async def test_calculate_performance_period_without_data_returns_empty_result(
-    service: PerformanceService, mock_performance_calculator: MagicMock
-):
-    request = PerformanceRequest.model_validate(
+def _request() -> PerformanceRequest:
+    return PerformanceRequest.model_validate(
         {
-            "scope": {"as_of_date": "2025-02-15", "net_or_gross": "NET"},
-            "periods": [
-                {"type": "YTD"},
-                {"type": "EXPLICIT", "name": "Future", "from": "2025-12-01", "to": "2025-12-31"},
-            ],
-        }
-    )
-
-    mock_df = pd.DataFrame(
-        [
-            {
-                "date": date(2025, 1, 2),
-                "daily_ror_pct": Decimal("1.0"),
-                "final_cumulative_ror_pct": Decimal("1.0"),
-            }
-        ]
-    )
-    mock_performance_calculator.return_value.calculate_performance.return_value = mock_df
-
-    with patch(
-        "src.services.query_service.app.services.performance_service.PerformanceCalculator",
-        new=mock_performance_calculator,
-    ):
-        response = await service.calculate_performance("P1", request)
-
-    assert "Future" in response.summary
-    assert response.summary["Future"].cumulative_return is None
-    assert response.summary["Future"].annualized_return is None
-
-
-async def test_calculate_performance_empty_engine_dataframe_returns_zero_cumulative(
-    service: PerformanceService, mock_performance_calculator: MagicMock
-):
-    request = PerformanceRequest.model_validate(
-        {
-            "scope": {"as_of_date": "2025-02-15", "net_or_gross": "NET"},
-            "periods": [{"type": "YTD"}],
-            "options": {"include_cumulative": True, "include_annualized": False},
-        }
-    )
-    mock_performance_calculator.return_value.calculate_performance.return_value = pd.DataFrame()
-
-    with patch(
-        "src.services.query_service.app.services.performance_service.PerformanceCalculator",
-        new=mock_performance_calculator,
-    ):
-        response = await service.calculate_performance("P1", request)
-
-    assert response.summary["YTD"].cumulative_return == 0.0
-
-
-async def test_calculate_breakdowns_weekly_path_returns_weekly_return(
-    service: PerformanceService,
-):
-    request = PerformanceRequest.model_validate(
-        {
-            "scope": {"as_of_date": "2025-02-15", "net_or_gross": "NET"},
-            "periods": [{"type": "YTD"}],
+            "scope": {"as_of_date": "2025-03-31", "net_or_gross": "NET"},
+            "periods": [{"type": "YTD", "name": "YTD", "breakdown": "DAILY"}],
             "options": {
                 "include_cumulative": True,
                 "include_annualized": True,
@@ -288,113 +67,78 @@ async def test_calculate_breakdowns_weekly_path_returns_weekly_return(
             },
         }
     )
-    portfolio = Portfolio(portfolio_id="P1", open_date=date(2020, 1, 1))
-    results_df = pd.DataFrame(
-        [
-            {
-                "date": date(2025, 1, 1),
-                "daily_ror_pct": Decimal("1.0"),
-                "final_cumulative_ror_pct": Decimal("1.0"),
-                "bod_market_value": Decimal("100"),
-                "eod_market_value": Decimal("101"),
-                "bod_cashflow": Decimal("0"),
-                "eod_cashflow": Decimal("0"),
-                "fees": Decimal("0"),
-            },
-            {
-                "date": date(2025, 1, 2),
-                "daily_ror_pct": Decimal("1.0"),
-                "final_cumulative_ror_pct": Decimal("2.01"),
-                "bod_market_value": Decimal("101"),
-                "eod_market_value": Decimal("103"),
-                "bod_cashflow": Decimal("0"),
-                "eod_cashflow": Decimal("0"),
-                "fees": Decimal("0"),
-            },
-        ]
-    )
+
+
+async def test_calculate_performance_raises_for_missing_portfolio(
+    service: PerformanceService,
+) -> None:
+    service.portfolio_repo.get_by_id.return_value = None
+    with pytest.raises(ValueError, match="Portfolio P404 not found"):
+        await service.calculate_performance("P404", _request())
+
+
+async def test_calculate_performance_returns_empty_when_no_timeseries(
+    service: PerformanceService,
+) -> None:
+    service.repo.get_portfolio_timeseries_for_range.return_value = []
+
+    result = await service.calculate_performance("P1", _request())
+
+    assert result.summary == {}
+    assert result.breakdowns is None
+
+
+async def test_calculate_performance_proxies_to_lotus_performance(
+    service: PerformanceService,
+) -> None:
+    response = SimpleNamespace()
+    response.status_code = 200
+    response.json = lambda: {
+        "results_by_period": {
+            "YTD": {
+                "portfolio_return": {"base": 5.5},
+                "breakdowns": {
+                    "daily": [
+                        {"period": "2025-01-02", "summary": {"period_return_pct": 1.0}},
+                        {
+                            "period": "2025-01-03",
+                            "summary": {"period_return_pct": 0.5, "annualized_return_pct": 3.0},
+                        },
+                    ]
+                },
+            }
+        }
+    }
 
     with patch(
-        "src.services.query_service.app.services.performance_service.PerformanceCalculator"
-    ) as mock_calculator:
-        mock_calculator.return_value.calculate_performance.return_value = pd.DataFrame(
-            [{"final_cumulative_ror_pct": Decimal("2.01")}]
-        )
-        breakdowns = service._calculate_breakdowns(results_df, "WEEKLY", request, portfolio)
+        "src.services.query_service.app.services.performance_service.httpx.AsyncClient"
+    ) as client_cls:
+        client = AsyncMock()
+        client.__aenter__.return_value = client
+        client.post.return_value = response
+        client_cls.return_value = client
 
-    assert len(breakdowns) == 1
-    assert breakdowns[0].weekly_return is not None
-    assert breakdowns[0].attributes is not None
+        result = await service.calculate_performance("P1", _request())
 
-
-async def test_calculate_breakdowns_invalid_type_returns_empty(
-    service: PerformanceService,
-):
-    request = PerformanceRequest.model_validate(
-        {"scope": {"as_of_date": "2025-02-15", "net_or_gross": "NET"}, "periods": [{"type": "YTD"}]}
-    )
-    portfolio = Portfolio(portfolio_id="P1", open_date=date(2020, 1, 1))
-    results_df = pd.DataFrame(
-        [
-            {
-                "date": date(2025, 1, 1),
-                "daily_ror_pct": Decimal("1.0"),
-                "final_cumulative_ror_pct": Decimal("1.0"),
-            }
-        ]
-    )
-
-    breakdowns = service._calculate_breakdowns(results_df, "UNKNOWN", request, portfolio)
-
-    assert breakdowns == []
+    assert "YTD" in result.summary
+    assert result.summary["YTD"].cumulative_return == 5.5
+    assert result.summary["YTD"].annualized_return == 3.0
+    assert result.summary["YTD"].attributes is not None
+    assert result.breakdowns is not None
+    assert len(result.breakdowns["YTD"].results) == 2
+    client.post.assert_awaited_once()
 
 
-async def test_calculate_performance_returns_empty_summary_when_periods_empty(
-    service: PerformanceService, mock_performance_repo: AsyncMock
-):
-    request = PerformanceRequest.model_validate(
-        {"scope": {"as_of_date": "2025-02-15", "net_or_gross": "NET"}, "periods": []}
-    )
+async def test_calculate_performance_raises_on_remote_error(service: PerformanceService) -> None:
+    response = SimpleNamespace(status_code=502, text="upstream")
 
-    response = await service.calculate_performance("P1", request)
+    with patch(
+        "src.services.query_service.app.services.performance_service.httpx.AsyncClient"
+    ) as client_cls:
+        client = AsyncMock()
+        client.__aenter__.return_value = client
+        client.post.return_value = response
+        client_cls.return_value = client
 
-    mock_performance_repo.get_portfolio_timeseries_for_range.assert_not_called()
-    assert response.summary == {}
-    assert response.breakdowns is None
-
-
-async def test_calculate_breakdowns_daily_includes_attributes_when_requested(
-    service: PerformanceService,
-):
-    request = PerformanceRequest.model_validate(
-        {
-            "scope": {"as_of_date": "2025-02-15", "net_or_gross": "NET"},
-            "periods": [{"type": "YTD"}],
-            "options": {
-                "include_cumulative": True,
-                "include_annualized": False,
-                "include_attributes": True,
-            },
-        }
-    )
-    portfolio = Portfolio(portfolio_id="P1", open_date=date(2020, 1, 1))
-    results_df = pd.DataFrame(
-        [
-            {
-                "date": date(2025, 1, 1),
-                "daily_ror_pct": Decimal("1.0"),
-                "final_cumulative_ror_pct": Decimal("1.0"),
-                "bod_market_value": Decimal("100"),
-                "eod_market_value": Decimal("101"),
-                "bod_cashflow": Decimal("2"),
-                "eod_cashflow": Decimal("3"),
-                "fees": Decimal("0.5"),
-            }
-        ]
-    )
-
-    breakdowns = service._calculate_breakdowns(results_df, "DAILY", request, portfolio)
-
-    assert len(breakdowns) == 1
-    assert breakdowns[0].attributes is not None
-    assert breakdowns[0].attributes.total_cashflow == Decimal("5")
+        with pytest.raises(RuntimeError, match="lotus-performance request failed"):
+            await service.calculate_performance("P1", _request())

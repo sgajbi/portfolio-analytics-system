@@ -60,7 +60,7 @@ def setup_summary_data(clean_db_module, e2e_api_client: E2EApiClient, poll_db_un
 
 def test_portfolio_summary_endpoint(setup_summary_data, e2e_api_client: E2EApiClient):
     """
-    Verifies PAS summary endpoint is hard-disabled and directs callers to RAS.
+    Verifies lotus-core summary endpoint is hard-disabled and directs callers to lotus-report.
     """
     portfolio_id = setup_summary_data["portfolio_id"]
     api_url = f"/portfolios/{portfolio_id}/summary"
@@ -75,5 +75,5 @@ def test_portfolio_summary_endpoint(setup_summary_data, e2e_api_client: E2EApiCl
     data = response.json()["detail"]
     assert response.status_code == 410
     assert data["code"] == "PAS_LEGACY_ENDPOINT_REMOVED"
-    assert data["target_service"] == "RAS"
+    assert data["target_service"] == "lotus-report"
     assert data["target_endpoint"] == "/reports/portfolios/{portfolio_id}/summary"

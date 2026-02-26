@@ -54,7 +54,7 @@ def test_buy_strategy(cost_calculator, mock_disposition_engine, buy_transaction)
 
 def test_buy_strategy_dual_currency(cost_calculator, mock_disposition_engine):
     dual_currency_buy = Transaction(
-        transaction_id="DC_BUY_01", portfolio_id="P_USD", instrument_id="AIR.PA", security_id="S_AIR",
+        transaction_id="DC_BUY_01", portfolio_id="P_USD", instrument_id="AIR.lotus-performance", security_id="S_AIR",
         transaction_type=TransactionType.BUY, transaction_date=datetime(2023, 1, 1),
         quantity=Decimal("100"), gross_transaction_amount=Decimal("15000"), trade_currency="EUR",
         fees=Fees(brokerage=Decimal("10")),
@@ -75,7 +75,7 @@ def test_sell_strategy_gain(cost_calculator, mock_disposition_engine, sell_trans
 
 def test_sell_strategy_dual_currency(cost_calculator, mock_disposition_engine):
     dual_currency_sell = Transaction(
-        transaction_id="DC_SELL_01", portfolio_id="P_USD", instrument_id="AIR.PA", security_id="S_AIR",
+        transaction_id="DC_SELL_01", portfolio_id="P_USD", instrument_id="AIR.lotus-performance", security_id="S_AIR",
         transaction_type=TransactionType.SELL, transaction_date=datetime(2023, 1, 10),
         quantity=Decimal("50"), gross_transaction_amount=Decimal("8000"), trade_currency="EUR",
         fees=Fees(brokerage=Decimal("8")),

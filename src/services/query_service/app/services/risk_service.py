@@ -1,10 +1,9 @@
 import logging
 import os
+from datetime import date
+from typing import Any
 
 import httpx
-import pandas as pd
-from performance_calculator_engine.calculator import PerformanceCalculator
-from performance_calculator_engine.constants import DAILY_ROR_PCT, DATE
 from performance_calculator_engine.helpers import resolve_period
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -22,40 +21,75 @@ class RiskService:
         self.db = db
         self.perf_repo = PerformanceRepository(db)
         self.portfolio_repo = PortfolioRepository(db)
-        self.base_url = os.getenv("LOTUS_RISK_BASE_URL", "http://localhost:8130").rstrip("/")
+        self.risk_base_url = os.getenv("LOTUS_RISK_BASE_URL", "http://localhost:8130").rstrip("/")
+        self.performance_base_url = os.getenv(
+            "LOTUS_PERFORMANCE_BASE_URL", "http://localhost:8000"
+        ).rstrip("/")
         self.timeout_seconds = int(os.getenv("LOTUS_RISK_TIMEOUT_SECONDS", "10"))
 
     @staticmethod
-    def _convert_timeseries_to_dict(timeseries_data: list) -> list[dict]:
-        return [
-            {
-                "date": r.date.isoformat(),
-                "bod_market_value": r.bod_market_value,
-                "eod_market_value": r.eod_market_value,
-                "bod_cashflow": r.bod_cashflow,
-                "eod_cashflow": r.eod_cashflow,
-                "fees": r.fees,
-            }
-            for r in timeseries_data
-        ]
+    def _period_to_pa_type(period_type: str) -> str:
+        mapping = {
+            "MTD": "MTD",
+            "QTD": "QTD",
+            "YTD": "YTD",
+            "THREE_YEAR": "3Y",
+            "FIVE_YEAR": "5Y",
+            "SI": "ITD",
+            "EXPLICIT": "EXPLICIT",
+            "YEAR": "EXPLICIT",
+        }
+        if period_type not in mapping:
+            raise ValueError(
+                f"Unsupported period type for lotus-performance mapping: {period_type}"
+            )
+        return mapping[period_type]
 
-    async def _build_returns_series(self, portfolio_id: str, request: RiskRequest) -> list[dict]:
+    @staticmethod
+    def _convert_timeseries_to_valuation_points(timeseries_data: list[Any]) -> list[dict[str, Any]]:
+        points: list[dict[str, Any]] = []
+        for index, row in enumerate(timeseries_data, start=1):
+            points.append(
+                {
+                    "day": index,
+                    "perf_date": row.date.isoformat(),
+                    "begin_mv": float(row.bod_market_value or 0),
+                    "bod_cf": float(row.bod_cashflow or 0),
+                    "eod_cf": float(row.eod_cashflow or 0),
+                    "mgmt_fees": float(row.fees or 0),
+                    "end_mv": float(row.eod_market_value or 0),
+                }
+            )
+        return points
+
+    async def _build_returns_series(
+        self, portfolio_id: str, request: RiskRequest
+    ) -> list[dict[str, Any]]:
         portfolio = await self.portfolio_repo.get_by_id(portfolio_id)
         if not portfolio:
             raise ValueError(f"Portfolio {portfolio_id} not found")
 
-        resolved_periods = [
-            resolve_period(
-                period_type=p.type,
-                name=p.name or p.type,
-                from_date=getattr(p, "from_date", None),
-                to_date=getattr(p, "to_date", None),
-                year=getattr(p, "year", None),
-                inception_date=portfolio.open_date,
-                as_of_date=request.scope.as_of_date,
+        resolved_periods = []
+        for period in request.periods:
+            from_date = getattr(period, "from_date", None)
+            to_date = getattr(period, "to_date", None)
+            year = getattr(period, "year", None)
+            if period.type == "YEAR" and year is not None:
+                from_date = date(year, 1, 1)
+                to_date = date(year, 12, 31)
+
+            resolved_periods.append(
+                resolve_period(
+                    period_type=period.type,
+                    name=period.name or period.type,
+                    from_date=from_date,
+                    to_date=to_date,
+                    year=year,
+                    inception_date=portfolio.open_date,
+                    as_of_date=request.scope.as_of_date,
+                )
             )
-            for p in request.periods
-        ]
+
         if not resolved_periods:
             return []
 
@@ -68,32 +102,46 @@ class RiskService:
         if not timeseries_data:
             return []
 
-        timeseries_dicts = self._convert_timeseries_to_dict(timeseries_data)
-        calculator = PerformanceCalculator(
-            config={
-                "metric_basis": request.scope.net_or_gross,
-                "period_type": "EXPLICIT",
-                "performance_start_date": portfolio.open_date.isoformat(),
-                "report_start_date": min_start.isoformat(),
-                "report_end_date": max_end.isoformat(),
-            }
-        )
-        returns_df = calculator.calculate_performance(timeseries_dicts)
-        if returns_df.empty:
+        valuation_points = self._convert_timeseries_to_valuation_points(timeseries_data)
+        payload = {
+            "portfolio_id": portfolio_id,
+            "performance_start_date": portfolio.open_date.isoformat(),
+            "metric_basis": request.scope.net_or_gross,
+            "report_start_date": min_start.isoformat(),
+            "report_end_date": max_end.isoformat(),
+            "analyses": [{"period": "EXPLICIT", "frequencies": ["daily"]}],
+            "valuation_points": valuation_points,
+            "currency": request.scope.reporting_currency or portfolio.base_currency,
+            "output": {"include_cumulative": True, "include_timeseries": True},
+        }
+
+        async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
+            response = await client.post(
+                f"{self.performance_base_url}/performance/twr", json=payload
+            )
+
+        if response.status_code >= 400:
+            detail = response.text
+            raise RuntimeError(
+                f"lotus-performance request failed with status {response.status_code}: {detail}"
+            )
+
+        body = response.json()
+        period_payload = next(iter((body.get("results_by_period") or {}).values()), None)
+        if period_payload is None:
             return []
 
-        returns_df[DATE] = pd.to_datetime(returns_df[DATE])
-        return [
-            {
-                "date": row[DATE].date().isoformat(),
-                "value": (
-                    row[DAILY_ROR_PCT].item()
-                    if hasattr(row[DAILY_ROR_PCT], "item")
-                    else row[DAILY_ROR_PCT]
-                ),
-            }
-            for _, row in returns_df[[DATE, DAILY_ROR_PCT]].dropna().iterrows()
-        ]
+        daily_items = (period_payload.get("breakdowns") or {}).get("daily") or []
+        returns: list[dict[str, Any]] = []
+        for item in daily_items:
+            period_value = item.get("period")
+            summary = item.get("summary") or {}
+            daily_return = summary.get("period_return_pct")
+            if period_value is None or daily_return is None:
+                continue
+            returns.append({"date": str(period_value)[:10], "value": daily_return})
+
+        return returns
 
     async def calculate_risk(self, portfolio_id: str, request: RiskRequest) -> RiskResponse:
         portfolio = await self.portfolio_repo.get_by_id(portfolio_id)
@@ -109,7 +157,7 @@ class RiskService:
         payload["returns"] = returns
         payload["benchmarkReturns"] = []
 
-        endpoint = f"{self.base_url}/analytics/risk/calculate"
+        endpoint = f"{self.risk_base_url}/analytics/risk/calculate"
         async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
             response = await client.post(endpoint, json=payload)
 

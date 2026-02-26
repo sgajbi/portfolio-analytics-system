@@ -23,7 +23,7 @@ router = APIRouter()
     tags=["Bulk Uploads"],
     summary="Preview and validate bulk upload data",
     description=(
-        "Validates CSV/XLSX rows against PAS ingestion contracts without publishing events. "
+        "Validates CSV/XLSX rows against lotus-core ingestion contracts without publishing events. "
         "Returns row-level errors and normalized sample rows for UI correction workflows."
     ),
 )
@@ -65,7 +65,7 @@ async def preview_upload(
     tags=["Bulk Uploads"],
     summary="Commit validated bulk upload data",
     description=(
-        "Validates CSV/XLSX rows and publishes valid records to existing PAS ingestion topics. "
+        "Validates CSV/XLSX rows and publishes valid records to existing lotus-core ingestion topics. "
         "By default rejects partial uploads; set allowPartial=true to publish valid rows only."
     ),
 )

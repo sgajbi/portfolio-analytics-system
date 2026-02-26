@@ -117,5 +117,5 @@ async def test_risk_endpoint_happy_path(
     # ASSERT
     assert response.status_code == 410
     assert data["code"] == "PAS_LEGACY_ENDPOINT_REMOVED"
-    assert data["target_service"] == "PA"
+    assert data["target_service"] == "lotus-performance"
     assert data["target_endpoint"] == "/portfolios/{portfolio_id}/risk"

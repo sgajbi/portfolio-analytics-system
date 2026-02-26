@@ -1,4 +1,4 @@
-# RFC 030 - CI Coverage Gate and DPM Pipeline Parity Phase 2
+# RFC 030 - CI Coverage Gate and lotus-manage Pipeline Parity Phase 2
 
 - Status: Proposed
 - Date: 2026-02-23
@@ -6,7 +6,7 @@
 
 ## Context
 
-RFC 029 established a DPM-style baseline, but CI remained basic in two areas:
+RFC 029 established a lotus-manage-style baseline, but CI remained basic in two areas:
 
 - no matrixed test suites with artifactized coverage data
 - no explicit combined coverage gate
@@ -15,7 +15,7 @@ Also, some integration tests currently depend on full Docker orchestration and a
 
 ## Decision
 
-Adopt DPM-style phased CI hardening:
+Adopt lotus-manage-style phased CI hardening:
 
 1. Add test matrix jobs:
    - `Tests (unit)`

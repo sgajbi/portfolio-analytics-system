@@ -2,15 +2,15 @@
 
 - Status: PROPOSED
 - Date: 2026-02-24
-- Owners: PAS Query Service
+- Owners: lotus-core Query Service
 
 ## Problem Statement
 
-A domain-grade portfolio foundation experience requires low-latency access to current portfolio state, composition, and health metrics, plus fast what-if snapshots for iterative advisory and DPM workflows.
+A domain-grade portfolio foundation experience requires low-latency access to current portfolio state, composition, and health metrics, plus fast what-if snapshots for iterative advisory and lotus-manage workflows.
 
 ## Root Cause
 
-- Existing PAS APIs are oriented to point features and supportability surfaces.
+- Existing lotus-core APIs are oriented to point features and supportability surfaces.
 - No explicit query surface optimized for portfolio explorer + iterative editing workflows.
 - What-if state projection is not formalized as a first-class contract.
 
@@ -25,8 +25,8 @@ A domain-grade portfolio foundation experience requires low-latency access to cu
 
 ## Architectural Impact
 
-- Strengthens PAS role as portfolio data foundation for all product journeys.
-- Enables BFF lifecycle orchestration with stable, simulation-ready contracts.
+- Strengthens lotus-core role as portfolio data foundation for all product journeys.
+- Enables lotus-gateway lifecycle orchestration with stable, simulation-ready contracts.
 - Requires performance-focused query paths and response shaping.
 
 ## Risks and Trade-offs
@@ -44,5 +44,5 @@ A domain-grade portfolio foundation experience requires low-latency access to cu
 
 ## Dependencies
 
-- Consumed by AEA RFC-0010 and AW RFC-0007.
-- PA and DPM contracts integrate with what-if projection outputs.
+- Consumed by lotus-gateway RFC-0010 and AW RFC-0007.
+- lotus-performance and lotus-manage contracts integrate with what-if projection outputs.

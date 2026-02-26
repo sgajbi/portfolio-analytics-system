@@ -1,8 +1,8 @@
 # API Specification: Concentration Analytics
 
-> Migration Notice (RFC 056): As of February 25, 2026, PAS hard-disables this
+> Migration Notice (RFC 056): As of February 25, 2026, lotus-core hard-disables this
 > endpoint with `410 Gone`. Authoritative concentration analytics now belong to
-> PA. Use PA APIs instead of PAS for concentration metrics.
+> lotus-performance. Use lotus-performance APIs instead of lotus-core for concentration metrics.
 
 This document provides the detailed technical specification for the Concentration Analytics API endpoint.
 

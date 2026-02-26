@@ -35,7 +35,7 @@ async def test_get_portfolio_summary_success_all_sections(async_test_client):
     assert response.status_code == 410
     detail = response.json()["detail"]
     assert detail["code"] == "PAS_LEGACY_ENDPOINT_REMOVED"
-    assert detail["target_service"] == "RAS"
+    assert detail["target_service"] == "lotus-report"
     assert detail["target_endpoint"] == "/reports/portfolios/{portfolio_id}/summary"
 
 
@@ -56,7 +56,7 @@ async def test_get_portfolio_summary_not_found(async_test_client):
     response = await client.post(f"/portfolios/{portfolio_id}/summary", json=request_payload)
 
     assert response.status_code == 410
-    assert response.json()["detail"]["target_service"] == "RAS"
+    assert response.json()["detail"]["target_service"] == "lotus-report"
 
 
 async def test_get_portfolio_summary_unexpected_error_maps_to_500(async_test_client):
@@ -71,4 +71,4 @@ async def test_get_portfolio_summary_unexpected_error_maps_to_500(async_test_cli
     response = await client.post("/portfolios/P1/summary", json=request_payload)
 
     assert response.status_code == 410
-    assert response.json()["detail"]["target_service"] == "RAS"
+    assert response.json()["detail"]["target_service"] == "lotus-report"
