@@ -85,3 +85,44 @@ async def test_metrics_include_http_series_samples(async_test_client):
     metrics_text = metrics_response.text
     assert "http_requests_total{" in metrics_text
     assert "http_request_latency_seconds_count{" in metrics_text
+
+
+async def test_openapi_declares_simulation_error_contracts(async_test_client):
+    response = await async_test_client.get("/openapi.json")
+    assert response.status_code == 200
+    paths = response.json()["paths"]
+
+    assert "404" in paths["/simulation-sessions/{session_id}"]["get"]["responses"]
+    assert "404" in paths["/simulation-sessions/{session_id}"]["delete"]["responses"]
+    assert "400" in paths["/simulation-sessions/{session_id}/changes"]["post"]["responses"]
+    assert (
+        "400"
+        in paths["/simulation-sessions/{session_id}/changes/{change_id}"]["delete"]["responses"]
+    )
+    assert (
+        "404" in paths["/simulation-sessions/{session_id}/projected-positions"]["get"]["responses"]
+    )
+    assert "404" in paths["/simulation-sessions/{session_id}/projected-summary"]["get"]["responses"]
+
+
+async def test_openapi_declares_portfolio_not_found_contracts(async_test_client):
+    response = await async_test_client.get("/openapi.json")
+    assert response.status_code == 200
+    paths = response.json()["paths"]
+
+    assert "404" in paths["/portfolios/{portfolio_id}"]["get"]["responses"]
+    assert "404" in paths["/portfolios/{portfolio_id}/positions"]["get"]["responses"]
+    assert "404" in paths["/portfolios/{portfolio_id}/transactions"]["get"]["responses"]
+    assert "404" in paths["/portfolios/{portfolio_id}/position-history"]["get"]["responses"]
+    assert "404" in paths["/support/portfolios/{portfolio_id}/overview"]["get"]["responses"]
+    assert "404" in paths["/support/portfolios/{portfolio_id}/aggregation-jobs"]["get"]["responses"]
+    assert "404" in paths["/support/portfolios/{portfolio_id}/valuation-jobs"]["get"]["responses"]
+    assert "404" in paths["/lineage/portfolios/{portfolio_id}/keys"]["get"]["responses"]
+    assert (
+        "404" in paths["/integration/portfolios/{portfolio_id}/core-snapshot"]["post"]["responses"]
+    )
+    assert (
+        "404"
+        in paths["/integration/portfolios/{portfolio_id}/performance-input"]["post"]["responses"]
+    )
+    assert "404" in paths["/portfolios/{portfolio_id}/positions-analytics"]["post"]["responses"]

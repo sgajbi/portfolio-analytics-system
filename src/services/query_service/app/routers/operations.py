@@ -2,9 +2,8 @@ import logging
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from portfolio_common.db import get_async_db_session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..dtos.operations_dto import (
     LineageKeyListResponse,
@@ -28,6 +27,7 @@ def get_operations_service(
 @router.get(
     "/support/portfolios/{portfolio_id}/overview",
     response_model=SupportOverviewResponse,
+    responses={status.HTTP_404_NOT_FOUND: {"description": "Portfolio not found."}},
     summary="Get operational support overview for a portfolio",
     description=(
         "Returns support-oriented operational state for a portfolio, including "
@@ -39,6 +39,8 @@ async def get_support_overview(
 ):
     try:
         return await service.get_support_overview(portfolio_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
     except Exception:
         logger.exception("Failed to build support overview for portfolio %s", portfolio_id)
         raise HTTPException(
@@ -50,6 +52,7 @@ async def get_support_overview(
 @router.get(
     "/support/portfolios/{portfolio_id}/valuation-jobs",
     response_model=SupportJobListResponse,
+    responses={status.HTTP_404_NOT_FOUND: {"description": "Portfolio not found."}},
     summary="List valuation jobs for support workflows",
     description=(
         "Returns valuation jobs for a portfolio with pagination and optional status filtering. "
@@ -69,6 +72,8 @@ async def get_valuation_jobs(
         return await service.get_valuation_jobs(
             portfolio_id=portfolio_id, skip=skip, limit=limit, status=status_filter
         )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
     except Exception:
         logger.exception("Failed to list valuation jobs for portfolio %s", portfolio_id)
         raise HTTPException(
@@ -80,6 +85,7 @@ async def get_valuation_jobs(
 @router.get(
     "/support/portfolios/{portfolio_id}/aggregation-jobs",
     response_model=SupportJobListResponse,
+    responses={status.HTTP_404_NOT_FOUND: {"description": "Portfolio not found."}},
     summary="List aggregation jobs for support workflows",
     description=(
         "Returns aggregation jobs for a portfolio with pagination and optional status filtering. "
@@ -99,6 +105,8 @@ async def get_aggregation_jobs(
         return await service.get_aggregation_jobs(
             portfolio_id=portfolio_id, skip=skip, limit=limit, status=status_filter
         )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
     except Exception:
         logger.exception("Failed to list aggregation jobs for portfolio %s", portfolio_id)
         raise HTTPException(
@@ -110,6 +118,7 @@ async def get_aggregation_jobs(
 @router.get(
     "/lineage/portfolios/{portfolio_id}/securities/{security_id}",
     response_model=LineageResponse,
+    responses={status.HTTP_404_NOT_FOUND: {"description": "Portfolio/security lineage not found."}},
     summary="Get lineage state for a portfolio-security key",
     description=(
         "Returns lineage-relevant state (epoch, watermark, latest artifacts) "
@@ -138,6 +147,7 @@ async def get_lineage(
 @router.get(
     "/lineage/portfolios/{portfolio_id}/keys",
     response_model=LineageKeyListResponse,
+    responses={status.HTTP_404_NOT_FOUND: {"description": "Portfolio not found."}},
     summary="List lineage keys for a portfolio",
     description=(
         "Returns current lineage keys (portfolio-security state rows) for a portfolio with "
@@ -164,6 +174,8 @@ async def get_lineage_keys(
             reprocessing_status=reprocessing_status,
             security_id=security_id,
         )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
     except Exception:
         logger.exception("Failed to list lineage keys for portfolio %s", portfolio_id)
         raise HTTPException(

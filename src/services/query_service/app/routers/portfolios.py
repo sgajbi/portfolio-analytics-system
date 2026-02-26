@@ -50,7 +50,10 @@ async def get_portfolios(
 
 
 @router.get(
-    "/{portfolio_id}", response_model=PortfolioRecord, summary="Get a Single Portfolio by ID"
+    "/{portfolio_id}",
+    response_model=PortfolioRecord,
+    responses={status.HTTP_404_NOT_FOUND: {"description": "Portfolio not found."}},
+    summary="Get a Single Portfolio by ID",
 )
 async def get_portfolio_by_id(
     portfolio_id: str,

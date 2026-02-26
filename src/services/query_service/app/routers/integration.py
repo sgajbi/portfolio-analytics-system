@@ -31,6 +31,7 @@ def get_integration_service(
     "/portfolios/{portfolio_id}/core-snapshot",
     response_model=PortfolioCoreSnapshotResponse,
     response_model_by_alias=True,
+    responses={status.HTTP_404_NOT_FOUND: {"description": "Portfolio not found."}},
     summary="Get PAS core snapshot contract for downstream services",
     description=(
         "Returns a versioned PAS snapshot contract for PA/DPM style consumers. "
@@ -88,6 +89,7 @@ async def get_effective_integration_policy(
     "/portfolios/{portfolio_id}/performance-input",
     response_model=PortfolioPerformanceInputResponse,
     response_model_by_alias=True,
+    responses={status.HTTP_404_NOT_FOUND: {"description": "Portfolio not found."}},
     summary="Get PAS raw performance input series for PA calculation",
     description=(
         "Returns raw portfolio time-series inputs (market values, cashflows, fees) for PA-owned "

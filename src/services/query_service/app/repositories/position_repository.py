@@ -1,16 +1,17 @@
 # src/services/query_service/app/repositories/position_repository.py
 import logging
 from datetime import date
-from typing import List, Any, Optional
+from typing import Any, List, Optional
 
-from sqlalchemy import select, func, text, and_
-from sqlalchemy.ext.asyncio import AsyncSession
 from portfolio_common.database_models import (
-    PositionHistory,
-    Instrument,
     DailyPositionSnapshot,
+    Instrument,
+    Portfolio,
+    PositionHistory,
     PositionState,
 )
+from sqlalchemy import and_, func, select, text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +24,10 @@ class PositionRepository:
 
     def __init__(self, db: AsyncSession):
         self.db = db
+
+    async def portfolio_exists(self, portfolio_id: str) -> bool:
+        stmt = select(Portfolio.portfolio_id).where(Portfolio.portfolio_id == portfolio_id).limit(1)
+        return (await self.db.execute(stmt)).scalar_one_or_none() is not None
 
     async def get_held_since_date(
         self, portfolio_id: str, security_id: str, epoch: int

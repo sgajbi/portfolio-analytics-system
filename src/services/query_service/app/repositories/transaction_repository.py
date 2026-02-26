@@ -3,11 +3,11 @@ import logging
 from datetime import date
 from typing import List, Optional
 
-from sqlalchemy import select, func, desc, asc
+from portfolio_common.database_models import Portfolio, Transaction
+from portfolio_common.utils import async_timed
+from sqlalchemy import asc, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
-from portfolio_common.database_models import Transaction
-from portfolio_common.utils import async_timed
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +22,10 @@ class TransactionRepository:
 
     def __init__(self, db: AsyncSession):
         self.db = db
+
+    async def portfolio_exists(self, portfolio_id: str) -> bool:
+        stmt = select(Portfolio.portfolio_id).where(Portfolio.portfolio_id == portfolio_id).limit(1)
+        return (await self.db.execute(stmt)).scalar_one_or_none() is not None
 
     def _get_base_query(
         self,
@@ -78,7 +82,9 @@ class TransactionRepository:
         results = await self.db.execute(stmt.offset(skip).limit(limit))
         transactions = results.scalars().unique().all()
         logger.info(
-            f"Found {len(transactions)} transactions for portfolio '{portfolio_id}' with given filters."
+            "Found %s transactions for portfolio '%s' with given filters.",
+            len(transactions),
+            portfolio_id,
         )
         return transactions
 

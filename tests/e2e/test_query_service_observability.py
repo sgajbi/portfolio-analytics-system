@@ -18,4 +18,4 @@ def test_query_service_generates_correlation_id_when_missing(e2e_api_client: E2E
     response = requests.get(f"{e2e_api_client.query_url}/openapi.json", timeout=10)
 
     response.raise_for_status()
-    assert response.headers["X-Correlation-ID"].startswith("QRY-")
+    assert response.headers["X-Correlation-ID"].startswith("QRY:")
