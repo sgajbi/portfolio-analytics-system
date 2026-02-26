@@ -23,7 +23,7 @@ class RiskService:
         self.perf_repo = PerformanceRepository(db)
         self.portfolio_repo = PortfolioRepository(db)
         self.base_url = os.getenv("LOTUS_RISK_BASE_URL", "http://localhost:8130").rstrip("/")
-        self.timeout_seconds = float(os.getenv("LOTUS_RISK_TIMEOUT_SECONDS", "10"))
+        self.timeout_seconds = int(os.getenv("LOTUS_RISK_TIMEOUT_SECONDS", "10"))
 
     @staticmethod
     def _convert_timeseries_to_dict(timeseries_data: list) -> list[dict]:
@@ -84,7 +84,14 @@ class RiskService:
 
         returns_df[DATE] = pd.to_datetime(returns_df[DATE])
         return [
-            {"date": row[DATE].date().isoformat(), "value": float(row[DAILY_ROR_PCT])}
+            {
+                "date": row[DATE].date().isoformat(),
+                "value": (
+                    row[DAILY_ROR_PCT].item()
+                    if hasattr(row[DAILY_ROR_PCT], "item")
+                    else row[DAILY_ROR_PCT]
+                ),
+            }
             for _, row in returns_df[[DATE, DAILY_ROR_PCT]].dropna().iterrows()
         ]
 
