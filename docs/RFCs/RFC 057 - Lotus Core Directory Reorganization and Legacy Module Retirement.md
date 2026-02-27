@@ -1,9 +1,10 @@
 # RFC 057 - Lotus Core Directory Reorganization and Legacy Module Retirement
 
-- Status: Approved
+- Status: Implemented
 - Date: 2026-02-27
 - Authors: lotus-core maintainers
 - Related: RFC 035, RFC 036, RFC 046A, RFC 049, RFC 056, lotus-platform standards
+- Implementation: Completed on 2026-02-27 via PRs #83, #84, #85, #86, #87, #88
 
 ## Problem Statement
 
