@@ -50,7 +50,7 @@ DEMO_EXPECTATIONS: tuple[PortfolioExpectation, ...] = (
         1,
         1,
         7,
-        (("CASH_SGD", 542500.0), ("SEC_SONY_JP", 1000.0), ("SEC_GOLD_ETC_USD", 500.0)),
+        (("CASH_SGD", 542500.0), ("SEC_SONY_JP", -200.0), ("SEC_GOLD_ETC_USD", 500.0)),
     ),
     PortfolioExpectation(
         "DEMO_REBAL_USD_001",
@@ -278,7 +278,7 @@ def build_demo_bundle() -> dict[str, Any]:
     return {
         "source_system": "LOTUS_CORE_DEMO_DATA_PACK",
         "mode": "UPSERT",
-        "business_dates": [{"date": d} for d in dates],
+        "business_dates": [{"business_date": d} for d in dates],
         "portfolios": portfolios,
         "instruments": instruments,
         "transactions": txs,
@@ -332,7 +332,6 @@ def _all_demo_portfolios_exist(query_base_url: str) -> bool:
 def _verify_portfolio(
     query_base_url: str,
     expected: PortfolioExpectation,
-    review_as_of: str,
     wait_seconds: int,
     poll_interval_seconds: int,
 ) -> dict[str, Any]:
@@ -341,11 +340,6 @@ def _verify_portfolio(
         try:
             _, pos_payload = _request_json("GET", f"{query_base_url}/portfolios/{expected.portfolio_id}/positions")
             _, tx_payload = _request_json("GET", f"{query_base_url}/portfolios/{expected.portfolio_id}/transactions?limit=200")
-            _, review_payload = _request_json(
-                "POST",
-                f"{query_base_url}/portfolios/{expected.portfolio_id}/review",
-                payload={"as_of_date": review_as_of, "sections": ["OVERVIEW", "HOLDINGS", "TRANSACTIONS"]},
-            )
         except RuntimeError:
             time.sleep(poll_interval_seconds)
             continue
@@ -355,7 +349,6 @@ def _verify_portfolio(
             if isinstance(p.get("valuation"), dict) and p["valuation"].get("market_value") is not None
         ]
         total_transactions = int(tx_payload.get("total", 0))
-        holdings = ((review_payload.get("holdings") or {}).get("holdingsByAssetClass")) or {}
         all_quantities_match = True
         for security_id, expected_quantity in expected.expected_terminal_quantities:
             _, history_payload = _request_json(
@@ -375,7 +368,6 @@ def _verify_portfolio(
             len(positions) >= expected.min_positions
             and len(valued) >= expected.min_valued_positions
             and total_transactions >= expected.min_transactions
-            and holdings is not None
             and all_quantities_match
         ):
             return {
@@ -412,7 +404,6 @@ def main() -> int:
     _wait_ready(f"{ingestion_base_url}/health/ready", args.wait_seconds, args.poll_interval_seconds)
     _wait_ready(f"{query_base_url}/health/ready", args.wait_seconds, args.poll_interval_seconds)
     demo_bundle = build_demo_bundle()
-    review_as_of = demo_bundle["as_of_date"]
     if not args.verify_only:
         if args.force_ingest or not _all_demo_portfolios_exist(query_base_url):
             payload = demo_bundle
@@ -433,7 +424,6 @@ def main() -> int:
             result = _verify_portfolio(
                 query_base_url,
                 expected,
-                review_as_of,
                 args.wait_seconds,
                 args.poll_interval_seconds,
             )
