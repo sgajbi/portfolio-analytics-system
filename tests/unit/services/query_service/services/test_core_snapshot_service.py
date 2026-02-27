@@ -421,6 +421,6 @@ async def test_static_helpers_cover_zero_total_and_delta_paths():
     assert delta_rows[0].delta_quantity == Decimal("-1")
 
 
-def test_get_core_snapshot_service_factory_returns_service():
+async def test_get_core_snapshot_service_factory_returns_service():
     service = get_core_snapshot_service(db=AsyncMock())
     assert isinstance(service, CoreSnapshotService)
