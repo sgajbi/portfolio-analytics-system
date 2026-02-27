@@ -38,7 +38,13 @@ def test_compose_up_retries_on_existing_image_conflict() -> None:
             )
         return SimpleNamespace(returncode=0, stdout=b"", stderr=b"")
 
-    compose_up("docker-compose.yml", build=False, retries=1, runner=runner)
+    compose_up(
+        "docker-compose.yml",
+        build=False,
+        retries=1,
+        retry_wait_seconds=0,
+        runner=runner,
+    )
 
     assert calls[0][-2:] == ["up", "-d"]
     assert calls[1][-2:] == ["down", "--remove-orphans"]

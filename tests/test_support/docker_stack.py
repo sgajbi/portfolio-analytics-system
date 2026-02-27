@@ -13,6 +13,21 @@ class DockerStackError(RuntimeError):
     """Raised when docker stack bring-up or health checks fail."""
 
 
+def _is_retryable_compose_up_error(stderr: str) -> bool:
+    retryable_markers = (
+        "already exists",
+        "pulling",
+        "context deadline exceeded",
+        "tls handshake timeout",
+        "connection reset by peer",
+        "toomanyrequests",
+        "service unavailable",
+        "i/o timeout",
+    )
+    lowered = stderr.lower()
+    return any(marker in lowered for marker in retryable_markers)
+
+
 def should_build_images() -> bool:
     return os.getenv("LOTUS_TESTS_DOCKER_BUILD", "false").strip().lower() in {
         "1",
@@ -26,7 +41,8 @@ def compose_up(
     compose_file: str,
     *,
     build: bool,
-    retries: int = 1,
+    retries: int = 2,
+    retry_wait_seconds: int = 5,
     runner: Callable[..., subprocess.CompletedProcess] = subprocess.run,
 ) -> None:
     args = ["docker", "compose", "-f", compose_file, "up"]
@@ -43,12 +59,14 @@ def compose_up(
         except subprocess.CalledProcessError as exc:
             last_error = exc
             stderr = (exc.stderr or b"").decode("utf-8", errors="ignore").lower()
-            if "already exists" in stderr:
+            if _is_retryable_compose_up_error(stderr):
                 runner(
                     ["docker", "compose", "-f", compose_file, "down", "--remove-orphans"],
                     check=False,
                     capture_output=True,
                 )
+                if retry_wait_seconds > 0:
+                    time.sleep(retry_wait_seconds)
                 continue
             break
 

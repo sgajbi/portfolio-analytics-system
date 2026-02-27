@@ -28,6 +28,16 @@ if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 
+def _env_int(name: str, default: int) -> int:
+    raw_value = os.getenv(name)
+    if raw_value is None:
+        return default
+    try:
+        return int(raw_value)
+    except ValueError:
+        return default
+
+
 # REFACTORED: Use subprocess directly for more control over Docker Compose
 @pytest.fixture(scope="session")
 def docker_services(request):  # noqa: ARG001
@@ -36,12 +46,25 @@ def docker_services(request):  # noqa: ARG001
     This provides more control and resilience than the default testcontainers behavior.
     """
     compose_file = resolve_compose_file(project_root)
+    compose_retries = _env_int("LOTUS_TESTS_COMPOSE_UP_RETRIES", 3)
+    compose_retry_wait = _env_int("LOTUS_TESTS_COMPOSE_RETRY_WAIT_SECONDS", 5)
+    migrations_timeout = _env_int("LOTUS_TESTS_MIGRATION_TIMEOUT_SECONDS", 240)
+    health_timeout = _env_int("LOTUS_TESTS_HEALTH_TIMEOUT_SECONDS", 180)
 
     try:
-        compose_up(compose_file, build=should_build_images(), retries=1)
+        compose_up(
+            compose_file,
+            build=should_build_images(),
+            retries=compose_retries,
+            retry_wait_seconds=compose_retry_wait,
+        )
 
         print("\n--- Waiting for database migrations to complete ---")
-        wait_for_migration_runner(compose_file, timeout_seconds=120, poll_seconds=2)
+        wait_for_migration_runner(
+            compose_file,
+            timeout_seconds=migrations_timeout,
+            poll_seconds=2,
+        )
         print("--- Database migrations completed successfully ---")
 
         # Manual polling for service health
@@ -57,7 +80,7 @@ def docker_services(request):  # noqa: ARG001
             wait_for_http_health(
                 service_name,
                 health_url,
-                timeout_seconds=120,
+                timeout_seconds=health_timeout,
                 poll_seconds=3,
             )
             print(f"--- Service '{service_name}' is healthy at {health_url} ---")
@@ -97,7 +120,7 @@ def db_engine(docker_services):
 
     # Wait for the database to be connectable
     engine = create_engine(db_url)
-    timeout = 60
+    timeout = _env_int("LOTUS_TESTS_DB_CONNECT_TIMEOUT_SECONDS", 120)
     start_time = time.time()
     while time.time() - start_time < timeout:
         try:
