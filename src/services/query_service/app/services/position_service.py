@@ -1,6 +1,8 @@
 # src/services/query_service/app/services/position_service.py
+import asyncio
 import logging
 from datetime import date
+from decimal import Decimal
 from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -126,9 +128,54 @@ class PositionService:
                     position_row.date if using_snapshot_data else position_row.position_date
                 ),
                 asset_class=instrument.asset_class if instrument else None,
+                isin=instrument.isin if instrument else None,
+                currency=instrument.currency if instrument else None,
+                sector=instrument.sector if instrument else None,
+                country_of_risk=instrument.country_of_risk if instrument else None,
                 valuation=valuation_dto,
                 reprocessing_status=pos_state.status if pos_state else None,
             )
             positions.append(position_dto)
+
+        total_market_value = Decimal(0)
+        position_values: list[Decimal] = []
+        for position in positions:
+            base_value = (
+                Decimal(str(position.valuation.market_value))
+                if position.valuation and position.valuation.market_value is not None
+                else Decimal(str(position.cost_basis))
+            )
+            position_values.append(base_value)
+            total_market_value += base_value
+
+        if total_market_value > 0:
+            for position, value in zip(positions, position_values):
+                position.weight = value / total_market_value
+        else:
+            for position in positions:
+                position.weight = Decimal(0)
+
+        held_since_tasks = []
+        task_indexes = []
+        for idx, ((position_row, _instrument, pos_state), position) in enumerate(
+            zip(db_results, positions)
+        ):
+            epoch = getattr(pos_state, "epoch", None)
+            if epoch is None:
+                position.held_since_date = position.position_date
+                continue
+            held_since_tasks.append(
+                self.repo.get_held_since_date(
+                    portfolio_id=portfolio_id,
+                    security_id=position_row.security_id,
+                    epoch=epoch,
+                )
+            )
+            task_indexes.append(idx)
+
+        if held_since_tasks:
+            held_since_results = await asyncio.gather(*held_since_tasks)
+            for idx, held_since_date in zip(task_indexes, held_since_results):
+                positions[idx].held_since_date = held_since_date or positions[idx].position_date
 
         return PortfolioPositionsResponse(portfolio_id=portfolio_id, positions=positions)

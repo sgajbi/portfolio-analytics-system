@@ -371,7 +371,12 @@ Compatibility strategy:
  - legacy feature docs removed from active core feature set
  - stale docker-compose legacy analytics mounts removed
 
-3. In progress: remaining PR slices (positions consolidation, ingestion mode hardening, API-first ops hardening, downstream drift hard-cut)
+3. Completed: PR-4 positions contract consolidation
+ - removed `POST /portfolios/{portfolio_id}/positions-analytics` from lotus-core
+ - removed position-analytics DTO/service/router/test/docs stack
+ - enriched canonical `GET /portfolios/{portfolio_id}/positions` response with instrument metadata (`isin`, `currency`, `sector`, `country_of_risk`) and core position context (`weight`, `held_since_date`)
+
+4. In progress: remaining PR slices (ingestion mode hardening, API-first ops hardening, downstream drift hard-cut)
 
 ## Definition of Done
 

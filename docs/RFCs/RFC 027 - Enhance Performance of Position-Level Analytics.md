@@ -1,5 +1,7 @@
 # RFC 027: Enhance Performance of Position-Level Analytics
 
+Superseded by RFC 057. `positions-analytics` has been retired from lotus-core; position-level contract evolution continues on canonical `GET /portfolios/{portfolio_id}/positions`.
+
 * **Status**: Proposed
 * **Date**: 2025-09-01
 * **Related RFCs**: RFC 017

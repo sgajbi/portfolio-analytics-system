@@ -1,7 +1,9 @@
 # services/query-service/app/dtos/position_dto.py
-from pydantic import BaseModel, Field, ConfigDict
 from datetime import date
+from decimal import Decimal
 from typing import List, Optional
+
+from pydantic import BaseModel, ConfigDict, Field
 
 from .valuation_dto import ValuationData
 
@@ -20,10 +22,22 @@ class Position(BaseModel):
     asset_class: Optional[str] = Field(
         None, description="Asset class for grouping and reporting.", examples=["Equity"]
     )
-    cost_basis: float = Field(
+    isin: Optional[str] = Field(
+        None, description="ISIN instrument identifier.", examples=["US0378331005"]
+    )
+    currency: Optional[str] = Field(
+        None, description="Instrument trading currency (ISO 4217).", examples=["USD"]
+    )
+    sector: Optional[str] = Field(
+        None, description="Instrument sector classification.", examples=["Technology"]
+    )
+    country_of_risk: Optional[str] = Field(
+        None, description="Instrument country of risk (ISO 3166-1 alpha-2).", examples=["US"]
+    )
+    cost_basis: Decimal = Field(
         ..., description="Cost basis in portfolio base currency.", examples=[15000.0]
     )
-    cost_basis_local: Optional[float] = Field(
+    cost_basis_local: Optional[Decimal] = Field(
         None, description="Cost basis in local instrument currency.", examples=[15000.0]
     )
     valuation: Optional[ValuationData] = Field(
@@ -33,6 +47,16 @@ class Position(BaseModel):
         None,
         description="Reprocessing status for this portfolio-security key.",
         examples=["CURRENT", "REPROCESSING"],
+    )
+    held_since_date: Optional[date] = Field(
+        None,
+        description="Start date of the current continuous holding period in the active epoch.",
+        examples=["2025-01-15"],
+    )
+    weight: Optional[Decimal] = Field(
+        None,
+        description="Position weight versus total portfolio market value (0.0 to 1.0).",
+        examples=[0.2417],
     )
 
     model_config = ConfigDict(from_attributes=True)
@@ -55,11 +79,11 @@ class PositionHistoryRecord(BaseModel):
     )
     quantity: float = Field(..., description="The number of shares held as of this record.")
 
-    cost_basis: float = Field(
+    cost_basis: Decimal = Field(
         ..., description="The total cost basis of the holding as of this record."
     )
 
-    cost_basis_local: Optional[float] = Field(
+    cost_basis_local: Optional[Decimal] = Field(
         None, description="The total cost basis in the instrument's local currency."
     )
 

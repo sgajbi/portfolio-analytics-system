@@ -1,17 +1,18 @@
 # tests/unit/services/query_service/services/test_position_service.py
-import pytest
-from unittest.mock import AsyncMock, patch
 from datetime import date
 from decimal import Decimal
+from unittest.mock import AsyncMock, patch
 
-from src.services.query_service.app.services.position_service import PositionService
-from src.services.query_service.app.repositories.position_repository import PositionRepository
+import pytest
 from portfolio_common.database_models import (
-    PositionHistory,
     DailyPositionSnapshot,
     Instrument,
+    PositionHistory,
     PositionState,
 )
+
+from src.services.query_service.app.repositories.position_repository import PositionRepository
+from src.services.query_service.app.services.position_service import PositionService
 
 pytestmark = pytest.mark.asyncio
 
@@ -43,11 +44,12 @@ def mock_position_repo() -> AsyncMock:
         sector="Technology",
         country_of_risk="US",
     )
-    mock_state = PositionState(status="CURRENT")
+    mock_state = PositionState(status="CURRENT", epoch=1)
 
     repo.get_latest_positions_by_portfolio.return_value = [
         (mock_snapshot, mock_instrument, mock_state)
     ]
+    repo.get_held_since_date.return_value = date(2024, 12, 31)
     repo.get_latest_position_history_by_portfolio.return_value = []
     repo.get_latest_snapshot_valuation_map.return_value = {}
     # --- END FIX ---
@@ -99,6 +101,12 @@ async def test_get_latest_positions(mock_position_repo: AsyncMock):
         assert response.positions[0].instrument_name == "Test Instrument"
         assert response.positions[0].reprocessing_status == "CURRENT"
         assert response.positions[0].asset_class == "Equity"
+        assert response.positions[0].isin == "ISIN123"
+        assert response.positions[0].currency == "USD"
+        assert response.positions[0].sector == "Technology"
+        assert response.positions[0].country_of_risk == "US"
+        assert response.positions[0].held_since_date == date(2024, 12, 31)
+        assert response.positions[0].weight == Decimal("1")
 
 
 async def test_get_latest_positions_falls_back_to_position_history(mock_position_repo: AsyncMock):
@@ -123,10 +131,11 @@ async def test_get_latest_positions_falls_back_to_position_history(mock_position
             sector="N/A",
             country_of_risk="US",
         )
-        mock_state = PositionState(status="CURRENT")
+        mock_state = PositionState(status="CURRENT", epoch=1)
         mock_position_repo.get_latest_position_history_by_portfolio.return_value = [
             (mock_history_obj, mock_instrument, mock_state)
         ]
+        mock_position_repo.get_held_since_date.return_value = date(2024, 1, 1)
         mock_position_repo.get_latest_snapshot_valuation_map.return_value = {
             "S2": {
                 "market_price": Decimal("101.5"),
@@ -150,6 +159,8 @@ async def test_get_latest_positions_falls_back_to_position_history(mock_position
         assert response.positions[0].asset_class == "Bond"
         assert response.positions[0].valuation is not None
         assert response.positions[0].valuation.market_value == Decimal("5582.5")
+        assert response.positions[0].held_since_date == date(2024, 1, 1)
+        assert response.positions[0].weight == Decimal("1")
 
 
 async def test_get_position_history_raises_when_portfolio_missing(mock_position_repo: AsyncMock):
@@ -200,10 +211,11 @@ async def test_get_latest_positions_fallback_without_snapshot_valuation_uses_cos
             sector="Tech",
             country_of_risk="US",
         )
-        mock_state = PositionState(status="CURRENT")
+        mock_state = PositionState(status="CURRENT", epoch=1)
         mock_position_repo.get_latest_position_history_by_portfolio.return_value = [
             (mock_history_obj, mock_instrument, mock_state)
         ]
+        mock_position_repo.get_held_since_date.return_value = None
         mock_position_repo.get_latest_snapshot_valuation_map.return_value = {}
 
         service = PositionService(AsyncMock())
@@ -213,3 +225,4 @@ async def test_get_latest_positions_fallback_without_snapshot_valuation_uses_cos
         assert response.positions[0].valuation.market_price is None
         assert response.positions[0].valuation.market_value == 123.45
         assert response.positions[0].valuation.unrealized_gain_loss == 0
+        assert response.positions[0].held_since_date == date(2025, 1, 3)

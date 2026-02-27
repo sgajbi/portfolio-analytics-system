@@ -1,6 +1,6 @@
 # src/libs/portfolio-common/portfolio_common/monitoring.py
 import logging
-from typing import Optional
+
 from prometheus_client import Counter, Gauge, Histogram
 
 logger = logging.getLogger(__name__)
@@ -220,19 +220,6 @@ REVIEW_GENERATION_DURATION_SECONDS = Histogram(
     "Time taken to generate a full portfolio review report.",
     labelnames=("portfolio_id",),
     buckets=(0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0),
-)
-
-POSITION_ANALYTICS_DURATION_SECONDS = Histogram(
-    "position_analytics_duration_seconds",
-    "Time taken to generate a position-level analytics report.",
-    labelnames=("portfolio_id",),
-    buckets=(0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 20.0),
-)
-
-POSITION_ANALYTICS_SECTION_REQUESTED_TOTAL = Counter(
-    "position_analytics_section_requested_total",
-    "Total number of times each section has been requested in the Position Analytics API.",
-    labelnames=("section_name",),
 )
 
 CONCENTRATION_CALCULATION_DURATION_SECONDS = Histogram(
