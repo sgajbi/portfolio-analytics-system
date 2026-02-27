@@ -43,6 +43,7 @@ minversion = "6.0"
 markers = [
     "asyncio: mark a test as being an asyncio test",
     "dependency: mark test dependency ordering/grouping",
+    "integration_db: mark tests that require dockerized database infrastructure",
 ]
 filterwarnings = [
     "ignore:Please use `import python_multipart` instead.:PendingDeprecationWarning"

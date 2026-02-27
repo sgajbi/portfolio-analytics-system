@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from portfolio_common.database_models import PositionState
 from portfolio_common.position_state_repository import PositionStateRepository
 
-pytestmark = pytest.mark.asyncio
+pytestmark = [pytest.mark.asyncio, pytest.mark.integration_db]
 
 
 async def test_get_or_create_state_creates_new_record(
