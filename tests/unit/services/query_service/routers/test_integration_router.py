@@ -12,18 +12,18 @@ from src.services.query_service.app.services.integration_service import Integrat
 async def test_get_effective_integration_policy_router_function() -> None:
     mock_service = MagicMock(spec=IntegrationService)
     mock_service.get_effective_policy.return_value = {
-        "contractVersion": "v1",
-        "sourceService": "lotus-core",
-        "consumerSystem": "lotus-manage",
-        "tenantId": "tenant-a",
-        "generatedAt": "2026-02-27T00:00:00Z",
-        "policyProvenance": {
-            "policyVersion": "tenant-default-v1",
-            "policySource": "default",
-            "matchedRuleId": "default",
-            "strictMode": False,
+        "contract_version": "v1",
+        "source_service": "lotus-core",
+        "consumer_system": "lotus-manage",
+        "tenant_id": "tenant-a",
+        "generated_at": "2026-02-27T00:00:00Z",
+        "policy_provenance": {
+            "policy_version": "tenant-default-v1",
+            "policy_source": "default",
+            "matched_rule_id": "default",
+            "strict_mode": False,
         },
-        "allowedSections": ["OVERVIEW"],
+        "allowed_sections": ["OVERVIEW"],
         "warnings": [],
     }
 
@@ -39,7 +39,7 @@ async def test_get_effective_integration_policy_router_function() -> None:
         tenant_id="tenant-a",
         include_sections=["OVERVIEW"],
     )
-    assert response["consumerSystem"] == "lotus-manage"
+    assert response["consumer_system"] == "lotus-manage"
 
 
 def test_get_integration_service_factory_returns_service() -> None:

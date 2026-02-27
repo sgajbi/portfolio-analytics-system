@@ -28,10 +28,7 @@ for lib_dir in LIBS_ROOT.glob("*"):
             sys.path.append(str(candidate))
 
 ALLOWED_METHODS = {"get", "post", "put", "patch", "delete"}
-LEGACY_TERM_MAP = {
-    "cif_id": "client_id",
-    "booking_center": "booking_center_code",
-}
+LEGACY_TERM_MAP: dict[str, str] = {}
 BANNED_NAME_PREFIXES = ("pas_", "query_", "ingestion_", "dto_", "db_")
 EXAMPLE_BY_KEY = {
     "amount": 125000.5,
@@ -56,7 +53,6 @@ EXAMPLE_BY_KEY = {
     "label": "Global Equity Portfolio",
     "message": "Operation completed successfully.",
     "metadata": {"source": "lotus-core"},
-    "name": "Global Equity",
     "net_cost": 98000.0,
     "net_cost_local": 98000.0,
     "objective": "CAPITAL_APPRECIATION",

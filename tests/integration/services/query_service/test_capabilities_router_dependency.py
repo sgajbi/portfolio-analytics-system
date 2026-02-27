@@ -18,14 +18,14 @@ pytestmark = pytest.mark.asyncio
 async def async_test_client():
     mock_service = MagicMock()
     mock_service.get_integration_capabilities.return_value = {
-        "contractVersion": "v1",
-        "sourceService": "lotus-core",
-        "consumerSystem": "lotus-manage",
-        "tenantId": "tenant-1",
-        "generatedAt": datetime(2026, 2, 23, tzinfo=UTC),
-        "asOfDate": date(2026, 2, 23),
-        "policyVersion": "tenant-1-v2",
-        "supportedInputModes": ["pas_ref", "inline_bundle"],
+        "contract_version": "v1",
+        "source_service": "lotus-core",
+        "consumer_system": "lotus-manage",
+        "tenant_id": "tenant-1",
+        "generated_at": datetime(2026, 2, 23, tzinfo=UTC),
+        "as_of_date": date(2026, 2, 23),
+        "policy_version": "tenant-1-v2",
+        "supported_input_modes": ["pas_ref", "inline_bundle"],
         "features": [],
         "workflows": [],
     }
@@ -39,12 +39,12 @@ async def async_test_client():
 async def test_capabilities_success(async_test_client):
     client, mock_service = async_test_client
     response = await client.get(
-        "/integration/capabilities?consumerSystem=lotus-manage&tenantId=tenant-1"
+        "/integration/capabilities?consumer_system=lotus-manage&tenant_id=tenant-1"
     )
     assert response.status_code == 200
     body = response.json()
-    assert body["consumerSystem"] == "lotus-manage"
-    assert body["policyVersion"] == "tenant-1-v2"
+    assert body["consumer_system"] == "lotus-manage"
+    assert body["policy_version"] == "tenant-1-v2"
     mock_service.get_integration_capabilities.assert_called_once_with(
         consumer_system="lotus-manage",
         tenant_id="tenant-1",
