@@ -332,7 +332,7 @@ async def test_get_portfolio_core_snapshot_future_as_of_sets_unknown_freshness(
     assert response.metadata.freshness_status == "UNKNOWN"
 
 
-def test_get_effective_policy_returns_context(
+async def test_get_effective_policy_returns_context(
     service: IntegrationService, monkeypatch: pytest.MonkeyPatch
 ):
     monkeypatch.setenv(
@@ -355,7 +355,7 @@ def test_get_effective_policy_returns_context(
     assert "SECTIONS_FILTERED_BY_POLICY" in response.warnings
 
 
-def test_get_effective_policy_with_tenant_override(
+async def test_get_effective_policy_with_tenant_override(
     service: IntegrationService, monkeypatch: pytest.MonkeyPatch
 ):
     monkeypatch.setenv(
@@ -377,7 +377,7 @@ def test_get_effective_policy_with_tenant_override(
     assert response.allowed_sections == ["HOLDINGS"]
 
 
-def test_get_effective_policy_returns_warning_when_no_section_restriction(
+async def test_get_effective_policy_returns_warning_when_no_section_restriction(
     service: IntegrationService, monkeypatch: pytest.MonkeyPatch
 ):
     monkeypatch.setenv("PAS_INTEGRATION_SNAPSHOT_POLICY_JSON", '{"strictMode":false}')
@@ -392,7 +392,7 @@ def test_get_effective_policy_returns_warning_when_no_section_restriction(
     assert "NO_ALLOWED_SECTION_RESTRICTION" in response.warnings
 
 
-def test_get_effective_policy_handles_invalid_json_policy(
+async def test_get_effective_policy_handles_invalid_json_policy(
     service: IntegrationService, monkeypatch: pytest.MonkeyPatch
 ):
     monkeypatch.setenv("PAS_INTEGRATION_SNAPSHOT_POLICY_JSON", "{bad json")
@@ -404,7 +404,7 @@ def test_get_effective_policy_handles_invalid_json_policy(
     assert response.allowed_sections == ["OVERVIEW"]
 
 
-def test_get_effective_policy_handles_non_dict_policy_payload(
+async def test_get_effective_policy_handles_non_dict_policy_payload(
     service: IntegrationService, monkeypatch: pytest.MonkeyPatch
 ):
     monkeypatch.setenv("PAS_INTEGRATION_SNAPSHOT_POLICY_JSON", '["not-a-dict"]')
@@ -416,7 +416,7 @@ def test_get_effective_policy_handles_non_dict_policy_payload(
     assert response.allowed_sections == ["OVERVIEW"]
 
 
-def test_get_effective_policy_uses_tenant_default_sections_when_consumer_override_missing(
+async def test_get_effective_policy_uses_tenant_default_sections_when_consumer_override_missing(
     service: IntegrationService, monkeypatch: pytest.MonkeyPatch
 ):
     monkeypatch.setenv(
@@ -439,7 +439,7 @@ def test_get_effective_policy_uses_tenant_default_sections_when_consumer_overrid
     ]
 
 
-def test_get_effective_policy_uses_tenant_strictmode_rule_when_no_section_rules(
+async def test_get_effective_policy_uses_tenant_strictmode_rule_when_no_section_rules(
     service: IntegrationService, monkeypatch: pytest.MonkeyPatch
 ):
     monkeypatch.setenv(
@@ -455,7 +455,7 @@ def test_get_effective_policy_uses_tenant_strictmode_rule_when_no_section_rules(
     assert response.policy_provenance.strict_mode is True
 
 
-def test_get_effective_policy_returns_context_sections_when_include_sections_not_provided(
+async def test_get_effective_policy_returns_context_sections_when_include_sections_not_provided(
     service: IntegrationService, monkeypatch: pytest.MonkeyPatch
 ):
     monkeypatch.setenv(
@@ -471,7 +471,7 @@ def test_get_effective_policy_returns_context_sections_when_include_sections_not
     assert response.warnings == []
 
 
-def test_get_effective_policy_delegates_analytics_sections_to_pa_in_non_strict_mode(
+async def test_get_effective_policy_delegates_analytics_sections_to_pa_in_non_strict_mode(
     service: IntegrationService, monkeypatch: pytest.MonkeyPatch
 ):
     monkeypatch.setenv(
@@ -487,14 +487,14 @@ def test_get_effective_policy_delegates_analytics_sections_to_pa_in_non_strict_m
     assert "ANALYTICS_SECTIONS_DELEGATED_TO_PA" in response.warnings
 
 
-def test_read_attr_or_key_supports_attr_dict_and_default():
+async def test_read_attr_or_key_supports_attr_dict_and_default():
     obj = SimpleNamespace(portfolio_id="P1")
     assert IntegrationService._read_attr_or_key(obj, "portfolio_id") == "P1"
     assert IntegrationService._read_attr_or_key({"portfolio_id": "P2"}, "portfolio_id") == "P2"
     assert IntegrationService._read_attr_or_key(123, "portfolio_id", "fallback") == "fallback"
 
 
-def test_resolve_freshness_status_returns_stale_for_old_as_of_date(
+async def test_resolve_freshness_status_returns_stale_for_old_as_of_date(
     monkeypatch: pytest.MonkeyPatch,
 ):
     monkeypatch.setenv("PAS_INTEGRATION_MAX_STALENESS_DAYS", "1")
@@ -502,7 +502,7 @@ def test_resolve_freshness_status_returns_stale_for_old_as_of_date(
     assert IntegrationService._resolve_freshness_status(stale_date) == "STALE"
 
 
-def test_canonical_consumer_system_handles_blank_value():
+async def test_canonical_consumer_system_handles_blank_value():
     assert IntegrationService._canonical_consumer_system("   ") == "unknown"
 
 
@@ -532,7 +532,7 @@ async def test_get_portfolio_core_snapshot_raises_when_policy_filters_all_sectio
         await service.get_portfolio_core_snapshot("P1", request)
 
 
-def test_get_effective_policy_sets_tenant_default_rule_marker(
+async def test_get_effective_policy_sets_tenant_default_rule_marker(
     service: IntegrationService, monkeypatch: pytest.MonkeyPatch
 ):
     monkeypatch.setenv(

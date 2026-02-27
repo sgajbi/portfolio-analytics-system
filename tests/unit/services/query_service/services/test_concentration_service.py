@@ -1,18 +1,19 @@
 # tests/unit/services/query_service/services/test_concentration_service.py
-import pytest
-from unittest.mock import AsyncMock, patch
 from datetime import date
 from decimal import Decimal
+from unittest.mock import AsyncMock, patch
 
-from sqlalchemy.ext.asyncio import AsyncSession
-from src.services.query_service.app.services.concentration_service import ConcentrationService
-from src.services.query_service.app.dtos.concentration_dto import ConcentrationRequest
+import pytest
 from portfolio_common.database_models import (
-    Portfolio,
     DailyPositionSnapshot,
     Instrument,
+    Portfolio,
     PositionState,
 )
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from src.services.query_service.app.dtos.concentration_dto import ConcentrationRequest
+from src.services.query_service.app.services.concentration_service import ConcentrationService
 
 pytestmark = pytest.mark.asyncio
 
@@ -219,7 +220,7 @@ async def test_calculate_concentration_raises_when_portfolio_missing(mock_depend
         await service.calculate_concentration("P404", request)
 
 
-def test_get_concentration_service_factory():
+async def test_get_concentration_service_factory():
     from src.services.query_service.app.services.concentration_service import (
         get_concentration_service,
     )
