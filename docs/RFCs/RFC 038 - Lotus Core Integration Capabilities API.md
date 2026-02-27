@@ -10,12 +10,12 @@ Platform RFCs require backend-driven configurability and explicit capability neg
 Add `GET /integration/capabilities` in query-service.
 
 Inputs:
-- `consumerSystem` (lotus-gateway, lotus-performance, lotus-manage, UI, UNKNOWN)
-- `tenantId`
+- `consumer_system` (lotus-gateway, lotus-performance, lotus-manage, UI, UNKNOWN)
+- `tenant_id`
 
 Output:
 - contract and policy metadata
-- supported input modes (`pas_ref`, `inline_bundle`)
+- supported input modes (`lotus_core_ref`, `inline_bundle`)
 - feature capability flags
 - workflow capability flags
 

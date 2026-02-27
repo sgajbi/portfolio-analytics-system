@@ -25,7 +25,7 @@ async def async_test_client():
         "generated_at": datetime(2026, 2, 23, tzinfo=UTC),
         "as_of_date": date(2026, 2, 23),
         "policy_version": "tenant-1-v2",
-        "supported_input_modes": ["pas_ref", "inline_bundle"],
+        "supported_input_modes": ["lotus_core_ref", "inline_bundle"],
         "features": [],
         "workflows": [],
     }

@@ -84,7 +84,7 @@ def mock_dependencies():
 async def test_get_position_analytics_all_sections(mock_dependencies):
     service = mock_dependencies["service"]
     request = PositionAnalyticsRequest(
-        asOfDate=date(2025, 8, 31),
+        as_of_date=date(2025, 8, 31),
         sections=["BASE", "INSTRUMENT_DETAILS", "VALUATION", "INCOME"],
     )
 
@@ -102,7 +102,7 @@ async def test_get_position_analytics_handles_no_positions(mock_dependencies):
     mock_dependencies["position_repo"].get_latest_positions_by_portfolio.return_value = []
 
     response = await service.get_position_analytics(
-        "P_EMPTY", PositionAnalyticsRequest(asOfDate=date(2025, 8, 31), sections=["BASE"])
+        "P_EMPTY", PositionAnalyticsRequest(as_of_date=date(2025, 8, 31), sections=["BASE"])
     )
 
     assert response.portfolio_id == "P_EMPTY"
@@ -116,7 +116,7 @@ async def test_get_position_analytics_portfolio_not_found(mock_dependencies):
 
     with pytest.raises(ValueError, match="Portfolio P_NOT_FOUND not found"):
         await service.get_position_analytics(
-            "P_NOT_FOUND", PositionAnalyticsRequest(asOfDate=date(2025, 8, 31), sections=["BASE"])
+            "P_NOT_FOUND", PositionAnalyticsRequest(as_of_date=date(2025, 8, 31), sections=["BASE"])
         )
 
 
@@ -136,7 +136,7 @@ async def test_enrich_position_income_fx_forward_fill(mock_dependencies):
     )
     repo_row = (snapshot, "Instrument 2", "CURRENT", "ISIN2", "EUR", "Equity", "Tech", "DE", 2)
 
-    request = PositionAnalyticsRequest(asOfDate=date(2025, 8, 31), sections=["BASE", "INCOME"])
+    request = PositionAnalyticsRequest(as_of_date=date(2025, 8, 31), sections=["BASE", "INCOME"])
     mock_dependencies["cashflow_repo"].get_income_cashflows_for_position.return_value = [
         SimpleNamespace(amount=Decimal("10"), cashflow_date=date(2025, 8, 30)),
         SimpleNamespace(amount=Decimal("5"), cashflow_date=date(2025, 8, 31)),

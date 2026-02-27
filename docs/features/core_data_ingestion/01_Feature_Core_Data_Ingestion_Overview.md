@@ -2,7 +2,7 @@
 
 ## 1. Summary
 
-The **`ingestion_service`** is the single, authoritative gateway for all write operations into the portfolio analytics system. Its primary responsibility is to provide a secure, validated, and reliable entry point for all raw financial data, including portfolios, instruments, transactions, market prices, foreign exchange (FX) rates, and business dates.
+The **`ingestion_service`** is the single, authoritative gateway for all write operations into the lotus-core platform. Its primary responsibility is to provide a secure, validated, and reliable entry point for all raw financial data, including portfolios, instruments, transactions, market prices, foreign exchange (FX) rates, and business dates.
 
 This service functions as a RESTful API that accepts raw data, performs initial validation, and then publishes the data as events to dedicated **Apache Kafka** topics for asynchronous downstream processing. This decoupled, event-driven approach ensures the system is scalable and resilient.
 

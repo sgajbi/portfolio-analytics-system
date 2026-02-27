@@ -18,20 +18,20 @@ supported global environment flags and one global policy version, which limited:
 
 Add tenant-aware policy overrides to lotus-core capabilities resolution via:
 
-- `PAS_CAPABILITY_TENANT_OVERRIDES_JSON` environment variable.
+- `LOTUS_CORE_CAPABILITY_TENANT_OVERRIDES_JSON` environment variable.
 
 The service now resolves capabilities in this order:
 
 1. Global feature defaults from existing env flags.
 2. Tenant override block (if configured).
-3. Consumer-specific `supportedInputModes` override (with `default` fallback).
+3. Consumer-specific `supported_input_modes` override (with `default` fallback).
 
 Supported tenant override keys:
 
-- `policyVersion`
+- `policy_version`
 - `features` (map: feature key -> boolean)
 - `workflows` (map: workflow key -> boolean)
-- `supportedInputModes` (map: consumer system key -> list of input modes)
+- `supported_input_modes` (map: consumer system key -> list of input modes)
 
 ## Rationale
 

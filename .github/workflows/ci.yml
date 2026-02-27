@@ -1,4 +1,4 @@
-name: Portfolio Analytics System Pipeline
+name: Lotus Core Pipeline
 
 on:
   push:

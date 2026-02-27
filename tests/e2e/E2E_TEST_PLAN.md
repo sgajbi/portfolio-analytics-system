@@ -1,4 +1,4 @@
-# E2E Test Plan for Portfolio Analytics System
+# E2E Test Plan for Lotus Core
 
 ## 1. Philosophy and Goals
 

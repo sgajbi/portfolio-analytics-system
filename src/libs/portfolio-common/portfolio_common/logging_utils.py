@@ -30,7 +30,7 @@ class CorrelationIdFilter(logging.Filter):
         record.correlation_id = correlation_id_var.get()
         record.request_id = request_id_var.get()
         record.trace_id = trace_id_var.get()
-        record.service = os.getenv("SERVICE_NAME", "pas-service")
+        record.service = os.getenv("SERVICE_NAME", "lotus-core-service")
         record.environment = os.getenv("ENVIRONMENT", "local")
         return True
 

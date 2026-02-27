@@ -18,12 +18,12 @@ lotus-performance, lotus-manage, and lotus-gateway composition. The current resp
 Harden the existing contract while preserving endpoint semantics:
 
 1. Add `metadata` in response with:
-   - `generatedAt`
-   - `sourceAsOfDate`
-   - `freshnessStatus`
-   - `lineageRefs`
+   - `generated_at`
+   - `source_as_of_date`
+   - `freshness_status`
+   - `lineage_refs`
    - `sectionGovernance`
-2. Add backend policy controls via `PAS_INTEGRATION_SNAPSHOT_POLICY_JSON`:
+2. Add backend policy controls via `LOTUS_CORE_INTEGRATION_SNAPSHOT_POLICY_JSON`:
    - consumer-specific allowed section lists
    - tenant override allowed section lists
    - strict mode for disallowed section requests (`403`)

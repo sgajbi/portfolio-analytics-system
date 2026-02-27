@@ -1,4 +1,4 @@
-### RFC 010: Test Strategy for a Gold-Standard Portfolio Analytics System
+### RFC 010: Test Strategy for a Gold-Standard Lotus Core
 
 * **Status**: Proposed
 * **Date**: 2025-08-30

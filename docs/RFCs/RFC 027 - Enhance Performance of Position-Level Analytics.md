@@ -21,7 +21,7 @@ The current design prioritizes data freshness by calculating everything at reque
 ### 3.1. Phase 1: Service-Level Caching (Tactical)
 
 * **Proposal:** We will introduce a short-lived, in-memory cache (e.g., using `cachetools` or a similar library) within the `PositionAnalyticsService`.
-    * The cache key will be a hash of the `portfolio_id`, `asOfDate`, and the requested `sections`.
+    * The cache key will be a hash of the `portfolio_id`, `as_of_date`, and the requested `sections`.
     * The final `PositionAnalyticsResponse` object will be cached for a short duration (e.g., 5-15 minutes).
 * **Benefit:** This provides an immediate performance boost for repeated requests, such as a user refreshing a page or multiple users viewing the same portfolio around the same time, without requiring major architectural changes.
 * **Limitation:** The first request is still slow, and the cache offers no benefit for ad-hoc queries. Cache invalidation is complex due to the reprocessing engine, so a simple time-to-live (TTL) is the only safe initial approach.

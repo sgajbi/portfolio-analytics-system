@@ -214,7 +214,7 @@ def test_complex_lifecycle_cross_api_consistency(
     )
     summary = summary_response.json()["detail"]
     assert summary_response.status_code == 410
-    assert summary["code"] == "PAS_LEGACY_ENDPOINT_REMOVED"
+    assert summary["code"] == "LOTUS_CORE_LEGACY_ENDPOINT_REMOVED"
     assert summary["target_service"] == "lotus-report"
 
     review_response = e2e_api_client.post_query(
@@ -234,7 +234,7 @@ def test_complex_lifecycle_cross_api_consistency(
     )
     review = review_response.json()["detail"]
     assert review_response.status_code == 410
-    assert review["code"] == "PAS_LEGACY_ENDPOINT_REMOVED"
+    assert review["code"] == "LOTUS_CORE_LEGACY_ENDPOINT_REMOVED"
     assert review["target_service"] == "lotus-report"
 
     integration_response = e2e_api_client.post_query(

@@ -119,80 +119,80 @@ def build_demo_bundle() -> dict[str, Any]:
         return stamp.isoformat().replace("+00:00", "Z")
     portfolios = [
         {
-            "portfolioId": "DEMO_ADV_USD_001",
-            "baseCurrency": "USD",
-            "openDate": "2024-01-02",
-            "riskExposure": "Moderate",
-            "investmentTimeHorizon": "Long",
-            "portfolioType": "Advisory",
-            "bookingCenter": "Singapore",
-            "cifId": "DEMO_CIF_100",
+            "portfolio_id": "DEMO_ADV_USD_001",
+            "base_currency": "USD",
+            "open_date": "2024-01-02",
+            "risk_exposure": "Moderate",
+            "investment_time_horizon": "Long",
+            "portfolio_type": "Advisory",
+            "booking_center_code": "Singapore",
+            "client_id": "DEMO_CIF_100",
             "status": "ACTIVE",
-            "costBasisMethod": "FIFO",
+            "cost_basis_method": "FIFO",
         },
         {
-            "portfolioId": "DEMO_DPM_EUR_001",
-            "baseCurrency": "EUR",
-            "openDate": "2024-01-02",
-            "riskExposure": "Balanced",
-            "investmentTimeHorizon": "Long",
-            "portfolioType": "Discretionary",
-            "bookingCenter": "Zurich",
-            "cifId": "DEMO_CIF_200",
+            "portfolio_id": "DEMO_DPM_EUR_001",
+            "base_currency": "EUR",
+            "open_date": "2024-01-02",
+            "risk_exposure": "Balanced",
+            "investment_time_horizon": "Long",
+            "portfolio_type": "Discretionary",
+            "booking_center_code": "Zurich",
+            "client_id": "DEMO_CIF_200",
             "status": "ACTIVE",
-            "costBasisMethod": "FIFO",
+            "cost_basis_method": "FIFO",
         },
         {
-            "portfolioId": "DEMO_INCOME_CHF_001",
-            "baseCurrency": "CHF",
-            "openDate": "2024-01-02",
-            "riskExposure": "Low",
-            "investmentTimeHorizon": "Medium",
-            "portfolioType": "Advisory",
-            "bookingCenter": "Zurich",
-            "cifId": "DEMO_CIF_300",
+            "portfolio_id": "DEMO_INCOME_CHF_001",
+            "base_currency": "CHF",
+            "open_date": "2024-01-02",
+            "risk_exposure": "Low",
+            "investment_time_horizon": "Medium",
+            "portfolio_type": "Advisory",
+            "booking_center_code": "Zurich",
+            "client_id": "DEMO_CIF_300",
             "status": "ACTIVE",
-            "costBasisMethod": "AVCO",
+            "cost_basis_method": "AVCO",
         },
         {
-            "portfolioId": "DEMO_BALANCED_SGD_001",
-            "baseCurrency": "SGD",
-            "openDate": "2024-01-02",
-            "riskExposure": "Balanced",
-            "investmentTimeHorizon": "Long",
-            "portfolioType": "Discretionary",
-            "bookingCenter": "Singapore",
-            "cifId": "DEMO_CIF_400",
+            "portfolio_id": "DEMO_BALANCED_SGD_001",
+            "base_currency": "SGD",
+            "open_date": "2024-01-02",
+            "risk_exposure": "Balanced",
+            "investment_time_horizon": "Long",
+            "portfolio_type": "Discretionary",
+            "booking_center_code": "Singapore",
+            "client_id": "DEMO_CIF_400",
             "status": "ACTIVE",
-            "costBasisMethod": "FIFO",
+            "cost_basis_method": "FIFO",
         },
         {
-            "portfolioId": "DEMO_REBAL_USD_001",
-            "baseCurrency": "USD",
-            "openDate": "2024-01-02",
-            "riskExposure": "Moderate",
-            "investmentTimeHorizon": "Medium",
-            "portfolioType": "Advisory",
-            "bookingCenter": "New York",
-            "cifId": "DEMO_CIF_500",
+            "portfolio_id": "DEMO_REBAL_USD_001",
+            "base_currency": "USD",
+            "open_date": "2024-01-02",
+            "risk_exposure": "Moderate",
+            "investment_time_horizon": "Medium",
+            "portfolio_type": "Advisory",
+            "booking_center_code": "New York",
+            "client_id": "DEMO_CIF_500",
             "status": "ACTIVE",
-            "costBasisMethod": "FIFO",
+            "cost_basis_method": "FIFO",
         },
     ]
     instruments = [
-        {"securityId": "CASH_USD", "name": "US Dollar Cash", "isin": "CASH_USD_DEMO", "instrumentCurrency": "USD", "productType": "Cash", "assetClass": "Cash"},
-        {"securityId": "CASH_EUR", "name": "Euro Cash", "isin": "CASH_EUR_DEMO", "instrumentCurrency": "EUR", "productType": "Cash", "assetClass": "Cash"},
-        {"securityId": "CASH_CHF", "name": "Swiss Franc Cash", "isin": "CASH_CHF_DEMO", "instrumentCurrency": "CHF", "productType": "Cash", "assetClass": "Cash"},
-        {"securityId": "CASH_SGD", "name": "Singapore Dollar Cash", "isin": "CASH_SGD_DEMO", "instrumentCurrency": "SGD", "productType": "Cash", "assetClass": "Cash"},
-        {"securityId": "SEC_AAPL_US", "name": "Apple Inc.", "isin": "US0378331005", "instrumentCurrency": "USD", "productType": "Equity", "assetClass": "Equity", "sector": "Technology", "countryOfRisk": "US"},
-        {"securityId": "SEC_SAP_DE", "name": "SAP SE", "isin": "DE0007164600", "instrumentCurrency": "EUR", "productType": "Equity", "assetClass": "Equity", "sector": "Technology", "countryOfRisk": "DE"},
-        {"securityId": "SEC_NOVN_CH", "name": "Novartis AG", "isin": "CH0012005267", "instrumentCurrency": "CHF", "productType": "Equity", "assetClass": "Equity", "sector": "Healthcare", "countryOfRisk": "CH"},
-        {"securityId": "SEC_SONY_JP", "name": "Sony Group Corp.", "isin": "JP3435000009", "instrumentCurrency": "JPY", "productType": "Equity", "assetClass": "Equity", "sector": "Consumer Discretionary", "countryOfRisk": "JP"},
-        {"securityId": "SEC_UST_5Y", "name": "US Treasury 5Y", "isin": "US91282CGM73", "instrumentCurrency": "USD", "productType": "Bond", "assetClass": "Fixed Income", "rating": "AA+", "maturityDate": "2029-08-31"},
-        {"securityId": "SEC_CORP_IG_USD", "name": "Global Corp 4.2% 2030", "isin": "US0000000001", "instrumentCurrency": "USD", "productType": "Bond", "assetClass": "Fixed Income", "rating": "A-", "maturityDate": "2030-06-15"},
-        {"securityId": "SEC_ETF_WORLD_USD", "name": "Global Equity ETF", "isin": "US0000000002", "instrumentCurrency": "USD", "productType": "ETF", "assetClass": "Equity"},
-        {"securityId": "SEC_FUND_EM_EQ", "name": "Emerging Markets Equity Fund", "isin": "LU0000000003", "instrumentCurrency": "USD", "productType": "Fund", "assetClass": "Equity"},
-        {"securityId": "SEC_GOLD_ETC_USD", "name": "Gold ETC", "isin": "JE00B1VS3770", "instrumentCurrency": "USD", "productType": "ETC", "assetClass": "Commodity"},
+        {"security_id": "CASH_USD", "name": "US Dollar Cash", "isin": "CASH_USD_DEMO", "currency": "USD", "product_type": "Cash", "asset_class": "Cash"},
+        {"security_id": "CASH_EUR", "name": "Euro Cash", "isin": "CASH_EUR_DEMO", "currency": "EUR", "product_type": "Cash", "asset_class": "Cash"},
+        {"security_id": "CASH_CHF", "name": "Swiss Franc Cash", "isin": "CASH_CHF_DEMO", "currency": "CHF", "product_type": "Cash", "asset_class": "Cash"},
+        {"security_id": "CASH_SGD", "name": "Singapore Dollar Cash", "isin": "CASH_SGD_DEMO", "currency": "SGD", "product_type": "Cash", "asset_class": "Cash"},
+        {"security_id": "SEC_AAPL_US", "name": "Apple Inc.", "isin": "US0378331005", "currency": "USD", "product_type": "Equity", "asset_class": "Equity", "sector": "Technology", "country_of_risk": "US"},
+        {"security_id": "SEC_SAP_DE", "name": "SAP SE", "isin": "DE0007164600", "currency": "EUR", "product_type": "Equity", "asset_class": "Equity", "sector": "Technology", "country_of_risk": "DE"},
+        {"security_id": "SEC_NOVN_CH", "name": "Novartis AG", "isin": "CH0012005267", "currency": "CHF", "product_type": "Equity", "asset_class": "Equity", "sector": "Healthcare", "country_of_risk": "CH"},
+        {"security_id": "SEC_SONY_JP", "name": "Sony Group Corp.", "isin": "JP3435000009", "currency": "JPY", "product_type": "Equity", "asset_class": "Equity", "sector": "Consumer Discretionary", "country_of_risk": "JP"},
+        {"security_id": "SEC_UST_5Y", "name": "US Treasury 5Y", "isin": "US91282CGM73", "currency": "USD", "product_type": "Bond", "asset_class": "Fixed Income", "rating": "AA+", "maturity_date": "2029-08-31"},
+        {"security_id": "SEC_CORP_IG_USD", "name": "Global Corp 4.2% 2030", "isin": "US0000000001", "currency": "USD", "product_type": "Bond", "asset_class": "Fixed Income", "rating": "A-", "maturity_date": "2030-06-15"},
+        {"security_id": "SEC_ETF_WORLD_USD", "name": "Global Equity ETF", "isin": "US0000000002", "currency": "USD", "product_type": "ETF", "asset_class": "Equity"},
+        {"security_id": "SEC_FUND_EM_EQ", "name": "Emerging Markets Equity Fund", "isin": "LU0000000003", "currency": "USD", "product_type": "Fund", "asset_class": "Equity"},
+        {"security_id": "SEC_GOLD_ETC_USD", "name": "Gold ETC", "isin": "JE00B1VS3770", "currency": "USD", "product_type": "ETC", "asset_class": "Commodity"},
     ]
     txs = [
         _tx("DEMO_ADV_DEP_01", "DEMO_ADV_USD_001", "CASH", "CASH_USD", tx_ts(1, 9), "DEPOSIT", 500000, 1, 500000, "USD"),
@@ -248,16 +248,16 @@ def build_demo_bundle() -> dict[str, Any]:
     for d in dates:
         market_prices.extend(
             [
-                {"securityId": "CASH_USD", "priceDate": d, "price": 1, "currency": "USD"},
-                {"securityId": "CASH_EUR", "priceDate": d, "price": 1, "currency": "EUR"},
-                {"securityId": "CASH_CHF", "priceDate": d, "price": 1, "currency": "CHF"},
-                {"securityId": "CASH_SGD", "priceDate": d, "price": 1, "currency": "SGD"},
+                {"security_id": "CASH_USD", "price_date": d, "price": 1, "currency": "USD"},
+                {"security_id": "CASH_EUR", "price_date": d, "price": 1, "currency": "EUR"},
+                {"security_id": "CASH_CHF", "price_date": d, "price": 1, "currency": "CHF"},
+                {"security_id": "CASH_SGD", "price_date": d, "price": 1, "currency": "SGD"},
             ]
         )
     for security_id, (start_px, end_px, ccy) in price_paths.items():
         for idx, d in enumerate(dates):
             px = round(start_px + ((end_px - start_px) * idx / (len(dates) - 1)), 2)
-            market_prices.append({"securityId": security_id, "priceDate": d, "price": px, "currency": ccy})
+            market_prices.append({"security_id": security_id, "price_date": d, "price": px, "currency": ccy})
     fx_paths = {
         ("USD", "EUR"): (0.92, 0.90),
         ("EUR", "USD"): (1.09, 1.11),
@@ -274,17 +274,17 @@ def build_demo_bundle() -> dict[str, Any]:
     for (from_ccy, to_ccy), (start_rate, end_rate) in fx_paths.items():
         for idx, d in enumerate(dates):
             rate = round(start_rate + ((end_rate - start_rate) * idx / (len(dates) - 1)), 6)
-            fx_rates.append({"fromCurrency": from_ccy, "toCurrency": to_ccy, "rateDate": d, "rate": rate})
+            fx_rates.append({"from_currency": from_ccy, "to_currency": to_ccy, "rate_date": d, "rate": rate})
     return {
-        "sourceSystem": "PAS_DEMO_DATA_PACK",
+        "source_system": "LOTUS_CORE_DEMO_DATA_PACK",
         "mode": "UPSERT",
-        "businessDates": [{"businessDate": d} for d in dates],
+        "business_dates": [{"date": d} for d in dates],
         "portfolios": portfolios,
         "instruments": instruments,
         "transactions": txs,
-        "marketPrices": market_prices,
-        "fxRates": fx_rates,
-        "asOfDate": as_of,
+        "market_prices": market_prices,
+        "fx_rates": fx_rates,
+        "as_of_date": as_of,
     }
 
 
@@ -412,7 +412,7 @@ def main() -> int:
     _wait_ready(f"{ingestion_base_url}/health/ready", args.wait_seconds, args.poll_interval_seconds)
     _wait_ready(f"{query_base_url}/health/ready", args.wait_seconds, args.poll_interval_seconds)
     demo_bundle = build_demo_bundle()
-    review_as_of = demo_bundle["asOfDate"]
+    review_as_of = demo_bundle["as_of_date"]
     if not args.verify_only:
         if args.force_ingest or not _all_demo_portfolios_exist(query_base_url):
             payload = demo_bundle
@@ -421,8 +421,8 @@ def main() -> int:
                 len(payload["portfolios"]),
                 len(payload["instruments"]),
                 len(payload["transactions"]),
-                len(payload["marketPrices"]),
-                len(payload["fxRates"]),
+                len(payload["market_prices"]),
+                len(payload["fx_rates"]),
             )
             _request_json("POST", f"{ingestion_base_url}/ingest/portfolio-bundle", payload=payload)
         else:
