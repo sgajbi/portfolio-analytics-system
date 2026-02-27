@@ -34,7 +34,7 @@ async def get_position_analytics(
 
     - **portfolio_id**: The unique identifier for the portfolio.
     - **Request Body**: A JSON object specifying the as-of date and the sections
-      of analytics to be included (e.g., valuation, performance, instrument details).
+      of analytics to be included (e.g., valuation, income, instrument details).
     """
     try:
         return await service.get_position_analytics(portfolio_id, request)

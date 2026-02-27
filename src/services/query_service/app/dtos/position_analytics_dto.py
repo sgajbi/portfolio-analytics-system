@@ -1,6 +1,6 @@
 # src/services/query_service/app/dtos/position_analytics_dto.py
 from datetime import date
-from typing import List, Optional, Dict, Literal
+from typing import List, Optional
 from pydantic import BaseModel, Field, ConfigDict
 from enum import Enum
 
@@ -44,18 +44,6 @@ class PositionValuation(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
 
-class PositionPerformance(BaseModel):
-    """Represents the performance of a single position for one period."""
-
-    local_return: Optional[float] = Field(None, alias="localReturn")
-    base_return: Optional[float] = Field(None, alias="baseReturn")
-
-    model_config = ConfigDict(populate_by_name=True)
-
-
-# --- Top-Level Position DTO ---
-
-
 class EnrichedPosition(BaseModel):
     """Represents a single, fully enriched position in the response."""
 
@@ -67,7 +55,6 @@ class EnrichedPosition(BaseModel):
     instrument_details: Optional[PositionInstrumentDetails] = Field(None, alias="instrumentDetails")
     valuation: Optional[PositionValuation] = None
     income: Optional[PositionValuationDetail] = None
-    performance: Optional[Dict[str, PositionPerformance]] = None
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -80,13 +67,6 @@ class PositionAnalyticsSection(str, Enum):
     INSTRUMENT_DETAILS = "INSTRUMENT_DETAILS"
     VALUATION = "VALUATION"
     INCOME = "INCOME"
-    PERFORMANCE = "PERFORMANCE"
-
-
-class PerformanceOptions(BaseModel):
-    """Defines which performance periods to calculate."""
-
-    periods: List[Literal["MTD", "QTD", "YTD", "ONE_YEAR", "SI"]]
 
 
 class PositionAnalyticsRequest(BaseModel):
@@ -94,7 +74,6 @@ class PositionAnalyticsRequest(BaseModel):
 
     as_of_date: date = Field(..., alias="asOfDate")
     sections: List[PositionAnalyticsSection]
-    performance_options: Optional[PerformanceOptions] = Field(None, alias="performanceOptions")
 
     model_config = ConfigDict(populate_by_name=True)
 

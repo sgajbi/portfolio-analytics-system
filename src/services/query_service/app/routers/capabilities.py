@@ -17,14 +17,14 @@ def get_capabilities_service() -> CapabilitiesService:
     summary="Get lotus-core Integration Capabilities",
     description=(
         "Returns backend-governed lotus-core capability and workflow flags for a consumer system "
-        "and tenant context. Intended for lotus-gateway/UI feature control and lotus-performance/lotus-manage integration negotiation."
+        "and tenant context. Intended for lotus-gateway/UI and lotus-manage feature control."
     ),
 )
 async def get_integration_capabilities(
     consumer_system: ConsumerSystem = Query(
         "lotus-gateway",
         alias="consumerSystem",
-        description="Consumer requesting capability metadata (lotus-gateway, lotus-performance, lotus-manage, UI, UNKNOWN).",
+        description="Consumer requesting capability metadata (lotus-gateway, lotus-manage, UI, UNKNOWN).",
     ),
     tenant_id: str = Query(
         "default",

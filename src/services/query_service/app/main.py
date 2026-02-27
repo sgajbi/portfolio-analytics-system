@@ -24,21 +24,16 @@ from .enterprise_readiness import (
 )
 from .routers import (
     capabilities,
-    concentration,
     fx_rates,
     instruments,
     integration,
     lookups,
     operations,
-    performance,
     portfolios,
     positions,
     positions_analytics,
     prices,
-    review,
-    risk,
     simulation,
-    summary,
     transactions,
 )
 
@@ -182,11 +177,6 @@ app.include_router(transactions.router)
 app.include_router(instruments.router)
 app.include_router(prices.router)
 app.include_router(fx_rates.router)
-app.include_router(performance.router)
-app.include_router(risk.router)
-app.include_router(summary.router)
-app.include_router(review.router)
-app.include_router(concentration.router)
 app.include_router(positions_analytics.router)
 app.include_router(operations.router)
 app.include_router(integration.router)

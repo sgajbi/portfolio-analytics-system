@@ -5,10 +5,9 @@ from src.services.query_service.app.precision_policy import (
     ROUNDING_POLICY_VERSION,
     quantize_fx_rate,
     quantize_money,
-    quantize_performance,
     quantize_price,
     quantize_quantity,
-    quantize_risk,
+    quantize_ratio,
 )
 
 
@@ -21,8 +20,7 @@ def test_rounding_golden_vectors() -> None:
         "price": quantize_price,
         "fx_rate": quantize_fx_rate,
         "quantity": quantize_quantity,
-        "performance": quantize_performance,
-        "risk": quantize_risk,
+        "ratio": quantize_ratio,
     }
     for semantic, quantizer in quantizers.items():
         actual = [str(quantizer(value)) for value in payload["vectors"][semantic]]
