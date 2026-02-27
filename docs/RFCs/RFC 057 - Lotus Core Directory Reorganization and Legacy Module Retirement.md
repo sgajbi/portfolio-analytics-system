@@ -1,6 +1,6 @@
 # RFC 057 - Lotus Core Directory Reorganization and Legacy Module Retirement
 
-- Status: Proposed (approval required)
+- Status: Approved
 - Date: 2026-02-27
 - Authors: lotus-core maintainers
 - Related: RFC 035, RFC 036, RFC 046A, RFC 049, RFC 056, lotus-platform standards
@@ -360,6 +360,18 @@ Compatibility strategy:
 7. PR-7: downstream drift hard-cut in lotus-core
  - remove legacy integration contract surfaces/assumptions from lotus-core
  - document downstream follow-up work (outside this repo) for canonical endpoint adoption
+
+## Execution Progress
+
+1. Completed: PR-1 governance and structure scaffolding (merged)
+ - architecture/layering standards added
+ - architecture boundary guard added and wired into Make targets
+
+2. Completed: PR-3 legacy module retirement (merged)
+ - legacy feature docs removed from active core feature set
+ - stale docker-compose legacy analytics mounts removed
+
+3. In progress: remaining PR slices (positions consolidation, ingestion mode hardening, API-first ops hardening, downstream drift hard-cut)
 
 ## Definition of Done
 
