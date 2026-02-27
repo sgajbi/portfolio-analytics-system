@@ -384,7 +384,13 @@ Compatibility strategy:
  - adapter-disabled requests return explicit `410 Gone` with capability metadata
  - integration capability metadata now reflects adapter-mode flags and supported input modes
 
-5. In progress: remaining PR slices (API-first ops hardening, downstream drift hard-cut)
+5. Completed: PR-6 API-first ops hardening
+ - direct DB troubleshooting guidance removed from active operational runbooks
+ - API-first support/lineage playbook introduced and linked from troubleshooting guides
+
+6. Completed: PR-7 downstream drift hard-cut in lotus-core
+ - removed remaining active test expectations for legacy `integration/portfolios/*` contract usage
+ - retained historical RFC records but removed active-runtime expectations from current service tests/docs
 
 ## Definition of Done
 
