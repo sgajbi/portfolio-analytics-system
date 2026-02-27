@@ -13,6 +13,7 @@ from portfolio_common.logging_utils import correlation_id_var
 from portfolio_common.idempotency_repository import IdempotencyRepository
 from portfolio_common.outbox_repository import OutboxRepository
 from services.calculators.position_valuation_calculator.app.repositories.valuation_repository import ValuationRepository
+from tests.unit.test_support.async_session_iter import make_single_session_getter
 
 pytestmark = pytest.mark.asyncio
 
@@ -64,8 +65,7 @@ def mock_dependencies():
         yield
     mock_db_session.begin.side_effect = mock_begin_transaction
     
-    async def get_session_gen():
-        yield mock_db_session
+    get_session_gen = make_single_session_getter(mock_db_session)
 
     with patch(
         "services.calculators.position_valuation_calculator.app.consumers.valuation_consumer.get_async_db_session", new=get_session_gen

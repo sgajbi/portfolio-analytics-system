@@ -299,6 +299,7 @@ This project uses a lotus-manage-aligned engineering baseline:
 make lint
 make typecheck
 make openapi-gate
+make warning-gate
 make check
 make coverage-gate
 make ci-local
@@ -306,15 +307,18 @@ make ci-local
 
 `make check` enforces OpenAPI documentation quality for query-service endpoints:
 - each business endpoint must define both `summary` and `description`
+- each business endpoint must define `tags` and response contracts (including at least one `2xx` and one error response)
 - duplicate `operationId` values are rejected
 - `/health/*` endpoints are exempt
+
+`make warning-gate` enforces warning-free unit execution (warning budget = `0`).
 
 CI workflow shape:
 
 - `Workflow Lint`
-- `Lint, Typecheck, Unit Tests`
-- `Tests (unit)` + `Tests (integration-lite)` coverage data jobs
-- `Coverage Gate (Combined)` with `--fail-under=84`
+- `Lint, Typecheck, Unit Fast`
+- `Tests (unit)` + `Tests (unit-db)` + `Tests (integration-lite)` coverage data jobs
+- `Coverage Gate (Combined)` with `--fail-under=99`
 - `Validate Docker Build`
 - `E2E Smoke (Manual)` on `workflow_dispatch`
 

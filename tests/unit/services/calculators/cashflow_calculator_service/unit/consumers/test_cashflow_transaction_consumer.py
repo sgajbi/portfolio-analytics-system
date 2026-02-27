@@ -15,6 +15,7 @@ from src.services.calculators.cashflow_calculator_service.app.repositories.cashf
 from src.services.calculators.cashflow_calculator_service.app.repositories.cashflow_rules_repository import CashflowRulesRepository
 from portfolio_common.idempotency_repository import IdempotencyRepository
 from portfolio_common.outbox_repository import OutboxRepository
+from tests.unit.test_support.async_session_iter import make_single_session_getter
 
 # Mark all tests in this file as asyncio
 pytestmark = pytest.mark.asyncio
@@ -79,8 +80,7 @@ def mock_dependencies():
     mock_transaction = AsyncMock()
     mock_db_session.begin = AsyncMock(return_value=mock_transaction)
     
-    async def get_session_gen():
-        yield mock_db_session
+    get_session_gen = make_single_session_getter(mock_db_session)
 
     with patch(
         "src.services.calculators.cashflow_calculator_service.app.consumers.transaction_consumer.get_async_db_session", new=get_session_gen

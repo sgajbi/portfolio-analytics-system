@@ -68,8 +68,8 @@ jobs:
       - name: Migration Contract Smoke
         run: make migration-smoke
 
-      - name: Unit Tests
-        run: make test-unit
+      - name: Unit Warning Gate
+        run: make warning-gate
 
   test-suites:
     name: Tests (${{ matrix.suite }})

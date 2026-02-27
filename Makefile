@@ -1,11 +1,11 @@
-.PHONY: install lint typecheck monetary-float-guard openapi-gate migration-smoke migration-apply test test-unit test-unit-db test-integration-lite test-e2e-smoke security-audit check coverage-gate ci ci-local docker-build clean
+.PHONY: install lint typecheck monetary-float-guard openapi-gate warning-gate migration-smoke migration-apply test test-unit test-unit-db test-integration-lite test-e2e-smoke security-audit check coverage-gate ci ci-local docker-build clean
 
 install:
 	python scripts/bootstrap_dev.py
 
 lint:
-	ruff check src/services/query_service/app tests/unit/services/query_service tests/test_support tests/unit/test_support scripts/test_manifest.py scripts/coverage_gate.py --ignore E501,I001
-	ruff format --check src/services/query_service/app tests/unit/services/query_service tests/test_support tests/unit/test_support scripts/test_manifest.py scripts/coverage_gate.py
+	python -m ruff check src/services/query_service/app tests/unit/services/query_service tests/test_support tests/unit/test_support scripts/test_manifest.py scripts/coverage_gate.py scripts/openapi_quality_gate.py scripts/warning_budget_gate.py --ignore E501,I001
+	python -m ruff format --check src/services/query_service/app tests/test_support tests/unit/test_support scripts/test_manifest.py scripts/coverage_gate.py scripts/openapi_quality_gate.py scripts/warning_budget_gate.py
 	$(MAKE) monetary-float-guard
 
 monetary-float-guard:
@@ -29,6 +29,9 @@ test:
 test-unit:
 	python scripts/test_manifest.py --suite unit --quiet
 
+warning-gate:
+	python scripts/warning_budget_gate.py --suite unit --max-warnings 0 --quiet
+
 test-unit-db:
 	python scripts/test_manifest.py --suite unit-db --quiet
 
@@ -41,12 +44,12 @@ test-e2e-smoke:
 security-audit:
 	python -m pip_audit -r tests/requirements.txt
 
-check: lint typecheck openapi-gate test
+check: lint typecheck openapi-gate warning-gate test
 
 coverage-gate:
 	python scripts/coverage_gate.py
 
-ci: lint typecheck openapi-gate migration-smoke test-unit-db test-integration-lite coverage-gate security-audit
+ci: lint typecheck openapi-gate warning-gate migration-smoke test-unit-db test-integration-lite coverage-gate security-audit
 
 ci-local: lint typecheck coverage-gate
 

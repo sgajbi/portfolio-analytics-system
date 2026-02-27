@@ -11,6 +11,7 @@ from src.services.calculators.position_calculator.app.core.position_logic import
 from portfolio_common.idempotency_repository import IdempotencyRepository
 from src.services.calculators.position_calculator.app.repositories.position_repository import PositionRepository
 from portfolio_common.position_state_repository import PositionStateRepository
+from tests.unit.test_support.async_session_iter import make_single_session_getter
 
 pytestmark = pytest.mark.asyncio
 
@@ -66,8 +67,7 @@ def mock_dependencies():
     mock_db_session = AsyncMock(spec=AsyncSession)
     mock_db_session.begin.return_value.__aenter__.return_value = AsyncMock()
 
-    async def get_session_gen():
-        yield mock_db_session
+    get_session_gen = make_single_session_getter(mock_db_session)
     
     with patch(
         "src.services.calculators.position_calculator.app.consumers.transaction_event_consumer.get_async_db_session", new=get_session_gen

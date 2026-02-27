@@ -13,6 +13,7 @@ from services.timeseries_generator_service.app.consumers.position_timeseries_con
 )
 from src.services.timeseries_generator_service.app.repositories.timeseries_repository import TimeseriesRepository
 from portfolio_common.reprocessing import EpochFencer
+from tests.unit.test_support.async_session_iter import make_single_session_getter
 
 logger = logging.getLogger(__name__)
 pytestmark = pytest.mark.asyncio
@@ -53,8 +54,7 @@ def mock_dependencies():
     mock_transaction = AsyncMock()
     mock_db_session.begin.return_value = mock_transaction
     
-    async def get_session_gen():
-        yield mock_db_session
+    get_session_gen = make_single_session_getter(mock_db_session)
 
     with patch(
         "services.timeseries_generator_service.app.consumers.position_timeseries_consumer.get_async_db_session", new=get_session_gen
