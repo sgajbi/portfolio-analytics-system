@@ -150,8 +150,6 @@ services:
     volumes:
       - ./src/services/query_service/app:/app/app
       - ./src/libs/portfolio-common:/app/src/libs/portfolio-common
-      - ./src/libs/risk-analytics-engine:/app/src/libs/risk-analytics-engine
-      - ./src/libs/concentration-analytics-engine:/app/src/libs/concentration-analytics-engine
     command: uvicorn app.main:app --host 0.0.0.0 --port 8001 --no-access-log
     restart: unless-stopped
     healthcheck:
