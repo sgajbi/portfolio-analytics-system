@@ -106,7 +106,7 @@ async def test_get_latest_positions(mock_position_repo: AsyncMock):
         assert response.positions[0].sector == "Technology"
         assert response.positions[0].country_of_risk == "US"
         assert response.positions[0].held_since_date == date(2024, 12, 31)
-        assert response.positions[0].weight == pytest.approx(1.0)
+        assert response.positions[0].weight == Decimal("1")
 
 
 async def test_get_latest_positions_falls_back_to_position_history(mock_position_repo: AsyncMock):
@@ -160,7 +160,7 @@ async def test_get_latest_positions_falls_back_to_position_history(mock_position
         assert response.positions[0].valuation is not None
         assert response.positions[0].valuation.market_value == Decimal("5582.5")
         assert response.positions[0].held_since_date == date(2024, 1, 1)
-        assert response.positions[0].weight == pytest.approx(1.0)
+        assert response.positions[0].weight == Decimal("1")
 
 
 async def test_get_position_history_raises_when_portfolio_missing(mock_position_repo: AsyncMock):

@@ -141,19 +141,19 @@ class PositionService:
         position_values: list[Decimal] = []
         for position in positions:
             base_value = (
-                Decimal(position.valuation.market_value)
+                Decimal(str(position.valuation.market_value))
                 if position.valuation and position.valuation.market_value is not None
-                else Decimal(position.cost_basis)
+                else Decimal(str(position.cost_basis))
             )
             position_values.append(base_value)
             total_market_value += base_value
 
         if total_market_value > 0:
             for position, value in zip(positions, position_values):
-                position.weight = float(value / total_market_value)
+                position.weight = value / total_market_value
         else:
             for position in positions:
-                position.weight = 0.0
+                position.weight = Decimal(0)
 
         held_since_tasks = []
         task_indexes = []
