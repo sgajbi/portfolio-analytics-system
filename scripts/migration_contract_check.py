@@ -14,6 +14,24 @@ def _run(command: list[str]) -> int:
     return result.returncode
 
 
+def _has_single_head() -> bool:
+    result = subprocess.run(
+        ["python", "-m", "alembic", "heads"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        return False
+    heads = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+    if len(heads) != 1:
+        print("Expected exactly one Alembic head, found:")
+        for head in heads:
+            print(f" - {head}")
+        return False
+    return True
+
+
 def run_alembic_sql_smoke() -> int:
     if not ALEMBIC_DIR.exists() or not VERSIONS_DIR.exists():
         print("Missing Alembic migration directories.")
@@ -25,7 +43,7 @@ def run_alembic_sql_smoke() -> int:
         print(f"Missing required migration contract document: {REQUIRED_DOC}")
         return 1
 
-    if _run(["python", "-m", "alembic", "heads"]) != 0:
+    if not _has_single_head():
         return 1
     if _run(["python", "-m", "alembic", "history"]) != 0:
         return 1
