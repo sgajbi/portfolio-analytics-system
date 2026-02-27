@@ -42,3 +42,6 @@ async def test_openapi_declares_upload_400_contracts(async_test_client):
     paths = response.json()["paths"]
     assert "400" in paths["/ingest/uploads/preview"]["post"]["responses"]
     assert "400" in paths["/ingest/uploads/commit"]["post"]["responses"]
+    assert "410" in paths["/ingest/uploads/preview"]["post"]["responses"]
+    assert "410" in paths["/ingest/uploads/commit"]["post"]["responses"]
+    assert "410" in paths["/ingest/portfolio-bundle"]["post"]["responses"]

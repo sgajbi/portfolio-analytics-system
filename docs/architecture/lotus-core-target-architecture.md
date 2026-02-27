@@ -57,6 +57,9 @@ Mode policy:
 
 1. Canonical enterprise flow: external upstream -> ingestion contracts -> Kafka -> persistence.
 2. Upload/bundle flows are adapter paths and must be feature-flagged as non-canonical.
+3. Adapter flags:
+ - `LOTUS_CORE_INGEST_PORTFOLIO_BUNDLE_ENABLED`
+ - `LOTUS_CORE_INGEST_UPLOAD_APIS_ENABLED`
 
 ## Position Contract Direction
 

@@ -2,7 +2,8 @@ from src.services.query_service.app.services.capabilities_service import Capabil
 
 
 def test_capabilities_default_flags(monkeypatch):
-    monkeypatch.delenv("LOTUS_CORE_CAP_UPLOAD_APIS_ENABLED", raising=False)
+    monkeypatch.delenv("LOTUS_CORE_INGEST_UPLOAD_APIS_ENABLED", raising=False)
+    monkeypatch.delenv("LOTUS_CORE_INGEST_PORTFOLIO_BUNDLE_ENABLED", raising=False)
     monkeypatch.delenv("LOTUS_CORE_POLICY_VERSION", raising=False)
     monkeypatch.delenv("LOTUS_CORE_CAPABILITY_TENANT_OVERRIDES_JSON", raising=False)
 
@@ -14,12 +15,17 @@ def test_capabilities_default_flags(monkeypatch):
     assert response.contract_version == "v1"
     assert response.consumer_system == "lotus-gateway"
     assert response.policy_version == "tenant-default-v1"
-    assert "lotus_core_ref" in response.supported_input_modes
+    assert set(response.supported_input_modes) == {
+        "lotus_core_ref",
+        "inline_bundle",
+        "file_upload",
+    }
     assert all(feature.enabled for feature in response.features[:2])
 
 
 def test_capabilities_env_override(monkeypatch):
-    monkeypatch.setenv("LOTUS_CORE_CAP_UPLOAD_APIS_ENABLED", "false")
+    monkeypatch.setenv("LOTUS_CORE_INGEST_UPLOAD_APIS_ENABLED", "false")
+    monkeypatch.setenv("LOTUS_CORE_INGEST_PORTFOLIO_BUNDLE_ENABLED", "false")
     monkeypatch.setenv("LOTUS_CORE_POLICY_VERSION", "tenant-x-v3")
     monkeypatch.delenv("LOTUS_CORE_CAPABILITY_TENANT_OVERRIDES_JSON", raising=False)
 
@@ -29,7 +35,8 @@ def test_capabilities_env_override(monkeypatch):
     )
 
     feature_map = {feature.key: feature.enabled for feature in response.features}
-    assert feature_map["lotus_core.ingestion.bulk_upload"] is False
+    assert feature_map["lotus_core.ingestion.bulk_upload_adapter"] is False
+    assert feature_map["lotus_core.ingestion.portfolio_bundle_adapter"] is False
     assert response.policy_version == "tenant-x-v3"
     assert set(response.supported_input_modes) == {"lotus_core_ref"}
     assert response.tenant_id == "tenant-x"
@@ -40,12 +47,15 @@ def test_capabilities_tenant_policy_override(monkeypatch):
         "LOTUS_CORE_CAPABILITY_TENANT_OVERRIDES_JSON",
         (
             '{"tenant-a":{"policy_version":"tenant-a-v7",'
-            '"features":{"lotus_core.ingestion.bulk_upload":false,"lotus_core.support.lineage_api":false},'
+            '"features":{"lotus_core.ingestion.bulk_upload_adapter":false,'
+            '"lotus_core.ingestion.portfolio_bundle_adapter":false,'
+            '"lotus_core.support.lineage_api":false},'
             '"workflows":{"portfolio_bulk_onboarding":false},'
             '"supported_input_modes":{"lotus-manage":["lotus_core_ref"],"default":["lotus_core_ref"]}}}'
         ),
     )
-    monkeypatch.setenv("LOTUS_CORE_CAP_UPLOAD_APIS_ENABLED", "true")
+    monkeypatch.setenv("LOTUS_CORE_INGEST_UPLOAD_APIS_ENABLED", "true")
+    monkeypatch.setenv("LOTUS_CORE_INGEST_PORTFOLIO_BUNDLE_ENABLED", "true")
 
     service = CapabilitiesService()
     response = service.get_integration_capabilities(
@@ -56,7 +66,8 @@ def test_capabilities_tenant_policy_override(monkeypatch):
 
     assert response.policy_version == "tenant-a-v7"
     assert response.supported_input_modes == ["lotus_core_ref"]
-    assert feature_map["lotus_core.ingestion.bulk_upload"] is False
+    assert feature_map["lotus_core.ingestion.bulk_upload_adapter"] is False
+    assert feature_map["lotus_core.ingestion.portfolio_bundle_adapter"] is False
     assert feature_map["lotus_core.support.lineage_api"] is False
     assert workflow_map["portfolio_bulk_onboarding"] is False
 
@@ -70,7 +81,11 @@ def test_capabilities_ignores_invalid_tenant_policy_json(monkeypatch):
     )
 
     assert response.policy_version == "tenant-default-v1"
-    assert response.supported_input_modes == ["lotus_core_ref"]
+    assert set(response.supported_input_modes) == {
+        "lotus_core_ref",
+        "inline_bundle",
+        "file_upload",
+    }
 
 
 def test_capabilities_ignores_non_object_overrides_payload(monkeypatch):

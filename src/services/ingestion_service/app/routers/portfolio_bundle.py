@@ -2,6 +2,7 @@ import logging
 
 from fastapi import APIRouter, Depends, status
 
+from app.adapter_mode import require_portfolio_bundle_adapter_enabled
 from app.DTOs.portfolio_bundle_dto import PortfolioBundleIngestionRequest
 from app.services.ingestion_service import IngestionService, get_ingestion_service
 
@@ -12,6 +13,11 @@ router = APIRouter()
 @router.post(
     "/ingest/portfolio-bundle",
     status_code=status.HTTP_202_ACCEPTED,
+    responses={
+        status.HTTP_410_GONE: {
+            "description": "Portfolio bundle adapter mode disabled for this environment."
+        }
+    },
     tags=["Portfolio Bundle"],
     summary="Ingest a complete portfolio bundle",
     description=(
@@ -21,6 +27,7 @@ router = APIRouter()
 )
 async def ingest_portfolio_bundle(
     request: PortfolioBundleIngestionRequest,
+    _: None = Depends(require_portfolio_bundle_adapter_enabled),
     ingestion_service: IngestionService = Depends(get_ingestion_service),
 ):
     published_counts = await ingestion_service.publish_portfolio_bundle(request)
