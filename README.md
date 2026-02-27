@@ -136,6 +136,12 @@ To run the enforced unit test gate:
 make test
 ```
 
+To run Docker/DB-backed unit tests explicitly:
+
+```bash
+make test-unit-db
+```
+
 To run the integration-lite suite used in CI coverage:
 
 ```bash

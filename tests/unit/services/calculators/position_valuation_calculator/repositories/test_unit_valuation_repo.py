@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sess
 from portfolio_common.database_models import PortfolioValuationJob, DailyPositionSnapshot, Portfolio, MarketPrice, PositionHistory, Transaction
 from src.services.calculators.position_valuation_calculator.app.repositories.valuation_repository import ValuationRepository
 
-pytestmark = pytest.mark.asyncio
+pytestmark = [pytest.mark.asyncio, pytest.mark.integration_db]
 
 @pytest.fixture(scope="function")
 def setup_stale_job_data(db_engine):

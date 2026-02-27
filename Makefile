@@ -1,11 +1,11 @@
-.PHONY: install lint typecheck monetary-float-guard openapi-gate migration-smoke migration-apply test test-unit test-integration-lite test-e2e-smoke security-audit check coverage-gate ci ci-local docker-build clean
+.PHONY: install lint typecheck monetary-float-guard openapi-gate migration-smoke migration-apply test test-unit test-unit-db test-integration-lite test-e2e-smoke security-audit check coverage-gate ci ci-local docker-build clean
 
 install:
 	python scripts/bootstrap_dev.py
 
 lint:
-	ruff check src/services/query_service/app tests/unit/services/query_service --ignore E501,E701,I001
-	ruff format --check src/services/query_service/app tests/unit/services/query_service
+	ruff check src/services/query_service/app tests/unit/services/query_service tests/test_support tests/unit/test_support scripts/test_manifest.py scripts/coverage_gate.py --ignore E501,I001
+	ruff format --check src/services/query_service/app tests/unit/services/query_service tests/test_support tests/unit/test_support scripts/test_manifest.py scripts/coverage_gate.py
 	$(MAKE) monetary-float-guard
 
 monetary-float-guard:
@@ -29,6 +29,9 @@ test:
 test-unit:
 	python scripts/test_manifest.py --suite unit --quiet
 
+test-unit-db:
+	python scripts/test_manifest.py --suite unit-db --quiet
+
 test-integration-lite:
 	python scripts/test_manifest.py --suite integration-lite --quiet
 
@@ -43,7 +46,7 @@ check: lint typecheck openapi-gate test
 coverage-gate:
 	python scripts/coverage_gate.py
 
-ci: lint typecheck openapi-gate migration-smoke test-integration-lite coverage-gate security-audit
+ci: lint typecheck openapi-gate migration-smoke test-unit-db test-integration-lite coverage-gate security-audit
 
 ci-local: lint typecheck coverage-gate
 

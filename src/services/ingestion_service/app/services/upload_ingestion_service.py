@@ -33,6 +33,7 @@ MODEL_BY_ENTITY: dict[UploadEntityType, type[BaseModel]] = {
     "fx_rates": FxRate,
     "business_dates": BusinessDate,
 }
+HTTP_422_UNPROCESSABLE_CONTENT = getattr(status, "HTTP_422_UNPROCESSABLE_CONTENT", 422)
 
 
 def _normalized_key(value: str) -> str:
@@ -205,7 +206,7 @@ class UploadIngestionService:
 
         if validation.errors and not allow_partial:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                status_code=HTTP_422_UNPROCESSABLE_CONTENT,
                 detail={
                     "message": "Upload contains invalid rows. Fix errors or use allowPartial=true.",
                     "errors": [error.model_dump() for error in validation.errors[:50]],
@@ -214,7 +215,7 @@ class UploadIngestionService:
 
         if not validation.valid_models:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                status_code=HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="No valid rows found in upload.",
             )
 

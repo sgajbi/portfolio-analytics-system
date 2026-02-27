@@ -35,7 +35,7 @@ jobs:
         uses: reviewdog/action-actionlint@v1
 
   quality:
-    name: Lint, Typecheck, Unit Tests
+    name: Lint, Typecheck, Unit Fast
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -80,6 +80,7 @@ jobs:
       matrix:
         include:
           - suite: unit
+          - suite: unit-db
           - suite: integration-lite
     steps:
       - name: Checkout Repository

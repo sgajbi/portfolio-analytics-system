@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from scripts.test_manifest import SUITES, get_suite, validate_suite_paths
+from scripts.test_manifest import SUITES, SUITE_PYTEST_ARGS, get_suite, validate_suite_paths
 
 
 def test_integration_lite_suite_includes_lookup_contract_router() -> None:
@@ -10,6 +10,19 @@ def test_integration_lite_suite_includes_lookup_contract_router() -> None:
     assert (
         "tests/integration/services/query_service/test_lookup_contract_router.py"
         in integration_suite
+    )
+
+
+def test_unit_suite_excludes_integration_db_marker() -> None:
+    assert SUITE_PYTEST_ARGS["unit"] == ["-m", "not integration_db"]
+
+
+def test_unit_db_suite_tracks_db_dependent_tests() -> None:
+    unit_db_suite = get_suite("unit-db")
+    assert "tests/unit/libs/portfolio-common/test_position_state_repository.py" in unit_db_suite
+    assert (
+        "tests/unit/services/calculators/position_valuation_calculator/repositories/test_unit_valuation_repo.py"
+        in unit_db_suite
     )
 
 
