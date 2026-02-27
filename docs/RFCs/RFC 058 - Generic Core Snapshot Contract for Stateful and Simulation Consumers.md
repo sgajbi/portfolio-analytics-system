@@ -1,219 +1,251 @@
 # RFC 058 - Generic Core Snapshot Contract for Stateful and Simulation Consumers
 
-- Status: Proposed
+- Status: Proposed (refined draft for approval)
 - Date: 2026-02-27
 - Authors: lotus-core and downstream service owners
 - Related: RFC 035, RFC 036, RFC 043, RFC 046A, RFC 049, RFC 057, lotus-platform RFC-0067
 
 ## Problem Statement
 
-Downstream services (including `lotus-risk`) need a deterministic, reusable, API-first data contract for:
+Downstream services (`lotus-risk`, `lotus-performance`, advisory/reporting consumers) need one deterministic, API-first contract to retrieve:
 
-1. Baseline portfolio state at a specific business date.
-2. Projected state from simulation sessions.
-3. Shared payload sections usable by multiple consumers (risk, performance, advisory, reporting).
+1. Baseline portfolio state at a declared business date.
+2. Simulation-projected state from a lotus-core session.
+3. Comparable baseline vs projected vs delta views without client-side stitching.
 
-Current lotus-core APIs provide many building blocks (`positions`, `simulation-sessions/*`) but require consumer-side orchestration and contract stitching that can drift over time.
+Today, consumers can compose this from `positions` and `simulation-sessions/*`, but that causes orchestration drift, naming drift, and inconsistent valuation/weight logic across apps.
 
 ## Goals
 
-1. Define one generic configurable endpoint in lotus-core for baseline + simulation-aware portfolio snapshots.
-2. Avoid concentration-specific or service-specific endpoint ownership in lotus-core.
-3. Support multiple use cases through section controls and options.
-4. Enforce canonical vocabulary and OpenAPI/inventory governance per RFC-0067.
-5. Preserve strong API-first boundaries (no direct DB dependency for downstream apps).
+1. Provide one consumer-agnostic snapshot contract in lotus-core.
+2. Support both stateful (baseline) and simulation use cases with the same vocabulary.
+3. Make baseline/projected/delta directly comparable for risk/performance/advisory workflows.
+4. Keep lotus-core as data/calculation backbone, not downstream analytics owner.
+5. Enforce RFC-0067 governance: canonical naming, examples, type-safe schemas, no aliases.
 
 ## Non-Goals
 
-1. Creating dedicated endpoint variants for individual consumers (for example concentration-only endpoint).
-2. Implementing downstream analytics calculations in lotus-core.
-3. Owning downstream service output schemas (risk/performance/reporting stay downstream-owned).
+1. Creating consumer-specific endpoints in lotus-core.
+2. Implementing risk/performance/reporting analytics in lotus-core.
+3. Returning presentation-specific report formats.
 
 ## Decision
 
-lotus-core will expose one reusable integration endpoint:
+Introduce a single integration endpoint:
 
 - `POST /integration/portfolios/{portfolio_id}/core-snapshot`
 
-The endpoint is section-driven, simulation-aware, and consumer-agnostic.
+This endpoint is:
 
-## Contract Requirements
+1. Section-driven.
+2. Simulation-aware.
+3. Currency-context aware.
+4. Deterministic for identical inputs.
 
-### Request (normative)
+## Why This Refinement
+
+Compared to the initial RFC draft, this refinement adds:
+
+1. Explicit `snapshot_mode` to avoid ambiguous behavior.
+2. First-class `positions_delta` section for simulation impact use cases.
+3. Strong valuation context (`as_of_date`, `pricing_basis`, `reporting_currency`) in response metadata.
+4. Private-banking-safe numeric policy: monetary values as Decimal-compatible schema (`type: string`, `format: decimal` in OpenAPI), weights as decimal.
+5. Stronger cross-app future fit for advisory suitability, mandate checks, and pre-trade impact.
+
+## Contract (Normative)
+
+### Endpoint
+
+- `POST /integration/portfolios/{portfolio_id}/core-snapshot`
+
+### Request
 
 ```json
 {
   "as_of_date": "2026-02-27",
+  "snapshot_mode": "SIMULATION",
   "reporting_currency": "USD",
   "sections": [
     "positions_baseline",
     "positions_projected",
+    "positions_delta",
     "portfolio_totals",
     "instrument_enrichment"
   ],
   "simulation": {
-    "session_id": "SIM_0001"
+    "session_id": "SIM_0001",
+    "expected_version": 3
   },
   "options": {
     "include_zero_quantity_positions": false,
     "include_cash_positions": true,
-    "position_basis": "market_value_base"
+    "position_basis": "market_value_base",
+    "weight_basis": "total_market_value_base"
   }
 }
 ```
 
-Required fields:
+### Required fields
 
-1. `portfolio_id` (path)
-2. `as_of_date` (body)
-3. `sections` (body; non-empty enum list)
+1. Path: `portfolio_id`
+2. Body: `as_of_date`
+3. Body: `snapshot_mode` (`BASELINE` or `SIMULATION`)
+4. Body: `sections` (non-empty enum array)
 
-Optional fields:
+### Conditional fields
 
-1. `reporting_currency`
- - if omitted, defaults to portfolio currency.
-2. `simulation.session_id`
- - if supplied, projected sections are enabled.
-3. `options.include_zero_quantity_positions` (default: `false`)
-4. `options.include_cash_positions` (default: `true`)
-5. `options.position_basis` (default: `market_value_base`)
+1. `simulation.session_id` is required when `snapshot_mode=SIMULATION`.
+2. `simulation.expected_version` optional optimistic lock guard.
 
-### Response (normative)
+### Optional fields
+
+1. `reporting_currency` (default: portfolio base currency)
+2. `options.include_zero_quantity_positions` (default `false`)
+3. `options.include_cash_positions` (default `true`)
+4. `options.position_basis` (default `market_value_base`)
+5. `options.weight_basis` (default `total_market_value_base`)
+
+## Response (Normative)
 
 ```json
 {
   "portfolio_id": "DEMO_DPM_EUR_001",
   "as_of_date": "2026-02-27",
-  "reporting_currency": "USD",
-  "portfolio_currency": "EUR",
+  "snapshot_mode": "SIMULATION",
+  "valuation_context": {
+    "portfolio_currency": "EUR",
+    "reporting_currency": "USD",
+    "position_basis": "market_value_base",
+    "weight_basis": "total_market_value_base"
+  },
   "simulation": {
     "session_id": "SIM_0001",
     "version": 3,
     "baseline_as_of_date": "2026-02-27"
   },
   "sections": {
-    "positions_baseline": [
-      {
-        "security_id": "AAPL",
-        "quantity": 100.0,
-        "market_value_base": 19500.25,
-        "market_value_local": 18000.0,
-        "weight": 0.1245,
-        "currency": "USD",
-        "asset_class": "EQUITY",
-        "sector": "TECHNOLOGY",
-        "country_of_risk": "US"
-      }
-    ],
-    "positions_projected": [
-      {
-        "security_id": "AAPL",
-        "quantity": 120.0,
-        "market_value_base": 23400.3,
-        "market_value_local": 21600.0,
-        "weight": 0.142,
-        "currency": "USD",
-        "asset_class": "EQUITY",
-        "sector": "TECHNOLOGY",
-        "country_of_risk": "US"
-      }
-    ],
-    "portfolio_totals": {
-      "total_market_value_base": 156600.4,
-      "total_market_value_local": 145000.0
-    }
+    "positions_baseline": [],
+    "positions_projected": [],
+    "positions_delta": [],
+    "portfolio_totals": {}
   }
 }
 ```
 
-### Required section semantics
+## Section Semantics (Normative)
 
-1. `positions_baseline`
- - point-in-time positions at `as_of_date`
- - includes deterministic basis fields:
-   - `security_id`
-   - `quantity`
-   - `market_value_base` and/or basis selected by `options.position_basis`
-   - `weight`
-   - `currency`
-2. `positions_projected`
- - projected state from simulation session for the same `as_of_date` context
- - same field semantics as baseline for direct comparability
-3. `portfolio_totals`
- - totals required to validate/calibrate weights
-4. `instrument_enrichment`
- - canonical enrichment attributes only (asset class, sector, country, etc.)
+### `positions_baseline`
 
-## Behavior Requirements
+Point-in-time state for `as_of_date` (current epoch).
 
-1. Baseline state must be resolved using explicit `as_of_date` (never implicit "today").
-2. If `simulation.session_id` is present:
- - session must belong to requested `portfolio_id`
- - projected output must be generated from that session deterministically
- - response includes `simulation.version` and `simulation.baseline_as_of_date`
-3. `reporting_currency` conversion must be deterministic and auditable.
-4. If a requested section is unavailable, endpoint must fail explicitly (no silent partial drift).
-5. Section ordering and field naming must remain stable and snake_case canonical.
+Minimum fields per row:
 
-## Error Contract Requirements
+1. `security_id`
+2. `quantity`
+3. `market_value_base` (or selected `position_basis` equivalent)
+4. `weight`
+5. `currency`
 
-Use Lotus standard error envelope with `correlation_id`:
+### `positions_projected`
 
-1. `400` invalid section/options values
-2. `404` portfolio/session missing
-3. `409` simulation session/portfolio mismatch
-4. `422` schema validation failures
-5. `default` unhandled service errors
+Projected state after applying simulation session changes, same field semantics as baseline.
 
-## Governance and Inventory Requirements (RFC-0067)
+### `positions_delta`
 
-Any implementation PR for this RFC must include:
+Per-security comparability block between baseline and projected:
 
-1. OpenAPI updates with complete:
- - `summary`, `description`, tags
- - success + error responses
-2. Schema property metadata:
- - every property has `description` and realistic `example`
-3. Vocabulary inventory updates:
- - regenerate `api-vocabulary` artifact in same PR
- - no duplicate semantic attributes
- - no alias/camel-snake dual naming
- - no legacy terms where canonical terms exist
-4. CI gates must pass:
- - OpenAPI quality gate
- - vocabulary inventory gate
- - no-alias/no-legacy-term guard
- - strict type checks
+1. `security_id`
+2. `baseline_quantity`
+3. `projected_quantity`
+4. `delta_quantity`
+5. `baseline_market_value_base`
+6. `projected_market_value_base`
+7. `delta_market_value_base`
+8. `delta_weight`
 
-## Downstream Integration Requirements
+This section is required for future advisory/risk/performance impact workflows and avoids repeated client-side diff logic.
 
-This endpoint must support:
+### `portfolio_totals`
 
-1. `lotus-risk` stateful and simulation concentration/risk workflows
-2. `lotus-performance` stateful performance workflows
-3. future advisory/reporting simulations without contract forks
+Includes baseline and projected totals plus delta totals used for controls:
 
-Downstream services remain responsible for analytics calculations and output schemas.
+1. `baseline_total_market_value_base`
+2. `projected_total_market_value_base`
+3. `delta_total_market_value_base`
+
+### `instrument_enrichment`
+
+Canonical enrichment only (`isin`, `asset_class`, `sector`, `country_of_risk`, etc.), no analytics-derived attributes.
+
+## Determinism and Consistency Requirements
+
+1. Same request payload + same underlying data/session version => byte-equivalent semantic response.
+2. `as_of_date` is always explicit, never implicit runtime date.
+3. Simulation session must belong to `portfolio_id`.
+4. Currency conversion must be auditable and reproducible.
+5. Requested section unavailable => explicit failure (no silent omission).
+
+## Error Contract
+
+Lotus standard error envelope with `correlation_id`.
+
+1. `400` invalid enum/options combinations.
+2. `404` missing portfolio/session.
+3. `409` session portfolio mismatch or `expected_version` mismatch.
+4. `422` schema validation failures.
+5. `500` unhandled service errors.
+
+## Type and Precision Policy
+
+1. Monetary and weight values follow Lotus precision policy and decimal-safe modeling.
+2. API schemas must not use binary floating-point for monetary values.
+3. Rounding behavior must align with platform rounding vectors and documented policy.
+
+## Governance (RFC-0067)
+
+Implementation PRs must include:
+
+1. OpenAPI updates with complete metadata and realistic examples.
+2. Vocabulary inventory updates in lotus-platform (no duplicates, no aliases, canonical terms only).
+3. No legacy term reintroduction.
+4. Gates passing: OpenAPI quality, vocabulary validation, no-alias guard, mypy/type checks.
+
+## Downstream Fit
+
+The contract must serve:
+
+1. `lotus-risk` (stateful + simulation impact inputs)
+2. `lotus-performance` (stateful normalization inputs)
+3. Future advisory/reporting simulation comparators
+
+Downstream services continue to own analytics outputs and presentation schemas.
 
 ## Implementation Plan
 
-1. Contract-first PR:
- - DTOs for request/response with sections/options enums
- - OpenAPI docs/examples complete
-2. Service orchestration PR:
- - baseline state assembly
- - simulation projection assembly
- - currency/weight normalization
-3. Governance PR (can be combined):
- - vocabulary inventory regeneration
- - gate updates/tests
-4. Integration validation PR:
- - consumer-facing smoke/integration tests using canonical fields
+1. PR-1 Contract and DTOs
+ - request/response DTOs and enums
+ - OpenAPI examples and error models
+ - section/schema validation
+2. PR-2 Orchestration
+ - baseline assembly from canonical positions/portfolio context
+ - simulation-projected assembly from simulation session state
+ - delta section generation and controls
+3. PR-3 Governance
+ - inventory regeneration and validation
+ - no-alias checks and docs updates
+4. PR-4 Integration validation
+ - cross-consumer smoke tests (risk/performance style inputs)
 
 ## Acceptance Criteria
 
-1. `POST /integration/portfolios/{portfolio_id}/core-snapshot` returns deterministic baseline/projection sections for same inputs.
-2. No concentration-specific endpoint is introduced in lotus-core.
-3. Required sections and basis fields are available for `lotus-risk` concentration stateful/simulation flows.
-4. RFC-0067 governance gates pass with updated inventory.
-5. Contract is reusable for at least one non-risk consumer flow.
+1. Deterministic baseline/simulation snapshots for same inputs.
+2. No consumer-specific endpoint fork in lotus-core.
+3. Delta comparability available without client-side stitching.
+4. RFC-0067 governance passes with updated inventory.
+5. At least one non-risk consumer flow validated on same contract.
+
+## Decision Points for Approval
+
+1. Confirm `snapshot_mode` enum (`BASELINE`, `SIMULATION`) and optional future extension (`REPLAY` reserved).
+2. Confirm `positions_delta` as mandatory section for `SIMULATION` mode.
+3. Confirm decimal-safe API modeling policy for monetary and weight fields.

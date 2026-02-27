@@ -184,3 +184,27 @@ async def test_portfolio_exists_false(repository: PositionRepository, mock_db_se
     exists = await repository.portfolio_exists("P404")
 
     assert exists is False
+
+
+async def test_get_latest_positions_by_portfolio_as_of_date_builds_expected_query(
+    repository: PositionRepository, mock_db_session: AsyncMock
+):
+    await repository.get_latest_positions_by_portfolio_as_of_date("P1", date(2025, 1, 31))
+
+    executed_stmt = mock_db_session.execute.call_args[0][0]
+    compiled_query = str(executed_stmt.compile(compile_kwargs={"literal_binds": True}))
+    assert "daily_position_snapshots.date <= '2025-01-31'" in compiled_query
+    assert "row_number() OVER (PARTITION BY daily_position_snapshots.security_id" in compiled_query
+    assert "daily_position_snapshots.epoch = position_state.epoch" in compiled_query
+
+
+async def test_get_latest_position_history_by_portfolio_as_of_date_builds_expected_query(
+    repository: PositionRepository, mock_db_session: AsyncMock
+):
+    await repository.get_latest_position_history_by_portfolio_as_of_date("P1", date(2025, 1, 31))
+
+    executed_stmt = mock_db_session.execute.call_args[0][0]
+    compiled_query = str(executed_stmt.compile(compile_kwargs={"literal_binds": True}))
+    assert "position_history.position_date <= '2025-01-31'" in compiled_query
+    assert "row_number() OVER (PARTITION BY position_history.security_id" in compiled_query
+    assert "position_history.epoch = position_state.epoch" in compiled_query
