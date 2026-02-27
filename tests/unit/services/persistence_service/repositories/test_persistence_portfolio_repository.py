@@ -28,15 +28,15 @@ def repository(mock_db_session: AsyncMock) -> PortfolioRepository:
 def sample_portfolio_event() -> PortfolioEvent:
     """Provides a sample PortfolioEvent for testing."""
     return PortfolioEvent(
-        portfolioId="PORT_TEST_01",
-        baseCurrency="USD",
-        openDate=date(2025, 1, 1),
-        cifId="CIF_TEST_1",
+        portfolio_id="PORT_TEST_01",
+        base_currency="USD",
+        open_date=date(2025, 1, 1),
+        client_id="CIF_TEST_1",
         status="ACTIVE",
-        riskExposure="High",
-        investmentTimeHorizon="Long",
-        portfolioType="Discretionary",
-        bookingCenter="SG"
+        risk_exposure="High",
+        investment_time_horizon="Long",
+        portfolio_type="Discretionary",
+        booking_center_code="SG"
     )
 
 # FIX: Convert to a proper async test

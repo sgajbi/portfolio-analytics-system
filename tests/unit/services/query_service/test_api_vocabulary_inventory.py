@@ -43,6 +43,7 @@ def test_validate_inventory_accepts_minimal_complete_structure() -> None:
                 "preferredName": "portfolio_id",
                 "description": "Unique portfolio identifier.",
                 "example": "DEMO_DPM_EUR_001",
+                "type": "string",
             }
         ],
         "endpoints": [

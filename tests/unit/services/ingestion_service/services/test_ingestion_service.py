@@ -30,7 +30,17 @@ async def test_publish_portfolios(ingestion_service: IngestionService, mock_kafk
     """Verifies that portfolios are published to the correct topic with the portfolioId as the key."""
     # ARRANGE
     portfolios = [
-        Portfolio(portfolioId="P1", baseCurrency="USD", openDate=date(2025,1,1), riskExposure="a", investmentTimeHorizon="b", portfolioType="c", bookingCenter="d", cifId="e", status="f")
+        Portfolio(
+            portfolio_id="P1",
+            base_currency="USD",
+            open_date=date(2025, 1, 1),
+            risk_exposure="a",
+            investment_time_horizon="b",
+            portfolio_type="c",
+            booking_center_code="d",
+            client_id="e",
+            status="f",
+        )
     ]
     
     # ACT
@@ -41,7 +51,7 @@ async def test_publish_portfolios(ingestion_service: IngestionService, mock_kafk
     call_args = mock_kafka_producer.publish_message.call_args.kwargs
     assert call_args['topic'] == "raw_portfolios"
     assert call_args['key'] == "P1"
-    assert call_args['value']['portfolioId'] == "P1"
+    assert call_args['value']['portfolio_id'] == "P1"
 
 async def test_publish_transactions(ingestion_service: IngestionService, mock_kafka_producer: MagicMock):
     """Verifies that transactions are published to the correct topic with the portfolio_id as the key."""
@@ -64,7 +74,17 @@ async def test_publish_with_correlation_id(ingestion_service: IngestionService, 
     """Verifies that the correlation ID from the context is added to Kafka message headers."""
     # ARRANGE
     portfolios = [
-        Portfolio(portfolioId="P1", baseCurrency="USD", openDate=date(2025,1,1), riskExposure="a", investmentTimeHorizon="b", portfolioType="c", bookingCenter="d", cifId="e", status="f")
+        Portfolio(
+            portfolio_id="P1",
+            base_currency="USD",
+            open_date=date(2025, 1, 1),
+            risk_exposure="a",
+            investment_time_horizon="b",
+            portfolio_type="c",
+            booking_center_code="d",
+            client_id="e",
+            status="f",
+        )
     ]
     token = correlation_id_var.set("test-corr-id-123")
     
@@ -84,27 +104,27 @@ async def test_publish_portfolio_bundle(ingestion_service: IngestionService):
     """Verifies mixed bundle fan-out returns correct published counts."""
     bundle = PortfolioBundleIngestionRequest.model_validate(
         {
-            "businessDates": [{"businessDate": "2026-01-02"}],
+            "business_dates": [{"business_date": "2026-01-02"}],
             "portfolios": [
                 {
-                    "portfolioId": "P1",
-                    "baseCurrency": "USD",
-                    "openDate": "2025-01-01",
-                    "cifId": "C1",
+                    "portfolio_id": "P1",
+                    "base_currency": "USD",
+                    "open_date": "2025-01-01",
+                    "client_id": "C1",
                     "status": "ACTIVE",
-                    "riskExposure": "a",
-                    "investmentTimeHorizon": "b",
-                    "portfolioType": "c",
-                    "bookingCenter": "d",
+                    "risk_exposure": "a",
+                    "investment_time_horizon": "b",
+                    "portfolio_type": "c",
+                    "booking_center_code": "d",
                 }
             ],
             "instruments": [
                 {
-                    "securityId": "S1",
+                    "security_id": "S1",
                     "name": "N1",
                     "isin": "I1",
-                    "instrumentCurrency": "USD",
-                    "productType": "E",
+                    "currency": "USD",
+                    "product_type": "E",
                 }
             ],
             "transactions": [
@@ -122,11 +142,11 @@ async def test_publish_portfolio_bundle(ingestion_service: IngestionService):
                     "currency": "USD",
                 }
             ],
-            "marketPrices": [
-                {"securityId": "S1", "priceDate": "2026-01-02", "price": 100, "currency": "USD"}
+            "market_prices": [
+                {"security_id": "S1", "price_date": "2026-01-02", "price": 100, "currency": "USD"}
             ],
-            "fxRates": [
-                {"fromCurrency": "USD", "toCurrency": "EUR", "rateDate": "2026-01-02", "rate": 0.9}
+            "fx_rates": [
+                {"from_currency": "USD", "to_currency": "EUR", "rate_date": "2026-01-02", "rate": 0.9}
             ],
         }
     )

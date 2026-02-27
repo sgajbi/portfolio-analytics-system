@@ -98,7 +98,7 @@ class CashflowCalculatorConsumer(BaseConsumer):
                     saved = await cashflow_repo.create_cashflow(cashflow_to_save)
 
                     completion_evt = CashflowCalculatedEvent(
-                        id=saved.id,
+                        cashflow_id=saved.id,
                         transaction_id=saved.transaction_id,
                         portfolio_id=saved.portfolio_id,
                         security_id=saved.security_id,
@@ -109,7 +109,7 @@ class CashflowCalculatorConsumer(BaseConsumer):
                         timing=saved.timing,
                         is_position_flow=saved.is_position_flow,
                         is_portfolio_flow=saved.is_portfolio_flow,
-                        calculationType=saved.calculation_type,
+                        calculation_type=saved.calculation_type,
                         epoch=saved.epoch
                     )
 
