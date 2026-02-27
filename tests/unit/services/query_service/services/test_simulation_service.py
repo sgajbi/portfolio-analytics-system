@@ -321,7 +321,7 @@ async def test_get_projected_summary_computes_baseline_and_delta(mock_dependenci
     assert summary.net_delta_quantity == 10.0
 
 
-def test_validate_session_active_raises_when_session_missing():
+async def test_validate_session_active_raises_when_session_missing():
     with pytest.raises(ValueError, match="not found"):
         SimulationService._validate_session_active("S404", None)
 

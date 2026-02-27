@@ -38,7 +38,9 @@ async def async_test_client():
 
 async def test_capabilities_success(async_test_client):
     client, mock_service = async_test_client
-    response = await client.get("/integration/capabilities?consumerSystem=lotus-manage&tenantId=tenant-1")
+    response = await client.get(
+        "/integration/capabilities?consumerSystem=lotus-manage&tenantId=tenant-1"
+    )
     assert response.status_code == 200
     body = response.json()
     assert body["consumerSystem"] == "lotus-manage"
@@ -49,6 +51,6 @@ async def test_capabilities_success(async_test_client):
     )
 
 
-def test_get_capabilities_service_returns_service_instance():
+async def test_get_capabilities_service_returns_service_instance():
     service = get_capabilities_service()
     assert isinstance(service, CapabilitiesService)
