@@ -252,6 +252,26 @@ class CoreSnapshotInstrumentEnrichmentRecord(BaseModel):
         description="Instrument display name.",
         examples=["Apple Inc."],
     )
+    issuer_id: Optional[str] = Field(
+        None,
+        description="Canonical direct issuer identifier.",
+        examples=["ISSUER_APPLE_INC"],
+    )
+    issuer_name: Optional[str] = Field(
+        None,
+        description="Display name for direct issuer.",
+        examples=["Apple Inc."],
+    )
+    ultimate_parent_issuer_id: Optional[str] = Field(
+        None,
+        description="Canonical ultimate parent issuer identifier.",
+        examples=["ISSUER_APPLE_HOLDING"],
+    )
+    ultimate_parent_issuer_name: Optional[str] = Field(
+        None,
+        description="Display name for ultimate parent issuer.",
+        examples=["Apple Holdings PLC"],
+    )
 
 
 class CoreSnapshotPortfolioTotals(BaseModel):

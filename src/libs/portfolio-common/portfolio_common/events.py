@@ -71,7 +71,9 @@ class InstrumentEvent(BaseModel):
     rating: Optional[str] = None
     maturity_date: Optional[date] = Field(None)
     issuer_id: Optional[str] = Field(None)
+    issuer_name: Optional[str] = Field(None)
     ultimate_parent_issuer_id: Optional[str] = Field(None)
+    ultimate_parent_issuer_name: Optional[str] = Field(None)
 
 class TransactionEvent(BaseModel):
     model_config = ConfigDict(from_attributes=True)

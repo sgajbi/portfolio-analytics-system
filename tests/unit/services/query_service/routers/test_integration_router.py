@@ -7,8 +7,12 @@ from src.services.query_service.app.dtos.core_snapshot_dto import (
     CoreSnapshotRequest,
     CoreSnapshotSection,
 )
+from src.services.query_service.app.dtos.integration_dto import (
+    InstrumentEnrichmentBulkRequest,
+)
 from src.services.query_service.app.routers.integration import (
     create_core_snapshot,
+    get_instrument_enrichment_bulk,
     get_core_snapshot_service,
     get_effective_integration_policy,
     get_integration_service,
@@ -181,4 +185,40 @@ async def test_create_core_snapshot_maps_unavailable_section_to_422() -> None:
         )
 
     assert exc_info.value.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_get_instrument_enrichment_bulk_router_function() -> None:
+    mock_service = MagicMock(spec=CoreSnapshotService)
+    mock_service.get_instrument_enrichment_bulk.return_value = [
+        {
+            "security_id": "SEC_AAPL_US",
+            "issuer_id": "ISSUER_APPLE_INC",
+            "issuer_name": "Apple Inc.",
+            "ultimate_parent_issuer_id": "ISSUER_APPLE_HOLDING",
+            "ultimate_parent_issuer_name": "Apple Holdings PLC",
+        }
+    ]
+
+    response = await get_instrument_enrichment_bulk(
+        request=InstrumentEnrichmentBulkRequest(security_ids=["SEC_AAPL_US"]),
+        service=mock_service,
+    )
+
+    assert response.records[0].security_id == "SEC_AAPL_US"
+    mock_service.get_instrument_enrichment_bulk.assert_called_once_with(["SEC_AAPL_US"])
+
+
+@pytest.mark.asyncio
+async def test_get_instrument_enrichment_bulk_maps_bad_request_to_400() -> None:
+    mock_service = MagicMock(spec=CoreSnapshotService)
+    mock_service.get_instrument_enrichment_bulk.side_effect = CoreSnapshotBadRequestError("bad")
+
+    with pytest.raises(HTTPException) as exc_info:
+        await get_instrument_enrichment_bulk(
+            request=InstrumentEnrichmentBulkRequest(security_ids=["SEC_AAPL_US"]),
+            service=mock_service,
+        )
+
+    assert exc_info.value.status_code == 400
 

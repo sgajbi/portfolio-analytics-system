@@ -49,6 +49,10 @@ def _instrument(
         asset_class=asset_class,
         sector="TECHNOLOGY",
         country_of_risk="US",
+        issuer_id=f"ISSUER_{security_id}",
+        issuer_name=f"{security_id} issuer",
+        ultimate_parent_issuer_id=f"PARENT_{security_id}",
+        ultimate_parent_issuer_name=f"{security_id} parent",
     )
 
 
@@ -134,6 +138,32 @@ async def test_core_snapshot_baseline_success(mock_dependencies):
     assert len(response.sections.positions_baseline) == 1
     assert response.sections.portfolio_totals is not None
     assert response.sections.instrument_enrichment is not None
+    assert response.sections.instrument_enrichment[0].issuer_id is not None
+    assert response.sections.instrument_enrichment[0].issuer_name is not None
+    assert response.sections.instrument_enrichment[0].ultimate_parent_issuer_id is not None
+    assert response.sections.instrument_enrichment[0].ultimate_parent_issuer_name is not None
+
+
+async def test_get_instrument_enrichment_bulk_preserves_order_and_unknowns(mock_dependencies):
+    (_, _, _, _, _, instrument_repo) = mock_dependencies
+    instrument_repo.get_by_security_ids.return_value = [
+        _instrument("SEC_MSFT_US"),
+        _instrument("SEC_AAPL_US"),
+    ]
+
+    service = CoreSnapshotService(AsyncMock())
+    records = await service.get_instrument_enrichment_bulk(
+        ["SEC_AAPL_US", "SEC_UNKNOWN", "SEC_MSFT_US"]
+    )
+
+    assert [record.security_id for record in records] == [
+        "SEC_AAPL_US",
+        "SEC_UNKNOWN",
+        "SEC_MSFT_US",
+    ]
+    assert records[0].issuer_id == "ISSUER_SEC_AAPL_US"
+    assert records[1].issuer_id is None
+    assert records[2].issuer_id == "ISSUER_SEC_MSFT_US"
 
 
 async def test_core_snapshot_simulation_success(mock_dependencies):
