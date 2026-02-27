@@ -31,8 +31,8 @@ def setup_test_data(db_engine):
             risk_exposure="a",
             investment_time_horizon="b",
             portfolio_type="c",
-            booking_center="d",
-            cif_id="e",
+            booking_center_code="d",
+            client_id="e",
             status="f",
         )
         instrument = Instrument(
@@ -99,8 +99,8 @@ def setup_held_since_data(db_engine):
                 risk_exposure="a",
                 investment_time_horizon="b",
                 portfolio_type="c",
-                booking_center="d",
-                cif_id="e",
+                booking_center_code="d",
+                client_id="e",
                 status="f",
             )
         )
@@ -255,8 +255,8 @@ def setup_snapshot_id_order_mismatch_data(db_engine):
                 risk_exposure="a",
                 investment_time_horizon="b",
                 portfolio_type="c",
-                booking_center="d",
-                cif_id="e",
+                booking_center_code="d",
+                client_id="e",
                 status="f",
             )
         )
@@ -322,3 +322,4 @@ async def test_get_latest_positions_prefers_latest_business_date_over_latest_id(
     latest_snapshot, _, _ = latest_positions[0]
     assert latest_snapshot.date == setup_snapshot_id_order_mismatch_data["newer_date"]
     assert latest_snapshot.quantity == Decimal("200")
+

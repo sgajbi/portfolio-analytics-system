@@ -20,8 +20,8 @@ class PortfolioRepository:
     async def get_portfolios(
         self,
         portfolio_id: Optional[str] = None,
-        cif_id: Optional[str] = None,
-        booking_center: Optional[str] = None,
+        client_id: Optional[str] = None,
+        booking_center_code: Optional[str] = None,
     ) -> List[Portfolio]:
         """
         Retrieves a list of portfolios with optional filters.
@@ -31,11 +31,11 @@ class PortfolioRepository:
         if portfolio_id:
             stmt = stmt.filter_by(portfolio_id=portfolio_id)
 
-        if cif_id:
-            stmt = stmt.filter_by(cif_id=cif_id)
+        if client_id:
+            stmt = stmt.filter_by(client_id=client_id)
 
-        if booking_center:
-            stmt = stmt.filter_by(booking_center=booking_center)
+        if booking_center_code:
+            stmt = stmt.filter_by(booking_center_code=booking_center_code)
 
         results = await self.db.execute(stmt.order_by(Portfolio.portfolio_id.asc()))
         portfolios = results.scalars().all()
@@ -47,3 +47,4 @@ class PortfolioRepository:
         stmt = select(Portfolio).filter_by(portfolio_id=portfolio_id)
         result = await self.db.execute(stmt)
         return result.scalars().first()
+

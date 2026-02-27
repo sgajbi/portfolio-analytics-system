@@ -62,7 +62,7 @@ async def get_support_overview(
 async def get_valuation_jobs(
     portfolio_id: str,
     status_filter: Optional[str] = Query(
-        None, alias="status", description="Optional job status filter (e.g., PENDING, PROCESSING)."
+        None, description="Optional job status filter (e.g., PENDING, PROCESSING)."
     ),
     skip: int = Query(0, ge=0, description="Pagination offset."),
     limit: int = Query(100, ge=1, le=1000, description="Pagination limit."),
@@ -95,7 +95,7 @@ async def get_valuation_jobs(
 async def get_aggregation_jobs(
     portfolio_id: str,
     status_filter: Optional[str] = Query(
-        None, alias="status", description="Optional job status filter (e.g., PENDING, PROCESSING)."
+        None, description="Optional job status filter (e.g., PENDING, PROCESSING)."
     ),
     skip: int = Query(0, ge=0, description="Pagination offset."),
     limit: int = Query(100, ge=1, le=1000, description="Pagination limit."),
@@ -182,3 +182,4 @@ async def get_lineage_keys(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected server error occurred while listing lineage keys.",
         )
+

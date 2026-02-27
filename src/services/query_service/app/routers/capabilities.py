@@ -23,12 +23,10 @@ def get_capabilities_service() -> CapabilitiesService:
 async def get_integration_capabilities(
     consumer_system: ConsumerSystem = Query(
         "lotus-gateway",
-        alias="consumerSystem",
         description="Consumer requesting capability metadata (lotus-gateway, lotus-manage, UI, UNKNOWN).",
     ),
     tenant_id: str = Query(
         "default",
-        alias="tenantId",
         description="Tenant or client identifier for policy resolution.",
     ),
     service: CapabilitiesService = Depends(get_capabilities_service),
@@ -39,3 +37,4 @@ async def get_integration_capabilities(
         tenant_id=tenant_id,
     )
     return cast(IntegrationCapabilitiesResponse, response)
+

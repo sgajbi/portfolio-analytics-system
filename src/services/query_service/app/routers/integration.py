@@ -19,18 +19,16 @@ def get_integration_service(
 
 @router.get(
     "/policy/effective",
-    response_model=EffectiveIntegrationPolicyResponse,
-    response_model_by_alias=True,
-    summary="Get effective lotus-core integration policy",
+    response_model=EffectiveIntegrationPolicyResponse,summary="Get effective lotus-core integration policy",
     description=(
         "Returns effective policy diagnostics and provenance for the given consumer and tenant "
         "context, including strict-mode behavior and allowed sections."
     ),
 )
 async def get_effective_integration_policy(
-    consumer_system: str = Query("lotus-gateway", alias="consumerSystem"),
-    tenant_id: str = Query("default", alias="tenantId"),
-    include_sections: list[str] | None = Query(None, alias="includeSections"),
+    consumer_system: str = Query("lotus-gateway"),
+    tenant_id: str = Query("default"),
+    include_sections: list[str] | None = Query(None),
     integration_service: IntegrationService = Depends(get_integration_service),
 ) -> EffectiveIntegrationPolicyResponse:
     response = integration_service.get_effective_policy(
@@ -39,3 +37,4 @@ async def get_effective_integration_policy(
         include_sections=include_sections,
     )
     return cast(EffectiveIntegrationPolicyResponse, response)
+

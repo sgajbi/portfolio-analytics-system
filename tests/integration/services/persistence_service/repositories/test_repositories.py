@@ -178,7 +178,7 @@ async def test_transaction_repository_is_idempotent(clean_db, async_db_session: 
     test_portfolio = Portfolio(
         portfolio_id="PORT_T1", base_currency="USD", open_date=date(2024, 1, 1),
         risk_exposure="High", investment_time_horizon="Long", portfolio_type="Discretionary",
-        booking_center="SG", cif_id="CIF_123", status="ACTIVE"
+        booking_center_code="SG", client_id="CIF_123", status="ACTIVE"
     )
     async_db_session.add(test_portfolio)
     await async_db_session.commit()

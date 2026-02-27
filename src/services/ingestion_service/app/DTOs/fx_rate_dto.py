@@ -8,13 +8,12 @@ class FxRate(BaseModel):
     """
     Represents a single foreign exchange rate between two currencies for a specific date.
     """
-    from_currency: str = Field(..., alias="fromCurrency", description="The currency to convert from (e.g., USD).")
-    to_currency: str = Field(..., alias="toCurrency", description="The currency to convert to (e.g., SGD).")
-    rate_date: date = Field(..., alias="rateDate", description="The date for which the rate is valid.")
+    from_currency: str = Field(..., description="The currency to convert from (e.g., USD).")
+    to_currency: str = Field(..., description="The currency to convert to (e.g., SGD).")
+    rate_date: date = Field(..., description="The date for which the rate is valid.")
     rate: condecimal(gt=Decimal(0)) = Field(..., description="The exchange rate (how many 'to_currency' units for one 'from_currency' unit).")
 
     model_config = ConfigDict(
-        populate_by_name=True,
         json_schema_extra={
             "example": {
                 "fromCurrency": "USD",
@@ -30,3 +29,4 @@ class FxRateIngestionRequest(BaseModel):
     Represents the request body for ingesting a list of FX rates.
     """
     fx_rates: List[FxRate]
+

@@ -38,8 +38,8 @@ async def test_get_portfolios_success(async_test_client):
                 "investment_time_horizon": "LONG_TERM",
                 "portfolio_type": "DISCRETIONARY",
                 "objective": "GROWTH",
-                "booking_center": "LON-01",
-                "cif_id": "CIF-1",
+                "booking_center_code": "LON-01",
+                "client_id": "CIF-1",
                 "is_leverage_allowed": False,
                 "advisor_id": "ADV-1",
                 "status": "ACTIVE",
@@ -75,8 +75,8 @@ async def test_get_portfolio_by_id_success(async_test_client):
         "investment_time_horizon": "LONG_TERM",
         "portfolio_type": "DISCRETIONARY",
         "objective": "GROWTH",
-        "booking_center": "LON-01",
-        "cif_id": "CIF-2",
+        "booking_center_code": "LON-01",
+        "client_id": "CIF-2",
         "is_leverage_allowed": False,
         "advisor_id": "ADV-2",
         "status": "ACTIVE",
@@ -104,3 +104,4 @@ async def test_get_portfolio_service_dependency_factory():
     service = get_portfolio_service(db)
 
     assert isinstance(service, PortfolioService)
+

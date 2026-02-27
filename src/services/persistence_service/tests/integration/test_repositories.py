@@ -108,8 +108,8 @@ def test_transaction_repository_is_idempotent(clean_db, db_engine):
             risk_exposure="High",
             investment_time_horizon="Long",
             portfolio_type="Discretionary",
-            booking_center="SG",
-            cif_id="CIF_123",
+            booking_center_code="SG",
+            client_id="CIF_123",
             status="ACTIVE"
         )
         db.add(test_portfolio)

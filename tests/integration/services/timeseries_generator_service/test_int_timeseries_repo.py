@@ -25,9 +25,9 @@ def setup_stale_aggregation_job_data(db_engine):
         # --- THIS IS THE FIX ---
         # Create the prerequisite portfolio records first to satisfy the foreign key constraint.
         portfolios = [
-            Portfolio(portfolio_id="P1_STALE", base_currency="USD", open_date=date(2024,1,1), risk_exposure="a", investment_time_horizon="b", portfolio_type="c", booking_center="d", cif_id="e", status="f"),
-            Portfolio(portfolio_id="P2_RECENT", base_currency="USD", open_date=date(2024,1,1), risk_exposure="a", investment_time_horizon="b", portfolio_type="c", booking_center="d", cif_id="e", status="f"),
-            Portfolio(portfolio_id="P3_PENDING", base_currency="USD", open_date=date(2024,1,1), risk_exposure="a", investment_time_horizon="b", portfolio_type="c", booking_center="d", cif_id="e", status="f"),
+            Portfolio(portfolio_id="P1_STALE", base_currency="USD", open_date=date(2024,1,1), risk_exposure="a", investment_time_horizon="b", portfolio_type="c", booking_center_code="d", client_id="e", status="f"),
+            Portfolio(portfolio_id="P2_RECENT", base_currency="USD", open_date=date(2024,1,1), risk_exposure="a", investment_time_horizon="b", portfolio_type="c", booking_center_code="d", client_id="e", status="f"),
+            Portfolio(portfolio_id="P3_PENDING", base_currency="USD", open_date=date(2024,1,1), risk_exposure="a", investment_time_horizon="b", portfolio_type="c", booking_center_code="d", client_id="e", status="f"),
         ]
         session.add_all(portfolios)
         session.flush()

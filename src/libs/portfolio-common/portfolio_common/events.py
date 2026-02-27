@@ -6,43 +6,43 @@ from decimal import Decimal
 
 class BusinessDateEvent(BaseModel):
     """Event model for a raw business date."""
-    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
-    business_date: date = Field(..., alias="businessDate")
+    model_config = ConfigDict(from_attributes=True)
+    business_date: date = Field(...)
 
 class PortfolioEvent(BaseModel):
     """
     Event model for raw portfolio data.
     """
-    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+    model_config = ConfigDict(from_attributes=True)
 
-    portfolio_id: str = Field(..., alias="portfolioId")
-    base_currency: str = Field(..., alias="baseCurrency")
-    open_date: date = Field(..., alias="openDate")
-    close_date: Optional[date] = Field(None, alias="closeDate")
-    risk_exposure: str = Field(..., alias="riskExposure")
-    investment_time_horizon: str = Field(..., alias="investmentTimeHorizon")
-    portfolio_type: str = Field(..., alias="portfolioType")
+    portfolio_id: str = Field(...)
+    base_currency: str = Field(...)
+    open_date: date = Field(...)
+    close_date: Optional[date] = Field(None)
+    risk_exposure: str = Field(...)
+    investment_time_horizon: str = Field(...)
+    portfolio_type: str = Field(...)
     objective: Optional[str] = None
-    booking_center: str = Field(..., alias="bookingCenter")
-    cif_id: str = Field(..., alias="cifId")
-    is_leverage_allowed: bool = Field(False, alias="isLeverageAllowed")
-    advisor_id: Optional[str] = Field(None, alias="advisorId")
+    booking_center_code: str = Field(...)
+    client_id: str = Field(...)
+    is_leverage_allowed: bool = Field(False)
+    advisor_id: Optional[str] = Field(None)
     status: str
-    cost_basis_method: Optional[str] = Field("FIFO", alias="costBasisMethod")
+    cost_basis_method: Optional[str] = Field("FIFO")
 
 class FxRateEvent(BaseModel):
-    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+    model_config = ConfigDict(from_attributes=True)
 
-    from_currency: str = Field(..., alias="fromCurrency")
-    to_currency: str = Field(..., alias="toCurrency")
-    rate_date: date = Field(..., alias="rateDate")
+    from_currency: str = Field(...)
+    to_currency: str = Field(...)
+    rate_date: date = Field(...)
     rate: Decimal
 
 class MarketPriceEvent(BaseModel):
-    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+    model_config = ConfigDict(from_attributes=True)
 
-    security_id: str = Field(..., alias="securityId")
-    price_date: date = Field(..., alias="priceDate")
+    security_id: str = Field(...)
+    price_date: date = Field(...)
     price: Decimal
     currency: str
 
@@ -58,23 +58,23 @@ class MarketPricePersistedEvent(BaseModel):
     currency: str
 
 class InstrumentEvent(BaseModel):
-    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+    model_config = ConfigDict(from_attributes=True)
 
-    security_id: str = Field(..., alias="securityId")
+    security_id: str = Field(...)
     name: str
     isin: str
-    currency: str = Field(..., alias="instrumentCurrency")
-    product_type: str = Field(..., alias="productType")
-    asset_class: Optional[str] = Field(None, alias="assetClass")
+    currency: str = Field(...)
+    product_type: str = Field(...)
+    asset_class: Optional[str] = Field(None)
     sector: Optional[str] = None
-    country_of_risk: Optional[str] = Field(None, alias="countryOfRisk")
+    country_of_risk: Optional[str] = Field(None)
     rating: Optional[str] = None
-    maturity_date: Optional[date] = Field(None, alias="maturityDate")
-    issuer_id: Optional[str] = Field(None, alias="issuerId")
-    ultimate_parent_issuer_id: Optional[str] = Field(None, alias="ultimateParentIssuerId")
+    maturity_date: Optional[date] = Field(None)
+    issuer_id: Optional[str] = Field(None)
+    ultimate_parent_issuer_id: Optional[str] = Field(None)
 
 class TransactionEvent(BaseModel):
-    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+    model_config = ConfigDict(from_attributes=True)
 
     transaction_id: str
     portfolio_id: str
@@ -111,9 +111,9 @@ class DailyPositionSnapshotPersistedEvent(BaseModel):
     epoch: int
 
 class CashflowCalculatedEvent(BaseModel):
-    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+    model_config = ConfigDict(from_attributes=True)
 
-    cashflow_id: int = Field(..., alias="id")
+    cashflow_id: int = Field(...)
     transaction_id: str
     portfolio_id: str
     security_id: Optional[str] = None
@@ -125,7 +125,7 @@ class CashflowCalculatedEvent(BaseModel):
     timing: str
     is_position_flow: bool
     is_portfolio_flow: bool
-    calculation_type: str = Field(..., alias="calculationType")
+    calculation_type: str = Field(...)
 
 class PositionTimeseriesGeneratedEvent(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -171,3 +171,4 @@ class PerformanceCalculatedEvent(BaseModel):
 
     portfolio_id: str
     date: date
+

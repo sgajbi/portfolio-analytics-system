@@ -23,8 +23,8 @@ def mock_portfolio_repo() -> AsyncMock:
             risk_exposure="High",
             investment_time_horizon="Long",
             portfolio_type="Discretionary",
-            booking_center="SG",
-            cif_id="C100",
+            booking_center_code="SG",
+            client_id="C100",
             status="ACTIVE",
             is_leverage_allowed=False,
         )
@@ -48,7 +48,7 @@ async def test_get_portfolios(mock_portfolio_repo: AsyncMock):
         mock_db_session = AsyncMock(spec=AsyncSession)
         service = PortfolioService(mock_db_session)
 
-        filters = {"portfolio_id": "P1", "cif_id": "C100", "booking_center": "SG"}
+        filters = {"portfolio_id": "P1", "client_id": "C100", "booking_center_code": "SG"}
 
         # ACT
         response_dto = await service.get_portfolios(**filters)
@@ -61,7 +61,7 @@ async def test_get_portfolios(mock_portfolio_repo: AsyncMock):
         assert len(response_dto.portfolios) == 1
         portfolio_record = response_dto.portfolios[0]
         assert portfolio_record.portfolio_id == "P1"
-        assert portfolio_record.cif_id == "C100"
+        assert portfolio_record.client_id == "C100"
         assert portfolio_record.status == "ACTIVE"
 
 
@@ -93,8 +93,8 @@ async def test_get_portfolio_by_id_success(mock_portfolio_repo: AsyncMock):
             risk_exposure="High",
             investment_time_horizon="Long",
             portfolio_type="Discretionary",
-            booking_center="SG",
-            cif_id="C100",
+            booking_center_code="SG",
+            client_id="C100",
             status="ACTIVE",
             is_leverage_allowed=False,
         )
@@ -116,3 +116,4 @@ async def test_get_portfolio_by_id_not_found(mock_portfolio_repo: AsyncMock):
 
         with pytest.raises(ValueError, match="Portfolio with id P404 not found"):
             await service.get_portfolio_by_id("P404")
+

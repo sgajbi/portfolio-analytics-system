@@ -147,8 +147,8 @@ async def test_get_portfolio_lookups(async_test_client):
                 "investment_time_horizon": "LONG_TERM",
                 "portfolio_type": "DISCRETIONARY",
                 "objective": "GROWTH",
-                "booking_center": "LON-01",
-                "cif_id": "CIF-1",
+                "booking_center_code": "LON-01",
+                "client_id": "CIF-1",
                 "is_leverage_allowed": False,
                 "advisor_id": "ADV-1",
                 "status": "ACTIVE",
@@ -174,8 +174,8 @@ async def test_get_portfolio_lookups_filters_query_and_limit(async_test_client):
                 "investment_time_horizon": "LONG_TERM",
                 "portfolio_type": "DISCRETIONARY",
                 "objective": "GROWTH",
-                "booking_center": "LON-01",
-                "cif_id": "CIF-9",
+                "booking_center_code": "LON-01",
+                "client_id": "CIF-9",
                 "is_leverage_allowed": False,
                 "advisor_id": "ADV-9",
                 "status": "ACTIVE",
@@ -189,8 +189,8 @@ async def test_get_portfolio_lookups_filters_query_and_limit(async_test_client):
                 "investment_time_horizon": "LONG_TERM",
                 "portfolio_type": "DISCRETIONARY",
                 "objective": "GROWTH",
-                "booking_center": "LON-01",
-                "cif_id": "CIF-9",
+                "booking_center_code": "LON-01",
+                "client_id": "CIF-9",
                 "is_leverage_allowed": False,
                 "advisor_id": "ADV-9",
                 "status": "ACTIVE",
@@ -198,12 +198,12 @@ async def test_get_portfolio_lookups_filters_query_and_limit(async_test_client):
         ]
     )
 
-    response = await client.get("/lookups/portfolios?cif_id=CIF-9&q=PF_&limit=1")
+    response = await client.get("/lookups/portfolios?client_id=CIF-9&q=PF_&limit=1")
     assert response.status_code == 200
     assert response.json()["items"] == [{"id": "PF_1", "label": "PF_1"}]
     mock_portfolio_service.get_portfolios.assert_awaited_once_with(
-        cif_id="CIF-9",
-        booking_center=None,
+        client_id="CIF-9",
+        booking_center_code=None,
     )
 
 
@@ -279,8 +279,8 @@ async def test_get_currency_lookups(async_test_client):
                 "investment_time_horizon": "LONG_TERM",
                 "portfolio_type": "DISCRETIONARY",
                 "objective": "GROWTH",
-                "booking_center": "LON-01",
-                "cif_id": "CIF-1",
+                "booking_center_code": "LON-01",
+                "client_id": "CIF-1",
                 "is_leverage_allowed": False,
                 "advisor_id": "ADV-1",
                 "status": "ACTIVE",
@@ -341,8 +341,8 @@ async def test_get_currency_lookups_source_and_query(async_test_client):
                 "investment_time_horizon": "LONG_TERM",
                 "portfolio_type": "DISCRETIONARY",
                 "objective": "GROWTH",
-                "booking_center": "LON-01",
-                "cif_id": "CIF-1",
+                "booking_center_code": "LON-01",
+                "client_id": "CIF-1",
                 "is_leverage_allowed": False,
                 "advisor_id": "ADV-1",
                 "status": "ACTIVE",
@@ -369,3 +369,4 @@ async def test_get_currency_lookups_source_and_query(async_test_client):
     assert response.status_code == 200
     assert response.json()["items"] == [{"id": "USD", "label": "USD"}]
     mock_portfolio_service.get_portfolios.assert_not_called()
+

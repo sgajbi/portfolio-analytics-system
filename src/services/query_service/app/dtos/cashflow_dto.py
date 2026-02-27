@@ -14,6 +14,7 @@ class CashflowRecord(BaseModel):
     timing: str
     is_position_flow: bool
     is_portfolio_flow: bool
-    calculation_type: str = Field(..., alias="calculationType")
+    calculation_type: str = Field(...)
 
-    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+    model_config = ConfigDict(from_attributes=True)
+

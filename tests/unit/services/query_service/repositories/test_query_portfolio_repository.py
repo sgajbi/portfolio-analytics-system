@@ -80,7 +80,7 @@ async def test_get_portfolios_with_all_filters(
     THEN it should construct a SELECT statement with all corresponding WHERE clauses.
     """
     # ACT
-    await repository.get_portfolios(portfolio_id="P1", cif_id="C100", booking_center="SG")
+    await repository.get_portfolios(portfolio_id="P1", client_id="C100", booking_center_code="SG")
 
     # ASSERT
     mock_db_session.execute.assert_awaited_once()
@@ -88,8 +88,8 @@ async def test_get_portfolios_with_all_filters(
     compiled_query = str(executed_stmt.compile(compile_kwargs={"literal_binds": True}))
 
     assert "portfolios.portfolio_id = 'P1'" in compiled_query
-    assert "portfolios.cif_id = 'C100'" in compiled_query
-    assert "portfolios.booking_center = 'SG'" in compiled_query
+    assert "portfolios.client_id = 'C100'" in compiled_query
+    assert "portfolios.booking_center_code = 'SG'" in compiled_query
 
 
 async def test_get_by_id_returns_first_match(
@@ -113,3 +113,4 @@ async def test_get_by_id_returns_none_when_missing(
     portfolio = await repository.get_by_id("P404")
 
     assert portfolio is None
+

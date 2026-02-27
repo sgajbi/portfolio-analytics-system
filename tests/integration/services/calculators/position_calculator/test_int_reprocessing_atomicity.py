@@ -32,12 +32,12 @@ async def setup_repro_atomicity_data(async_db_session: AsyncSession):
             portfolio_id=PORTFOLIO_ID,
             base_currency="USD",
             open_date=date(2025, 1, 1),
-            cif_id="ATOM_CIF",
+            client_id="ATOM_CIF",
             status="ACTIVE",
             risk_exposure="a",
             investment_time_horizon="b",
             portfolio_type="c",
-            booking_center="d"
+            booking_center_code="d"
         )
     )
     

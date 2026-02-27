@@ -162,7 +162,7 @@ class UploadIngestionService:
                 continue
 
             valid_models.append(model)
-            valid_rows.append(model.model_dump(by_alias=True))
+            valid_rows.append(model.model_dump())
 
         return _ValidationResult(
             file_format=file_format,
@@ -260,3 +260,4 @@ def get_upload_ingestion_service(
     ingestion_service: IngestionService = Depends(get_ingestion_service),
 ) -> UploadIngestionService:
     return UploadIngestionService(ingestion_service)
+

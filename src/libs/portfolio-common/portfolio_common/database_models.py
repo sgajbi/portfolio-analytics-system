@@ -29,8 +29,8 @@ class Portfolio(Base):
     investment_time_horizon = Column(String, nullable=False)
     portfolio_type = Column(String, nullable=False)
     objective = Column(String, nullable=True)
-    booking_center = Column(String, nullable=False)
-    cif_id = Column(String, index=True, nullable=False)
+    booking_center_code = Column(String, nullable=False)
+    client_id = Column(String, index=True, nullable=False)
     is_leverage_allowed = Column(Boolean, default=False, nullable=False)
     advisor_id = Column(String, nullable=True)
     status = Column(String, nullable=False)
@@ -402,3 +402,4 @@ class CashflowRule(Base):
     is_portfolio_flow = Column(Boolean, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+

@@ -65,6 +65,9 @@ jobs:
       - name: OpenAPI Gate
         run: make openapi-gate
 
+      - name: API Vocabulary Gate
+        run: make api-vocabulary-gate
+
       - name: Migration Contract Smoke
         run: make migration-smoke
 

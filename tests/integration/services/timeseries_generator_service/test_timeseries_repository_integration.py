@@ -22,7 +22,7 @@ def setup_sequential_jobs(db_engine, clean_db):
     day2 = date(2025, 8, 19)
 
     with Session(db_engine) as session:
-        session.add(Portfolio(portfolio_id=portfolio_id, base_currency="USD", open_date=date(2024,1,1), risk_exposure="a", investment_time_horizon="b", portfolio_type="c", booking_center="d", cif_id="e", status="f"))
+        session.add(Portfolio(portfolio_id=portfolio_id, base_currency="USD", open_date=date(2024,1,1), risk_exposure="a", investment_time_horizon="b", portfolio_type="c", booking_center_code="d", client_id="e", status="f"))
         
         # --- NEW: Add PositionState record for the portfolio ---
         # The scheduler logic now depends on this to determine the correct epoch.

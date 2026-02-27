@@ -28,9 +28,9 @@ router = APIRouter()
     ),
 )
 async def preview_upload(
-    entity_type: UploadEntityType = Form(..., alias="entityType"),
+    entity_type: UploadEntityType = Form(...),
     file: UploadFile = File(...),
-    sample_size: int = Form(20, alias="sampleSize", ge=1, le=100),
+    sample_size: int = Form(20, ge=1, le=100),
     upload_service: UploadIngestionService = Depends(get_upload_ingestion_service),
 ):
     content = await file.read()
@@ -70,9 +70,9 @@ async def preview_upload(
     ),
 )
 async def commit_upload(
-    entity_type: UploadEntityType = Form(..., alias="entityType"),
+    entity_type: UploadEntityType = Form(...),
     file: UploadFile = File(...),
-    allow_partial: bool = Form(False, alias="allowPartial"),
+    allow_partial: bool = Form(False),
     upload_service: UploadIngestionService = Depends(get_upload_ingestion_service),
 ):
     content = await file.read()
@@ -92,3 +92,4 @@ async def commit_upload(
         },
     )
     return response
+

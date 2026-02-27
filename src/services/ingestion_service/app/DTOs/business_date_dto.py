@@ -8,7 +8,7 @@ class BusinessDate(BaseModel):
     """
     Represents a single business date for ingestion.
     """
-    business_date: date = Field(..., alias="businessDate", description="A valid business date.")
+    business_date: date = Field(..., description="A valid business date.")
 
 
 class BusinessDateIngestionRequest(BaseModel):

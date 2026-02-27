@@ -23,19 +23,18 @@ class WorkflowCapability(BaseModel):
 
 
 class IntegrationCapabilitiesResponse(BaseModel):
-    contract_version: str = Field(..., alias="contractVersion")
-    source_service: str = Field(..., alias="sourceService")
-    consumer_system: ConsumerSystem = Field(..., alias="consumerSystem")
-    tenant_id: str = Field(..., alias="tenantId")
-    generated_at: datetime = Field(..., alias="generatedAt")
-    as_of_date: date = Field(..., alias="asOfDate")
-    policy_version: str = Field(..., alias="policyVersion")
-    supported_input_modes: list[str] = Field(..., alias="supportedInputModes")
+    contract_version: str = Field(...)
+    source_service: str = Field(...)
+    consumer_system: ConsumerSystem = Field(...)
+    tenant_id: str = Field(...)
+    generated_at: datetime = Field(...)
+    as_of_date: date = Field(...)
+    policy_version: str = Field(...)
+    supported_input_modes: list[str] = Field(...)
     features: list[FeatureCapability]
     workflows: list[WorkflowCapability]
 
     model_config = {
-        "populate_by_name": True,
         "json_schema_extra": {
             "example": {
                 "contractVersion": "v1",
@@ -67,3 +66,4 @@ class IntegrationCapabilitiesResponse(BaseModel):
             }
         },
     }
+

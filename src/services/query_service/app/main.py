@@ -16,6 +16,7 @@ from portfolio_common.logging_utils import (
     trace_id_var,
 )
 from portfolio_common.monitoring import HTTP_REQUEST_LATENCY_SECONDS, HTTP_REQUESTS_TOTAL
+from portfolio_common.openapi_enrichment import enrich_openapi_schema
 from prometheus_fastapi_instrumentator import Instrumentator
 
 from .enterprise_readiness import (
@@ -82,6 +83,7 @@ def custom_openapi():
     )
     if isinstance(metrics_response, dict):
         metrics_response["content"] = {"text/plain": {"schema": {"type": "string"}}}
+    schema = enrich_openapi_schema(schema, service_name=SERVICE_NAME)
     app.openapi_schema = schema
     return app.openapi_schema
 
