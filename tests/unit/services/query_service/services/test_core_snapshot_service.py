@@ -16,6 +16,7 @@ from src.services.query_service.app.services.core_snapshot_service import (
     CoreSnapshotNotFoundError,
     CoreSnapshotService,
     CoreSnapshotUnavailableSectionError,
+    get_core_snapshot_service,
 )
 
 pytestmark = pytest.mark.asyncio
@@ -323,3 +324,103 @@ async def test_get_fx_rate_or_raise_identity_currency(mock_dependencies):
     service = CoreSnapshotService(AsyncMock())
     rate = await service._get_fx_rate_or_raise("USD", "USD", date(2026, 2, 27))
     assert rate == Decimal("1")
+
+
+async def test_resolve_baseline_positions_uses_history_fallback(mock_dependencies):
+    (position_repo, _, _, _, _, _) = mock_dependencies
+    position_repo.get_latest_positions_by_portfolio_as_of_date.return_value = []
+    position_repo.get_latest_position_history_by_portfolio_as_of_date.return_value = [
+        (
+            SimpleNamespace(
+                security_id="SEC_BOND_US",
+                quantity=Decimal("3"),
+                cost_basis=Decimal("45"),
+                cost_basis_local=Decimal("45"),
+            ),
+            _instrument("SEC_BOND_US", "USD", "BOND"),
+            SimpleNamespace(status="CURRENT"),
+        )
+    ]
+    service = CoreSnapshotService(AsyncMock())
+    rows = await service._resolve_baseline_positions(
+        portfolio_id="PORT_001",
+        as_of_date=date(2026, 2, 27),
+        reporting_fx=Decimal("1"),
+        include_cash=True,
+        include_zero=True,
+    )
+    assert rows["SEC_BOND_US"]["market_value_base"] == Decimal("45")
+
+
+async def test_resolve_baseline_positions_applies_cash_and_zero_filters(mock_dependencies):
+    (position_repo, _, _, _, _, _) = mock_dependencies
+    position_repo.get_latest_positions_by_portfolio_as_of_date.return_value = [
+        (_snapshot_row("SEC_CASH", Decimal("1"), Decimal("1"), Decimal("1")), _instrument("SEC_CASH", "USD", "CASH"), SimpleNamespace(status="CURRENT")),
+        (_snapshot_row("SEC_ZERO", Decimal("0"), Decimal("0"), Decimal("0")), _instrument("SEC_ZERO", "USD", "EQUITY"), SimpleNamespace(status="CURRENT")),
+    ]
+    service = CoreSnapshotService(AsyncMock())
+    rows = await service._resolve_baseline_positions(
+        portfolio_id="PORT_001",
+        as_of_date=date(2026, 2, 27),
+        reporting_fx=Decimal("1"),
+        include_cash=False,
+        include_zero=False,
+    )
+    assert rows == {}
+
+
+async def test_resolve_projected_positions_handles_non_positive_quantity_branch(mock_dependencies):
+    (_, _, simulation_repo, _, _, instrument_repo) = mock_dependencies
+    simulation_repo.get_changes.return_value = [
+        SimpleNamespace(
+            security_id="SEC_NEG",
+            transaction_type="SELL",
+            quantity=Decimal("1"),
+            amount=None,
+        )
+    ]
+    instrument_repo.get_by_security_ids.return_value = [_instrument("SEC_NEG")]
+    service = CoreSnapshotService(AsyncMock())
+    projected = await service._resolve_projected_positions(
+        session_id="SIM_1",
+        as_of_date=date(2026, 2, 27),
+        portfolio_base_currency="USD",
+        reporting_currency="USD",
+        baseline_positions={},
+        include_zero=True,
+        include_cash=True,
+    )
+    assert projected["SEC_NEG"]["market_value_base"] == Decimal("0")
+
+
+async def test_static_helpers_cover_zero_total_and_delta_paths():
+    items = {
+        "SEC_1": {
+            "security_id": "SEC_1",
+            "quantity": Decimal("1"),
+            "market_value_base": Decimal("0"),
+            "market_value_local": Decimal("0"),
+            "currency": "USD",
+        }
+    }
+    CoreSnapshotService._assign_baseline_weights(items, Decimal("0"))
+    CoreSnapshotService._assign_projected_weights(items, Decimal("0"))
+    assert items["SEC_1"]["position_record"].weight == Decimal("0")
+
+    baseline_total = CoreSnapshotService._total_market_value_baseline(items)
+    projected_total = CoreSnapshotService._total_market_value_projected(items)
+    assert baseline_total == Decimal("0")
+    assert projected_total == Decimal("0")
+
+    delta_rows = CoreSnapshotService._build_delta_section(
+        baseline_positions=items,
+        projected_positions={},
+        baseline_total=Decimal("0"),
+        projected_total=Decimal("0"),
+    )
+    assert delta_rows[0].delta_quantity == Decimal("-1")
+
+
+def test_get_core_snapshot_service_factory_returns_service():
+    service = get_core_snapshot_service(db=AsyncMock())
+    assert isinstance(service, CoreSnapshotService)
