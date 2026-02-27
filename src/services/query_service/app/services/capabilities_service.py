@@ -18,24 +18,24 @@ logger = logging.getLogger(__name__)
 
 
 _FEATURE_ENV_DEFAULTS: dict[str, tuple[str, bool]] = {
-    "pas.support.overview_api": ("PAS_CAP_SUPPORT_APIS_ENABLED", True),
-    "pas.support.lineage_api": ("PAS_CAP_LINEAGE_APIS_ENABLED", True),
-    "pas.ingestion.bulk_upload": ("PAS_CAP_UPLOAD_APIS_ENABLED", True),
-    "pas.simulation.what_if": ("PAS_CAP_SIMULATION_ENABLED", True),
+    "lotus_core.support.overview_api": ("LOTUS_CORE_CAP_SUPPORT_APIS_ENABLED", True),
+    "lotus_core.support.lineage_api": ("LOTUS_CORE_CAP_LINEAGE_APIS_ENABLED", True),
+    "lotus_core.ingestion.bulk_upload": ("LOTUS_CORE_CAP_UPLOAD_APIS_ENABLED", True),
+    "lotus_core.simulation.what_if": ("LOTUS_CORE_CAP_SIMULATION_ENABLED", True),
 }
 
 _WORKFLOW_DEPENDENCIES: dict[str, list[str]] = {
-    "advisor_workbench_overview": ["pas.support.overview_api"],
-    "portfolio_bulk_onboarding": ["pas.ingestion.bulk_upload"],
-    "portfolio_what_if_simulation": ["pas.simulation.what_if"],
+    "advisor_workbench_overview": ["lotus_core.support.overview_api"],
+    "portfolio_bulk_onboarding": ["lotus_core.ingestion.bulk_upload"],
+    "portfolio_what_if_simulation": ["lotus_core.simulation.what_if"],
 }
 
 _DEFAULT_INPUT_MODES_BY_CONSUMER: dict[str, list[str]] = {
-    "lotus-performance": ["pas_ref"],
-    "lotus-manage": ["pas_ref"],
-    "lotus-gateway": ["pas_ref"],
-    "UI": ["pas_ref"],
-    "UNKNOWN": ["pas_ref"],
+    "lotus-performance": ["lotus_core_ref"],
+    "lotus-manage": ["lotus_core_ref"],
+    "lotus-gateway": ["lotus_core_ref"],
+    "UI": ["lotus_core_ref"],
+    "UNKNOWN": ["lotus_core_ref"],
 }
 
 
@@ -49,20 +49,20 @@ class CapabilitiesService:
 
     @staticmethod
     def _load_tenant_overrides() -> dict[str, dict[str, Any]]:
-        raw = os.getenv("PAS_CAPABILITY_TENANT_OVERRIDES_JSON")
+        raw = os.getenv("LOTUS_CORE_CAPABILITY_TENANT_OVERRIDES_JSON")
         if not raw:
             return {}
         try:
             decoded = json.loads(raw)
         except json.JSONDecodeError:
             logger.warning(
-                "Invalid PAS_CAPABILITY_TENANT_OVERRIDES_JSON; ignoring tenant overrides.",
+                "Invalid LOTUS_CORE_CAPABILITY_TENANT_OVERRIDES_JSON; ignoring tenant overrides.",
             )
             return {}
 
         if not isinstance(decoded, dict):
             logger.warning(
-                "PAS_CAPABILITY_TENANT_OVERRIDES_JSON must be a JSON object; ignoring tenant overrides.",
+                "LOTUS_CORE_CAPABILITY_TENANT_OVERRIDES_JSON must be a JSON object; ignoring tenant overrides.",
             )
             return {}
 
@@ -82,9 +82,9 @@ class CapabilitiesService:
             key: self._env_bool(env_name, default)
             for key, (env_name, default) in _FEATURE_ENV_DEFAULTS.items()
         }
-        policy_version = os.getenv("PAS_POLICY_VERSION", "tenant-default-v1")
+        policy_version = os.getenv("LOTUS_CORE_POLICY_VERSION", "tenant-default-v1")
         supported_input_modes = list(
-            _DEFAULT_INPUT_MODES_BY_CONSUMER.get(consumer_system, ["pas_ref"])
+            _DEFAULT_INPUT_MODES_BY_CONSUMER.get(consumer_system, ["lotus_core_ref"])
         )
 
         tenant_policy = self._load_tenant_overrides().get(tenant_id)
@@ -104,11 +104,11 @@ class CapabilitiesService:
             else:
                 policy_workflow_overrides = {}
 
-            tenant_policy_version = tenant_policy.get("policyVersion")
+            tenant_policy_version = tenant_policy.get("policy_version")
             if isinstance(tenant_policy_version, str) and tenant_policy_version.strip():
                 policy_version = tenant_policy_version.strip()
 
-            input_modes = tenant_policy.get("supportedInputModes", {})
+            input_modes = tenant_policy.get("supported_input_modes", {})
             if isinstance(input_modes, dict):
                 consumer_modes = input_modes.get(consumer_system)
                 fallback_modes = input_modes.get("default")
@@ -124,26 +124,26 @@ class CapabilitiesService:
 
         features = [
             FeatureCapability(
-                key="pas.support.overview_api",
-                enabled=feature_states["pas.support.overview_api"],
+                key="lotus_core.support.overview_api",
+                enabled=feature_states["lotus_core.support.overview_api"],
                 owner_service="lotus-core",
                 description="Support diagnostics and operational support APIs.",
             ),
             FeatureCapability(
-                key="pas.support.lineage_api",
-                enabled=feature_states["pas.support.lineage_api"],
+                key="lotus_core.support.lineage_api",
+                enabled=feature_states["lotus_core.support.lineage_api"],
                 owner_service="lotus-core",
                 description="Lineage and epoch/watermark traceability APIs.",
             ),
             FeatureCapability(
-                key="pas.ingestion.bulk_upload",
-                enabled=feature_states["pas.ingestion.bulk_upload"],
+                key="lotus_core.ingestion.bulk_upload",
+                enabled=feature_states["lotus_core.ingestion.bulk_upload"],
                 owner_service="lotus-core",
                 description="CSV/XLSX preview+commit onboarding APIs.",
             ),
             FeatureCapability(
-                key="pas.simulation.what_if",
-                enabled=feature_states["pas.simulation.what_if"],
+                key="lotus_core.simulation.what_if",
+                enabled=feature_states["lotus_core.simulation.what_if"],
                 owner_service="lotus-core",
                 description="Sandbox what-if simulation session APIs.",
             ),
@@ -159,7 +159,7 @@ class CapabilitiesService:
                         for key in _WORKFLOW_DEPENDENCIES["advisor_workbench_overview"]
                     ),
                 ),
-                required_features=["pas.support.overview_api"],
+                required_features=["lotus_core.support.overview_api"],
             ),
             WorkflowCapability(
                 workflow_key="portfolio_bulk_onboarding",
@@ -170,7 +170,7 @@ class CapabilitiesService:
                         for key in _WORKFLOW_DEPENDENCIES["portfolio_bulk_onboarding"]
                     ),
                 ),
-                required_features=["pas.ingestion.bulk_upload"],
+                required_features=["lotus_core.ingestion.bulk_upload"],
             ),
             WorkflowCapability(
                 workflow_key="portfolio_what_if_simulation",
@@ -181,19 +181,19 @@ class CapabilitiesService:
                         for key in _WORKFLOW_DEPENDENCIES["portfolio_what_if_simulation"]
                     ),
                 ),
-                required_features=["pas.simulation.what_if"],
+                required_features=["lotus_core.simulation.what_if"],
             ),
         ]
 
         return IntegrationCapabilitiesResponse(
-            contractVersion="v1",
-            sourceService="lotus-core",
-            consumerSystem=consumer_system,
-            tenantId=tenant_id,
-            generatedAt=datetime.now(UTC),
-            asOfDate=date.today(),
-            policyVersion=policy_version,
-            supportedInputModes=supported_input_modes,
+            contract_version="v1",
+            source_service="lotus-core",
+            consumer_system=consumer_system,
+            tenant_id=tenant_id,
+            generated_at=datetime.now(UTC),
+            as_of_date=date.today(),
+            policy_version=policy_version,
+            supported_input_modes=supported_input_modes,
             features=features,
             workflows=workflows,
         )

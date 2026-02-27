@@ -13,7 +13,6 @@ from .transaction_dto import Transaction
 class PortfolioBundleIngestionRequest(BaseModel):
     source_system: Optional[str] = Field(
         None,
-        alias="sourceSystem",
         description="Upstream source system identifier for audit and lineage.",
         json_schema_extra={"example": "UI_UPLOAD"},
     )
@@ -21,12 +20,12 @@ class PortfolioBundleIngestionRequest(BaseModel):
         "UPSERT",
         description="Ingestion mode for bundle semantics; current behavior is UPSERT-style event publication.",
     )
-    business_dates: List[BusinessDate] = Field(default_factory=list, alias="businessDates")
+    business_dates: List[BusinessDate] = Field(default_factory=list)
     portfolios: List[Portfolio] = Field(default_factory=list)
     instruments: List[Instrument] = Field(default_factory=list)
     transactions: List[Transaction] = Field(default_factory=list)
-    market_prices: List[MarketPrice] = Field(default_factory=list, alias="marketPrices")
-    fx_rates: List[FxRate] = Field(default_factory=list, alias="fxRates")
+    market_prices: List[MarketPrice] = Field(default_factory=list)
+    fx_rates: List[FxRate] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def validate_non_empty_bundle(self):
@@ -47,7 +46,6 @@ class PortfolioBundleIngestionRequest(BaseModel):
         return self
 
     model_config = {
-        "populate_by_name": True,
         "json_schema_extra": {
             "example": {
                 "sourceSystem": "UI_UPLOAD",
@@ -109,3 +107,4 @@ class PortfolioBundleIngestionRequest(BaseModel):
             }
         },
     }
+

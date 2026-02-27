@@ -40,10 +40,10 @@ def _filter_limit_sort_items(
     description="Returns portfolio selector options for lotus-gateway/UI portfolio selection workflows.",
 )
 async def get_portfolio_lookups(
-    cif_id: str | None = Query(
+    client_id: str | None = Query(
         default=None, description="Optional CIF filter for tenant/client scoping."
     ),
-    booking_center: str | None = Query(
+    booking_center_code: str | None = Query(
         default=None,
         description="Optional booking-center filter for business-unit specific catalogs.",
     ),
@@ -55,7 +55,9 @@ async def get_portfolio_lookups(
     db: AsyncSession = Depends(get_async_db_session),
 ) -> LookupResponse:
     service = PortfolioService(db)
-    response = await service.get_portfolios(cif_id=cif_id, booking_center=booking_center)
+    response = await service.get_portfolios(
+        client_id=client_id, booking_center_code=booking_center_code
+    )
 
     items = [
         LookupItem(

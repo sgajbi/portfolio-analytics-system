@@ -119,8 +119,8 @@ def upgrade() -> None:
     sa.Column('investment_time_horizon', sa.String(), nullable=False),
     sa.Column('portfolio_type', sa.String(), nullable=False),
     sa.Column('objective', sa.String(), nullable=True),
-    sa.Column('booking_center', sa.String(), nullable=False),
-    sa.Column('cif_id', sa.String(), nullable=False),
+    sa.Column('booking_center_code', sa.String(), nullable=False),
+    sa.Column('client_id', sa.String(), nullable=False),
     sa.Column('is_leverage_allowed', sa.Boolean(), nullable=False),
     sa.Column('advisor_id', sa.String(), nullable=True),
     sa.Column('status', sa.String(), nullable=False),
@@ -128,7 +128,7 @@ def upgrade() -> None:
     sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.PrimaryKeyConstraint('id')
     )
-    op.create_index(op.f('ix_portfolios_cif_id'), 'portfolios', ['cif_id'], unique=False)
+    op.create_index(op.f('ix_portfolios_client_id'), 'portfolios', ['client_id'], unique=False)
     op.create_index(op.f('ix_portfolios_portfolio_id'), 'portfolios', ['portfolio_id'], unique=True)
     op.create_table('processed_events',
     sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
@@ -323,7 +323,7 @@ def downgrade() -> None:
     op.drop_table('recalculation_jobs')
     op.drop_table('processed_events')
     op.drop_index(op.f('ix_portfolios_portfolio_id'), table_name='portfolios')
-    op.drop_index(op.f('ix_portfolios_cif_id'), table_name='portfolios')
+    op.drop_index(op.f('ix_portfolios_client_id'), table_name='portfolios')
     op.drop_table('portfolios')
     op.drop_index(op.f('ix_portfolio_valuation_jobs_valuation_date'), table_name='portfolio_valuation_jobs')
     op.drop_index(op.f('ix_portfolio_valuation_jobs_status'), table_name='portfolio_valuation_jobs')

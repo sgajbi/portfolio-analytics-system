@@ -35,7 +35,7 @@ def test_query_by_portfolio_id(setup_portfolio_data, e2e_api_client: E2EApiClien
 
 def test_query_by_cif_id(setup_portfolio_data, e2e_api_client: E2EApiClient):
     """Tests fetching all portfolios belonging to a specific client (CIF ID)."""
-    response = e2e_api_client.query("/portfolios?cif_id=CIF_100")
+    response = e2e_api_client.query("/portfolios?client_id=CIF_100")
     data = response.json()
 
     assert len(data["portfolios"]) == 2
@@ -45,7 +45,7 @@ def test_query_by_cif_id(setup_portfolio_data, e2e_api_client: E2EApiClient):
 
 def test_query_by_booking_center(setup_portfolio_data, e2e_api_client: E2EApiClient):
     """Tests fetching all portfolios from a specific booking center."""
-    response = e2e_api_client.query("/portfolios?booking_center=Zurich")
+    response = e2e_api_client.query("/portfolios?booking_center_code=Zurich")
     data = response.json()
 
     assert len(data["portfolios"]) == 1

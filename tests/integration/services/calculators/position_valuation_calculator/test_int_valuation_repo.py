@@ -42,10 +42,10 @@ def setup_holdings_data(db_engine):
     """
     with Session(db_engine) as session:
         session.add_all([
-            Portfolio(portfolio_id="P1", base_currency="USD", open_date=date(2024,1,1), risk_exposure="a", investment_time_horizon="b", portfolio_type="c", booking_center="d", cif_id="e", status="f"),
-            Portfolio(portfolio_id="P2", base_currency="USD", open_date=date(2024,1,1), risk_exposure="a", investment_time_horizon="b", portfolio_type="c", booking_center="d", cif_id="e", status="f"),
-            Portfolio(portfolio_id="P3", base_currency="USD", open_date=date(2024,1,1), risk_exposure="a", investment_time_horizon="b", portfolio_type="c", booking_center="d", cif_id="e", status="f"),
-            Portfolio(portfolio_id="P4", base_currency="USD", open_date=date(2024,1,1), risk_exposure="a", investment_time_horizon="b", portfolio_type="c", booking_center="d", cif_id="e", status="f"),
+            Portfolio(portfolio_id="P1", base_currency="USD", open_date=date(2024,1,1), risk_exposure="a", investment_time_horizon="b", portfolio_type="c", booking_center_code="d", client_id="e", status="f"),
+            Portfolio(portfolio_id="P2", base_currency="USD", open_date=date(2024,1,1), risk_exposure="a", investment_time_horizon="b", portfolio_type="c", booking_center_code="d", client_id="e", status="f"),
+            Portfolio(portfolio_id="P3", base_currency="USD", open_date=date(2024,1,1), risk_exposure="a", investment_time_horizon="b", portfolio_type="c", booking_center_code="d", client_id="e", status="f"),
+            Portfolio(portfolio_id="P4", base_currency="USD", open_date=date(2024,1,1), risk_exposure="a", investment_time_horizon="b", portfolio_type="c", booking_center_code="d", client_id="e", status="f"),
         ])
         session.add_all([
             Transaction(transaction_id="T1", portfolio_id="P1", instrument_id="I1", security_id="S1", transaction_date=datetime.now(), transaction_type="BUY", quantity=1, price=1, gross_transaction_amount=1, trade_currency="USD", currency="USD"),
@@ -73,7 +73,7 @@ def setup_snapshot_data(db_engine):
     """
     with Session(db_engine) as session:
         portfolios = [
-            Portfolio(portfolio_id=f"P{i}", base_currency="USD", open_date=date(2024,1,1), risk_exposure="a", investment_time_horizon="b", portfolio_type="c", booking_center="d", cif_id=f"e{i}", status="f")
+            Portfolio(portfolio_id=f"P{i}", base_currency="USD", open_date=date(2024,1,1), risk_exposure="a", investment_time_horizon="b", portfolio_type="c", booking_center_code="d", client_id=f"e{i}", status="f")
             for i in range(1, 5)
         ]
         session.add_all(portfolios)
@@ -107,8 +107,8 @@ def setup_first_open_date_data(db_engine):
     """Sets up position history records for testing the first_open_date query."""
     with Session(db_engine) as session:
         session.add_all([
-            Portfolio(portfolio_id="P1", base_currency="USD", open_date=date(2024,1,1), risk_exposure="a", investment_time_horizon="b", portfolio_type="c", booking_center="d", cif_id="e", status="f"),
-            Portfolio(portfolio_id="P2", base_currency="USD", open_date=date(2024,1,1), risk_exposure="a", investment_time_horizon="b", portfolio_type="c", booking_center="d", cif_id="e", status="f"),
+            Portfolio(portfolio_id="P1", base_currency="USD", open_date=date(2024,1,1), risk_exposure="a", investment_time_horizon="b", portfolio_type="c", booking_center_code="d", client_id="e", status="f"),
+            Portfolio(portfolio_id="P2", base_currency="USD", open_date=date(2024,1,1), risk_exposure="a", investment_time_horizon="b", portfolio_type="c", booking_center_code="d", client_id="e", status="f"),
         ])
         session.add_all([
             Transaction(transaction_id="T1", portfolio_id="P1", instrument_id="I1", security_id="S1", transaction_date=date(2025,1,1), transaction_type="BUY", quantity=1, price=1, gross_transaction_amount=1, trade_currency="USD", currency="USD"),

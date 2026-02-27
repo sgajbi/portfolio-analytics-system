@@ -13,8 +13,8 @@ lotus-core must expose backend-driven capability metadata to support:
 ## Decision
 
 Implement `GET /integration/capabilities` in lotus-core query-service with:
-1. consumer-aware capability resolution (`consumerSystem`)
-2. tenant-aware context (`tenantId`)
+1. consumer-aware capability resolution (`consumer_system`)
+2. tenant-aware context (`tenant_id`)
 3. policy/capability metadata response including supported input modes.
 
 Initial implementation resolves feature flags from environment variables. This is an interim step until centralized policy-pack configuration is introduced.

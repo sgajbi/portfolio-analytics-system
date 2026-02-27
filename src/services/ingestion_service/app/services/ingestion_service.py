@@ -38,7 +38,7 @@ class IngestionService:
         for business_date in business_dates:
             # Key by the date string to ensure messages for the same date go to the same partition
             key = business_date.business_date.isoformat()
-            payload = business_date.model_dump(by_alias=True)
+            payload = business_date.model_dump()
             self._kafka_producer.publish_message(
                 topic=KAFKA_RAW_BUSINESS_DATES_TOPIC,
                 key=key,
@@ -51,7 +51,7 @@ class IngestionService:
         """Publishes a list of portfolios to the raw portfolios topic."""
         headers = self._get_headers()
         for portfolio in portfolios:
-            portfolio_payload = portfolio.model_dump(by_alias=True)
+            portfolio_payload = portfolio.model_dump()
             self._kafka_producer.publish_message(
                 topic=KAFKA_RAW_PORTFOLIOS_TOPIC,
                 key=portfolio.portfolio_id,
@@ -89,7 +89,7 @@ class IngestionService:
         """Publishes a list of instruments to the instruments topic."""
         headers = self._get_headers()
         for instrument in instruments:
-            instrument_payload = instrument.model_dump(by_alias=True)
+            instrument_payload = instrument.model_dump()
             self._kafka_producer.publish_message(
                 topic=KAFKA_INSTRUMENTS_TOPIC,
                 key=instrument.security_id,
@@ -102,7 +102,7 @@ class IngestionService:
         """Publishes a list of market prices to the market prices topic."""
         headers = self._get_headers()
         for price in market_prices:
-            price_payload = price.model_dump(by_alias=True)
+            price_payload = price.model_dump()
             self._kafka_producer.publish_message(
                 topic=KAFKA_MARKET_PRICES_TOPIC,
                 key=price.security_id,
@@ -116,7 +116,7 @@ class IngestionService:
         headers = self._get_headers()
         for rate in fx_rates:
             key = f"{rate.from_currency}-{rate.to_currency}"
-            rate_payload = rate.model_dump(by_alias=True)
+            rate_payload = rate.model_dump()
             self._kafka_producer.publish_message(
                 topic=KAFKA_FX_RATES_TOPIC,
                 key=key,
@@ -152,3 +152,4 @@ def get_ingestion_service(
 ) -> IngestionService:
     """Dependency injector for the IngestionService."""
     return IngestionService(kafka_producer)
+

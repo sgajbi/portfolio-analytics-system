@@ -30,10 +30,10 @@ class PortfolioRecord(BaseModel):
     objective: Optional[str] = Field(
         None, description="Primary client objective for this portfolio.", examples=["GROWTH"]
     )
-    booking_center: str = Field(
+    booking_center_code: str = Field(
         ..., description="Booking center owning the portfolio.", examples=["LON-01"]
     )
-    cif_id: str = Field(..., description="Client CIF identifier.", examples=["CIF-12345"])
+    client_id: str = Field(..., description="Client CIF identifier.", examples=["CIF-12345"])
     is_leverage_allowed: bool = Field(
         ..., description="Whether leverage is allowed for this portfolio.", examples=[False]
     )

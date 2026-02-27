@@ -1,6 +1,6 @@
 # RFC: Epoch and Watermark-Based Reprocessing
 
-This document outlines a new architecture for handling back-dated events in the portfolio analytics system. It replaces the complex, implicit recalculation logic with a deterministic, epoch-based reprocessing model.
+This document outlines a new architecture for handling back-dated events in the lotus-core platform. It replaces the complex, implicit recalculation logic with a deterministic, epoch-based reprocessing model.
 
 ### **1. Summary**
 

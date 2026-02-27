@@ -34,8 +34,8 @@ def setup_cashflow_data(db_engine, clean_db):
                 risk_exposure="a",
                 investment_time_horizon="b",
                 portfolio_type="c",
-                booking_center="d",
-                cif_id="e",
+                booking_center_code="d",
+                client_id="e",
                 status="f",
             )
         )
@@ -251,3 +251,4 @@ async def test_get_income_cashflows_is_epoch_aware(
     # Verify it returned the record from epoch 1 and filtered out the one from epoch 0
     assert results[0].epoch == 1
     assert results[0].amount == Decimal("100")
+

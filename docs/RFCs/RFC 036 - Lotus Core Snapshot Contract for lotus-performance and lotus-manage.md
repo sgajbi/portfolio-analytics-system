@@ -15,9 +15,9 @@ Introduces a versioned lotus-core integration contract endpoint that provides a 
 ## Contract Properties
 
 1. `contractVersion` for schema versioning.
-2. `asOfDate` control in request payload.
-3. `includeSections` to choose payload breadth per consumer use case.
-4. `consumerSystem` field for integration traceability.
+2. `as_of_date` control in request payload.
+3. `include_sections` to choose payload breadth per consumer use case.
+4. `consumer_system` field for integration traceability.
 
 ## Response Composition
 

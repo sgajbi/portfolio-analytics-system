@@ -13,10 +13,7 @@ logger = logging.getLogger(__name__)
 
 _CONSUMER_CANONICAL_MAP: dict[str, str] = {
     "LOTUS-MANAGE": "lotus-manage",
-    "DPM": "lotus-manage",
     "LOTUS-GATEWAY": "lotus-gateway",
-    "AEA": "lotus-gateway",
-    "BFF": "lotus-gateway",
     "UI": "UI",
 }
 
@@ -45,13 +42,13 @@ class IntegrationService:
 
     @staticmethod
     def _load_policy() -> dict[str, Any]:
-        raw = os.getenv("PAS_INTEGRATION_SNAPSHOT_POLICY_JSON")
+        raw = os.getenv("LOTUS_CORE_INTEGRATION_SNAPSHOT_POLICY_JSON")
         if not raw:
             return {}
         try:
             decoded = json.loads(raw)
         except json.JSONDecodeError:
-            logger.warning("Invalid PAS_INTEGRATION_SNAPSHOT_POLICY_JSON; using defaults.")
+            logger.warning("Invalid LOTUS_CORE_INTEGRATION_SNAPSHOT_POLICY_JSON; using defaults.")
             return {}
         if not isinstance(decoded, dict):
             return {}
@@ -91,7 +88,7 @@ class IntegrationService:
     def _resolve_policy_context(self, tenant_id: str, consumer_system: str) -> PolicyContext:
         policy = self._load_policy()
 
-        strict_mode = self._coerce_bool(policy.get("strictMode"), default=False)
+        strict_mode = self._coerce_bool(policy.get("strict_mode"), default=False)
         policy_source = "default"
         matched_rule_id = "default"
         warnings: list[str] = []
@@ -108,7 +105,7 @@ class IntegrationService:
         tenant_policy_raw = tenants.get(tenant_id) if isinstance(tenants, dict) else None
         if isinstance(tenant_policy_raw, dict):
             strict_mode = self._coerce_bool(
-                tenant_policy_raw.get("strictMode"), default=strict_mode
+                tenant_policy_raw.get("strict_mode"), default=strict_mode
             )
             tenant_consumers = tenant_policy_raw.get("consumers")
             tenant_allowed, tenant_match_key = self._resolve_consumer_sections(
@@ -116,26 +113,26 @@ class IntegrationService:
                 consumer_system,
             )
             if tenant_allowed is None:
-                tenant_allowed = self._normalize_sections(tenant_policy_raw.get("defaultSections"))
+                tenant_allowed = self._normalize_sections(tenant_policy_raw.get("default_sections"))
             if tenant_allowed is not None:
                 allowed_sections = tenant_allowed
                 policy_source = "tenant"
                 if tenant_match_key is not None:
                     matched_rule_id = f"tenant.{tenant_id}.consumers.{tenant_match_key}"
                 else:
-                    matched_rule_id = f"tenant.{tenant_id}.defaultSections"
-            elif isinstance(tenant_policy_raw.get("defaultSections"), list):
+                    matched_rule_id = f"tenant.{tenant_id}.default_sections"
+            elif isinstance(tenant_policy_raw.get("default_sections"), list):
                 policy_source = "tenant"
-                matched_rule_id = f"tenant.{tenant_id}.defaultSections"
-            if "strictMode" in tenant_policy_raw and matched_rule_id == "default":
+                matched_rule_id = f"tenant.{tenant_id}.default_sections"
+            if "strict_mode" in tenant_policy_raw and matched_rule_id == "default":
                 policy_source = "tenant"
-                matched_rule_id = f"tenant.{tenant_id}.strictMode"
+                matched_rule_id = f"tenant.{tenant_id}.strict_mode"
 
         if allowed_sections is None:
             warnings.append("NO_ALLOWED_SECTION_RESTRICTION")
 
         return PolicyContext(
-            policy_version=os.getenv("PAS_POLICY_VERSION", "tenant-default-v1"),
+            policy_version=os.getenv("LOTUS_CORE_POLICY_VERSION", "tenant-default-v1"),
             policy_source=policy_source,
             matched_rule_id=matched_rule_id,
             strict_mode=strict_mode,
@@ -168,15 +165,15 @@ class IntegrationService:
             allowed_sections = []
 
         return EffectiveIntegrationPolicyResponse(
-            consumerSystem=normalized_consumer,
-            tenantId=tenant_id,
-            generatedAt=datetime.now(UTC),
-            policyProvenance=PolicyProvenanceMetadata(
-                policyVersion=policy_context.policy_version,
-                policySource=policy_context.policy_source,
-                matchedRuleId=policy_context.matched_rule_id,
-                strictMode=policy_context.strict_mode,
+            consumer_system=normalized_consumer,
+            tenant_id=tenant_id,
+            generated_at=datetime.now(UTC),
+            policy_provenance=PolicyProvenanceMetadata(
+                policy_version=policy_context.policy_version,
+                policy_source=policy_context.policy_source,
+                matched_rule_id=policy_context.matched_rule_id,
+                strict_mode=policy_context.strict_mode,
             ),
-            allowedSections=allowed_sections,
+            allowed_sections=allowed_sections,
             warnings=policy_context.warnings,
         )

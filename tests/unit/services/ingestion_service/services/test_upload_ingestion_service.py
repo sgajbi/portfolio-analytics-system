@@ -65,9 +65,9 @@ def test_preview_upload_csv_with_mixed_rows(upload_service: UploadIngestionServi
     assert response.errors[0].row_number == 3
 
 
-def test_preview_upload_xlsx_alias_headers(upload_service: UploadIngestionService) -> None:
+def test_preview_upload_xlsx_canonical_headers(upload_service: UploadIngestionService) -> None:
     content = _xlsx_bytes(
-        headers=["securityId", "name", "isin", "instrumentCurrency", "productType"],
+        headers=["security_id", "name", "isin", "currency", "product_type"],
         rows=[["SEC1", "Bond A", "ISIN1", "USD", "Bond"]],
     )
 
@@ -82,7 +82,7 @@ def test_preview_upload_xlsx_alias_headers(upload_service: UploadIngestionServic
     assert response.total_rows == 1
     assert response.valid_rows == 1
     assert response.invalid_rows == 0
-    assert response.sample_rows[0]["securityId"] == "SEC1"
+    assert response.sample_rows[0]["security_id"] == "SEC1"
 
 
 @pytest.mark.asyncio

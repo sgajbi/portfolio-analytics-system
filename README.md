@@ -1,5 +1,5 @@
 
-# Portfolio Analytics System
+# Lotus Core
 
 This system provides a comprehensive suite of core portfolio services, including ingestion, persistence, position tracking, valuation, cashflow processing, timeseries generation, and simulation. It is designed as a distributed, event-driven architecture using Kafka for messaging and PostgreSQL for data persistence.
 
@@ -220,48 +220,34 @@ make test-e2e-smoke
     For lotus-performance/lotus-manage style integration contracts, lotus-core query-service supports:
 
     ```bash
-    curl -X POST "http://localhost:8201/integration/portfolios/PORT001/core-snapshot" \
-      -H "Content-Type: application/json" \
-      -d '{"asOfDate":"2026-02-23","includeSections":["OVERVIEW","ALLOCATION","HOLDINGS","TRANSACTIONS"],"consumerSystem":"lotus-performance"}'
+    curl "http://localhost:8201/integration/policy/effective?consumer_system=lotus-performance&tenant_id=default&include_sections=OVERVIEW&include_sections=HOLDINGS"
 
-    curl "http://localhost:8201/integration/policy/effective?consumerSystem=lotus-performance&tenantId=default&includeSections=OVERVIEW&includeSections=HOLDINGS"
-
-    curl "http://localhost:8201/integration/capabilities?consumerSystem=lotus-gateway&tenantId=default"
+    curl "http://localhost:8201/integration/capabilities?consumer_system=lotus-gateway&tenant_id=default"
     ```
 
-    Core snapshot governance/freshness controls (optional):
+    Integration policy controls (optional):
 
-    - `PAS_INTEGRATION_SNAPSHOT_POLICY_JSON`: policy object for section governance.
+    - `LOTUS_CORE_INTEGRATION_SNAPSHOT_POLICY_JSON`: policy object for section governance.
       Supports:
-      - `strictMode`
+      - `strict_mode`
       - `consumers` (consumer -> allowed sections)
-      - `tenants` (tenant overrides for `strictMode`, `consumers`, `defaultSections`)
-    - `PAS_DEFAULT_TENANT_ID`: tenant context used by integration snapshot policy resolution.
-    - `PAS_INTEGRATION_MAX_STALENESS_DAYS`: freshness threshold for `metadata.freshnessStatus`.
-
-    Core snapshot response includes `metadata` with:
-    - `generatedAt`
-    - `sourceAsOfDate`
-    - `freshnessStatus`
-    - `lineageRefs`
-    - `sectionGovernance` (`requestedSections`, `effectiveSections`, `droppedSections`, `warnings`)
-    - `policyProvenance` (`policyVersion`, `policySource`, `matchedRuleId`, `strictMode`)
+      - `tenants` (tenant overrides for `strict_mode`, `consumers`, `default_sections`)
 
     Integration capability policy overrides (optional):
 
-    - `PAS_POLICY_VERSION`: default global policy version label.
-    - `PAS_CAPABILITY_TENANT_OVERRIDES_JSON`: tenant-scoped policy overrides used by
+    - `LOTUS_CORE_POLICY_VERSION`: default global policy version label.
+    - `LOTUS_CORE_CAPABILITY_TENANT_OVERRIDES_JSON`: tenant-scoped policy overrides used by
       `GET /integration/capabilities`.
       Supported keys per tenant:
-      - `policyVersion`
+      - `policy_version`
       - `features` (map of feature key -> boolean)
       - `workflows` (map of workflow key -> boolean override)
-      - `supportedInputModes` (map of consumer system -> list, plus optional `default`)
+      - `supported_input_modes` (map of consumer system -> list, plus optional `default`)
 
     Example:
 
     ```bash
-    export PAS_CAPABILITY_TENANT_OVERRIDES_JSON='{"tenant-a":{"policyVersion":"tenant-a-v7","features":{"pas.ingestion.bulk_upload":false},"supportedInputModes":{"lotus-performance":["pas_ref"],"default":["pas_ref"]}}}'
+    export LOTUS_CORE_CAPABILITY_TENANT_OVERRIDES_JSON='{"tenant-a":{"policy_version":"tenant-a-v7","features":{"lotus_core.ingestion.bulk_upload":false},"supported_input_modes":{"lotus-performance":["lotus_core_ref"],"default":["lotus_core_ref"]}}}'
     ```
 
 2.  **Query the API**:

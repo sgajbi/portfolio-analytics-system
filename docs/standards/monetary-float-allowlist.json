@@ -28,7 +28,7 @@
       "review_by": "2026-08-26"
     },
     {
-      "finding": "src/services/query_service/app/dtos/position_analytics_dto.py:89:total_market_value: float = Field(..., alias=\"totalMarketValue\")",
+      "finding": "src/services/query_service/app/dtos/position_analytics_dto.py:89:total_market_value: float = Field(...)",
       "justification": "Temporary approved monetary float usage; migrate to Decimal.",
       "owner": "platform-governance",
       "review_by": "2026-08-26"

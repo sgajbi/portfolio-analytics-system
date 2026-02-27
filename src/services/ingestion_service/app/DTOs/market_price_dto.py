@@ -8,13 +8,12 @@ class MarketPrice(BaseModel):
     """
     Represents the market price for a security on a specific date.
     """
-    security_id: str = Field(..., alias="securityId", description="Unique identifier for the security.")
-    price_date: date = Field(..., alias="priceDate", description="The date for which the price is valid.")
+    security_id: str = Field(..., description="Unique identifier for the security.")
+    price_date: date = Field(..., description="The date for which the price is valid.")
     price: condecimal(gt=Decimal(0)) = Field(..., description="The closing market price of the security.")
     currency: str = Field(..., description="The currency of the market price.")
 
     model_config = ConfigDict(
-        populate_by_name=True,
         json_schema_extra={
             "example": {
                 "securityId": "SEC_AAPL",
@@ -30,3 +29,4 @@ class MarketPriceIngestionRequest(BaseModel):
     Represents the request body for ingesting a list of market prices.
     """
     market_prices: List[MarketPrice]
+

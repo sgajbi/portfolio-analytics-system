@@ -75,7 +75,7 @@ def test_advanced_performance_api(setup_performance_data, e2e_api_client: E2EApi
 
     # ASSERT
     assert response.status_code == 410
-    assert data["code"] == "PAS_LEGACY_ENDPOINT_REMOVED"
+    assert data["code"] == "LOTUS_CORE_LEGACY_ENDPOINT_REMOVED"
     assert data["target_service"] == "lotus-performance"
     assert data["target_endpoint"] == "/portfolios/{portfolio_id}/performance"
  

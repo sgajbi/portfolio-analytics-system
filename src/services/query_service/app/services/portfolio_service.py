@@ -22,18 +22,18 @@ class PortfolioService:
     async def get_portfolios(
         self,
         portfolio_id: Optional[str] = None,
-        cif_id: Optional[str] = None,
-        booking_center: Optional[str] = None,
+        client_id: Optional[str] = None,
+        booking_center_code: Optional[str] = None,
     ) -> PortfolioQueryResponse:
         """
         Retrieves a filtered list of portfolios.
         """
         logger.info(
-            f"Fetching portfolios with filters: portfolio_id={portfolio_id}, cif_id={cif_id}, booking_center={booking_center}"
+            f"Fetching portfolios with filters: portfolio_id={portfolio_id}, client_id={client_id}, booking_center_code={booking_center_code}"
         )
 
         db_results = await self.repo.get_portfolios(
-            portfolio_id=portfolio_id, cif_id=cif_id, booking_center=booking_center
+            portfolio_id=portfolio_id, client_id=client_id, booking_center_code=booking_center_code
         )
 
         portfolios = [PortfolioRecord.model_validate(p) for p in db_results]
@@ -50,3 +50,4 @@ class PortfolioService:
         if not db_portfolio:
             raise ValueError(f"Portfolio with id {portfolio_id} not found")
         return db_portfolio
+

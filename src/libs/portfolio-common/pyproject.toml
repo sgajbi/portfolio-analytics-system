@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "portfolio-common"
 version = "0.1.0"
-description = "Common utilities, models, and configurations for the Portfolio Analytics System."
+description = "Common utilities, models, and configurations for the Lotus Core."
 requires-python = ">=3.11"
 dependencies = [
     "pydantic==2.12.5",

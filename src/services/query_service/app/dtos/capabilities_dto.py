@@ -23,32 +23,31 @@ class WorkflowCapability(BaseModel):
 
 
 class IntegrationCapabilitiesResponse(BaseModel):
-    contract_version: str = Field(..., alias="contractVersion")
-    source_service: str = Field(..., alias="sourceService")
-    consumer_system: ConsumerSystem = Field(..., alias="consumerSystem")
-    tenant_id: str = Field(..., alias="tenantId")
-    generated_at: datetime = Field(..., alias="generatedAt")
-    as_of_date: date = Field(..., alias="asOfDate")
-    policy_version: str = Field(..., alias="policyVersion")
-    supported_input_modes: list[str] = Field(..., alias="supportedInputModes")
+    contract_version: str = Field(...)
+    source_service: str = Field(...)
+    consumer_system: ConsumerSystem = Field(...)
+    tenant_id: str = Field(...)
+    generated_at: datetime = Field(...)
+    as_of_date: date = Field(...)
+    policy_version: str = Field(...)
+    supported_input_modes: list[str] = Field(...)
     features: list[FeatureCapability]
     workflows: list[WorkflowCapability]
 
     model_config = {
-        "populate_by_name": True,
         "json_schema_extra": {
             "example": {
-                "contractVersion": "v1",
-                "sourceService": "lotus-core",
-                "consumerSystem": "lotus-gateway",
-                "tenantId": "default",
-                "generatedAt": "2026-02-23T21:00:00Z",
-                "asOfDate": "2026-02-23",
-                "policyVersion": "tenant-default-v1",
-                "supportedInputModes": ["pas_ref", "inline_bundle"],
+                "contract_version": "v1",
+                "source_service": "lotus-core",
+                "consumer_system": "lotus-gateway",
+                "tenant_id": "default",
+                "generated_at": "2026-02-23T21:00:00Z",
+                "as_of_date": "2026-02-23",
+                "policy_version": "tenant-default-v1",
+                "supported_input_modes": ["lotus_core_ref", "inline_bundle"],
                 "features": [
                     {
-                        "key": "pas.support.overview_api",
+                        "key": "lotus_core.support.overview_api",
                         "enabled": True,
                         "owner_service": "lotus-core",
                         "description": "Support diagnostics and operational support APIs.",
@@ -59,11 +58,12 @@ class IntegrationCapabilitiesResponse(BaseModel):
                         "workflow_key": "advisor_workbench_overview",
                         "enabled": True,
                         "required_features": [
-                            "pas.integration.core_snapshot",
-                            "pas.support.overview_api",
+                            "lotus_core.integration.core_snapshot",
+                            "lotus_core.support.overview_api",
                         ],
                     }
                 ],
             }
         },
     }
+

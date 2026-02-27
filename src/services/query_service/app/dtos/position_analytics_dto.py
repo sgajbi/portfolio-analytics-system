@@ -19,12 +19,12 @@ class PositionInstrumentDetails(BaseModel):
 
     name: str
     isin: str
-    asset_class: Optional[str] = Field(None, alias="assetClass")
+    asset_class: Optional[str] = Field(None)
     sector: Optional[str] = None
-    country_of_risk: Optional[str] = Field(None, alias="countryOfRisk")
+    country_of_risk: Optional[str] = Field(None)
     currency: str
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict()
 
 
 class PositionValuationDetail(BaseModel):
@@ -37,26 +37,26 @@ class PositionValuationDetail(BaseModel):
 class PositionValuation(BaseModel):
     """Represents the valuation details of a position."""
 
-    market_value: PositionValuationDetail = Field(..., alias="marketValue")
-    cost_basis: PositionValuationDetail = Field(..., alias="costBasis")
-    unrealized_pnl: PositionValuationDetail = Field(..., alias="unrealizedPnl")
+    market_value: PositionValuationDetail = Field(...)
+    cost_basis: PositionValuationDetail = Field(...)
+    unrealized_pnl: PositionValuationDetail = Field(...)
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict()
 
 
 class EnrichedPosition(BaseModel):
     """Represents a single, fully enriched position in the response."""
 
-    security_id: str = Field(..., alias="securityId")
+    security_id: str = Field(...)
     quantity: float
     weight: float
-    held_since_date: date = Field(..., alias="heldSinceDate")
+    held_since_date: date = Field(...)
 
-    instrument_details: Optional[PositionInstrumentDetails] = Field(None, alias="instrumentDetails")
+    instrument_details: Optional[PositionInstrumentDetails] = Field(None)
     valuation: Optional[PositionValuation] = None
     income: Optional[PositionValuationDetail] = None
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict()
 
 
 # --- Request DTOs ---
@@ -72,10 +72,10 @@ class PositionAnalyticsSection(str, Enum):
 class PositionAnalyticsRequest(BaseModel):
     """The main request body for the positions analytics endpoint."""
 
-    as_of_date: date = Field(..., alias="asOfDate")
+    as_of_date: date = Field(...)
     sections: List[PositionAnalyticsSection]
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict()
 
 
 # --- Response DTO ---
@@ -84,9 +84,11 @@ class PositionAnalyticsRequest(BaseModel):
 class PositionAnalyticsResponse(BaseModel):
     """The final, complete response object."""
 
-    portfolio_id: str = Field(..., alias="portfolioId")
-    as_of_date: date = Field(..., alias="asOfDate")
-    total_market_value: float = Field(..., alias="totalMarketValue")
+    portfolio_id: str = Field(...)
+    as_of_date: date = Field(...)
+    total_market_value: float = Field(...)
     positions: List[EnrichedPosition]
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict()
+
+

@@ -74,6 +74,6 @@ def test_portfolio_summary_endpoint(setup_summary_data, e2e_api_client: E2EApiCl
     response = e2e_api_client.post_query(api_url, request_payload)
     data = response.json()["detail"]
     assert response.status_code == 410
-    assert data["code"] == "PAS_LEGACY_ENDPOINT_REMOVED"
+    assert data["code"] == "LOTUS_CORE_LEGACY_ENDPOINT_REMOVED"
     assert data["target_service"] == "lotus-report"
     assert data["target_endpoint"] == "/reports/portfolios/{portfolio_id}/summary"

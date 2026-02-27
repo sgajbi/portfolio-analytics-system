@@ -18,7 +18,7 @@ def setup_open_positions_data(db_engine):
     Sets up a portfolio with multiple securities, where some positions are open and some are closed.
     """
     with Session(db_engine) as session:
-        portfolio = Portfolio(portfolio_id="OPEN_POS_TEST_01", base_currency="USD", open_date=date(2024,1,1), risk_exposure="a", investment_time_horizon="b", portfolio_type="c", booking_center="d", cif_id="e", status="f")
+        portfolio = Portfolio(portfolio_id="OPEN_POS_TEST_01", base_currency="USD", open_date=date(2024,1,1), risk_exposure="a", investment_time_horizon="b", portfolio_type="c", booking_center_code="d", client_id="e", status="f")
         session.add(portfolio)
         session.flush()
 
@@ -41,7 +41,7 @@ def setup_snapshot_date_data(db_engine):
     Sets up snapshots for a single key across different epochs to test the date lookup.
     """
     with Session(db_engine) as session:
-        portfolio = Portfolio(portfolio_id="SNAP_DATE_TEST_01", base_currency="USD", open_date=date(2024,1,1), risk_exposure="a", investment_time_horizon="b", portfolio_type="c", booking_center="d", cif_id="e", status="f")
+        portfolio = Portfolio(portfolio_id="SNAP_DATE_TEST_01", base_currency="USD", open_date=date(2024,1,1), risk_exposure="a", investment_time_horizon="b", portfolio_type="c", booking_center_code="d", client_id="e", status="f")
         session.add(portfolio)
         session.flush()
 

@@ -19,6 +19,7 @@ from portfolio_common.logging_utils import (
 )
 from portfolio_common.health import create_health_router
 from portfolio_common.monitoring import HTTP_REQUEST_LATENCY_SECONDS, HTTP_REQUESTS_TOTAL
+from portfolio_common.openapi_enrichment import enrich_openapi_schema
 from app.routers import (
     transactions,
     instruments,
@@ -87,14 +88,11 @@ def custom_openapi():
         routes=app.routes,
     )
     metrics_response = (
-        schema.get("paths", {})
-        .get("/metrics", {})
-        .get("get", {})
-        .get("responses", {})
-        .get("200")
+        schema.get("paths", {}).get("/metrics", {}).get("get", {}).get("responses", {}).get("200")
     )
     if isinstance(metrics_response, dict):
         metrics_response["content"] = {"text/plain": {"schema": {"type": "string"}}}
+    schema = enrich_openapi_schema(schema, service_name=SERVICE_NAME)
     app.openapi_schema = schema
     return app.openapi_schema
 
@@ -105,7 +103,9 @@ app.openapi = custom_openapi
 # Correlation ID Middleware
 @app.middleware("http")
 async def add_correlation_id_middleware(request: Request, call_next):
-    correlation_id = request.headers.get("X-Correlation-Id") or request.headers.get("X-Correlation-ID")
+    correlation_id = request.headers.get("X-Correlation-Id") or request.headers.get(
+        "X-Correlation-ID"
+    )
     if not correlation_id:
         correlation_id = generate_correlation_id(SERVICE_PREFIX)
     request_id = request.headers.get("X-Request-Id") or generate_correlation_id("REQ")

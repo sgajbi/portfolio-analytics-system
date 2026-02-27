@@ -14,10 +14,10 @@ effective policy resolution and provenance for tenant/consumer contexts.
 
 1. Add `GET /integration/policy/effective` for policy diagnostics.
 2. Include policy provenance metadata in core snapshot response metadata:
-   - `policyVersion`
+   - `policy_version`
    - `policySource`
-   - `matchedRuleId`
-   - `strictMode`
+   - `matched_rule_id`
+   - `strict_mode`
 3. Keep policy decisioning and provenance in lotus-core backend only.
 
 ## Rationale

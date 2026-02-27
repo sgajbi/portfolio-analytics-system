@@ -78,7 +78,7 @@ The API schema is approved as defined in the draft. A new DTO file will be creat
 
 ```json
 {
-  "asOfDate": "2025-08-31",
+  "as_of_date": "2025-08-31",
   "sections": [
     "BASE",
     "INSTRUMENT_DETAILS",
@@ -97,7 +97,7 @@ The API schema is approved as defined in the draft. A new DTO file will be creat
 ```json
 {
   "portfolioId": "E2E_REVIEW_01",
-  "asOfDate": "2025-08-31",
+  "as_of_date": "2025-08-31",
   "totalMarketValue": 101270.00,
   "positions": [
     {

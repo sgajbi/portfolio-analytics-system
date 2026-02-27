@@ -8,7 +8,7 @@ def legacy_gone_response(*, capability: str, target_service: str, target_endpoin
             "application/json": {
                 "example": {
                     "detail": {
-                        "code": "PAS_LEGACY_ENDPOINT_REMOVED",
+                        "code": "LOTUS_CORE_LEGACY_ENDPOINT_REMOVED",
                         "capability": capability,
                         "target_service": target_service,
                         "target_endpoint": target_endpoint,
@@ -32,7 +32,7 @@ def raise_legacy_endpoint_gone(
     raise HTTPException(
         status_code=status.HTTP_410_GONE,
         detail={
-            "code": "PAS_LEGACY_ENDPOINT_REMOVED",
+            "code": "LOTUS_CORE_LEGACY_ENDPOINT_REMOVED",
             "capability": capability,
             "target_service": target_service,
             "target_endpoint": target_endpoint,

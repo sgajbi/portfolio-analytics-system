@@ -22,7 +22,7 @@ A JSON object specifying the date and the desired analytical sections.
 
 | Field | Type | Required | Description |
 | :--- | :--- | :--- | :--- |
-| `asOfDate` | string | Yes | The reference date for all calculations (`YYYY-MM-DD`). |
+| `as_of_date` | string | Yes | The reference date for all calculations (`YYYY-MM-DD`). |
 | `sections` | Array[string] | Yes | An array specifying which analytical sections to include. |
 | `performanceOptions` | Object | No | If `PERFORMANCE` is in `sections`, this object defines the periods to calculate. |
 
@@ -42,7 +42,7 @@ Must contain one or more of the following string values:
 ### Example Request
 ```json
 {
-  "asOfDate": "2025-08-31",
+  "as_of_date": "2025-08-31",
   "sections": [
     "BASE",
     "INSTRUMENT_DETAILS",
@@ -82,7 +82,7 @@ Each object in the `positions` array will have the following structure:
 ```json
 {
   "portfolioId": "E2E_REVIEW_01",
-  "asOfDate": "2025-08-31",
+  "as_of_date": "2025-08-31",
   "totalMarketValue": 101270.00,
   "positions": [
     {

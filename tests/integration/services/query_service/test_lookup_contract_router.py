@@ -61,8 +61,8 @@ async def test_portfolio_lookup_contract_sorted_filtered_and_limited(async_test_
                 "investment_time_horizon": "LONG_TERM",
                 "portfolio_type": "DISCRETIONARY",
                 "objective": "GROWTH",
-                "booking_center": "LON-01",
-                "cif_id": "CIF-1",
+                "booking_center_code": "LON-01",
+                "client_id": "CIF-1",
                 "is_leverage_allowed": False,
                 "advisor_id": "ADV-1",
                 "status": "ACTIVE",
@@ -76,8 +76,8 @@ async def test_portfolio_lookup_contract_sorted_filtered_and_limited(async_test_
                 "investment_time_horizon": "LONG_TERM",
                 "portfolio_type": "DISCRETIONARY",
                 "objective": "GROWTH",
-                "booking_center": "LON-01",
-                "cif_id": "CIF-1",
+                "booking_center_code": "LON-01",
+                "client_id": "CIF-1",
                 "is_leverage_allowed": False,
                 "advisor_id": "ADV-1",
                 "status": "ACTIVE",
@@ -91,8 +91,8 @@ async def test_portfolio_lookup_contract_sorted_filtered_and_limited(async_test_
                 "investment_time_horizon": "LONG_TERM",
                 "portfolio_type": "DISCRETIONARY",
                 "objective": "GROWTH",
-                "booking_center": "LON-01",
-                "cif_id": "CIF-1",
+                "booking_center_code": "LON-01",
+                "client_id": "CIF-1",
                 "is_leverage_allowed": False,
                 "advisor_id": "ADV-1",
                 "status": "ACTIVE",
@@ -193,3 +193,4 @@ async def test_currency_lookup_contract_source_scope_and_uppercase(async_test_cl
     _assert_lookup_items_contract(items)
     assert items == [{"id": "USD", "label": "USD"}]
     mock_portfolio_service.get_portfolios.assert_not_called()
+

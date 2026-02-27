@@ -21,7 +21,10 @@ async def async_test_client():
     mock_service = MagicMock(spec=PositionAnalyticsService)
 
     mock_response = PositionAnalyticsResponse(
-        portfolioId="P1_MOCK", asOfDate=date(2025, 8, 31), totalMarketValue=12345.67, positions=[]
+        portfolio_id="P1_MOCK",
+        as_of_date=date(2025, 8, 31),
+        total_market_value=12345.67,
+        positions=[],
     )
     mock_service.get_position_analytics = AsyncMock(return_value=mock_response)
 
@@ -42,7 +45,7 @@ async def test_get_position_analytics_success(async_test_client):
     """
     client, mock_service = async_test_client
     portfolio_id = "P1_MOCK"
-    request_payload = {"asOfDate": "2025-08-31", "sections": ["BASE", "VALUATION"]}
+    request_payload = {"as_of_date": "2025-08-31", "sections": ["BASE", "VALUATION"]}
 
     response = await client.post(
         f"/portfolios/{portfolio_id}/positions-analytics", json=request_payload
@@ -50,9 +53,9 @@ async def test_get_position_analytics_success(async_test_client):
 
     assert response.status_code == 200
     response_data = response.json()
-    assert response_data["portfolioId"] == portfolio_id
-    assert response_data["asOfDate"] == "2025-08-31"
-    assert response_data["totalMarketValue"] == 12345.67
+    assert response_data["portfolio_id"] == portfolio_id
+    assert response_data["as_of_date"] == "2025-08-31"
+    assert response_data["total_market_value"] == 12345.67
 
     mock_service.get_position_analytics.assert_awaited_once()
 
@@ -70,7 +73,7 @@ async def test_get_position_analytics_portfolio_not_found(async_test_client):
         f"Portfolio {portfolio_id} not found"
     )
 
-    request_payload = {"asOfDate": "2025-08-31", "sections": ["BASE"]}
+    request_payload = {"as_of_date": "2025-08-31", "sections": ["BASE"]}
 
     response = await client.post(
         f"/portfolios/{portfolio_id}/positions-analytics", json=request_payload
@@ -84,7 +87,7 @@ async def test_get_position_analytics_unexpected_error(async_test_client):
     client, mock_service = async_test_client
     mock_service.get_position_analytics.side_effect = RuntimeError("boom")
 
-    request_payload = {"asOfDate": "2025-08-31", "sections": ["BASE"]}
+    request_payload = {"as_of_date": "2025-08-31", "sections": ["BASE"]}
     response = await client.post("/portfolios/P1/positions-analytics", json=request_payload)
 
     assert response.status_code == 500

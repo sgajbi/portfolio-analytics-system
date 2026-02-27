@@ -1,7 +1,7 @@
 # RFC 034 - API Contract Decomposition and Vocabulary Alignment
 
 - Date: 2026-02-23
-- Services Affected: `query-service`, `bff` (future)
+- Services Affected: `query-service`, `lotus-gateway` (future)
 - Status: Proposed
 
 ## Summary

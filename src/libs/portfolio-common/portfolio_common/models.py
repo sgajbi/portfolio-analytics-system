@@ -8,8 +8,8 @@ from decimal import Decimal
 class TransactionBase(BaseModel):
     """Base Pydantic model for a transaction, defining common fields."""
     transaction_id: str
-    portfolio_id: str = Field(alias="portfolioId")
-    instrument_id: str = Field(alias="instrumentId")
+    portfolio_id: str = Field()
+    instrument_id: str = Field()
     security_id: str
     transaction_type: str
     transaction_date: date
@@ -20,10 +20,9 @@ class TransactionBase(BaseModel):
     fees: Optional[Dict[str, Any]] = None # Using Dict[str, Any] for flexibility
     accrued_interest: Optional[condecimal(ge=0)] = Decimal(0)
     average_price: Optional[condecimal(ge=0)] = None
-    trade_currency: str = Field(alias="tradeCurrency")
+    trade_currency: str = Field()
 
     class Config:
-        populate_by_name = True
         json_encoders = {
             Decimal: str # Encode Decimal to string for JSON serialization
         }

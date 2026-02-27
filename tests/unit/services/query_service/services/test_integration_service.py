@@ -11,8 +11,8 @@ def make_service() -> IntegrationService:
 
 def test_canonical_consumer_system_mappings() -> None:
     service = make_service()
-    assert service._canonical_consumer_system("DPM") == "lotus-manage"
-    assert service._canonical_consumer_system("aea") == "lotus-gateway"
+    assert service._canonical_consumer_system("lotus-manage") == "lotus-manage"
+    assert service._canonical_consumer_system("lotus-gateway") == "lotus-gateway"
     assert service._canonical_consumer_system("UI") == "UI"
     assert service._canonical_consumer_system("Custom-System") == "custom-system"
     assert service._canonical_consumer_system(None) == "unknown"
@@ -22,21 +22,21 @@ def test_canonical_consumer_system_mappings() -> None:
 def test_load_policy_variants(monkeypatch: pytest.MonkeyPatch) -> None:
     service = make_service()
 
-    monkeypatch.delenv("PAS_INTEGRATION_SNAPSHOT_POLICY_JSON", raising=False)
+    monkeypatch.delenv("LOTUS_CORE_INTEGRATION_SNAPSHOT_POLICY_JSON", raising=False)
     assert service._load_policy() == {}
 
-    monkeypatch.setenv("PAS_INTEGRATION_SNAPSHOT_POLICY_JSON", "not-json")
+    monkeypatch.setenv("LOTUS_CORE_INTEGRATION_SNAPSHOT_POLICY_JSON", "not-json")
     assert service._load_policy() == {}
 
-    monkeypatch.setenv("PAS_INTEGRATION_SNAPSHOT_POLICY_JSON", '["bad"]')
+    monkeypatch.setenv("LOTUS_CORE_INTEGRATION_SNAPSHOT_POLICY_JSON", '["bad"]')
     assert service._load_policy() == {}
 
     monkeypatch.setenv(
-        "PAS_INTEGRATION_SNAPSHOT_POLICY_JSON",
-        '{"strictMode": true, "consumers": {"lotus-manage": ["OVERVIEW"]}}',
+        "LOTUS_CORE_INTEGRATION_SNAPSHOT_POLICY_JSON",
+        '{"strict_mode": true, "consumers": {"lotus-manage": ["OVERVIEW"]}}',
     )
     loaded = service._load_policy()
-    assert loaded["strictMode"] is True
+    assert loaded["strict_mode"] is True
     assert "consumers" in loaded
 
 
@@ -53,11 +53,11 @@ def test_normalize_and_resolve_consumer_sections() -> None:
     assert key is None
 
     sections, key = service._resolve_consumer_sections(
-        {"DPM": ["overview"], "other": ["x"]},
+        {"lotus-manage": ["overview"], "other": ["x"]},
         "lotus-manage",
     )
     assert sections == ["OVERVIEW"]
-    assert key == "DPM"
+    assert key == "lotus-manage"
 
     sections, key = service._resolve_consumer_sections({"foo": ["x"]}, "lotus-manage")
     assert sections is None
@@ -66,8 +66,8 @@ def test_normalize_and_resolve_consumer_sections() -> None:
 
 def test_resolve_policy_context_default(monkeypatch: pytest.MonkeyPatch) -> None:
     service = make_service()
-    monkeypatch.delenv("PAS_INTEGRATION_SNAPSHOT_POLICY_JSON", raising=False)
-    monkeypatch.delenv("PAS_POLICY_VERSION", raising=False)
+    monkeypatch.delenv("LOTUS_CORE_INTEGRATION_SNAPSHOT_POLICY_JSON", raising=False)
+    monkeypatch.delenv("LOTUS_CORE_POLICY_VERSION", raising=False)
 
     ctx = service._resolve_policy_context(tenant_id="default", consumer_system="lotus-manage")
     assert ctx.policy_version == "tenant-default-v1"
@@ -81,14 +81,14 @@ def test_resolve_policy_context_default(monkeypatch: pytest.MonkeyPatch) -> None
 def test_resolve_policy_context_global_and_tenant(monkeypatch: pytest.MonkeyPatch) -> None:
     service = make_service()
     monkeypatch.setenv(
-        "PAS_INTEGRATION_SNAPSHOT_POLICY_JSON",
+        "LOTUS_CORE_INTEGRATION_SNAPSHOT_POLICY_JSON",
         (
-            '{"strictMode":false,'
+            '{"strict_mode":false,'
             '"consumers":{"lotus-manage":["OVERVIEW","HOLDINGS"]},'
-            '"tenants":{"tenant-a":{"strictMode":true,"consumers":{"DPM":["ALLOCATION"]}}}}'
+            '"tenants":{"tenant-a":{"strict_mode":true,"consumers":{"lotus-manage":["ALLOCATION"]}}}}'
         ),
     )
-    monkeypatch.setenv("PAS_POLICY_VERSION", "tenant-v7")
+    monkeypatch.setenv("LOTUS_CORE_POLICY_VERSION", "tenant-v7")
 
     global_ctx = service._resolve_policy_context(
         tenant_id="default",
@@ -105,7 +105,7 @@ def test_resolve_policy_context_global_and_tenant(monkeypatch: pytest.MonkeyPatc
     )
     assert tenant_ctx.policy_version == "tenant-v7"
     assert tenant_ctx.policy_source == "tenant"
-    assert tenant_ctx.matched_rule_id == "tenant.tenant-a.consumers.DPM"
+    assert tenant_ctx.matched_rule_id == "tenant.tenant-a.consumers.lotus-manage"
     assert tenant_ctx.strict_mode is True
     assert tenant_ctx.allowed_sections == ["ALLOCATION"]
 
@@ -115,10 +115,10 @@ def test_resolve_policy_context_tenant_default_sections_and_strict_mode_id(
 ) -> None:
     service = make_service()
     monkeypatch.setenv(
-        "PAS_INTEGRATION_SNAPSHOT_POLICY_JSON",
+        "LOTUS_CORE_INTEGRATION_SNAPSHOT_POLICY_JSON",
         (
-            '{"tenants":{"tenant-x":{"strictMode":true,"defaultSections":["OVERVIEW"]},'
-            '"tenant-y":{"strictMode":true}}}'
+            '{"tenants":{"tenant-x":{"strict_mode":true,"default_sections":["OVERVIEW"]},'
+            '"tenant-y":{"strict_mode":true}}}'
         ),
     )
 
@@ -127,7 +127,7 @@ def test_resolve_policy_context_tenant_default_sections_and_strict_mode_id(
         consumer_system="lotus-manage",
     )
     assert tenant_default_ctx.policy_source == "tenant"
-    assert tenant_default_ctx.matched_rule_id == "tenant.tenant-x.defaultSections"
+    assert tenant_default_ctx.matched_rule_id == "tenant.tenant-x.default_sections"
     assert tenant_default_ctx.allowed_sections == ["OVERVIEW"]
     assert tenant_default_ctx.strict_mode is True
 
@@ -136,7 +136,7 @@ def test_resolve_policy_context_tenant_default_sections_and_strict_mode_id(
         consumer_system="lotus-manage",
     )
     assert strict_only_ctx.policy_source == "tenant"
-    assert strict_only_ctx.matched_rule_id == "tenant.tenant-y.strictMode"
+    assert strict_only_ctx.matched_rule_id == "tenant.tenant-y.strict_mode"
     assert strict_only_ctx.allowed_sections is None
     assert strict_only_ctx.strict_mode is True
 
@@ -144,12 +144,12 @@ def test_resolve_policy_context_tenant_default_sections_and_strict_mode_id(
 def test_get_effective_policy_filters_requested_sections(monkeypatch: pytest.MonkeyPatch) -> None:
     service = make_service()
     monkeypatch.setenv(
-        "PAS_INTEGRATION_SNAPSHOT_POLICY_JSON",
+        "LOTUS_CORE_INTEGRATION_SNAPSHOT_POLICY_JSON",
         '{"consumers":{"lotus-manage":["OVERVIEW","HOLDINGS"]}}',
     )
 
     response = service.get_effective_policy(
-        consumer_system="DPM",
+        consumer_system="lotus-manage",
         tenant_id="default",
         include_sections=["overview", "allocation", "holdings"],
     )
@@ -162,7 +162,7 @@ def test_get_effective_policy_no_allowed_restriction_passthrough(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     service = make_service()
-    monkeypatch.delenv("PAS_INTEGRATION_SNAPSHOT_POLICY_JSON", raising=False)
+    monkeypatch.delenv("LOTUS_CORE_INTEGRATION_SNAPSHOT_POLICY_JSON", raising=False)
 
     response = service.get_effective_policy(
         consumer_system="custom-client",

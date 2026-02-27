@@ -7,21 +7,20 @@ class Instrument(BaseModel):
     """
     Represents a single financial instrument.
 """
-    security_id: str = Field(..., alias="securityId", description="Unique identifier for the security.")
+    security_id: str = Field(..., description="Unique identifier for the security.")
     name: str = Field(..., description="Full name of the instrument.")
     isin: str = Field(..., description="International Securities Identification Number.")
-    currency: str = Field(..., alias="instrumentCurrency", description="The currency of the instrument.")
-    product_type: str = Field(..., alias="productType", description="Type of product (e.g., bond, equity, fund).")
-    asset_class: Optional[str] = Field(None, alias="assetClass", description="High-level, standardized category (e.g., 'Equity', 'Fixed Income').")
+    currency: str = Field(..., description="The currency of the instrument.")
+    product_type: str = Field(..., description="Type of product (e.g., bond, equity, fund).")
+    asset_class: Optional[str] = Field(None, description="High-level, standardized category (e.g., 'Equity', 'Fixed Income').")
     sector: Optional[str] = Field(None, description="Industry sector for equities (e.g., 'Technology').")
-    country_of_risk: Optional[str] = Field(None, alias="countryOfRisk", description="The country of primary risk exposure.")
+    country_of_risk: Optional[str] = Field(None, description="The country of primary risk exposure.")
     rating: Optional[str] = Field(None, description="Credit rating for fixed income instruments (e.g., 'AAA').")
-    maturity_date: Optional[date] = Field(None, alias="maturityDate", description="Maturity date for fixed income instruments.")
-    issuer_id: Optional[str] = Field(None, alias="issuerId", description="Identifier for the direct issuer of the security.")
-    ultimate_parent_issuer_id: Optional[str] = Field(None, alias="ultimateParentIssuerId", description="Identifier for the ultimate parent of the issuer.")
+    maturity_date: Optional[date] = Field(None, description="Maturity date for fixed income instruments.")
+    issuer_id: Optional[str] = Field(None, description="Identifier for the direct issuer of the security.")
+    ultimate_parent_issuer_id: Optional[str] = Field(None, description="Identifier for the ultimate parent of the issuer.")
 
     model_config = ConfigDict(
-        populate_by_name=True,
         json_schema_extra={
             "example": {
                 "securityId": "SEC_BARC_PERP",
@@ -45,3 +44,4 @@ class InstrumentIngestionRequest(BaseModel):
     Represents the request body for ingesting a list of instruments.
     """
     instruments: List[Instrument]
+

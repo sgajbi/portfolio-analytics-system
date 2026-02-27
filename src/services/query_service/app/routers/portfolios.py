@@ -29,18 +29,18 @@ async def get_portfolios(
     portfolio_id: Optional[str] = Query(
         None, description="Filter by a single, specific portfolio ID."
     ),
-    cif_id: Optional[str] = Query(
+    client_id: Optional[str] = Query(
         None,
         description="Filter by the client grouping ID (CIF) to get all portfolios for a client.",
     ),
-    booking_center: Optional[str] = Query(
+    booking_center_code: Optional[str] = Query(
         None, description="Filter by booking center to get all portfolios for a business unit."
     ),
     service: PortfolioService = Depends(get_portfolio_service),
 ):
     try:
         return await service.get_portfolios(
-            portfolio_id=portfolio_id, cif_id=cif_id, booking_center=booking_center
+            portfolio_id=portfolio_id, client_id=client_id, booking_center_code=booking_center_code
         )
     except Exception as e:
         raise HTTPException(

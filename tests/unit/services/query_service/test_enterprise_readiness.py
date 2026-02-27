@@ -65,7 +65,7 @@ def test_authorize_write_request_enforces_capability_rules(monkeypatch):
         "X-Tenant-Id": "t1",
         "X-Role": "ops",
         "X-Correlation-Id": "c1",
-        "X-Service-Identity": "pas",
+        "X-Service-Identity": "lotus-core",
         "X-Capabilities": "transactions.read",
     }
     denied, denied_reason = authorize_write_request("POST", "/transactions/import", headers)

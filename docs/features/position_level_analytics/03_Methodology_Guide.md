@@ -9,7 +9,7 @@ This metric represents the start date of the current, continuous holding period 
 3.  If a zero-quantity record is never found, the date of the very first transaction for that security is used.
 
 ### `total_income`
-This metric is the sum of all cash flows classified as `INCOME` (e.g., dividends, interest) that have been received from the `held_since_date` to the request's `asOfDate`. It is calculated in both local and base currencies:
+This metric is the sum of all cash flows classified as `INCOME` (e.g., dividends, interest) that have been received from the `held_since_date` to the request's `as_of_date`. It is calculated in both local and base currencies:
 * **Local Income:** A simple sum of the `amount` from all relevant `cashflows` records.
 * **Base Income:** Each individual cash flow's `amount` is converted to the portfolio's base currency using the historical FX rate from its specific `cashflow_date`. These converted amounts are then summed.
 

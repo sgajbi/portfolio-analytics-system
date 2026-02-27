@@ -25,8 +25,8 @@ class Transaction(BaseModel):
     Represents a single financial transaction.
     """
     transaction_id: str = Field(..., description="Unique identifier for the transaction")
-    portfolio_id: str = Field(..., alias="portfolioId", description="Identifier for the portfolio")
-    instrument_id: str = Field(..., alias="instrumentId", description="Identifier for the instrument (e.g., ticker)")
+    portfolio_id: str = Field(..., description="Identifier for the portfolio")
+    instrument_id: str = Field(..., description="Identifier for the instrument (e.g., ticker)")
     security_id: str = Field(..., description="Unique identifier for the specific security")
     transaction_type: str = Field(..., description="Type of transaction (e.g., BUY, SELL, DIVIDEND)")
     transaction_date: datetime = Field(..., description="Date the transaction occurred (ISO format)")
@@ -37,7 +37,7 @@ class Transaction(BaseModel):
     fees: Optional[Fees] = Field(default_factory=Fees, description="Detailed breakdown of fees")
     accrued_interest: Optional[condecimal(ge=0)] = Field(default=Decimal(0), description="Accrued interest")
     average_price: Optional[condecimal(ge=0)] = Field(None, description="Average price of the instrument")
-    trade_currency: str = Field(..., alias="tradeCurrency", description="Currency of the transaction")
+    trade_currency: str = Field(..., description="Currency of the transaction")
     
     portfolio_base_currency: str = Field(..., description="The base currency of the portfolio")
     transaction_fx_rate: Optional[condecimal(gt=0)] = Field(None, description="FX rate used for this transaction (Local to Base)")
@@ -67,8 +67,8 @@ class Transaction(BaseModel):
         return v
 
     model_config = ConfigDict(
-        populate_by_name=True,
         from_attributes=True,
         arbitrary_types_allowed=False,
         extra='allow'
     )
+

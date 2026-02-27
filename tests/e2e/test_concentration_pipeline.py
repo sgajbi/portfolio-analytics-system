@@ -68,7 +68,7 @@ def test_bulk_concentration_e2e(setup_concentration_data, e2e_api_client: E2EApi
 
     # ASSERT
     assert response.status_code == 410
-    assert data["code"] == "PAS_LEGACY_ENDPOINT_REMOVED"
+    assert data["code"] == "LOTUS_CORE_LEGACY_ENDPOINT_REMOVED"
     assert data["target_service"] == "lotus-risk"
     assert data["target_endpoint"] == "/analytics/risk/concentration"
 
@@ -90,7 +90,7 @@ def test_issuer_concentration_e2e(setup_concentration_data, e2e_api_client: E2EA
 
     # ASSERT
     assert response.status_code == 410
-    assert data["code"] == "PAS_LEGACY_ENDPOINT_REMOVED"
+    assert data["code"] == "LOTUS_CORE_LEGACY_ENDPOINT_REMOVED"
     assert data["target_service"] == "lotus-risk"
     assert data["target_endpoint"] == "/analytics/risk/concentration"
 

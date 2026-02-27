@@ -63,7 +63,7 @@ class PositionAnalyticsService:
 
         market_value_base = snapshot.market_value or Decimal(0)
         position = EnrichedPosition(
-            securityId=snapshot.security_id,
+            security_id=snapshot.security_id,
             quantity=float(snapshot.quantity),
             weight=float(market_value_base / total_market_value_base)
             if total_market_value_base
@@ -135,15 +135,15 @@ class PositionAnalyticsService:
             position.instrument_details = PositionInstrumentDetails(
                 name=instrument_name,
                 isin=isin,
-                assetClass=asset_class,
+                asset_class=asset_class,
                 sector=sector,
-                countryOfRisk=country_of_risk,
+                country_of_risk=country_of_risk,
                 currency=currency,
             )
 
         if PositionAnalyticsSection.VALUATION in request.sections:
             position.valuation = PositionValuation(
-                marketValue=PositionValuationDetail(
+                market_value=PositionValuationDetail(
                     local=MonetaryAmount(
                         amount=float(snapshot.market_value_local or 0), currency=currency
                     ),
@@ -151,7 +151,7 @@ class PositionAnalyticsService:
                         amount=float(snapshot.market_value or 0), currency=portfolio.base_currency
                     ),
                 ),
-                costBasis=PositionValuationDetail(
+                cost_basis=PositionValuationDetail(
                     local=MonetaryAmount(
                         amount=float(snapshot.cost_basis_local or 0), currency=currency
                     ),
@@ -159,7 +159,7 @@ class PositionAnalyticsService:
                         amount=float(snapshot.cost_basis or 0), currency=portfolio.base_currency
                     ),
                 ),
-                unrealizedPnl=PositionValuationDetail(
+                unrealized_pnl=PositionValuationDetail(
                     local=MonetaryAmount(
                         amount=float(snapshot.unrealized_gain_loss_local or 0), currency=currency
                     ),
