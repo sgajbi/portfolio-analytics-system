@@ -35,7 +35,7 @@ jobs:
         uses: reviewdog/action-actionlint@v1
 
   quality:
-    name: Lint, Typecheck, Unit Fast
+    name: Lint, Typecheck, Unit Tests
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
