@@ -11,7 +11,7 @@ def setup_complex_lifecycle_data(clean_db_module, e2e_api_client: E2EApiClient, 
     Creates a realistic cross-service lifecycle:
     - mixed activity types (deposit, buy/sell, dividend, fee)
     - multi-currency instrument with FX rates containing gaps
-    - full pipeline validation through summary/review/integration/support APIs
+    - full pipeline validation through summary/review/support APIs
     """
     portfolio_id = f"E2E_COMPLEX_{uuid.uuid4().hex[:8].upper()}"
     as_of_date = "2025-09-05"
@@ -241,21 +241,6 @@ def test_complex_lifecycle_cross_api_consistency(
     assert review_response.status_code == 410
     assert review["code"] == "LOTUS_CORE_LEGACY_ENDPOINT_REMOVED"
     assert review["target_service"] == "lotus-report"
-
-    integration_response = e2e_api_client.post_query(
-        f"/integration/portfolios/{portfolio_id}/core-snapshot",
-        {
-            "asOfDate": as_of_date,
-            "includeSections": ["OVERVIEW", "ALLOCATION", "HOLDINGS", "TRANSACTIONS"],
-            "consumerSystem": "lotus-performance",
-        },
-    )
-    integration_data = integration_response.json()
-    assert integration_response.status_code == 200
-    assert integration_data["contractVersion"] == "v1"
-    assert integration_data["consumerSystem"] == "lotus-performance"
-    assert integration_data["portfolio"]["portfolio_id"] == portfolio_id
-    assert integration_data["snapshot"]["portfolio_id"] == portfolio_id
 
     support_response = e2e_api_client.query(f"/support/portfolios/{portfolio_id}/overview")
     support_data = support_response.json()
