@@ -1,6 +1,7 @@
 import logging
 
 from app.DTOs.upload_dto import UploadCommitResponse, UploadEntityType, UploadPreviewResponse
+from app.adapter_mode import require_upload_adapter_enabled
 from app.services.upload_ingestion_service import (
     UploadIngestionService,
     get_upload_ingestion_service,
@@ -18,7 +19,10 @@ router = APIRouter()
     responses={
         status.HTTP_400_BAD_REQUEST: {
             "description": "Invalid upload file format or content.",
-        }
+        },
+        status.HTTP_410_GONE: {
+            "description": "Bulk upload adapter mode disabled for this environment.",
+        },
     },
     tags=["Bulk Uploads"],
     summary="Preview and validate bulk upload data",
@@ -31,6 +35,7 @@ async def preview_upload(
     entity_type: UploadEntityType = Form(...),
     file: UploadFile = File(...),
     sample_size: int = Form(20, ge=1, le=100),
+    _: None = Depends(require_upload_adapter_enabled),
     upload_service: UploadIngestionService = Depends(get_upload_ingestion_service),
 ):
     content = await file.read()
@@ -60,7 +65,10 @@ async def preview_upload(
     responses={
         status.HTTP_400_BAD_REQUEST: {
             "description": "Invalid upload file format or content.",
-        }
+        },
+        status.HTTP_410_GONE: {
+            "description": "Bulk upload adapter mode disabled for this environment.",
+        },
     },
     tags=["Bulk Uploads"],
     summary="Commit validated bulk upload data",
@@ -73,6 +81,7 @@ async def commit_upload(
     entity_type: UploadEntityType = Form(...),
     file: UploadFile = File(...),
     allow_partial: bool = Form(False),
+    _: None = Depends(require_upload_adapter_enabled),
     upload_service: UploadIngestionService = Depends(get_upload_ingestion_service),
 ):
     content = await file.read()

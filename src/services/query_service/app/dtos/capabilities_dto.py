@@ -47,19 +47,19 @@ class IntegrationCapabilitiesResponse(BaseModel):
                 "supported_input_modes": ["lotus_core_ref", "inline_bundle"],
                 "features": [
                     {
-                        "key": "lotus_core.support.overview_api",
+                        "key": "lotus_core.ingestion.bulk_upload_adapter",
                         "enabled": True,
                         "owner_service": "lotus-core",
-                        "description": "Support diagnostics and operational support APIs.",
+                        "description": "CSV/XLSX preview+commit adapter endpoints for onboarding workflows.",
                     }
                 ],
                 "workflows": [
                     {
-                        "workflow_key": "advisor_workbench_overview",
+                        "workflow_key": "portfolio_bulk_onboarding",
                         "enabled": True,
                         "required_features": [
-                            "lotus_core.integration.core_snapshot",
-                            "lotus_core.support.overview_api",
+                            "lotus_core.ingestion.bulk_upload_adapter",
+                            "lotus_core.ingestion.portfolio_bundle_adapter",
                         ],
                     }
                 ],

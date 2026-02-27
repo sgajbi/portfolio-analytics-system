@@ -245,6 +245,24 @@ async def test_ingest_portfolio_bundle_rejects_metadata_only_payload(
     mock_kafka_producer.publish_message.assert_not_called()
 
 
+async def test_ingest_portfolio_bundle_disabled_by_feature_flag(
+    async_test_client: httpx.AsyncClient, mock_kafka_producer: MagicMock, monkeypatch
+):
+    monkeypatch.setenv("LOTUS_CORE_INGEST_PORTFOLIO_BUNDLE_ENABLED", "false")
+    payload = {
+        "sourceSystem": "UI_UPLOAD",
+        "mode": "UPSERT",
+        "businessDates": [{"businessDate": "2026-01-02"}],
+    }
+    response = await async_test_client.post("/ingest/portfolio-bundle", json=payload)
+
+    assert response.status_code == 410
+    body = response.json()
+    assert body["detail"]["code"] == "LOTUS_CORE_ADAPTER_MODE_DISABLED"
+    assert body["detail"]["capability"] == "lotus_core.ingestion.portfolio_bundle_adapter"
+    mock_kafka_producer.publish_message.assert_not_called()
+
+
 def _xlsx_upload_bytes(headers: list[str], rows: list[list[object]]) -> bytes:
     workbook = Workbook()
     worksheet = workbook.active
@@ -279,6 +297,25 @@ async def test_upload_preview_transactions_csv(async_test_client: httpx.AsyncCli
     assert body["invalid_rows"] == 1
 
 
+async def test_upload_preview_disabled_by_feature_flag(
+    async_test_client: httpx.AsyncClient, mock_kafka_producer: MagicMock, monkeypatch
+):
+    monkeypatch.setenv("LOTUS_CORE_INGEST_UPLOAD_APIS_ENABLED", "false")
+    csv_content = b"transaction_id,portfolio_id\nT1,P1"
+
+    response = await async_test_client.post(
+        "/ingest/uploads/preview",
+        files={"file": ("transactions.csv", csv_content, "text/csv")},
+        data={"entityType": "transactions", "sampleSize": "10"},
+    )
+
+    assert response.status_code == 410
+    body = response.json()
+    assert body["detail"]["code"] == "LOTUS_CORE_ADAPTER_MODE_DISABLED"
+    assert body["detail"]["capability"] == "lotus_core.ingestion.bulk_upload_adapter"
+    mock_kafka_producer.publish_message.assert_not_called()
+
+
 async def test_upload_commit_transactions_csv_partial(
     async_test_client: httpx.AsyncClient, mock_kafka_producer: MagicMock
 ):
@@ -302,6 +339,24 @@ async def test_upload_commit_transactions_csv_partial(
     assert body["published_rows"] == 1
     assert body["skipped_rows"] == 1
     mock_kafka_producer.publish_message.assert_called_once()
+
+
+async def test_upload_commit_disabled_by_feature_flag(
+    async_test_client: httpx.AsyncClient, mock_kafka_producer: MagicMock, monkeypatch
+):
+    monkeypatch.setenv("LOTUS_CORE_INGEST_UPLOAD_APIS_ENABLED", "false")
+    csv_content = b"transaction_id,portfolio_id\nT1,P1"
+    response = await async_test_client.post(
+        "/ingest/uploads/commit",
+        files={"file": ("transactions.csv", csv_content, "text/csv")},
+        data={"entityType": "transactions", "allowPartial": "true"},
+    )
+
+    assert response.status_code == 410
+    body = response.json()
+    assert body["detail"]["code"] == "LOTUS_CORE_ADAPTER_MODE_DISABLED"
+    assert body["detail"]["capability"] == "lotus_core.ingestion.bulk_upload_adapter"
+    mock_kafka_producer.publish_message.assert_not_called()
 
 
 async def test_upload_commit_xlsx_rejects_invalid_without_partial(

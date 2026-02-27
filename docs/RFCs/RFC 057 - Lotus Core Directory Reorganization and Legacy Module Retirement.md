@@ -376,7 +376,15 @@ Compatibility strategy:
  - removed position-analytics DTO/service/router/test/docs stack
  - enriched canonical `GET /portfolios/{portfolio_id}/positions` response with instrument metadata (`isin`, `currency`, `sector`, `country_of_risk`) and core position context (`weight`, `held_since_date`)
 
-4. In progress: remaining PR slices (ingestion mode hardening, API-first ops hardening, downstream drift hard-cut)
+4. Completed: PR-5 ingestion mode hardening
+ - `/ingest/portfolio-bundle` and `/ingest/uploads/*` are explicitly adapter-mode endpoints
+ - feature flags added:
+   - `LOTUS_CORE_INGEST_PORTFOLIO_BUNDLE_ENABLED`
+   - `LOTUS_CORE_INGEST_UPLOAD_APIS_ENABLED`
+ - adapter-disabled requests return explicit `410 Gone` with capability metadata
+ - integration capability metadata now reflects adapter-mode flags and supported input modes
+
+5. In progress: remaining PR slices (API-first ops hardening, downstream drift hard-cut)
 
 ## Definition of Done
 

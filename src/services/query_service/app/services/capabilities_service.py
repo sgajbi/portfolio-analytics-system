@@ -20,21 +20,28 @@ logger = logging.getLogger(__name__)
 _FEATURE_ENV_DEFAULTS: dict[str, tuple[str, bool]] = {
     "lotus_core.support.overview_api": ("LOTUS_CORE_CAP_SUPPORT_APIS_ENABLED", True),
     "lotus_core.support.lineage_api": ("LOTUS_CORE_CAP_LINEAGE_APIS_ENABLED", True),
-    "lotus_core.ingestion.bulk_upload": ("LOTUS_CORE_CAP_UPLOAD_APIS_ENABLED", True),
+    "lotus_core.ingestion.bulk_upload_adapter": ("LOTUS_CORE_INGEST_UPLOAD_APIS_ENABLED", True),
+    "lotus_core.ingestion.portfolio_bundle_adapter": (
+        "LOTUS_CORE_INGEST_PORTFOLIO_BUNDLE_ENABLED",
+        True,
+    ),
     "lotus_core.simulation.what_if": ("LOTUS_CORE_CAP_SIMULATION_ENABLED", True),
 }
 
 _WORKFLOW_DEPENDENCIES: dict[str, list[str]] = {
     "advisor_workbench_overview": ["lotus_core.support.overview_api"],
-    "portfolio_bulk_onboarding": ["lotus_core.ingestion.bulk_upload"],
+    "portfolio_bulk_onboarding": [
+        "lotus_core.ingestion.bulk_upload_adapter",
+        "lotus_core.ingestion.portfolio_bundle_adapter",
+    ],
     "portfolio_what_if_simulation": ["lotus_core.simulation.what_if"],
 }
 
 _DEFAULT_INPUT_MODES_BY_CONSUMER: dict[str, list[str]] = {
     "lotus-performance": ["lotus_core_ref"],
     "lotus-manage": ["lotus_core_ref"],
-    "lotus-gateway": ["lotus_core_ref"],
-    "UI": ["lotus_core_ref"],
+    "lotus-gateway": ["lotus_core_ref", "inline_bundle", "file_upload"],
+    "UI": ["lotus_core_ref", "inline_bundle", "file_upload"],
     "UNKNOWN": ["lotus_core_ref"],
 }
 
@@ -86,6 +93,12 @@ class CapabilitiesService:
         supported_input_modes = list(
             _DEFAULT_INPUT_MODES_BY_CONSUMER.get(consumer_system, ["lotus_core_ref"])
         )
+        if not feature_states["lotus_core.ingestion.portfolio_bundle_adapter"]:
+            supported_input_modes = [
+                mode for mode in supported_input_modes if mode != "inline_bundle"
+            ]
+        if not feature_states["lotus_core.ingestion.bulk_upload_adapter"]:
+            supported_input_modes = [mode for mode in supported_input_modes if mode != "file_upload"]
 
         tenant_policy = self._load_tenant_overrides().get(tenant_id)
         if tenant_policy:
@@ -136,10 +149,16 @@ class CapabilitiesService:
                 description="Lineage and epoch/watermark traceability APIs.",
             ),
             FeatureCapability(
-                key="lotus_core.ingestion.bulk_upload",
-                enabled=feature_states["lotus_core.ingestion.bulk_upload"],
+                key="lotus_core.ingestion.bulk_upload_adapter",
+                enabled=feature_states["lotus_core.ingestion.bulk_upload_adapter"],
                 owner_service="lotus-core",
-                description="CSV/XLSX preview+commit onboarding APIs.",
+                description="CSV/XLSX preview+commit adapter endpoints for onboarding workflows.",
+            ),
+            FeatureCapability(
+                key="lotus_core.ingestion.portfolio_bundle_adapter",
+                enabled=feature_states["lotus_core.ingestion.portfolio_bundle_adapter"],
+                owner_service="lotus-core",
+                description="Portfolio bundle adapter endpoint for UI/manual onboarding workflows.",
             ),
             FeatureCapability(
                 key="lotus_core.simulation.what_if",
