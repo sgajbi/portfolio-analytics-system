@@ -46,7 +46,8 @@ markers = [
     "integration_db: mark tests that require dockerized database infrastructure",
 ]
 filterwarnings = [
-    "ignore:Please use `import python_multipart` instead.:PendingDeprecationWarning"
+    "ignore:Please use `import python_multipart` instead.:PendingDeprecationWarning",
+    "ignore:The configuration option \"asyncio_default_fixture_loop_scope\" is unset.:pytest.PytestDeprecationWarning"
 ]
 
 [tool.ruff]

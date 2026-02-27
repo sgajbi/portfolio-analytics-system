@@ -118,7 +118,7 @@ class PerformanceCalculator:
         self._run_iterative_calculations(df)
 
         # Convert Decimal columns to float for easier consumption by APIs
-        for col in df.select_dtypes(include=['object']).columns:
+        for col in df.select_dtypes(include=["object", "string"]).columns:
             if all(isinstance(x, Decimal) for x in df[col] if pd.notna(x)):
                 df[col] = df[col].astype(float)
 
