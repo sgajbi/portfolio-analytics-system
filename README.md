@@ -6,6 +6,11 @@ This system provides a comprehensive suite of core portfolio services, including
 Platform architecture governance source:
 - `https://github.com/sgajbi/lotus-platform` (cross-cutting and multi-service decisions)
 
+Local architecture direction and restructuring plan:
+- `docs/RFCs/RFC 057 - Lotus Core Directory Reorganization and Legacy Module Retirement.md`
+- `docs/architecture/lotus-core-target-architecture.md`
+- `docs/standards/layering-boundaries.md`
+
 ## Table of Contents
 
 - [Architectural Overview](#architectural-overview)
@@ -162,6 +167,12 @@ To run the full local quality gate (lint + mypy + combined coverage gate):
 
 ```bash
 make ci-local
+```
+
+To run architecture boundary checks:
+
+```bash
+make architecture-guard
 ```
 
 To run the E2E smoke suite locally (requires Docker engine running):

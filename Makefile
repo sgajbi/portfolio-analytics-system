@@ -1,4 +1,4 @@
-.PHONY: install lint typecheck monetary-float-guard no-alias-gate openapi-gate api-vocabulary-gate warning-gate migration-smoke migration-apply test test-unit test-unit-db test-integration-lite test-e2e-smoke security-audit check coverage-gate ci ci-local docker-build clean
+.PHONY: install lint typecheck architecture-guard monetary-float-guard no-alias-gate openapi-gate api-vocabulary-gate warning-gate migration-smoke migration-apply test test-unit test-unit-db test-integration-lite test-e2e-smoke security-audit check coverage-gate ci ci-local docker-build clean
 
 install:
 	python scripts/bootstrap_dev.py
@@ -16,6 +16,9 @@ no-alias-gate:
 
 typecheck:
 	python -m mypy --config-file mypy.ini
+
+architecture-guard:
+	python scripts/architecture_boundary_guard.py --strict
 
 openapi-gate:
 	python scripts/openapi_quality_gate.py
@@ -50,12 +53,12 @@ test-e2e-smoke:
 security-audit:
 	python -m pip_audit -r tests/requirements.txt
 
-check: lint no-alias-gate typecheck openapi-gate api-vocabulary-gate warning-gate test
+check: lint no-alias-gate typecheck architecture-guard openapi-gate api-vocabulary-gate warning-gate test
 
 coverage-gate:
 	python scripts/coverage_gate.py
 
-ci: lint no-alias-gate typecheck openapi-gate api-vocabulary-gate warning-gate migration-smoke test-unit-db test-integration-lite coverage-gate security-audit
+ci: lint no-alias-gate typecheck architecture-guard openapi-gate api-vocabulary-gate warning-gate migration-smoke test-unit-db test-integration-lite coverage-gate security-audit
 
 ci-local: lint typecheck coverage-gate
 
