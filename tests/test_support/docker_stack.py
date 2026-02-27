@@ -17,6 +17,7 @@ def _is_retryable_compose_up_error(stderr: str) -> bool:
     retryable_markers = (
         "already exists",
         "pulling",
+        "didn't complete successfully: exit",
         "context deadline exceeded",
         "tls handshake timeout",
         "connection reset by peer",
