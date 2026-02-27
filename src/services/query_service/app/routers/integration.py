@@ -83,7 +83,8 @@ async def create_core_snapshot(
     service: CoreSnapshotService = Depends(get_core_snapshot_service),
 ) -> CoreSnapshotResponse:
     try:
-        return await service.get_core_snapshot(portfolio_id=portfolio_id, request=request)
+        response = await service.get_core_snapshot(portfolio_id=portfolio_id, request=request)
+        return cast(CoreSnapshotResponse, response)
     except CoreSnapshotBadRequestError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
     except CoreSnapshotNotFoundError as exc:

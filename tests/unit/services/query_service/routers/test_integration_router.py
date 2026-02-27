@@ -15,6 +15,13 @@ from src.services.query_service.app.routers.integration import (
 )
 from src.services.query_service.app.services.core_snapshot_service import CoreSnapshotService
 from src.services.query_service.app.services.core_snapshot_service import CoreSnapshotNotFoundError
+from src.services.query_service.app.services.core_snapshot_service import (
+    CoreSnapshotBadRequestError,
+)
+from src.services.query_service.app.services.core_snapshot_service import CoreSnapshotConflictError
+from src.services.query_service.app.services.core_snapshot_service import (
+    CoreSnapshotUnavailableSectionError,
+)
 from src.services.query_service.app.services.integration_service import IntegrationService
 
 
@@ -112,4 +119,66 @@ async def test_create_core_snapshot_maps_not_found_to_404() -> None:
         )
 
     assert exc_info.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_create_core_snapshot_maps_bad_request_to_400() -> None:
+    mock_service = MagicMock(spec=CoreSnapshotService)
+    request = CoreSnapshotRequest(
+        as_of_date="2026-02-27",
+        snapshot_mode=CoreSnapshotMode.BASELINE,
+        sections=[CoreSnapshotSection.POSITIONS_BASELINE],
+    )
+    mock_service.get_core_snapshot.side_effect = CoreSnapshotBadRequestError("bad")
+
+    with pytest.raises(HTTPException) as exc_info:
+        await create_core_snapshot(
+            portfolio_id="PORT_001",
+            request=request,
+            service=mock_service,
+        )
+
+    assert exc_info.value.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_create_core_snapshot_maps_conflict_to_409() -> None:
+    mock_service = MagicMock(spec=CoreSnapshotService)
+    request = CoreSnapshotRequest(
+        as_of_date="2026-02-27",
+        snapshot_mode=CoreSnapshotMode.SIMULATION,
+        sections=[CoreSnapshotSection.POSITIONS_PROJECTED],
+        simulation={"session_id": "SIM_1"},
+    )
+    mock_service.get_core_snapshot.side_effect = CoreSnapshotConflictError("conflict")
+
+    with pytest.raises(HTTPException) as exc_info:
+        await create_core_snapshot(
+            portfolio_id="PORT_001",
+            request=request,
+            service=mock_service,
+        )
+
+    assert exc_info.value.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_create_core_snapshot_maps_unavailable_section_to_422() -> None:
+    mock_service = MagicMock(spec=CoreSnapshotService)
+    request = CoreSnapshotRequest(
+        as_of_date="2026-02-27",
+        snapshot_mode=CoreSnapshotMode.SIMULATION,
+        sections=[CoreSnapshotSection.POSITIONS_PROJECTED],
+        simulation={"session_id": "SIM_1"},
+    )
+    mock_service.get_core_snapshot.side_effect = CoreSnapshotUnavailableSectionError("missing")
+
+    with pytest.raises(HTTPException) as exc_info:
+        await create_core_snapshot(
+            portfolio_id="PORT_001",
+            request=request,
+            service=mock_service,
+        )
+
+    assert exc_info.value.status_code == 422
 
