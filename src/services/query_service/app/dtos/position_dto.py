@@ -1,7 +1,8 @@
 # services/query-service/app/dtos/position_dto.py
-from pydantic import BaseModel, Field, ConfigDict
 from datetime import date
 from typing import List, Optional
+
+from pydantic import BaseModel, ConfigDict, Field
 
 from .valuation_dto import ValuationData
 
@@ -20,6 +21,18 @@ class Position(BaseModel):
     asset_class: Optional[str] = Field(
         None, description="Asset class for grouping and reporting.", examples=["Equity"]
     )
+    isin: Optional[str] = Field(
+        None, description="ISIN instrument identifier.", examples=["US0378331005"]
+    )
+    currency: Optional[str] = Field(
+        None, description="Instrument trading currency (ISO 4217).", examples=["USD"]
+    )
+    sector: Optional[str] = Field(
+        None, description="Instrument sector classification.", examples=["Technology"]
+    )
+    country_of_risk: Optional[str] = Field(
+        None, description="Instrument country of risk (ISO 3166-1 alpha-2).", examples=["US"]
+    )
     cost_basis: float = Field(
         ..., description="Cost basis in portfolio base currency.", examples=[15000.0]
     )
@@ -33,6 +46,16 @@ class Position(BaseModel):
         None,
         description="Reprocessing status for this portfolio-security key.",
         examples=["CURRENT", "REPROCESSING"],
+    )
+    held_since_date: Optional[date] = Field(
+        None,
+        description="Start date of the current continuous holding period in the active epoch.",
+        examples=["2025-01-15"],
+    )
+    weight: Optional[float] = Field(
+        None,
+        description="Position weight versus total portfolio market value (0.0 to 1.0).",
+        examples=[0.2417],
     )
 
     model_config = ConfigDict(from_attributes=True)

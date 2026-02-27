@@ -32,7 +32,6 @@ from .routers import (
     operations,
     portfolios,
     positions,
-    positions_analytics,
     prices,
     simulation,
     transactions,
@@ -179,7 +178,6 @@ app.include_router(transactions.router)
 app.include_router(instruments.router)
 app.include_router(prices.router)
 app.include_router(fx_rates.router)
-app.include_router(positions_analytics.router)
 app.include_router(operations.router)
 app.include_router(integration.router)
 app.include_router(capabilities.router)

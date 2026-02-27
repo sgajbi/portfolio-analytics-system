@@ -61,5 +61,4 @@ Mode policy:
 ## Position Contract Direction
 
 `positions` becomes the canonical position-level surface for core-derived metrics.
-
-`positions-analytics` is transitional and will be merged into canonical positions resources per RFC 057.
+Parallel `positions-analytics` contracts are removed from lotus-core.

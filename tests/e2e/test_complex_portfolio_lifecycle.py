@@ -169,7 +169,12 @@ def setup_complex_lifecycle_data(clean_db_module, e2e_api_client: E2EApiClient, 
         ],
         "marketPrices": [
             {"securityId": security_id, "priceDate": as_of_date, "price": 112, "currency": "EUR"},
-            {"securityId": cash_security_id, "priceDate": as_of_date, "price": 1, "currency": "USD"},
+            {
+                "securityId": cash_security_id,
+                "priceDate": as_of_date,
+                "price": 1,
+                "currency": "USD",
+            },
         ],
         "fxRates": [
             {"fromCurrency": "EUR", "toCurrency": "USD", "rateDate": "2025-09-01", "rate": 1.10},
@@ -269,26 +274,19 @@ def test_complex_lifecycle_cross_api_consistency(
     assert lineage_data["epoch"] >= 0
 
 
-def test_complex_lifecycle_position_analytics_with_fx_gaps(
+def test_complex_lifecycle_positions_contract(
     setup_complex_lifecycle_data, e2e_api_client: E2EApiClient
 ):
     portfolio_id = setup_complex_lifecycle_data["portfolio_id"]
-    as_of_date = setup_complex_lifecycle_data["as_of_date"]
 
-    response = e2e_api_client.post_query(
-        f"/portfolios/{portfolio_id}/positions-analytics",
-        {
-            "asOfDate": as_of_date,
-            "sections": ["BASE", "VALUATION", "INCOME", "PERFORMANCE", "INSTRUMENT_DETAILS"],
-            "performanceOptions": {"periods": ["YTD", "SI"]},
-        },
-    )
+    response = e2e_api_client.query(f"/portfolios/{portfolio_id}/positions")
     data = response.json()
     assert response.status_code == 200
-    assert data["portfolioId"] == portfolio_id
-    assert data["totalMarketValue"] > 0
+    assert data["portfolio_id"] == portfolio_id
     assert len(data["positions"]) >= 1
 
     for position in data["positions"]:
-        assert "securityId" in position
+        assert "security_id" in position
+        assert "isin" in position
+        assert "currency" in position
         assert "weight" in position

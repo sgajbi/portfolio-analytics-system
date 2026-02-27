@@ -1,5 +1,7 @@
 ### **RFC 017: Position-Level Analytics API**
 
+Superseded by RFC 057. The `POST /portfolios/{portfolio_id}/positions-analytics` endpoint is removed from lotus-core, and canonical position-level fields are served via `GET /portfolios/{portfolio_id}/positions`.
+
   * **Status**: Final
   * **Date**: 2025-08-31
   * **Lead**: Gemini Architect

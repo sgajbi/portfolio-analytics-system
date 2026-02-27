@@ -118,7 +118,6 @@ async def test_openapi_declares_portfolio_not_found_contracts(async_test_client)
     assert "404" in paths["/support/portfolios/{portfolio_id}/aggregation-jobs"]["get"]["responses"]
     assert "404" in paths["/support/portfolios/{portfolio_id}/valuation-jobs"]["get"]["responses"]
     assert "404" in paths["/lineage/portfolios/{portfolio_id}/keys"]["get"]["responses"]
-    assert "404" in paths["/portfolios/{portfolio_id}/positions-analytics"]["post"]["responses"]
 
 
 async def test_openapi_hides_migrated_legacy_endpoints(async_test_client):
@@ -132,3 +131,4 @@ async def test_openapi_hides_migrated_legacy_endpoints(async_test_client):
     assert "/portfolios/{portfolio_id}/concentration" not in paths
     assert "/portfolios/{portfolio_id}/performance" not in paths
     assert "/portfolios/{portfolio_id}/performance/mwr" not in paths
+    assert "/portfolios/{portfolio_id}/positions-analytics" not in paths
