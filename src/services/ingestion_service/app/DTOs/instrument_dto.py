@@ -18,23 +18,27 @@ class Instrument(BaseModel):
     rating: Optional[str] = Field(None, description="Credit rating for fixed income instruments (e.g., 'AAA').")
     maturity_date: Optional[date] = Field(None, description="Maturity date for fixed income instruments.")
     issuer_id: Optional[str] = Field(None, description="Identifier for the direct issuer of the security.")
+    issuer_name: Optional[str] = Field(None, description="Display name for the direct issuer of the security.")
     ultimate_parent_issuer_id: Optional[str] = Field(None, description="Identifier for the ultimate parent of the issuer.")
+    ultimate_parent_issuer_name: Optional[str] = Field(None, description="Display name for the ultimate parent issuer.")
 
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
-                "securityId": "SEC_BARC_PERP",
+                "security_id": "SEC_BARC_PERP",
                 "name": "Barclays PLC 8% Perpetual",
                 "isin": "US06738E2046",
-                "instrumentCurrency": "USD",
-                "productType": "Bond",
-                "assetClass": "Fixed Income",
+                "currency": "USD",
+                "product_type": "Bond",
+                "asset_class": "Fixed Income",
                 "sector": "Financials",
-                "countryOfRisk": "GB",
+                "country_of_risk": "GB",
                 "rating": "BB+",
-                "maturityDate": None,
-                "issuerId": "ISSUER_BARC",
-                "ultimateParentIssuerId": "ULTIMATE_BARC"
+                "maturity_date": None,
+                "issuer_id": "ISSUER_BARC",
+                "issuer_name": "Barclays PLC",
+                "ultimate_parent_issuer_id": "ULTIMATE_BARC",
+                "ultimate_parent_issuer_name": "Barclays Group Holdings PLC"
             }
         }
     )

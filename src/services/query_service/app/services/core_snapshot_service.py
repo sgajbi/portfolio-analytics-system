@@ -21,6 +21,7 @@ from ..dtos.core_snapshot_dto import (
     CoreSnapshotSimulationMetadata,
     CoreSnapshotValuationContext,
 )
+from ..dtos.integration_dto import InstrumentEnrichmentRecord
 from ..repositories.fx_rate_repository import FxRateRepository
 from ..repositories.instrument_repository import InstrumentRepository
 from ..repositories.portfolio_repository import PortfolioRepository
@@ -174,6 +175,10 @@ class CoreSnapshotService:
                     sector=item["sector"],
                     country_of_risk=item["country_of_risk"],
                     instrument_name=item["instrument_name"],
+                    issuer_id=item["issuer_id"],
+                    issuer_name=item["issuer_name"],
+                    ultimate_parent_issuer_id=item["ultimate_parent_issuer_id"],
+                    ultimate_parent_issuer_name=item["ultimate_parent_issuer_name"],
                 )
                 for item in baseline_positions.values()
             ]
@@ -257,6 +262,14 @@ class CoreSnapshotService:
                 "sector": instrument.sector if instrument else None,
                 "country_of_risk": instrument.country_of_risk if instrument else None,
                 "isin": instrument.isin if instrument else None,
+                "issuer_id": instrument.issuer_id if instrument else None,
+                "issuer_name": instrument.issuer_name if instrument else None,
+                "ultimate_parent_issuer_id": (
+                    instrument.ultimate_parent_issuer_id if instrument else None
+                ),
+                "ultimate_parent_issuer_name": (
+                    instrument.ultimate_parent_issuer_name if instrument else None
+                ),
             }
 
         total_base = self._total_market_value_baseline(baseline)
@@ -303,6 +316,10 @@ class CoreSnapshotService:
                     "sector": instrument.sector,
                     "country_of_risk": instrument.country_of_risk,
                     "isin": instrument.isin,
+                    "issuer_id": instrument.issuer_id,
+                    "issuer_name": instrument.issuer_name,
+                    "ultimate_parent_issuer_id": instrument.ultimate_parent_issuer_id,
+                    "ultimate_parent_issuer_name": instrument.ultimate_parent_issuer_name,
                 }
 
         for change in changes:
@@ -374,6 +391,34 @@ class CoreSnapshotService:
         if txn_type in _NEGATIVE_TYPES:
             return -magnitude
         return Decimal(0)
+
+    async def get_instrument_enrichment_bulk(
+        self, security_ids: list[str]
+    ) -> list[InstrumentEnrichmentRecord]:
+        requested_ids = [value.strip() for value in security_ids if value and value.strip()]
+        if not requested_ids:
+            raise CoreSnapshotBadRequestError("security_ids must contain at least one value")
+
+        instruments = await self.instrument_repo.get_by_security_ids(requested_ids)
+        by_security_id = {item.security_id: item for item in instruments}
+
+        records: list[InstrumentEnrichmentRecord] = []
+        for security_id in requested_ids:
+            instrument = by_security_id.get(security_id)
+            records.append(
+                InstrumentEnrichmentRecord(
+                    security_id=security_id,
+                    issuer_id=(instrument.issuer_id if instrument else None),
+                    issuer_name=(instrument.issuer_name if instrument else None),
+                    ultimate_parent_issuer_id=(
+                        instrument.ultimate_parent_issuer_id if instrument else None
+                    ),
+                    ultimate_parent_issuer_name=(
+                        instrument.ultimate_parent_issuer_name if instrument else None
+                    ),
+                )
+            )
+        return records
 
     async def _get_fx_rate_or_raise(
         self, from_currency: str, to_currency: str, as_of_date

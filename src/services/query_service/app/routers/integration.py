@@ -7,6 +7,10 @@ from portfolio_common.db import get_async_db_session
 
 from ..dtos.core_snapshot_dto import CoreSnapshotRequest, CoreSnapshotResponse
 from ..dtos.integration_dto import EffectiveIntegrationPolicyResponse
+from ..dtos.integration_dto import (
+    InstrumentEnrichmentBulkRequest,
+    InstrumentEnrichmentBulkResponse,
+)
 from ..services.core_snapshot_service import (
     CoreSnapshotBadRequestError,
     CoreSnapshotConflictError,
@@ -93,4 +97,30 @@ async def create_core_snapshot(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
     except CoreSnapshotUnavailableSectionError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+
+
+@router.post(
+    "/instruments/enrichment-bulk",
+    response_model=InstrumentEnrichmentBulkResponse,
+    responses={
+        status.HTTP_400_BAD_REQUEST: {
+            "description": "Invalid request payload."
+        },
+    },
+    summary="Resolve issuer enrichment for security identifiers",
+    description=(
+        "Returns issuer enrichment for a caller-provided security_id list. "
+        "Records are deterministic and preserve request order. Unknown securities are returned "
+        "with null issuer fields."
+    ),
+)
+async def get_instrument_enrichment_bulk(
+    request: InstrumentEnrichmentBulkRequest,
+    service: CoreSnapshotService = Depends(get_core_snapshot_service),
+) -> InstrumentEnrichmentBulkResponse:
+    try:
+        records = await service.get_instrument_enrichment_bulk(request.security_ids)
+        return InstrumentEnrichmentBulkResponse(records=records)
+    except CoreSnapshotBadRequestError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
 

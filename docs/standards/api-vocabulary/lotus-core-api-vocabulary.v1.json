@@ -13,7 +13,7 @@
       "openApiVersion": "3.1.0"
     }
   ],
-  "generatedAt": "2026-02-27T10:21:00.104621+00:00",
+  "generatedAt": "2026-02-27T12:11:33.165292+00:00",
   "attributeCatalog": [
     {
       "semanticId": "lotus.active_reprocessing_keys",
@@ -865,8 +865,24 @@
       "semanticId": "lotus.issuer_id",
       "canonicalTerm": "issuer_id",
       "preferredName": "issuer_id",
-      "description": "Identifier for the direct issuer of the security.",
+      "description": "Canonical direct issuer identifier, when available.",
       "example": "ISSUER_001",
+      "type": "object",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "object"
+      ]
+    },
+    {
+      "semanticId": "lotus.issuer_name",
+      "canonicalTerm": "issuer_name",
+      "preferredName": "issuer_name",
+      "description": "Display name for direct issuer, when available.",
+      "example": {
+        "id": "OBJ_001"
+      },
       "type": "object",
       "locations": [
         "body"
@@ -1434,7 +1450,7 @@
           "quantity": "100.0000000000"
         }
       ],
-      "type": "array",
+      "type": "object",
       "locations": [
         "body"
       ],
@@ -1453,7 +1469,7 @@
           "delta_quantity": "20.0000000000"
         }
       ],
-      "type": "array",
+      "type": "object",
       "locations": [
         "body"
       ],
@@ -1472,7 +1488,7 @@
           "quantity": "120.0000000000"
         }
       ],
-      "type": "array",
+      "type": "object",
       "locations": [
         "body"
       ],
@@ -1691,6 +1707,22 @@
       ]
     },
     {
+      "semanticId": "lotus.records",
+      "canonicalTerm": "records",
+      "preferredName": "records",
+      "description": "Deterministic enrichment records in the same order as request security_ids.",
+      "example": [
+        "RECORDS_ITEM_VALUE"
+      ],
+      "type": "array",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "array"
+      ]
+    },
+    {
       "semanticId": "lotus.reporting_currency",
       "canonicalTerm": "reporting_currency",
       "preferredName": "reporting_currency",
@@ -1789,11 +1821,7 @@
       "preferredName": "sections",
       "description": "Requested snapshot sections to include in the response payload.",
       "example": [
-        "positions_baseline",
-        "positions_projected",
-        "positions_delta",
-        "portfolio_totals",
-        "instrument_enrichment"
+        "SECTIONS_ITEM_VALUE"
       ],
       "type": "array",
       "locations": [
@@ -1833,6 +1861,22 @@
       "observedTypes": [
         "object",
         "string"
+      ]
+    },
+    {
+      "semanticId": "lotus.security_ids",
+      "canonicalTerm": "security_ids",
+      "preferredName": "security_ids",
+      "description": "Canonical Lotus security identifiers to enrich.",
+      "example": [
+        "SECURITY_IDS_ITEM_VALUE"
+      ],
+      "type": "array",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "array"
       ]
     },
     {
@@ -2303,8 +2347,24 @@
       "semanticId": "lotus.ultimate_parent_issuer_id",
       "canonicalTerm": "ultimate_parent_issuer_id",
       "preferredName": "ultimate_parent_issuer_id",
-      "description": "Identifier for the ultimate parent of the issuer.",
+      "description": "Canonical ultimate parent issuer identifier, when available.",
       "example": "ULTIMATE_PARENT_ISSUER_001",
+      "type": "object",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "object"
+      ]
+    },
+    {
+      "semanticId": "lotus.ultimate_parent_issuer_name",
+      "canonicalTerm": "ultimate_parent_issuer_name",
+      "preferredName": "ultimate_parent_issuer_name",
+      "description": "Display name for ultimate parent issuer, when available.",
+      "example": {
+        "id": "OBJ_001"
+      },
       "type": "object",
       "locations": [
         "body"
@@ -6078,6 +6138,96 @@
       }
     },
     {
+      "operationId": "get_instrument_enrichment_bulk_integration_instruments_enrichment_bulk_post",
+      "method": "POST",
+      "path": "/integration/instruments/enrichment-bulk",
+      "domain": "integration_contracts",
+      "serviceGroup": "query",
+      "tags": [
+        "Integration Contracts"
+      ],
+      "summary": "Resolve issuer enrichment for security identifiers",
+      "description": "Returns issuer enrichment for a caller-provided security_id list. Records are deterministic and preserve request order. Unknown securities are returned with null issuer fields.",
+      "naming": {
+        "boundedContext": "integration_contracts",
+        "canonicalTerms": [
+          "issuer_id",
+          "issuer_name",
+          "records",
+          "security_id",
+          "security_ids",
+          "ultimate_parent_issuer_id",
+          "ultimate_parent_issuer_name"
+        ]
+      },
+      "request": {
+        "fields": [
+          {
+            "name": "security_ids",
+            "location": "body",
+            "required": true,
+            "type": "array",
+            "semanticId": "lotus.security_ids",
+            "attributeRef": "lotus.security_ids"
+          }
+        ]
+      },
+      "response": {
+        "httpStatus": 200,
+        "model": "InstrumentEnrichmentBulkResponse",
+        "fields": [
+          {
+            "name": "records",
+            "location": "body",
+            "required": true,
+            "type": "array",
+            "semanticId": "lotus.records",
+            "attributeRef": "lotus.records"
+          },
+          {
+            "name": "records[].security_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.security_id",
+            "attributeRef": "lotus.security_id"
+          },
+          {
+            "name": "records[].issuer_id",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.issuer_id",
+            "attributeRef": "lotus.issuer_id"
+          },
+          {
+            "name": "records[].issuer_name",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.issuer_name",
+            "attributeRef": "lotus.issuer_name"
+          },
+          {
+            "name": "records[].ultimate_parent_issuer_id",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.ultimate_parent_issuer_id",
+            "attributeRef": "lotus.ultimate_parent_issuer_id"
+          },
+          {
+            "name": "records[].ultimate_parent_issuer_name",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.ultimate_parent_issuer_name",
+            "attributeRef": "lotus.ultimate_parent_issuer_name"
+          }
+        ]
+      }
+    },
+    {
       "operationId": "get_integration_capabilities_integration_capabilities_get",
       "method": "GET",
       "path": "/integration/capabilities",
@@ -8078,13 +8228,15 @@
           "instruments",
           "isin",
           "issuer_id",
+          "issuer_name",
           "maturity_date",
           "name",
           "product_type",
           "rating",
           "sector",
           "security_id",
-          "ultimate_parent_issuer_id"
+          "ultimate_parent_issuer_id",
+          "ultimate_parent_issuer_name"
         ]
       },
       "request": {
@@ -8186,12 +8338,28 @@
             "attributeRef": "lotus.issuer_id"
           },
           {
+            "name": "instruments[].issuer_name",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.issuer_name",
+            "attributeRef": "lotus.issuer_name"
+          },
+          {
             "name": "instruments[].ultimate_parent_issuer_id",
             "location": "body",
             "required": false,
             "type": "object",
             "semanticId": "lotus.ultimate_parent_issuer_id",
             "attributeRef": "lotus.ultimate_parent_issuer_id"
+          },
+          {
+            "name": "instruments[].ultimate_parent_issuer_name",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.ultimate_parent_issuer_name",
+            "attributeRef": "lotus.ultimate_parent_issuer_name"
           }
         ]
       },
@@ -8457,6 +8625,7 @@
           "is_leverage_allowed",
           "isin",
           "issuer_id",
+          "issuer_name",
           "market_prices",
           "maturity_date",
           "mode",
@@ -8486,7 +8655,8 @@
           "transaction_id",
           "transaction_type",
           "transactions",
-          "ultimate_parent_issuer_id"
+          "ultimate_parent_issuer_id",
+          "ultimate_parent_issuer_name"
         ]
       },
       "request": {
@@ -8740,12 +8910,28 @@
             "attributeRef": "lotus.issuer_id"
           },
           {
+            "name": "instruments[].issuer_name",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.issuer_name",
+            "attributeRef": "lotus.issuer_name"
+          },
+          {
             "name": "instruments[].ultimate_parent_issuer_id",
             "location": "body",
             "required": false,
             "type": "object",
             "semanticId": "lotus.ultimate_parent_issuer_id",
             "attributeRef": "lotus.ultimate_parent_issuer_id"
+          },
+          {
+            "name": "instruments[].ultimate_parent_issuer_name",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.ultimate_parent_issuer_name",
+            "attributeRef": "lotus.ultimate_parent_issuer_name"
           },
           {
             "name": "transactions",
