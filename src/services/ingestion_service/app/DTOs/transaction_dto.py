@@ -1,24 +1,33 @@
 # services/ingestion_service/app/DTOs/transaction_dto.py
-from datetime import date, datetime
-from typing import Optional, List
-from pydantic import BaseModel, Field, condecimal # Import condecimal
-from decimal import Decimal # Import Decimal
+from datetime import UTC, datetime
+from decimal import Decimal
+from typing import List, Optional
+
+from pydantic import BaseModel, Field, condecimal
+
 
 class Transaction(BaseModel):
-    transaction_id: str = Field(json_schema_extra={'example': 'TRN001'})
-    portfolio_id: str = Field(json_schema_extra={'example': 'PORT001'})
-    instrument_id: str = Field(json_schema_extra={'example': 'AAPL'})
-    security_id: str = Field(json_schema_extra={'example': 'SEC_AAPL'})
-    transaction_date: datetime = Field(json_schema_extra={'example': '2023-01-15T10:00:00Z'})
-    transaction_type: str = Field(json_schema_extra={'example': 'BUY'})
-    quantity: condecimal(ge=Decimal(0)) = Field(json_schema_extra={'example': '10.0'})
-    price: condecimal(ge=Decimal(0)) = Field(json_schema_extra={'example': '150.0'})
-    gross_transaction_amount: condecimal(gt=Decimal(0)) = Field(json_schema_extra={'example': '1500.0'})
-    trade_currency: str = Field(json_schema_extra={'example': 'USD'})
-    currency: str = Field(json_schema_extra={'example': 'USD'})
-    trade_fee: Optional[condecimal(ge=Decimal(0))] = Field(default=Decimal(0), json_schema_extra={'example': '5.0'})
+    transaction_id: str = Field(json_schema_extra={"example": "TRN001"})
+    portfolio_id: str = Field(json_schema_extra={"example": "PORT001"})
+    instrument_id: str = Field(json_schema_extra={"example": "AAPL"})
+    security_id: str = Field(json_schema_extra={"example": "SEC_AAPL"})
+    transaction_date: datetime = Field(
+        json_schema_extra={"example": "2023-01-15T10:00:00Z"}
+    )
+    transaction_type: str = Field(json_schema_extra={"example": "BUY"})
+    quantity: condecimal(ge=Decimal(0)) = Field(json_schema_extra={"example": "10.0"})
+    price: condecimal(ge=Decimal(0)) = Field(json_schema_extra={"example": "150.0"})
+    gross_transaction_amount: condecimal(gt=Decimal(0)) = Field(
+        json_schema_extra={"example": "1500.0"}
+    )
+    trade_currency: str = Field(json_schema_extra={"example": "USD"})
+    currency: str = Field(json_schema_extra={"example": "USD"})
+    trade_fee: Optional[condecimal(ge=Decimal(0))] = Field(
+        default=Decimal(0), json_schema_extra={"example": "5.0"}
+    )
     settlement_date: Optional[datetime] = None
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
 
 class TransactionIngestionRequest(BaseModel):
     transactions: List[Transaction]
