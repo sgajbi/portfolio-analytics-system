@@ -1,0 +1,480 @@
+from __future__ import annotations
+
+from datetime import UTC, datetime
+from decimal import Decimal
+from typing import Any
+
+from fastapi import Depends
+from portfolio_common.db import get_async_db_session
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from ..dtos.core_snapshot_dto import (
+    CoreSnapshotDeltaRecord,
+    CoreSnapshotInstrumentEnrichmentRecord,
+    CoreSnapshotMode,
+    CoreSnapshotPortfolioTotals,
+    CoreSnapshotPositionRecord,
+    CoreSnapshotRequest,
+    CoreSnapshotResponse,
+    CoreSnapshotSection,
+    CoreSnapshotSections,
+    CoreSnapshotSimulationMetadata,
+    CoreSnapshotValuationContext,
+)
+from ..repositories.fx_rate_repository import FxRateRepository
+from ..repositories.instrument_repository import InstrumentRepository
+from ..repositories.portfolio_repository import PortfolioRepository
+from ..repositories.position_repository import PositionRepository
+from ..repositories.price_repository import MarketPriceRepository
+from ..repositories.simulation_repository import SimulationRepository
+
+_POSITIVE_TYPES = {"BUY", "DEPOSIT", "TRANSFER_IN"}
+_NEGATIVE_TYPES = {"SELL", "WITHDRAWAL", "TRANSFER_OUT", "FEE", "TAX"}
+
+
+class CoreSnapshotBadRequestError(ValueError):
+    pass
+
+
+class CoreSnapshotNotFoundError(ValueError):
+    pass
+
+
+class CoreSnapshotConflictError(ValueError):
+    pass
+
+
+class CoreSnapshotUnavailableSectionError(ValueError):
+    pass
+
+
+class CoreSnapshotService:
+    def __init__(self, db: AsyncSession):
+        self.db = db
+        self.position_repo = PositionRepository(db)
+        self.portfolio_repo = PortfolioRepository(db)
+        self.simulation_repo = SimulationRepository(db)
+        self.price_repo = MarketPriceRepository(db)
+        self.fx_repo = FxRateRepository(db)
+        self.instrument_repo = InstrumentRepository(db)
+
+    async def get_core_snapshot(
+        self,
+        portfolio_id: str,
+        request: CoreSnapshotRequest,
+    ) -> CoreSnapshotResponse:
+        portfolio = await self.portfolio_repo.get_by_id(portfolio_id)
+        if portfolio is None:
+            raise CoreSnapshotNotFoundError(f"Portfolio {portfolio_id} not found")
+
+        reporting_currency = request.reporting_currency or portfolio.base_currency
+        reporting_fx = await self._get_fx_rate_or_raise(
+            from_currency=portfolio.base_currency,
+            to_currency=reporting_currency,
+            as_of_date=request.as_of_date,
+        )
+
+        baseline_positions = await self._resolve_baseline_positions(
+            portfolio_id=portfolio_id,
+            as_of_date=request.as_of_date,
+            reporting_fx=reporting_fx,
+            include_cash=request.options.include_cash_positions,
+            include_zero=request.options.include_zero_quantity_positions,
+        )
+
+        sections_payload = CoreSnapshotSections()
+        simulation_metadata: CoreSnapshotSimulationMetadata | None = None
+
+        if CoreSnapshotSection.POSITIONS_BASELINE in request.sections:
+            sections_payload.positions_baseline = [
+                item["position_record"] for item in baseline_positions.values()
+            ]
+
+        projected_positions: dict[str, dict[str, Any]] | None = None
+        projected_total = Decimal(0)
+        baseline_total = self._total_market_value_baseline(baseline_positions)
+
+        if request.snapshot_mode == CoreSnapshotMode.SIMULATION:
+            session_opts = request.simulation
+            assert session_opts is not None
+            session = await self.simulation_repo.get_session(session_opts.session_id)
+            if session is None:
+                raise CoreSnapshotNotFoundError(
+                    f"Simulation session {session_opts.session_id} not found"
+                )
+            if session.portfolio_id != portfolio_id:
+                raise CoreSnapshotConflictError(
+                    "Simulation session does not belong to requested portfolio"
+                )
+            if (
+                session_opts.expected_version is not None
+                and session.version != session_opts.expected_version
+            ):
+                raise CoreSnapshotConflictError("Simulation expected_version mismatch")
+
+            simulation_metadata = CoreSnapshotSimulationMetadata(
+                session_id=session.session_id,
+                version=session.version,
+                baseline_as_of_date=request.as_of_date,
+            )
+            projected_positions = await self._resolve_projected_positions(
+                session_id=session.session_id,
+                as_of_date=request.as_of_date,
+                portfolio_base_currency=portfolio.base_currency,
+                reporting_currency=reporting_currency,
+                baseline_positions=baseline_positions,
+                include_zero=request.options.include_zero_quantity_positions,
+                include_cash=request.options.include_cash_positions,
+            )
+            projected_total = self._total_market_value_projected(projected_positions)
+        else:
+            if (
+                CoreSnapshotSection.POSITIONS_PROJECTED in request.sections
+                or CoreSnapshotSection.POSITIONS_DELTA in request.sections
+            ):
+                raise CoreSnapshotBadRequestError(
+                    "Projected and delta sections require snapshot_mode=SIMULATION"
+                )
+
+        if CoreSnapshotSection.POSITIONS_PROJECTED in request.sections:
+            if projected_positions is None:
+                raise CoreSnapshotUnavailableSectionError("positions_projected unavailable")
+            self._assign_projected_weights(projected_positions, projected_total)
+            sections_payload.positions_projected = [
+                item["position_record"] for item in projected_positions.values()
+            ]
+
+        if CoreSnapshotSection.POSITIONS_DELTA in request.sections:
+            if projected_positions is None:
+                raise CoreSnapshotUnavailableSectionError("positions_delta unavailable")
+            sections_payload.positions_delta = self._build_delta_section(
+                baseline_positions=baseline_positions,
+                projected_positions=projected_positions,
+                baseline_total=baseline_total,
+                projected_total=projected_total,
+            )
+
+        if CoreSnapshotSection.PORTFOLIO_TOTALS in request.sections:
+            sections_payload.portfolio_totals = CoreSnapshotPortfolioTotals(
+                baseline_total_market_value_base=baseline_total,
+                projected_total_market_value_base=(
+                    projected_total if projected_positions is not None else None
+                ),
+                delta_total_market_value_base=(
+                    projected_total - baseline_total if projected_positions is not None else None
+                ),
+            )
+
+        if CoreSnapshotSection.INSTRUMENT_ENRICHMENT in request.sections:
+            sections_payload.instrument_enrichment = [
+                CoreSnapshotInstrumentEnrichmentRecord(
+                    security_id=item["security_id"],
+                    isin=item["isin"],
+                    asset_class=item["asset_class"],
+                    sector=item["sector"],
+                    country_of_risk=item["country_of_risk"],
+                    instrument_name=item["instrument_name"],
+                )
+                for item in baseline_positions.values()
+            ]
+
+        return CoreSnapshotResponse(
+            portfolio_id=portfolio_id,
+            as_of_date=request.as_of_date,
+            snapshot_mode=request.snapshot_mode,
+            generated_at=datetime.now(UTC),
+            valuation_context=CoreSnapshotValuationContext(
+                portfolio_currency=portfolio.base_currency,
+                reporting_currency=reporting_currency,
+                position_basis=request.options.position_basis,
+                weight_basis=request.options.weight_basis,
+            ),
+            simulation=simulation_metadata,
+            sections=sections_payload,
+        )
+
+    async def _resolve_baseline_positions(
+        self,
+        portfolio_id: str,
+        as_of_date,
+        reporting_fx: Decimal,
+        include_cash: bool,
+        include_zero: bool,
+    ) -> dict[str, dict[str, Any]]:
+        rows = await self.position_repo.get_latest_positions_by_portfolio_as_of_date(
+            portfolio_id=portfolio_id,
+            as_of_date=as_of_date,
+        )
+        use_snapshot = True
+        if not rows:
+            rows = await self.position_repo.get_latest_position_history_by_portfolio_as_of_date(
+                portfolio_id=portfolio_id,
+                as_of_date=as_of_date,
+            )
+            use_snapshot = False
+
+        baseline: dict[str, dict[str, Any]] = {}
+        for row, instrument, _state in rows:
+            quantity = Decimal(str(row.quantity))
+            if not include_zero and quantity == Decimal(0):
+                continue
+            if (
+                not include_cash
+                and instrument
+                and str(instrument.asset_class or "").upper() == "CASH"
+            ):
+                continue
+
+            if use_snapshot:
+                market_value_base_raw = (
+                    Decimal(str(row.market_value)) if row.market_value is not None else None
+                )
+                market_value_local = (
+                    Decimal(str(row.market_value_local))
+                    if row.market_value_local is not None
+                    else None
+                )
+            else:
+                market_value_base_raw = (
+                    Decimal(str(row.cost_basis)) if row.cost_basis is not None else None
+                )
+                market_value_local = (
+                    Decimal(str(row.cost_basis_local)) if row.cost_basis_local is not None else None
+                )
+
+            market_value_base = (
+                market_value_base_raw * reporting_fx if market_value_base_raw is not None else None
+            )
+
+            baseline[row.security_id] = {
+                "security_id": row.security_id,
+                "quantity": quantity,
+                "market_value_base": market_value_base,
+                "market_value_local": market_value_local,
+                "currency": instrument.currency if instrument else None,
+                "instrument_name": instrument.name if instrument else row.security_id,
+                "asset_class": instrument.asset_class if instrument else None,
+                "sector": instrument.sector if instrument else None,
+                "country_of_risk": instrument.country_of_risk if instrument else None,
+                "isin": instrument.isin if instrument else None,
+            }
+
+        total_base = self._total_market_value_baseline(baseline)
+        self._assign_baseline_weights(baseline, total_base)
+        return dict(sorted(baseline.items(), key=lambda item: item[0]))
+
+    async def _resolve_projected_positions(
+        self,
+        session_id: str,
+        as_of_date,
+        portfolio_base_currency: str,
+        reporting_currency: str,
+        baseline_positions: dict[str, dict[str, Any]],
+        include_zero: bool,
+        include_cash: bool,
+    ) -> dict[str, dict[str, Any]]:
+        projected: dict[str, dict[str, Any]] = {
+            key: dict(value) for key, value in baseline_positions.items()
+        }
+        for value in projected.values():
+            value["baseline_quantity"] = value["quantity"]
+
+        changes = await self.simulation_repo.get_changes(session_id)
+        changed_security_ids = {change.security_id for change in changes}
+        missing_security_ids = [sid for sid in changed_security_ids if sid not in projected]
+        if missing_security_ids:
+            instruments = await self.instrument_repo.get_by_security_ids(missing_security_ids)
+            instrument_map = {item.security_id: item for item in instruments}
+            for security_id in missing_security_ids:
+                instrument = instrument_map.get(security_id)
+                if instrument is None:
+                    raise CoreSnapshotUnavailableSectionError(
+                        f"positions_projected unavailable: missing instrument {security_id}"
+                    )
+                projected[security_id] = {
+                    "security_id": security_id,
+                    "quantity": Decimal(0),
+                    "baseline_quantity": Decimal(0),
+                    "market_value_base": Decimal(0),
+                    "market_value_local": Decimal(0),
+                    "currency": instrument.currency,
+                    "instrument_name": instrument.name,
+                    "asset_class": instrument.asset_class,
+                    "sector": instrument.sector,
+                    "country_of_risk": instrument.country_of_risk,
+                    "isin": instrument.isin,
+                }
+
+        for change in changes:
+            entry = projected[change.security_id]
+            delta = self._change_quantity_effect(change)
+            entry["quantity"] = entry["quantity"] + delta
+
+        for security_id, entry in projected.items():
+            if not include_cash and str(entry.get("asset_class") or "").upper() == "CASH":
+                continue
+            if not include_zero and entry["quantity"] == Decimal(0):
+                continue
+            baseline_qty = entry["baseline_quantity"]
+            if baseline_qty > 0 and entry.get("market_value_base") is not None:
+                unit_base = entry["market_value_base"] / baseline_qty
+                entry["market_value_base"] = unit_base * entry["quantity"]
+                if entry.get("market_value_local") is not None:
+                    unit_local = entry["market_value_local"] / baseline_qty
+                    entry["market_value_local"] = unit_local * entry["quantity"]
+                continue
+
+            quantity = entry["quantity"]
+            if quantity <= 0:
+                entry["market_value_base"] = Decimal(0)
+                entry["market_value_local"] = Decimal(0)
+                continue
+
+            prices = await self.price_repo.get_prices(
+                security_id=security_id,
+                end_date=as_of_date,
+            )
+            if not prices:
+                raise CoreSnapshotUnavailableSectionError(
+                    f"positions_projected unavailable: missing market price for {security_id}"
+                )
+            latest_price = prices[-1]
+            local_value = Decimal(str(latest_price.price)) * quantity
+            market_currency = latest_price.currency
+            fx_to_portfolio = await self._get_fx_rate_or_raise(
+                from_currency=market_currency,
+                to_currency=portfolio_base_currency,
+                as_of_date=as_of_date,
+            )
+            portfolio_value = local_value * fx_to_portfolio
+            fx_to_reporting = await self._get_fx_rate_or_raise(
+                from_currency=portfolio_base_currency,
+                to_currency=reporting_currency,
+                as_of_date=as_of_date,
+            )
+            entry["market_value_local"] = local_value
+            entry["market_value_base"] = portfolio_value * fx_to_reporting
+
+        filtered: dict[str, dict[str, Any]] = {}
+        for key, value in projected.items():
+            if not include_cash and str(value.get("asset_class") or "").upper() == "CASH":
+                continue
+            if not include_zero and value["quantity"] == Decimal(0):
+                continue
+            filtered[key] = value
+
+        return dict(sorted(filtered.items(), key=lambda item: item[0]))
+
+    @staticmethod
+    def _change_quantity_effect(change) -> Decimal:
+        txn_type = str(change.transaction_type).upper()
+        magnitude = Decimal(str(change.quantity or change.amount or 0))
+        if txn_type in _POSITIVE_TYPES:
+            return magnitude
+        if txn_type in _NEGATIVE_TYPES:
+            return -magnitude
+        return Decimal(0)
+
+    async def _get_fx_rate_or_raise(
+        self, from_currency: str, to_currency: str, as_of_date
+    ) -> Decimal:
+        if from_currency == to_currency:
+            return Decimal(1)
+        rates = await self.fx_repo.get_fx_rates(
+            from_currency=from_currency,
+            to_currency=to_currency,
+            end_date=as_of_date,
+        )
+        if not rates:
+            pair = f"{from_currency}/{to_currency}"
+            raise CoreSnapshotUnavailableSectionError(
+                f"missing FX rate {pair} on or before {as_of_date.isoformat()}"
+            )
+        return Decimal(str(rates[-1].rate))
+
+    @staticmethod
+    def _total_market_value_baseline(items: dict[str, dict[str, Any]]) -> Decimal:
+        return sum(
+            (item["market_value_base"] or Decimal(0))
+            for item in items.values()
+            if item["market_value_base"] is not None
+        )
+
+    @staticmethod
+    def _total_market_value_projected(items: dict[str, dict[str, Any]]) -> Decimal:
+        return sum((item["market_value_base"] or Decimal(0)) for item in items.values())
+
+    @staticmethod
+    def _assign_baseline_weights(items: dict[str, dict[str, Any]], total: Decimal) -> None:
+        for item in items.values():
+            if total > 0 and item["market_value_base"] is not None:
+                weight = item["market_value_base"] / total
+            else:
+                weight = Decimal(0)
+            item["position_record"] = CoreSnapshotPositionRecord(
+                security_id=item["security_id"],
+                quantity=item["quantity"],
+                market_value_base=item["market_value_base"],
+                market_value_local=item["market_value_local"],
+                weight=weight,
+                currency=item["currency"],
+            )
+
+    @staticmethod
+    def _assign_projected_weights(items: dict[str, dict[str, Any]], total: Decimal) -> None:
+        for item in items.values():
+            weight = (item["market_value_base"] / total) if total > 0 else Decimal(0)
+            item["position_record"] = CoreSnapshotPositionRecord(
+                security_id=item["security_id"],
+                quantity=item["quantity"],
+                market_value_base=item["market_value_base"],
+                market_value_local=item["market_value_local"],
+                weight=weight,
+                currency=item["currency"],
+            )
+
+    @staticmethod
+    def _build_delta_section(
+        baseline_positions: dict[str, dict[str, Any]],
+        projected_positions: dict[str, dict[str, Any]],
+        baseline_total: Decimal,
+        projected_total: Decimal,
+    ) -> list[CoreSnapshotDeltaRecord]:
+        all_ids = sorted(set(baseline_positions.keys()) | set(projected_positions.keys()))
+        rows: list[CoreSnapshotDeltaRecord] = []
+        for security_id in all_ids:
+            baseline = baseline_positions.get(security_id)
+            projected = projected_positions.get(security_id)
+            baseline_qty = baseline["quantity"] if baseline else Decimal(0)
+            projected_qty = projected["quantity"] if projected else Decimal(0)
+            baseline_mv = baseline["market_value_base"] if baseline else Decimal(0)
+            projected_mv = projected["market_value_base"] if projected else Decimal(0)
+            baseline_weight = (
+                (baseline_mv / baseline_total)
+                if baseline_total > 0 and baseline is not None
+                else Decimal(0)
+            )
+            projected_weight = (
+                (projected_mv / projected_total)
+                if projected_total > 0 and projected is not None
+                else Decimal(0)
+            )
+            rows.append(
+                CoreSnapshotDeltaRecord(
+                    security_id=security_id,
+                    baseline_quantity=baseline_qty,
+                    projected_quantity=projected_qty,
+                    delta_quantity=projected_qty - baseline_qty,
+                    baseline_market_value_base=baseline_mv,
+                    projected_market_value_base=projected_mv,
+                    delta_market_value_base=projected_mv - baseline_mv,
+                    delta_weight=projected_weight - baseline_weight,
+                )
+            )
+        return rows
+
+
+def get_core_snapshot_service(
+    db: AsyncSession = Depends(get_async_db_session),
+) -> CoreSnapshotService:
+    return CoreSnapshotService(db)

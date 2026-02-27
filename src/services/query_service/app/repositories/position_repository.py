@@ -211,6 +211,130 @@ class PositionRepository:
         )
         return positions
 
+    async def get_latest_positions_by_portfolio_as_of_date(
+        self, portfolio_id: str, as_of_date: date
+    ) -> List[Any]:
+        """
+        Returns the latest available daily snapshot per security on or before as_of_date,
+        constrained to current epoch via PositionState.
+        """
+        ranked_snapshot_subq = (
+            select(
+                DailyPositionSnapshot.id.label("snapshot_id"),
+                func.row_number()
+                .over(
+                    partition_by=DailyPositionSnapshot.security_id,
+                    order_by=(DailyPositionSnapshot.date.desc(), DailyPositionSnapshot.id.desc()),
+                )
+                .label("rn"),
+            )
+            .join(
+                PositionState,
+                and_(
+                    DailyPositionSnapshot.portfolio_id == PositionState.portfolio_id,
+                    DailyPositionSnapshot.security_id == PositionState.security_id,
+                    DailyPositionSnapshot.epoch == PositionState.epoch,
+                ),
+            )
+            .where(
+                DailyPositionSnapshot.portfolio_id == portfolio_id,
+                DailyPositionSnapshot.date <= as_of_date,
+            )
+            .subquery()
+        )
+
+        stmt = (
+            select(DailyPositionSnapshot, Instrument, PositionState)
+            .join(
+                ranked_snapshot_subq,
+                and_(
+                    DailyPositionSnapshot.id == ranked_snapshot_subq.c.snapshot_id,
+                    ranked_snapshot_subq.c.rn == 1,
+                ),
+            )
+            .join(Instrument, Instrument.security_id == DailyPositionSnapshot.security_id)
+            .join(
+                PositionState,
+                and_(
+                    PositionState.portfolio_id == DailyPositionSnapshot.portfolio_id,
+                    PositionState.security_id == DailyPositionSnapshot.security_id,
+                    PositionState.epoch == DailyPositionSnapshot.epoch,
+                ),
+            )
+        )
+
+        results = await self.db.execute(stmt)
+        positions = results.all()
+        logger.info(
+            "Found %s as-of snapshot positions for portfolio '%s' at %s.",
+            len(positions),
+            portfolio_id,
+            as_of_date,
+        )
+        return positions
+
+    async def get_latest_position_history_by_portfolio_as_of_date(
+        self, portfolio_id: str, as_of_date: date
+    ) -> List[Any]:
+        """
+        Fallback latest per-security position_history rows on or before as_of_date,
+        constrained to current epoch via PositionState.
+        """
+        ranked_history_subq = (
+            select(
+                PositionHistory.id.label("position_history_id"),
+                func.row_number()
+                .over(
+                    partition_by=PositionHistory.security_id,
+                    order_by=(PositionHistory.position_date.desc(), PositionHistory.id.desc()),
+                )
+                .label("rn"),
+            )
+            .join(
+                PositionState,
+                and_(
+                    PositionHistory.portfolio_id == PositionState.portfolio_id,
+                    PositionHistory.security_id == PositionState.security_id,
+                    PositionHistory.epoch == PositionState.epoch,
+                ),
+            )
+            .where(
+                PositionHistory.portfolio_id == portfolio_id,
+                PositionHistory.position_date <= as_of_date,
+            )
+            .subquery()
+        )
+
+        stmt = (
+            select(PositionHistory, Instrument, PositionState)
+            .join(
+                ranked_history_subq,
+                and_(
+                    PositionHistory.id == ranked_history_subq.c.position_history_id,
+                    ranked_history_subq.c.rn == 1,
+                ),
+            )
+            .join(Instrument, Instrument.security_id == PositionHistory.security_id)
+            .join(
+                PositionState,
+                and_(
+                    PositionState.portfolio_id == PositionHistory.portfolio_id,
+                    PositionState.security_id == PositionHistory.security_id,
+                    PositionState.epoch == PositionHistory.epoch,
+                ),
+            )
+        )
+
+        results = await self.db.execute(stmt)
+        positions = results.all()
+        logger.info(
+            "Found %s as-of fallback position-history rows for portfolio '%s' at %s.",
+            len(positions),
+            portfolio_id,
+            as_of_date,
+        )
+        return positions
+
     async def get_latest_snapshot_valuation_map(
         self, portfolio_id: str
     ) -> dict[str, dict[str, float | None]]:

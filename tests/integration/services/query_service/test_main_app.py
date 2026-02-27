@@ -132,3 +132,17 @@ async def test_openapi_hides_migrated_legacy_endpoints(async_test_client):
     assert "/portfolios/{portfolio_id}/performance" not in paths
     assert "/portfolios/{portfolio_id}/performance/mwr" not in paths
     assert "/portfolios/{portfolio_id}/positions-analytics" not in paths
+
+
+async def test_openapi_declares_core_snapshot_contract(async_test_client):
+    response = await async_test_client.get("/openapi.json")
+    assert response.status_code == 200
+    paths = response.json()["paths"]
+
+    endpoint = "/integration/portfolios/{portfolio_id}/core-snapshot"
+    assert endpoint in paths
+    responses = paths[endpoint]["post"]["responses"]
+    assert "400" in responses
+    assert "404" in responses
+    assert "409" in responses
+    assert "422" in responses
