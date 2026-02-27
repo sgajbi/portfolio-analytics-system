@@ -5,8 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import Depends
 from decimal import Decimal
 from typing import Any
-import pandas as pd
-from datetime import date
+from datetime import date, timedelta
 
 from portfolio_common.db import get_async_db_session
 from ..dtos.position_analytics_dto import (
@@ -111,16 +110,16 @@ class PositionAnalyticsService:
                 )
                 fx_rates = {r.rate_date: r.rate for r in fx_rates_db}
 
-                # Forward fill missing FX rates
-                ffill_series = (
-                    pd.Series(fx_rates)
-                    .reindex(pd.date_range(min_cf_date, request.as_of_date, freq="D"))
-                    .ffill()
-                )
-                # --- THIS IS THE FIX ---
-                # Convert the pandas Timestamps in the index back to date objects for the dictionary keys.
-                filled_fx = {idx.date(): val for idx, val in ffill_series.items() if pd.notna(val)}
-                # --- END FIX ---
+                # Forward fill missing FX rates without optional pandas dependency.
+                filled_fx: dict[date, Decimal] = {}
+                last_rate: Decimal | None = None
+                current_date = min_cf_date
+                while current_date <= request.as_of_date:
+                    if current_date in fx_rates:
+                        last_rate = fx_rates[current_date]
+                    if last_rate is not None:
+                        filled_fx[current_date] = last_rate
+                    current_date += timedelta(days=1)
                 total_income_base = sum(
                     cf.amount * filled_fx.get(cf.cashflow_date, Decimal(1)) for cf in cashflows
                 )

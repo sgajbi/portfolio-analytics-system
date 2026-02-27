@@ -1,7 +1,7 @@
 {
   "description": "Approved baseline monetary-float findings. New findings fail CI.",
   "policy_version": "1.1.0",
-  "generated_at": "2026-02-27T04:34:03Z",
+  "generated_at": "2026-02-27T04:49:56Z",
   "allowlist": [
     {
       "finding": "scripts/check_monetary_float_usage.py:112:\"justification\": \"Temporary approved monetary float usage; migrate to Decimal.\",",
@@ -142,61 +142,61 @@
       "review_by": "2026-08-24"
     },
     {
-      "finding": "src/services/query_service/app/services/position_analytics_service.py:129:local=MonetaryAmount(amount=float(total_income_local), currency=currency),",
+      "finding": "src/services/query_service/app/services/position_analytics_service.py:128:local=MonetaryAmount(amount=float(total_income_local), currency=currency),",
       "justification": "Temporary approved monetary float usage; migrate to Decimal.",
       "owner": "platform-governance",
       "review_by": "2026-08-26"
     },
     {
-      "finding": "src/services/query_service/app/services/position_analytics_service.py:131:amount=float(total_income_base), currency=portfolio.base_currency",
+      "finding": "src/services/query_service/app/services/position_analytics_service.py:130:amount=float(total_income_base), currency=portfolio.base_currency",
       "justification": "Temporary approved monetary float usage; migrate to Decimal.",
       "owner": "platform-governance",
       "review_by": "2026-08-26"
     },
     {
-      "finding": "src/services/query_service/app/services/position_analytics_service.py:149:amount=float(snapshot.market_value_local or 0), currency=currency",
+      "finding": "src/services/query_service/app/services/position_analytics_service.py:148:amount=float(snapshot.market_value_local or 0), currency=currency",
       "justification": "Temporary approved monetary float usage; migrate to Decimal.",
       "owner": "platform-governance",
       "review_by": "2026-08-26"
     },
     {
-      "finding": "src/services/query_service/app/services/position_analytics_service.py:152:amount=float(snapshot.market_value or 0), currency=portfolio.base_currency",
+      "finding": "src/services/query_service/app/services/position_analytics_service.py:151:amount=float(snapshot.market_value or 0), currency=portfolio.base_currency",
       "justification": "Temporary approved monetary float usage; migrate to Decimal.",
       "owner": "platform-governance",
       "review_by": "2026-08-26"
     },
     {
-      "finding": "src/services/query_service/app/services/position_analytics_service.py:157:amount=float(snapshot.cost_basis_local or 0), currency=currency",
+      "finding": "src/services/query_service/app/services/position_analytics_service.py:156:amount=float(snapshot.cost_basis_local or 0), currency=currency",
       "justification": "Temporary approved monetary float usage; migrate to Decimal.",
       "owner": "platform-governance",
       "review_by": "2026-08-26"
     },
     {
-      "finding": "src/services/query_service/app/services/position_analytics_service.py:160:amount=float(snapshot.cost_basis or 0), currency=portfolio.base_currency",
+      "finding": "src/services/query_service/app/services/position_analytics_service.py:159:amount=float(snapshot.cost_basis or 0), currency=portfolio.base_currency",
       "justification": "Temporary approved monetary float usage; migrate to Decimal.",
       "owner": "platform-governance",
       "review_by": "2026-08-26"
     },
     {
-      "finding": "src/services/query_service/app/services/position_analytics_service.py:165:amount=float(snapshot.unrealized_gain_loss_local or 0), currency=currency",
+      "finding": "src/services/query_service/app/services/position_analytics_service.py:164:amount=float(snapshot.unrealized_gain_loss_local or 0), currency=currency",
       "justification": "Temporary approved monetary float usage; migrate to Decimal.",
       "owner": "platform-governance",
       "review_by": "2026-08-26"
     },
     {
-      "finding": "src/services/query_service/app/services/position_analytics_service.py:168:amount=float(snapshot.unrealized_gain_loss or 0),",
+      "finding": "src/services/query_service/app/services/position_analytics_service.py:167:amount=float(snapshot.unrealized_gain_loss or 0),",
       "justification": "Temporary approved monetary float usage; migrate to Decimal.",
       "owner": "platform-governance",
       "review_by": "2026-08-26"
     },
     {
-      "finding": "src/services/query_service/app/services/position_analytics_service.py:213:total_market_value=float(total_market_value_base),",
+      "finding": "src/services/query_service/app/services/position_analytics_service.py:212:total_market_value=float(total_market_value_base),",
       "justification": "Temporary approved monetary float usage; migrate to Decimal.",
       "owner": "platform-governance",
       "review_by": "2026-08-26"
     },
     {
-      "finding": "src/services/query_service/app/services/position_analytics_service.py:69:weight=float(market_value_base / total_market_value_base)",
+      "finding": "src/services/query_service/app/services/position_analytics_service.py:68:weight=float(market_value_base / total_market_value_base)",
       "justification": "Temporary approved monetary float usage; migrate to Decimal.",
       "owner": "platform-governance",
       "review_by": "2026-08-26"
