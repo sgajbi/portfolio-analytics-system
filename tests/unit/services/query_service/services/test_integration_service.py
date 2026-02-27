@@ -1,547 +1,175 @@
-from datetime import UTC, date, datetime, timedelta
-from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
-
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
+from unittest.mock import AsyncMock
 
-from src.services.query_service.app.dtos.integration_dto import (
-    PortfolioCoreSnapshotRequest,
-    PortfolioPerformanceInputRequest,
-)
 from src.services.query_service.app.services.integration_service import IntegrationService
 
-pytestmark = pytest.mark.asyncio
+
+def make_service() -> IntegrationService:
+    return IntegrationService(AsyncMock(spec=AsyncSession))
 
 
-@pytest.fixture
-def mock_portfolio_service() -> AsyncMock:
-    return AsyncMock()
+def test_canonical_consumer_system_mappings() -> None:
+    service = make_service()
+    assert service._canonical_consumer_system("DPM") == "lotus-manage"
+    assert service._canonical_consumer_system("aea") == "lotus-gateway"
+    assert service._canonical_consumer_system("UI") == "UI"
+    assert service._canonical_consumer_system("Custom-System") == "custom-system"
+    assert service._canonical_consumer_system(None) == "unknown"
+    assert service._canonical_consumer_system("   ") == "unknown"
 
 
-@pytest.fixture
-def mock_review_service() -> AsyncMock:
-    return AsyncMock()
+def test_load_policy_variants(monkeypatch: pytest.MonkeyPatch) -> None:
+    service = make_service()
 
-
-@pytest.fixture
-def mock_performance_repository() -> AsyncMock:
-    return AsyncMock()
-
-
-@pytest.fixture
-def service(
-    mock_portfolio_service: AsyncMock,
-    mock_review_service: AsyncMock,
-    mock_performance_repository: AsyncMock,
-) -> IntegrationService:
-    with (
-        patch(
-            "src.services.query_service.app.services.integration_service.PortfolioService",
-            return_value=mock_portfolio_service,
-        ),
-        patch(
-            "src.services.query_service.app.services.integration_service.ReviewService",
-            return_value=mock_review_service,
-        ),
-        patch(
-            "src.services.query_service.app.services.integration_service.PerformanceRepository",
-            return_value=mock_performance_repository,
-        ),
-    ):
-        return IntegrationService(AsyncMock(spec=AsyncSession))
-
-
-async def test_get_portfolio_core_snapshot(
-    service: IntegrationService,
-    mock_portfolio_service: AsyncMock,
-    mock_review_service: AsyncMock,
-    monkeypatch: pytest.MonkeyPatch,
-):
     monkeypatch.delenv("PAS_INTEGRATION_SNAPSHOT_POLICY_JSON", raising=False)
-    monkeypatch.delenv("PAS_DEFAULT_TENANT_ID", raising=False)
-    monkeypatch.setenv("PAS_INTEGRATION_MAX_STALENESS_DAYS", "10")
+    assert service._load_policy() == {}
 
-    mock_portfolio_service.get_portfolio_by_id.return_value = {
-        "portfolio_id": "P1",
-        "base_currency": "USD",
-        "open_date": date(2025, 1, 1),
-        "close_date": None,
-        "risk_exposure": "MODERATE",
-        "investment_time_horizon": "LONG_TERM",
-        "portfolio_type": "DISCRETIONARY",
-        "objective": "GROWTH",
-        "booking_center": "LON-01",
-        "cif_id": "CIF-1",
-        "is_leverage_allowed": False,
-        "advisor_id": "ADV-1",
-        "status": "ACTIVE",
-    }
-    mock_review_service.get_portfolio_review.return_value = {
-        "portfolio_id": "P1",
-        "as_of_date": date(2026, 2, 23),
-        "overview": None,
-        "allocation": None,
-        "performance": None,
-        "riskAnalytics": None,
-        "incomeAndActivity": None,
-        "holdings": None,
-        "transactions": None,
-    }
+    monkeypatch.setenv("PAS_INTEGRATION_SNAPSHOT_POLICY_JSON", "not-json")
+    assert service._load_policy() == {}
 
-    request = PortfolioCoreSnapshotRequest.model_validate(
-        {
-            "asOfDate": "2026-02-23",
-            "consumerSystem": "lotus-performance",
-            "includeSections": ["OVERVIEW", "HOLDINGS"],
-        }
-    )
+    monkeypatch.setenv("PAS_INTEGRATION_SNAPSHOT_POLICY_JSON", '["bad"]')
+    assert service._load_policy() == {}
 
-    response = await service.get_portfolio_core_snapshot("P1", request)
-
-    assert response.consumer_system == "lotus-performance"
-    assert response.contract_version == "v1"
-    assert response.portfolio.portfolio_id == "P1"
-    assert response.snapshot.portfolio_id == "P1"
-    assert response.metadata.source_as_of_date == date(2026, 2, 23)
-    assert response.metadata.freshness_status in {"FRESH", "STALE", "UNKNOWN"}
-    assert response.metadata.lineage_refs.portfolio_id == "P1"
-    assert response.metadata.section_governance.requested_sections == ["OVERVIEW", "HOLDINGS"]
-    assert response.metadata.section_governance.effective_sections == ["OVERVIEW", "HOLDINGS"]
-    assert response.metadata.section_governance.dropped_sections == []
-    assert response.metadata.policy_provenance.policy_source in {"default", "global", "tenant"}
-    assert response.metadata.policy_provenance.matched_rule_id
-    assert isinstance(response.metadata.generated_at, datetime)
-    assert response.metadata.generated_at.tzinfo == UTC
-
-    mock_review_service.get_portfolio_review.assert_awaited_once()
-    review_request = mock_review_service.get_portfolio_review.await_args.args[1]
-    assert review_request.sections == ["OVERVIEW", "HOLDINGS"]
-
-
-async def test_get_portfolio_core_snapshot_applies_policy_filter(
-    service: IntegrationService,
-    mock_portfolio_service: AsyncMock,
-    mock_review_service: AsyncMock,
-    monkeypatch: pytest.MonkeyPatch,
-):
-    mock_portfolio_service.get_portfolio_by_id.return_value = {
-        "portfolio_id": "P1",
-        "base_currency": "USD",
-        "open_date": date(2025, 1, 1),
-        "close_date": None,
-        "risk_exposure": "MODERATE",
-        "investment_time_horizon": "LONG_TERM",
-        "portfolio_type": "DISCRETIONARY",
-        "objective": "GROWTH",
-        "booking_center": "LON-01",
-        "cif_id": "CIF-1",
-        "is_leverage_allowed": False,
-        "advisor_id": "ADV-1",
-        "status": "ACTIVE",
-    }
-    mock_review_service.get_portfolio_review.return_value = {
-        "portfolio_id": "P1",
-        "as_of_date": date(2026, 2, 23),
-        "overview": None,
-        "allocation": None,
-        "performance": None,
-        "riskAnalytics": None,
-        "incomeAndActivity": None,
-        "holdings": None,
-        "transactions": None,
-    }
     monkeypatch.setenv(
         "PAS_INTEGRATION_SNAPSHOT_POLICY_JSON",
-        '{"consumers":{"lotus-performance":["OVERVIEW"]},"strictMode":false}',
+        '{"strictMode": true, "consumers": {"lotus-manage": ["OVERVIEW"]}}',
     )
-
-    request = PortfolioCoreSnapshotRequest.model_validate(
-        {
-            "asOfDate": "2026-02-23",
-            "consumerSystem": "lotus-performance",
-            "includeSections": ["OVERVIEW", "HOLDINGS", "PERFORMANCE"],
-        }
-    )
-
-    response = await service.get_portfolio_core_snapshot("P1", request)
-    assert response.metadata.section_governance.effective_sections == ["OVERVIEW"]
-    assert response.metadata.section_governance.dropped_sections == ["HOLDINGS", "PERFORMANCE"]
-    assert response.metadata.section_governance.warnings == ["SECTIONS_FILTERED_BY_POLICY"]
+    loaded = service._load_policy()
+    assert loaded["strictMode"] is True
+    assert "consumers" in loaded
 
 
-async def test_get_portfolio_core_snapshot_rejects_disallowed_sections_in_strict_mode(
-    service: IntegrationService,
-    monkeypatch: pytest.MonkeyPatch,
-):
-    monkeypatch.setenv(
-        "PAS_INTEGRATION_SNAPSHOT_POLICY_JSON",
-        '{"consumers":{"lotus-performance":["OVERVIEW"]},"strictMode":true}',
-    )
-    request = PortfolioCoreSnapshotRequest.model_validate(
-        {
-            "asOfDate": "2026-02-23",
-            "consumerSystem": "lotus-performance",
-            "includeSections": ["OVERVIEW", "HOLDINGS"],
-        }
-    )
-
-    with pytest.raises(PermissionError):
-        await service.get_portfolio_core_snapshot("P1", request)
-
-
-async def test_get_portfolio_core_snapshot_rejects_pa_owned_analytics_sections_in_strict_mode(
-    service: IntegrationService,
-    mock_portfolio_service: AsyncMock,
-    monkeypatch: pytest.MonkeyPatch,
-):
-    mock_portfolio_service.get_portfolio_by_id.return_value = {
-        "portfolio_id": "P1",
-        "base_currency": "USD",
-        "open_date": date(2025, 1, 1),
-    }
-    monkeypatch.setenv(
-        "PAS_INTEGRATION_SNAPSHOT_POLICY_JSON",
-        '{"consumers":{"lotus-performance":["OVERVIEW","RISK_ANALYTICS"]},"strictMode":true}',
-    )
-
-    request = PortfolioCoreSnapshotRequest.model_validate(
-        {
-            "asOfDate": "2026-02-23",
-            "consumerSystem": "lotus-performance",
-            "includeSections": ["OVERVIEW", "RISK_ANALYTICS"],
-        }
-    )
-
-    with pytest.raises(PermissionError, match="not owned by lotus-core core snapshot contract"):
-        await service.get_portfolio_core_snapshot("P1", request)
-
-
-async def test_get_portfolio_performance_input(
-    service: IntegrationService,
-    mock_portfolio_service: AsyncMock,
-    mock_performance_repository: AsyncMock,
-):
-    mock_portfolio_service.get_portfolio_by_id.return_value = {
-        "portfolio_id": "P1",
-        "base_currency": "USD",
-        "open_date": date(2025, 1, 1),
-        "close_date": None,
-        "risk_exposure": "MODERATE",
-        "investment_time_horizon": "LONG_TERM",
-        "portfolio_type": "DISCRETIONARY",
-        "objective": "GROWTH",
-        "booking_center": "LON-01",
-        "cif_id": "CIF-1",
-        "is_leverage_allowed": False,
-        "advisor_id": "ADV-1",
-        "status": "ACTIVE",
-    }
-    mock_performance_repository.get_portfolio_timeseries_for_range.return_value = [
-        SimpleNamespace(
-            date=date(2026, 2, 20),
-            bod_market_value=100.0,
-            bod_cashflow=0.0,
-            eod_cashflow=0.0,
-            fees=0.0,
-            eod_market_value=101.0,
-        ),
-        SimpleNamespace(
-            date=date(2026, 2, 21),
-            bod_market_value=101.0,
-            bod_cashflow=5.0,
-            eod_cashflow=0.0,
-            fees=0.1,
-            eod_market_value=106.0,
-        ),
+def test_normalize_and_resolve_consumer_sections() -> None:
+    service = make_service()
+    assert service._normalize_sections(None) is None
+    assert service._normalize_sections([" overview ", "HOLDINGS", "", 123]) == [
+        "OVERVIEW",
+        "HOLDINGS",
     ]
-    request = PortfolioPerformanceInputRequest.model_validate(
-        {"asOfDate": "2026-02-21", "consumerSystem": "lotus-performance", "lookbackDays": 365}
+
+    sections, key = service._resolve_consumer_sections(None, "lotus-manage")
+    assert sections is None
+    assert key is None
+
+    sections, key = service._resolve_consumer_sections(
+        {"DPM": ["overview"], "other": ["x"]},
+        "lotus-manage",
     )
+    assert sections == ["OVERVIEW"]
+    assert key == "DPM"
 
-    response = await service.get_portfolio_performance_input("P1", request)
-    assert response.portfolio_id == "P1"
-    assert response.base_currency == "USD"
-    assert response.performance_start_date == date(2026, 2, 20)
-    assert len(response.valuation_points) == 2
-    assert response.valuation_points[1].begin_mv == 101.0
-    assert response.valuation_points[1].bod_cf == 5.0
+    sections, key = service._resolve_consumer_sections({"foo": ["x"]}, "lotus-manage")
+    assert sections is None
+    assert key is None
 
 
-async def test_get_portfolio_performance_input_rejects_when_rows_missing(
-    service: IntegrationService,
-    mock_portfolio_service: AsyncMock,
-    mock_performance_repository: AsyncMock,
-):
-    mock_portfolio_service.get_portfolio_by_id.return_value = {
-        "portfolio_id": "P1",
-        "base_currency": "USD",
-        "open_date": date(2025, 1, 1),
-    }
-    mock_performance_repository.get_portfolio_timeseries_for_range.return_value = []
-    request = PortfolioPerformanceInputRequest.model_validate(
-        {"asOfDate": "2026-02-21", "consumerSystem": "lotus-performance", "lookbackDays": 365}
-    )
+def test_resolve_policy_context_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    service = make_service()
+    monkeypatch.delenv("PAS_INTEGRATION_SNAPSHOT_POLICY_JSON", raising=False)
+    monkeypatch.delenv("PAS_POLICY_VERSION", raising=False)
 
-    with pytest.raises(ValueError, match="No portfolio_timeseries rows found"):
-        await service.get_portfolio_performance_input("P1", request)
+    ctx = service._resolve_policy_context(tenant_id="default", consumer_system="lotus-manage")
+    assert ctx.policy_version == "tenant-default-v1"
+    assert ctx.policy_source == "default"
+    assert ctx.matched_rule_id == "default"
+    assert ctx.strict_mode is False
+    assert ctx.allowed_sections is None
+    assert "NO_ALLOWED_SECTION_RESTRICTION" in ctx.warnings
 
 
-async def test_get_portfolio_core_snapshot_future_as_of_sets_unknown_freshness(
-    service: IntegrationService,
-    mock_portfolio_service: AsyncMock,
-    mock_review_service: AsyncMock,
-    monkeypatch: pytest.MonkeyPatch,
-):
-    monkeypatch.setenv("PAS_INTEGRATION_MAX_STALENESS_DAYS", "1")
-    mock_portfolio_service.get_portfolio_by_id.return_value = {
-        "portfolio_id": "P1",
-        "base_currency": "USD",
-        "open_date": date(2025, 1, 1),
-        "close_date": None,
-        "risk_exposure": "MODERATE",
-        "investment_time_horizon": "LONG_TERM",
-        "portfolio_type": "DISCRETIONARY",
-        "objective": "GROWTH",
-        "booking_center": "LON-01",
-        "cif_id": "CIF-1",
-        "is_leverage_allowed": False,
-        "advisor_id": "ADV-1",
-        "status": "ACTIVE",
-    }
-    mock_review_service.get_portfolio_review.return_value = {
-        "portfolio_id": "P1",
-        "as_of_date": date(2027, 1, 1),
-        "overview": None,
-        "allocation": None,
-        "performance": None,
-        "riskAnalytics": None,
-        "incomeAndActivity": None,
-        "holdings": None,
-        "transactions": None,
-    }
-    request = PortfolioCoreSnapshotRequest.model_validate(
-        {
-            "asOfDate": "2027-01-01",
-            "consumerSystem": "lotus-performance",
-            "includeSections": ["OVERVIEW"],
-        }
-    )
-
-    response = await service.get_portfolio_core_snapshot("P1", request)
-    assert response.metadata.freshness_status == "UNKNOWN"
-
-
-async def test_get_effective_policy_returns_context(
-    service: IntegrationService, monkeypatch: pytest.MonkeyPatch
-):
-    monkeypatch.setenv(
-        "PAS_INTEGRATION_SNAPSHOT_POLICY_JSON",
-        '{"strictMode":false,"consumers":{"lotus-performance":["OVERVIEW","HOLDINGS"]}}',
-    )
-    monkeypatch.setenv("PAS_POLICY_VERSION", "tenant-default-v2")
-
-    response = service.get_effective_policy(
-        consumer_system="lotus-performance",
-        tenant_id="default",
-        include_sections=["OVERVIEW", "HOLDINGS", "TRANSACTIONS"],
-    )
-
-    assert response.consumer_system == "lotus-performance"
-    assert response.policy_provenance.policy_version == "tenant-default-v2"
-    assert response.policy_provenance.policy_source == "global"
-    assert response.policy_provenance.strict_mode is False
-    assert response.allowed_sections == ["OVERVIEW", "HOLDINGS"]
-    assert "SECTIONS_FILTERED_BY_POLICY" in response.warnings
-
-
-async def test_get_effective_policy_with_tenant_override(
-    service: IntegrationService, monkeypatch: pytest.MonkeyPatch
-):
+def test_resolve_policy_context_global_and_tenant(monkeypatch: pytest.MonkeyPatch) -> None:
+    service = make_service()
     monkeypatch.setenv(
         "PAS_INTEGRATION_SNAPSHOT_POLICY_JSON",
         (
-            '{"strictMode":false,"consumers":{"lotus-performance":["OVERVIEW"]},'
-            '"tenants":{"tenant-a":{"strictMode":true,"consumers":{"lotus-performance":["HOLDINGS"]}}}}'
+            '{"strictMode":false,'
+            '"consumers":{"lotus-manage":["OVERVIEW","HOLDINGS"]},'
+            '"tenants":{"tenant-a":{"strictMode":true,"consumers":{"DPM":["ALLOCATION"]}}}}'
+        ),
+    )
+    monkeypatch.setenv("PAS_POLICY_VERSION", "tenant-v7")
+
+    global_ctx = service._resolve_policy_context(
+        tenant_id="default",
+        consumer_system="lotus-manage",
+    )
+    assert global_ctx.policy_source == "global"
+    assert global_ctx.matched_rule_id == "global.consumers.lotus-manage"
+    assert global_ctx.strict_mode is False
+    assert global_ctx.allowed_sections == ["OVERVIEW", "HOLDINGS"]
+
+    tenant_ctx = service._resolve_policy_context(
+        tenant_id="tenant-a",
+        consumer_system="lotus-manage",
+    )
+    assert tenant_ctx.policy_version == "tenant-v7"
+    assert tenant_ctx.policy_source == "tenant"
+    assert tenant_ctx.matched_rule_id == "tenant.tenant-a.consumers.DPM"
+    assert tenant_ctx.strict_mode is True
+    assert tenant_ctx.allowed_sections == ["ALLOCATION"]
+
+
+def test_resolve_policy_context_tenant_default_sections_and_strict_mode_id(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = make_service()
+    monkeypatch.setenv(
+        "PAS_INTEGRATION_SNAPSHOT_POLICY_JSON",
+        (
+            '{"tenants":{"tenant-x":{"strictMode":true,"defaultSections":["OVERVIEW"]},'
+            '"tenant-y":{"strictMode":true}}}'
         ),
     )
 
-    response = service.get_effective_policy(
-        consumer_system="lotus-performance",
-        tenant_id="tenant-a",
-        include_sections=["HOLDINGS"],
+    tenant_default_ctx = service._resolve_policy_context(
+        tenant_id="tenant-x",
+        consumer_system="lotus-manage",
+    )
+    assert tenant_default_ctx.policy_source == "tenant"
+    assert tenant_default_ctx.matched_rule_id == "tenant.tenant-x.defaultSections"
+    assert tenant_default_ctx.allowed_sections == ["OVERVIEW"]
+    assert tenant_default_ctx.strict_mode is True
+
+    strict_only_ctx = service._resolve_policy_context(
+        tenant_id="tenant-y",
+        consumer_system="lotus-manage",
+    )
+    assert strict_only_ctx.policy_source == "tenant"
+    assert strict_only_ctx.matched_rule_id == "tenant.tenant-y.strictMode"
+    assert strict_only_ctx.allowed_sections is None
+    assert strict_only_ctx.strict_mode is True
+
+
+def test_get_effective_policy_filters_requested_sections(monkeypatch: pytest.MonkeyPatch) -> None:
+    service = make_service()
+    monkeypatch.setenv(
+        "PAS_INTEGRATION_SNAPSHOT_POLICY_JSON",
+        '{"consumers":{"lotus-manage":["OVERVIEW","HOLDINGS"]}}',
     )
 
-    assert response.policy_provenance.policy_source == "tenant"
-    assert response.policy_provenance.strict_mode is True
-    assert response.allowed_sections == ["HOLDINGS"]
-
-
-async def test_get_effective_policy_returns_warning_when_no_section_restriction(
-    service: IntegrationService, monkeypatch: pytest.MonkeyPatch
-):
-    monkeypatch.setenv("PAS_INTEGRATION_SNAPSHOT_POLICY_JSON", '{"strictMode":false}')
     response = service.get_effective_policy(
-        consumer_system="pa",
+        consumer_system="DPM",
         tenant_id="default",
-        include_sections=None,
+        include_sections=["overview", "allocation", "holdings"],
     )
-    assert response.consumer_system == "lotus-performance"
-    assert response.allowed_sections == []
-    assert "NO_ALLOWED_SECTION_OVERRIDE" in response.warnings
+    assert response.consumer_system == "lotus-manage"
+    assert response.allowed_sections == ["OVERVIEW", "HOLDINGS"]
+    assert response.policy_provenance.matched_rule_id == "global.consumers.lotus-manage"
+
+
+def test_get_effective_policy_no_allowed_restriction_passthrough(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = make_service()
+    monkeypatch.delenv("PAS_INTEGRATION_SNAPSHOT_POLICY_JSON", raising=False)
+
+    response = service.get_effective_policy(
+        consumer_system="custom-client",
+        tenant_id="default",
+        include_sections=["overview", "allocation"],
+    )
+    assert response.consumer_system == "custom-client"
+    assert response.allowed_sections == ["OVERVIEW", "ALLOCATION"]
     assert "NO_ALLOWED_SECTION_RESTRICTION" in response.warnings
 
-
-async def test_get_effective_policy_handles_invalid_json_policy(
-    service: IntegrationService, monkeypatch: pytest.MonkeyPatch
-):
-    monkeypatch.setenv("PAS_INTEGRATION_SNAPSHOT_POLICY_JSON", "{bad json")
-    response = service.get_effective_policy(
-        consumer_system="lotus-performance",
-        tenant_id="default",
-        include_sections=["OVERVIEW"],
-    )
-    assert response.allowed_sections == ["OVERVIEW"]
-
-
-async def test_get_effective_policy_handles_non_dict_policy_payload(
-    service: IntegrationService, monkeypatch: pytest.MonkeyPatch
-):
-    monkeypatch.setenv("PAS_INTEGRATION_SNAPSHOT_POLICY_JSON", '["not-a-dict"]')
-    response = service.get_effective_policy(
-        consumer_system="lotus-performance",
-        tenant_id="default",
-        include_sections=["OVERVIEW"],
-    )
-    assert response.allowed_sections == ["OVERVIEW"]
-
-
-async def test_get_effective_policy_uses_tenant_default_sections_when_consumer_override_missing(
-    service: IntegrationService, monkeypatch: pytest.MonkeyPatch
-):
-    monkeypatch.setenv(
-        "PAS_INTEGRATION_SNAPSHOT_POLICY_JSON",
-        (
-            '{"strictMode":false,"tenants":{"tenant-b":{"consumers":{},'
-            '"defaultSections":["overview","holdings"]}}}'
-        ),
-    )
-    response = service.get_effective_policy(
-        consumer_system="lotus-performance",
-        tenant_id="tenant-b",
-        include_sections=["OVERVIEW", "HOLDINGS", "TRANSACTIONS"],
-    )
-    assert response.policy_provenance.matched_rule_id == "tenant.tenant-b.defaultSections"
-    assert [str(item) for item in response.allowed_sections] == [
-        "ReviewSection.OVERVIEW",
-        "ReviewSection.HOLDINGS",
-        "ReviewSection.TRANSACTIONS",
-    ]
-
-
-async def test_get_effective_policy_uses_tenant_strictmode_rule_when_no_section_rules(
-    service: IntegrationService, monkeypatch: pytest.MonkeyPatch
-):
-    monkeypatch.setenv(
-        "PAS_INTEGRATION_SNAPSHOT_POLICY_JSON",
-        '{"tenants":{"tenant-c":{"strictMode":true}}}',
-    )
-    response = service.get_effective_policy(
-        consumer_system="lotus-performance",
-        tenant_id="tenant-c",
-        include_sections=None,
-    )
-    assert response.policy_provenance.matched_rule_id == "tenant.tenant-c.strictMode"
-    assert response.policy_provenance.strict_mode is True
-
-
-async def test_get_effective_policy_returns_context_sections_when_include_sections_not_provided(
-    service: IntegrationService, monkeypatch: pytest.MonkeyPatch
-):
-    monkeypatch.setenv(
-        "PAS_INTEGRATION_SNAPSHOT_POLICY_JSON",
-        '{"strictMode":false,"consumers":{"lotus-performance":["OVERVIEW","HOLDINGS"]}}',
-    )
-    response = service.get_effective_policy(
-        consumer_system="lotus-performance",
-        tenant_id="default",
-        include_sections=None,
-    )
-    assert response.allowed_sections == ["OVERVIEW", "HOLDINGS"]
-    assert response.warnings == []
-
-
-async def test_get_effective_policy_delegates_analytics_sections_to_pa_in_non_strict_mode(
-    service: IntegrationService, monkeypatch: pytest.MonkeyPatch
-):
-    monkeypatch.setenv(
-        "PAS_INTEGRATION_SNAPSHOT_POLICY_JSON",
-        '{"strictMode":false,"consumers":{"lotus-performance":["OVERVIEW","PERFORMANCE","RISK_ANALYTICS"]}}',
-    )
-    response = service.get_effective_policy(
-        consumer_system="lotus-performance",
-        tenant_id="default",
-        include_sections=["OVERVIEW", "PERFORMANCE", "RISK_ANALYTICS"],
-    )
-    assert response.allowed_sections == ["OVERVIEW"]
-    assert "ANALYTICS_SECTIONS_DELEGATED_TO_PA" in response.warnings
-
-
-async def test_read_attr_or_key_supports_attr_dict_and_default():
-    obj = SimpleNamespace(portfolio_id="P1")
-    assert IntegrationService._read_attr_or_key(obj, "portfolio_id") == "P1"
-    assert IntegrationService._read_attr_or_key({"portfolio_id": "P2"}, "portfolio_id") == "P2"
-    assert IntegrationService._read_attr_or_key(123, "portfolio_id", "fallback") == "fallback"
-
-
-async def test_resolve_freshness_status_returns_stale_for_old_as_of_date(
-    monkeypatch: pytest.MonkeyPatch,
-):
-    monkeypatch.setenv("PAS_INTEGRATION_MAX_STALENESS_DAYS", "1")
-    stale_date = date.today() - timedelta(days=10)
-    assert IntegrationService._resolve_freshness_status(stale_date) == "STALE"
-
-
-async def test_canonical_consumer_system_handles_blank_value():
-    assert IntegrationService._canonical_consumer_system("   ") == "unknown"
-
-
-async def test_get_portfolio_core_snapshot_raises_when_policy_filters_all_sections(
-    service: IntegrationService,
-    mock_portfolio_service: AsyncMock,
-    monkeypatch: pytest.MonkeyPatch,
-):
-    mock_portfolio_service.get_portfolio_by_id.return_value = {
-        "portfolio_id": "P1",
-        "base_currency": "USD",
-        "open_date": date(2025, 1, 1),
-    }
-    monkeypatch.setenv(
-        "PAS_INTEGRATION_SNAPSHOT_POLICY_JSON",
-        '{"consumers":{"lotus-performance":["ALLOCATION"]},"strictMode":false}',
-    )
-    request = PortfolioCoreSnapshotRequest.model_validate(
-        {
-            "asOfDate": "2026-02-23",
-            "consumerSystem": "lotus-performance",
-            "includeSections": ["OVERVIEW"],
-        }
-    )
-
-    with pytest.raises(PermissionError, match="No includeSections are allowed"):
-        await service.get_portfolio_core_snapshot("P1", request)
-
-
-async def test_get_effective_policy_sets_tenant_default_rule_marker(
-    service: IntegrationService, monkeypatch: pytest.MonkeyPatch
-):
-    monkeypatch.setenv(
-        "PAS_INTEGRATION_SNAPSHOT_POLICY_JSON",
-        '{"tenants":{"tenant-z":{"defaultSections":[]}}}',
-    )
-    response = service.get_effective_policy(
-        consumer_system="lotus-performance",
-        tenant_id="tenant-z",
-        include_sections=["OVERVIEW"],
-    )
-    assert response.policy_provenance.matched_rule_id == "tenant.tenant-z.defaultSections"

@@ -48,10 +48,10 @@ class IntegrationCapabilitiesResponse(BaseModel):
                 "supportedInputModes": ["pas_ref", "inline_bundle"],
                 "features": [
                     {
-                        "key": "pas.integration.core_snapshot",
+                        "key": "pas.support.overview_api",
                         "enabled": True,
                         "owner_service": "lotus-core",
-                        "description": "Core portfolio snapshot API for lotus-performance and lotus-manage.",
+                        "description": "Support diagnostics and operational support APIs.",
                     }
                 ],
                 "workflows": [

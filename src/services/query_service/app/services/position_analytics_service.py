@@ -4,9 +4,8 @@ import asyncio
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import Depends
 from decimal import Decimal
-from typing import Any, List, Optional, Dict
-import pandas as pd
-from datetime import date
+from typing import Any
+from datetime import date, timedelta
 
 from portfolio_common.db import get_async_db_session
 from ..dtos.position_analytics_dto import (
@@ -17,17 +16,12 @@ from ..dtos.position_analytics_dto import (
     MonetaryAmount,
     PositionValuation,
     PositionInstrumentDetails,
-    PositionPerformance,
     PositionValuationDetail,
 )
 from ..repositories.position_repository import PositionRepository
 from ..repositories.portfolio_repository import PortfolioRepository
 from ..repositories.cashflow_repository import CashflowRepository
-from ..repositories.performance_repository import PerformanceRepository
 from ..repositories.fx_rate_repository import FxRateRepository
-from performance_calculator_engine.helpers import resolve_period
-from performance_calculator_engine.calculator import PerformanceCalculator
-from performance_calculator_engine.constants import FINAL_CUMULATIVE_ROR_PCT
 from portfolio_common.monitoring import (
     POSITION_ANALYTICS_DURATION_SECONDS,
     POSITION_ANALYTICS_SECTION_REQUESTED_TOTAL,
@@ -46,109 +40,7 @@ class PositionAnalyticsService:
         self.position_repo = PositionRepository(db)
         self.portfolio_repo = PortfolioRepository(db)
         self.cashflow_repo = CashflowRepository(db)
-        self.perf_repo = PerformanceRepository(db)
         self.fx_repo = FxRateRepository(db)
-
-    def _convert_timeseries_to_dict(self, timeseries_data: List[Any]) -> List[Dict]:
-        return [
-            {
-                "date": r.date.isoformat(),
-                "bod_market_value": r.bod_market_value,
-                "eod_market_value": r.eod_market_value,
-                "bod_cashflow": r.bod_cashflow_position,
-                "eod_cashflow": r.eod_cashflow_position,
-                "fees": r.fees,
-            }
-            for r in timeseries_data
-        ]
-
-    async def _calculate_performance(
-        self,
-        portfolio_id: str,
-        security_id: str,
-        instrument_currency: str,
-        base_currency: str,
-        inception_date: date,
-        request: PositionAnalyticsRequest,
-    ) -> Optional[Dict[str, PositionPerformance]]:
-        if not request.performance_options:
-            return None
-
-        periods = [
-            resolve_period(p, inception_date, request.as_of_date)
-            for p in request.performance_options.periods
-        ]
-        min_start = min(p[1] for p in periods) if periods else request.as_of_date
-
-        timeseries_data = await self.perf_repo.get_position_timeseries_for_range(
-            portfolio_id, security_id, min_start, request.as_of_date
-        )
-        if not timeseries_data:
-            return {name: PositionPerformance() for name, _, _ in periods}
-
-        ts_dicts = self._convert_timeseries_to_dict(timeseries_data)
-
-        results = {}
-        for name, start_date, end_date in periods:
-            period_ts_data = [
-                ts for ts in ts_dicts if start_date <= date.fromisoformat(ts["date"]) <= end_date
-            ]
-            if not period_ts_data:
-                results[name] = PositionPerformance()
-                continue
-
-            config = {
-                "metric_basis": "NET",
-                "period_type": "EXPLICIT",
-                "performance_start_date": inception_date.isoformat(),
-                "report_start_date": start_date.isoformat(),
-                "report_end_date": end_date.isoformat(),
-            }
-            calculator = PerformanceCalculator(config=config)
-            df_local = calculator.calculate_performance(period_ts_data)
-            local_return = (
-                float(df_local.iloc[-1][FINAL_CUMULATIVE_ROR_PCT]) if not df_local.empty else None
-            )
-
-            base_return = local_return
-            if instrument_currency != base_currency:
-                fx_rates_db = await self.fx_repo.get_fx_rates(
-                    instrument_currency, base_currency, start_date, end_date
-                )
-                if fx_rates_db:
-                    fx_series = pd.Series({r.rate_date: r.rate for r in fx_rates_db}).astype(float)
-                    df_local["date_dt"] = pd.to_datetime(df_local["date"])
-                    df_merged = pd.merge(
-                        df_local,
-                        fx_series.rename("fx_rate"),
-                        left_on="date_dt",
-                        right_index=True,
-                        how="left",
-                    ).ffill()
-
-                    if "fx_rate" in df_merged.columns and not df_merged["fx_rate"].isnull().all():
-                        df_base = df_merged.copy()
-                        df_base["fx_rate"] = df_base["fx_rate"].astype(float)
-                        for col in [
-                            "bod_market_value",
-                            "eod_market_value",
-                            "bod_cashflow",
-                            "eod_cashflow",
-                        ]:
-                            df_base[col] = pd.to_numeric(df_base[col], errors="coerce").fillna(0.0)
-                            df_base[col] = df_base[col] * df_base["fx_rate"]
-
-                        base_ts_dicts = df_base.to_dict("records")
-                        df_base_result = calculator.calculate_performance(base_ts_dicts)
-                        base_return = (
-                            float(df_base_result.iloc[-1][FINAL_CUMULATIVE_ROR_PCT])
-                            if not df_base_result.empty
-                            else local_return
-                        )
-
-            results[name] = PositionPerformance(localReturn=local_return, baseReturn=base_return)
-
-        return results
 
     async def _enrich_position(
         self,
@@ -188,23 +80,11 @@ class PositionAnalyticsService:
                 portfolio.portfolio_id, snapshot.security_id, epoch
             )
 
-        if PositionAnalyticsSection.PERFORMANCE in request.sections:
-            enrichment_tasks["performance"] = self._calculate_performance(
-                portfolio.portfolio_id,
-                snapshot.security_id,
-                currency,
-                portfolio.base_currency,
-                portfolio.open_date,
-                request,
-            )
-
         task_results = await asyncio.gather(*enrichment_tasks.values(), return_exceptions=True)
         results_map = dict(zip(enrichment_tasks.keys(), task_results))
 
         if isinstance(results_map.get("held_since_date"), date):
             position.held_since_date = results_map["held_since_date"]
-        if isinstance(results_map.get("performance"), dict):
-            position.performance = results_map["performance"]
 
         income_tasks = {}
         if PositionAnalyticsSection.INCOME in request.sections:
@@ -230,16 +110,16 @@ class PositionAnalyticsService:
                 )
                 fx_rates = {r.rate_date: r.rate for r in fx_rates_db}
 
-                # Forward fill missing FX rates
-                ffill_series = (
-                    pd.Series(fx_rates)
-                    .reindex(pd.date_range(min_cf_date, request.as_of_date, freq="D"))
-                    .ffill()
-                )
-                # --- THIS IS THE FIX ---
-                # Convert the pandas Timestamps in the index back to date objects for the dictionary keys.
-                filled_fx = {idx.date(): val for idx, val in ffill_series.items() if pd.notna(val)}
-                # --- END FIX ---
+                # Forward fill missing FX rates without optional pandas dependency.
+                filled_fx: dict[date, Decimal] = {}
+                last_rate: Decimal | None = None
+                current_date = min_cf_date
+                while current_date <= request.as_of_date:
+                    if current_date in fx_rates:
+                        last_rate = fx_rates[current_date]
+                    if last_rate is not None:
+                        filled_fx[current_date] = last_rate
+                    current_date += timedelta(days=1)
                 total_income_base = sum(
                     cf.amount * filled_fx.get(cf.cashflow_date, Decimal(1)) for cf in cashflows
                 )

@@ -8,26 +8,22 @@ import subprocess
 import sys
 from pathlib import Path
 
+
+def _discover_integration_lite() -> list[str]:
+    query_integration_root = Path("tests/integration/services/query_service")
+    router_like = sorted(query_integration_root.glob("test_*router*.py"))
+    explicit = [query_integration_root / "test_main_app.py"]
+    combined = [*router_like, *explicit]
+    return [str(path).replace("\\", "/") for path in sorted(set(combined))]
+
+
 SUITES: dict[str, list[str]] = {
-    "unit": ["tests/unit/services/query_service"],
-    "integration-lite": [
-        "tests/integration/services/query_service/test_capabilities_router_dependency.py",
-        "tests/integration/services/query_service/test_concentration_router.py",
-        "tests/integration/services/query_service/test_integration_router_dependency.py",
-        "tests/integration/services/query_service/test_main_app.py",
-        "tests/integration/services/query_service/test_performance_router.py",
-        "tests/integration/services/query_service/test_portfolios_router_dependency.py",
-        "tests/integration/services/query_service/test_position_analytics_router.py",
-        "tests/integration/services/query_service/test_positions_router_dependency.py",
-        "tests/integration/services/query_service/test_operations_router_dependency.py",
-        "tests/integration/services/query_service/test_reference_data_routers.py",
-        "tests/integration/services/query_service/test_lookup_contract_router.py",
-        "tests/integration/services/query_service/test_review_router.py",
-        "tests/integration/services/query_service/test_risk_router_dependency.py",
-        "tests/integration/services/query_service/test_simulation_router_dependency.py",
-        "tests/integration/services/query_service/test_summary_router.py",
-        "tests/integration/services/query_service/test_transactions_router.py",
+    "unit": ["tests/unit"],
+    "unit-db": [
+        "tests/unit/libs/portfolio-common/test_position_state_repository.py",
+        "tests/unit/services/calculators/position_valuation_calculator/repositories/test_unit_valuation_repo.py",
     ],
+    "integration-lite": _discover_integration_lite(),
     "e2e-smoke": [
         "tests/e2e/test_query_service_observability.py",
         "tests/e2e/test_complex_portfolio_lifecycle.py",
@@ -35,6 +31,9 @@ SUITES: dict[str, list[str]] = {
 }
 
 SOURCE = "src/services/query_service/app"
+SUITE_PYTEST_ARGS: dict[str, list[str]] = {
+    "unit": ["-m", "not integration_db"],
+}
 
 
 def get_suite(name: str) -> list[str]:
@@ -45,7 +44,9 @@ def get_suite(name: str) -> list[str]:
 
 
 def validate_suite_paths(name: str) -> None:
-    missing = [path for path in get_suite(name) if not Path(path).exists()]
+    missing = [
+        path for path in get_suite(name) if not path.startswith("-") and not Path(path).exists()
+    ]
     if missing:
         raise FileNotFoundError(
             f"Suite '{name}' has missing test paths:\n"
@@ -62,7 +63,7 @@ def run_suite(
 ) -> int:
     validate_suite_paths(name)
 
-    cmd = [sys.executable, "-m", "pytest", *get_suite(name)]
+    cmd = [sys.executable, "-m", "pytest", *get_suite(name), *SUITE_PYTEST_ARGS.get(name, [])]
     if quiet:
         cmd.append("-q")
     if with_coverage:

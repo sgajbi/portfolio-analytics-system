@@ -26,8 +26,6 @@ pythonpath = [
     "src",
     "src/libs/portfolio-common",
     "src/libs/financial-calculator-engine/src",
-    "src/libs/performance-calculator-engine/src",
-    "src/libs/risk-analytics-engine/src",
     "src/services/ingestion_service",
     "src/services/persistence_service",
     "src/services/query_service",
@@ -36,16 +34,17 @@ pythonpath = [
     "src/services/calculators/position_calculator",
     "src/services/calculators/position_valuation_calculator",
     "src/services/timeseries_generator_service",
-    "src/libs/concentration-analytics-engine/src",
 ]
 addopts = "--strict-markers"
 minversion = "6.0"
 markers = [
     "asyncio: mark a test as being an asyncio test",
     "dependency: mark test dependency ordering/grouping",
+    "integration_db: mark tests that require dockerized database infrastructure",
 ]
 filterwarnings = [
-    "ignore:Please use `import python_multipart` instead.:PendingDeprecationWarning"
+    "ignore:Please use `import python_multipart` instead.:PendingDeprecationWarning",
+    "ignore:The configuration option \"asyncio_default_fixture_loop_scope\" is unset.:pytest.PytestDeprecationWarning"
 ]
 
 [tool.ruff]

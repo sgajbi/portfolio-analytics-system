@@ -118,13 +118,6 @@ async def test_openapi_declares_portfolio_not_found_contracts(async_test_client)
     assert "404" in paths["/support/portfolios/{portfolio_id}/aggregation-jobs"]["get"]["responses"]
     assert "404" in paths["/support/portfolios/{portfolio_id}/valuation-jobs"]["get"]["responses"]
     assert "404" in paths["/lineage/portfolios/{portfolio_id}/keys"]["get"]["responses"]
-    assert (
-        "404" in paths["/integration/portfolios/{portfolio_id}/core-snapshot"]["post"]["responses"]
-    )
-    assert (
-        "404"
-        in paths["/integration/portfolios/{portfolio_id}/performance-input"]["post"]["responses"]
-    )
     assert "404" in paths["/portfolios/{portfolio_id}/positions-analytics"]["post"]["responses"]
 
 

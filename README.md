@@ -1,7 +1,7 @@
 
 # Portfolio Analytics System
 
-This system provides a comprehensive suite of services for portfolio analytics, including position tracking, valuation, and core performance inputs. Advanced risk analytics are sourced from lotus-risk via API integration. It is designed as a distributed, event-driven architecture using Kafka for messaging and PostgreSQL for data persistence.
+This system provides a comprehensive suite of core portfolio services, including ingestion, persistence, position tracking, valuation, cashflow processing, timeseries generation, and simulation. It is designed as a distributed, event-driven architecture using Kafka for messaging and PostgreSQL for data persistence.
 
 Platform architecture governance source:
 - `https://github.com/sgajbi/lotus-platform` (cross-cutting and multi-service decisions)
@@ -31,11 +31,7 @@ The system follows a microservices architecture, where each service is responsib
         * **ReprocessingWorker**: Consumes the durable reprocessing jobs to fan-out watermark resets in a controlled, scalable manner, mitigating the "Thundering Herd" problem.
     * **Cashflow Calculator**: Calculates cash flows based on transactions.
 4.  **Timeseries Generator Service**: Aggregates daily position data into position-level and portfolio-level time series.
-5.  **Query Service**: Provides a rich FastAPI interface for all read operations. This includes both fetching foundational data (portfolios, transactions, etc.) and performing complex, on-the-fly analytical calculations such as:
-    * **Performance Analytics** (TWR, MWR)
-    * **Risk Analytics** (Volatility, Sharpe, VaR, etc.)
-    * **Concentration Analytics** (HHI, Issuer Exposure)
-    * **Consolidated Reporting** (Portfolio Review)
+5.  **Query Service**: Provides a rich FastAPI interface for read operations including foundational datasets (portfolios, positions, transactions, prices, fx rates), operational APIs, integration policy metadata, and simulation workflows.
 
 ### Key Architectural Patterns
 
@@ -134,6 +130,12 @@ To run the enforced unit test gate:
 
 ```bash
 make test
+```
+
+To run Docker/DB-backed unit tests explicitly:
+
+```bash
+make test-unit-db
 ```
 
 To run the integration-lite suite used in CI coverage:
@@ -293,6 +295,7 @@ This project uses a lotus-manage-aligned engineering baseline:
 make lint
 make typecheck
 make openapi-gate
+make warning-gate
 make check
 make coverage-gate
 make ci-local
@@ -300,15 +303,18 @@ make ci-local
 
 `make check` enforces OpenAPI documentation quality for query-service endpoints:
 - each business endpoint must define both `summary` and `description`
+- each business endpoint must define `tags` and response contracts (including at least one `2xx` and one error response)
 - duplicate `operationId` values are rejected
 - `/health/*` endpoints are exempt
+
+`make warning-gate` enforces warning-free unit execution (warning budget = `0`).
 
 CI workflow shape:
 
 - `Workflow Lint`
-- `Lint, Typecheck, Unit Tests`
-- `Tests (unit)` + `Tests (integration-lite)` coverage data jobs
-- `Coverage Gate (Combined)` with `--fail-under=84`
+- `Lint, Typecheck, Unit Fast`
+- `Tests (unit)` + `Tests (unit-db)` + `Tests (integration-lite)` coverage data jobs
+- `Coverage Gate (Combined)` with `--fail-under=99`
 - `Validate Docker Build`
 - `E2E Smoke (Manual)` on `workflow_dispatch`
 

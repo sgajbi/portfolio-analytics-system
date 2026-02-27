@@ -18,25 +18,21 @@ logger = logging.getLogger(__name__)
 
 
 _FEATURE_ENV_DEFAULTS: dict[str, tuple[str, bool]] = {
-    "pas.integration.core_snapshot": ("PAS_CAP_CORE_SNAPSHOT_ENABLED", True),
     "pas.support.overview_api": ("PAS_CAP_SUPPORT_APIS_ENABLED", True),
     "pas.support.lineage_api": ("PAS_CAP_LINEAGE_APIS_ENABLED", True),
     "pas.ingestion.bulk_upload": ("PAS_CAP_UPLOAD_APIS_ENABLED", True),
-    "pas.integration.performance_input": ("PAS_CAP_PERFORMANCE_INPUT_ENABLED", True),
+    "pas.simulation.what_if": ("PAS_CAP_SIMULATION_ENABLED", True),
 }
 
 _WORKFLOW_DEPENDENCIES: dict[str, list[str]] = {
-    "advisor_workbench_overview": [
-        "pas.integration.core_snapshot",
-        "pas.support.overview_api",
-    ],
-    "pa_performance_calculation": ["pas.integration.performance_input"],
+    "advisor_workbench_overview": ["pas.support.overview_api"],
     "portfolio_bulk_onboarding": ["pas.ingestion.bulk_upload"],
+    "portfolio_what_if_simulation": ["pas.simulation.what_if"],
 }
 
 _DEFAULT_INPUT_MODES_BY_CONSUMER: dict[str, list[str]] = {
-    "lotus-performance": ["pas_ref", "inline_bundle"],
-    "lotus-manage": ["pas_ref", "inline_bundle"],
+    "lotus-performance": ["pas_ref"],
+    "lotus-manage": ["pas_ref"],
     "lotus-gateway": ["pas_ref"],
     "UI": ["pas_ref"],
     "UNKNOWN": ["pas_ref"],
@@ -128,12 +124,6 @@ class CapabilitiesService:
 
         features = [
             FeatureCapability(
-                key="pas.integration.core_snapshot",
-                enabled=feature_states["pas.integration.core_snapshot"],
-                owner_service="lotus-core",
-                description="Core portfolio snapshot API for lotus-performance, lotus-manage, and lotus-gateway.",
-            ),
-            FeatureCapability(
                 key="pas.support.overview_api",
                 enabled=feature_states["pas.support.overview_api"],
                 owner_service="lotus-core",
@@ -152,13 +142,10 @@ class CapabilitiesService:
                 description="CSV/XLSX preview+commit onboarding APIs.",
             ),
             FeatureCapability(
-                key="pas.integration.performance_input",
-                enabled=feature_states["pas.integration.performance_input"],
+                key="pas.simulation.what_if",
+                enabled=feature_states["pas.simulation.what_if"],
                 owner_service="lotus-core",
-                description=(
-                    "Raw portfolio time-series input contract used by lotus-performance to compute "
-                    "performance metrics."
-                ),
+                description="Sandbox what-if simulation session APIs.",
             ),
         ]
 
@@ -172,21 +159,7 @@ class CapabilitiesService:
                         for key in _WORKFLOW_DEPENDENCIES["advisor_workbench_overview"]
                     ),
                 ),
-                required_features=[
-                    "pas.integration.core_snapshot",
-                    "pas.support.overview_api",
-                ],
-            ),
-            WorkflowCapability(
-                workflow_key="pa_performance_calculation",
-                enabled=policy_workflow_overrides.get(
-                    "pa_performance_calculation",
-                    all(
-                        feature_states[key]
-                        for key in _WORKFLOW_DEPENDENCIES["pa_performance_calculation"]
-                    ),
-                ),
-                required_features=["pas.integration.performance_input"],
+                required_features=["pas.support.overview_api"],
             ),
             WorkflowCapability(
                 workflow_key="portfolio_bulk_onboarding",
@@ -198,6 +171,17 @@ class CapabilitiesService:
                     ),
                 ),
                 required_features=["pas.ingestion.bulk_upload"],
+            ),
+            WorkflowCapability(
+                workflow_key="portfolio_what_if_simulation",
+                enabled=policy_workflow_overrides.get(
+                    "portfolio_what_if_simulation",
+                    all(
+                        feature_states[key]
+                        for key in _WORKFLOW_DEPENDENCIES["portfolio_what_if_simulation"]
+                    ),
+                ),
+                required_features=["pas.simulation.what_if"],
             ),
         ]
 
