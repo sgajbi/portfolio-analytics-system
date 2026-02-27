@@ -72,6 +72,10 @@ EXAMPLE_BY_KEY = {
     "transaction_fx_rate": 1.1032,
     "transaction_type": "BUY",
     "valuation": 125000.5,
+    "asset_type": "EQUITY",
+    "class": "EQUITY",
+    "type": "STANDARD",
+    "name": "Global Balanced Portfolio",
 }
 
 
@@ -91,7 +95,7 @@ def _canonical_name(name: str) -> str:
 
 
 def _fallback_description(name: str, schema: dict[str, Any], *, context: str) -> str:
-    key = _to_snake_case(name)
+    key = _canonical_name(_leaf_name(name))
     readable = key.replace("_", " ")
     schema_format = schema.get("format")
     if key.endswith("_id"):
@@ -115,7 +119,7 @@ def _fallback_description(name: str, schema: dict[str, Any], *, context: str) ->
 
 
 def _fallback_example(name: str, schema: dict[str, Any]) -> Any:
-    key = _to_snake_case(name)
+    key = _canonical_name(_leaf_name(name))
     if key in EXAMPLE_BY_KEY:
         return EXAMPLE_BY_KEY[key]
     enum_values = schema.get("enum")
@@ -140,7 +144,9 @@ def _fallback_example(name: str, schema: dict[str, Any]) -> Any:
             return [_fallback_example(f"{name}_item", item_schema)]
         return ["example_value"]
     if schema_type == "object":
-        return {"key": "value"}
+        if key in {"instrument_details", "metadata"}:
+            return {"source": "lotus-core", "as_of_date": "2026-02-27"}
+        return {"id": "OBJ_001"}
     if schema_format == "date":
         return "2026-02-27"
     if schema_format == "date-time":
@@ -148,6 +154,24 @@ def _fallback_example(name: str, schema: dict[str, Any]) -> Any:
     if key.endswith("_id"):
         entity = key[: -len("_id")]
         return f"{entity.upper()}_001"
+    if "asset_class" in key:
+        return "EQUITY"
+    if "portfolio_type" in key:
+        return "DISCRETIONARY"
+    if key in {"risk_exposure", "risk_profile"}:
+        return "MODERATE"
+    if key in {"objective"}:
+        return "CAPITAL_APPRECIATION"
+    if key in {"sector"}:
+        return "TECHNOLOGY"
+    if key in {"country_of_risk"}:
+        return "US"
+    if key in {"instrument_name", "name"}:
+        return "Apple Inc."
+    if key in {"description"}:
+        return "Core portfolio attribute used for analytics and reporting."
+    if key in {"message"}:
+        return "Operation completed successfully."
     if "currency" in key:
         return "USD"
     if "status" in key:
@@ -156,7 +180,7 @@ def _fallback_example(name: str, schema: dict[str, Any]) -> Any:
         return "2026-02-27"
     if "time" in key:
         return "2026-02-27T10:30:00Z"
-    return f"{key.upper()}_VALUE"
+    return "STANDARD"
 
 
 def _safe_json(value: Any) -> Any:
@@ -167,6 +191,32 @@ def _safe_json(value: Any) -> Any:
     if isinstance(value, dict):
         return {str(k): _safe_json(v) for k, v in value.items()}
     return str(value)
+
+
+def _infer_type_from_example(example: Any) -> str:
+    if isinstance(example, bool):
+        return "boolean"
+    if isinstance(example, int):
+        return "integer"
+    if isinstance(example, Real):
+        return "number"
+    if isinstance(example, list):
+        return "array"
+    if isinstance(example, dict):
+        return "object"
+    return "string"
+
+
+def _preferred_type(observed_types: set[str], example: Any) -> str:
+    priority = ["string", "integer", "number", "boolean", "array", "object"]
+    normalized = {str(t).lower() for t in observed_types if t}
+    for candidate in priority:
+        if candidate in normalized:
+            return candidate
+    inferred = _infer_type_from_example(example)
+    if inferred == "string" and "object" in normalized and len(normalized) == 1:
+        return "string"
+    return inferred
 
 
 def _resolve_schema(schema: dict[str, Any], components: dict[str, Any]) -> dict[str, Any]:
@@ -453,8 +503,10 @@ def _build_attribute_catalog(
     semantic_drift: list[str] = []
     for semantic_id, base in sorted(by_semantic_id.items()):
         aliases = sorted([alias for alias in semantic_aliases.get(semantic_id, set()) if alias])
+        observed_types = semantic_types.get(semantic_id, {"object"})
+        base["type"] = _preferred_type(observed_types, base.get("example"))
         base["locations"] = sorted(semantic_locations.get(semantic_id, {"body"}))
-        base["observedTypes"] = sorted(semantic_types.get(semantic_id, {"object"}))
+        base["observedTypes"] = sorted(observed_types)
         catalog.append(base)
         normalized_names = sorted({_to_snake_case(alias) for alias in aliases})
         if len(normalized_names) > 1:
@@ -624,10 +676,21 @@ def validate_inventory(inventory: dict[str, Any]) -> list[str]:
         if semantic_id in attribute_ids:
             errors.append(f"duplicate attribute semanticId found: {semantic_id}")
         attribute_ids.add(semantic_id)
-        for key in ("canonicalTerm", "preferredName", "description", "example"):
+        for key in ("canonicalTerm", "preferredName", "description", "example", "type"):
             value = attribute.get(key)
             if value in ("", None):
                 errors.append(f"attribute '{semantic_id}' missing {key}")
+        if str(attribute.get("type")) not in {
+            "string",
+            "integer",
+            "number",
+            "boolean",
+            "array",
+            "object",
+        }:
+            errors.append(
+                f"attribute '{semantic_id}' has unsupported type '{attribute.get('type')}'"
+            )
         canonical_term = str(attribute.get("canonicalTerm", ""))
         preferred_name = str(attribute.get("preferredName", ""))
         if not re.fullmatch(r"[a-z][a-z0-9_]*", canonical_term):

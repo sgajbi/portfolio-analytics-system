@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class PolicyProvenanceMetadata(BaseModel):
@@ -9,7 +9,7 @@ class PolicyProvenanceMetadata(BaseModel):
     matched_rule_id: str = Field(...)
     strict_mode: bool = Field(...)
 
-    model_config = {}
+    model_config = ConfigDict()
 
 
 class EffectiveIntegrationPolicyResponse(BaseModel):
@@ -22,5 +22,4 @@ class EffectiveIntegrationPolicyResponse(BaseModel):
     allowed_sections: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
 
-    model_config = {}
-
+    model_config = ConfigDict()

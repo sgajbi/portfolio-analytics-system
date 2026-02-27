@@ -15,7 +15,7 @@ no-alias-gate:
 	python scripts/no_alias_contract_guard.py
 
 typecheck:
-	mypy --config-file mypy.ini
+	python -m mypy --config-file mypy.ini
 
 openapi-gate:
 	python scripts/openapi_quality_gate.py
