@@ -58,6 +58,9 @@ EXAMPLE_BY_KEY = {
     "objective": "CAPITAL_APPRECIATION",
     "owner_service": "lotus-core",
     "policy_source": "tenant-default-policy",
+    "positions_baseline": [{"security_id": "SEC_AAPL_US", "quantity": "100.0000000000"}],
+    "positions_projected": [{"security_id": "SEC_AAPL_US", "quantity": "120.0000000000"}],
+    "positions_delta": [{"security_id": "SEC_AAPL_US", "delta_quantity": "20.0000000000"}],
     "portfolio_type": "DISCRETIONARY",
     "rate": 1.2345,
     "rating": "A",
@@ -68,11 +71,31 @@ EXAMPLE_BY_KEY = {
     "transaction_fx_rate": 1.1032,
     "transaction_type": "BUY",
     "valuation": 125000.5,
+    "valuation_context": {
+        "portfolio_currency": "EUR",
+        "reporting_currency": "USD",
+        "position_basis": "market_value_base",
+        "weight_basis": "total_market_value_base",
+    },
+    "sections": [
+        "positions_baseline",
+        "positions_projected",
+        "positions_delta",
+        "portfolio_totals",
+        "instrument_enrichment",
+    ],
     "asset_type": "EQUITY",
     "class": "EQUITY",
     "type": "STANDARD",
     "name": "Global Balanced Portfolio",
 }
+
+
+def _is_placeholder_example(value: Any) -> bool:
+    if not isinstance(value, str):
+        return False
+    normalized = value.strip().upper()
+    return normalized.endswith("_VALUE") or normalized in {"STANDARD", "EXAMPLE_VALUE"}
 
 
 def _to_snake_case(value: str) -> str:
@@ -246,34 +269,40 @@ def _extract_fields(
         if not isinstance(prop_schema, dict):
             continue
         prop_resolved = _resolve_schema(prop_schema, components)
+        # Keep wrapper metadata (description/example/enum/etc.) when property is a $ref/anyOf.
+        # Wrapper fields are often where OpenAPI carries usage-specific examples.
+        prop_effective = dict(prop_resolved)
+        for key in ("description", "example", "examples", "enum", "format", "type", "items"):
+            if key in prop_schema:
+                prop_effective[key] = prop_schema[key]
         field_name = f"{prefix}.{prop_name}" if prefix else prop_name
         entry = {
             "name": field_name,
             "location": location,
             "type": _schema_type(prop_schema),
             "required": prop_name in required,
-            "description": prop_resolved.get("description")
-            or _fallback_description(field_name, prop_resolved, context="API body"),
+            "description": prop_effective.get("description")
+            or _fallback_description(field_name, prop_effective, context="API body"),
             "example": _safe_json(
-                prop_resolved.get("example")
-                if prop_resolved.get("example") is not None
+                prop_effective.get("example")
+                if prop_effective.get("example") is not None
                 else (
-                    prop_resolved.get("examples", [None])[0]
-                    if isinstance(prop_resolved.get("examples"), list)
-                    and prop_resolved.get("examples")
-                    else _fallback_example(field_name, prop_resolved)
+                    prop_effective.get("examples", [None])[0]
+                    if isinstance(prop_effective.get("examples"), list)
+                    and prop_effective.get("examples")
+                    else _fallback_example(field_name, prop_effective)
                 )
             ),
             "canonicalTerm": _canonical_name(prop_name),
             "semanticId": _semantic_id(prop_name),
         }
-        if prop_resolved.get("enum"):
-            entry["enumValues"] = prop_resolved["enum"]
-        if prop_resolved.get("format"):
-            entry["format"] = prop_resolved["format"]
+        if prop_effective.get("enum"):
+            entry["enumValues"] = prop_effective["enum"]
+        if prop_effective.get("format"):
+            entry["format"] = prop_effective["format"]
         fields.append(entry)
 
-        nested_type = prop_resolved.get("type")
+        nested_type = prop_effective.get("type")
         if nested_type == "object" or "$ref" in prop_schema:
             fields.extend(
                 _extract_fields(
@@ -284,7 +313,7 @@ def _extract_fields(
                 )
             )
         elif nested_type == "array":
-            item_schema = prop_resolved.get("items", {})
+            item_schema = prop_effective.get("items", {})
             if isinstance(item_schema, dict):
                 fields.extend(
                     _extract_fields(
@@ -477,6 +506,11 @@ def _build_attribute_catalog(
 
             existing = by_semantic_id.get(semantic_id)
             if existing is None:
+                candidate_example = field.get("example", "")
+                if candidate_example in ("", None) or _is_placeholder_example(candidate_example):
+                    candidate_example = _fallback_example(
+                        alias, {"type": field.get("type", "string")}
+                    )
                 by_semantic_id[semantic_id] = {
                     "semanticId": semantic_id,
                     "canonicalTerm": field.get("canonicalTerm", _canonical_name(alias)),
@@ -485,15 +519,17 @@ def _build_attribute_catalog(
                     or _fallback_description(
                         alias, {"type": field.get("type", "string")}, context="API"
                     ),
-                    "example": field.get("example", "")
-                    if field.get("example", "") != ""
-                    else _fallback_example(alias, {"type": field.get("type", "string")}),
+                    "example": candidate_example,
                 }
             else:
                 if not existing.get("description") and field.get("description"):
                     existing["description"] = field["description"]
-                if existing.get("example", "") == "" and field.get("example", "") != "":
+                if existing.get("example", "") in ("", None) and field.get("example", "") != "":
                     existing["example"] = field["example"]
+                if _is_placeholder_example(existing.get("example")):
+                    existing["example"] = _fallback_example(
+                        alias, {"type": field.get("type", "string")}
+                    )
 
     catalog: list[dict[str, Any]] = []
     semantic_drift: list[str] = []

@@ -28,10 +28,14 @@ class CoreSnapshotWeightBasis(str, Enum):
 
 
 class CoreSnapshotSimulationOptions(BaseModel):
-    session_id: str = Field(..., description="Simulation session identifier.", examples=["SIM_0001"])
+    session_id: str = Field(
+        ...,
+        description="Simulation session identifier created by /simulation-sessions.",
+        examples=["SIM_0001"],
+    )
     expected_version: Optional[int] = Field(
         None,
-        description="Optional optimistic lock for simulation version.",
+        description="Optional optimistic lock for simulation session version.",
         examples=[3],
     )
 
@@ -40,26 +44,35 @@ class CoreSnapshotRequestOptions(BaseModel):
     include_zero_quantity_positions: bool = Field(
         False,
         description="Include positions with zero quantity in section responses.",
+        examples=[False],
     )
     include_cash_positions: bool = Field(
         True,
         description="Include cash-class positions in section responses.",
+        examples=[True],
     )
     position_basis: CoreSnapshotPositionBasis = Field(
         CoreSnapshotPositionBasis.MARKET_VALUE_BASE,
         description="Basis used for position valuation fields.",
+        examples=["market_value_base"],
     )
     weight_basis: CoreSnapshotWeightBasis = Field(
         CoreSnapshotWeightBasis.TOTAL_MARKET_VALUE_BASE,
         description="Basis used to calculate weight fields.",
+        examples=["total_market_value_base"],
     )
 
 
 class CoreSnapshotRequest(BaseModel):
-    as_of_date: date = Field(..., description="Business date for snapshot resolution.")
+    as_of_date: date = Field(
+        ...,
+        description="Business date used to resolve baseline positions and valuation context.",
+        examples=["2026-02-27"],
+    )
     snapshot_mode: CoreSnapshotMode = Field(
         CoreSnapshotMode.BASELINE,
-        description="Snapshot mode: BASELINE or SIMULATION.",
+        description="Snapshot mode: BASELINE for current state or SIMULATION for projected state.",
+        examples=["SIMULATION"],
     )
     reporting_currency: Optional[str] = Field(
         None,
@@ -68,7 +81,8 @@ class CoreSnapshotRequest(BaseModel):
     )
     sections: list[CoreSnapshotSection] = Field(
         ...,
-        description="Requested snapshot sections.",
+        description="Requested snapshot sections to include in the response payload.",
+        examples=[["positions_baseline", "positions_projected", "positions_delta"]],
     )
     simulation: Optional[CoreSnapshotSimulationOptions] = Field(
         None,
@@ -91,68 +105,259 @@ class CoreSnapshotRequest(BaseModel):
 
 
 class CoreSnapshotValuationContext(BaseModel):
-    portfolio_currency: str = Field(..., description="Portfolio base currency.")
-    reporting_currency: str = Field(..., description="Reporting currency for value fields.")
-    position_basis: CoreSnapshotPositionBasis = Field(...)
-    weight_basis: CoreSnapshotWeightBasis = Field(...)
+    portfolio_currency: str = Field(
+        ...,
+        description="Portfolio base currency used by lotus-core for valuation storage.",
+        examples=["EUR"],
+    )
+    reporting_currency: str = Field(
+        ...,
+        description="Reporting currency used in response monetary fields.",
+        examples=["USD"],
+    )
+    position_basis: CoreSnapshotPositionBasis = Field(
+        ...,
+        description="Position valuation basis applied to position and delta sections.",
+        examples=["market_value_base"],
+    )
+    weight_basis: CoreSnapshotWeightBasis = Field(
+        ...,
+        description="Weight calculation basis applied to baseline and projected sections.",
+        examples=["total_market_value_base"],
+    )
 
 
 class CoreSnapshotSimulationMetadata(BaseModel):
-    session_id: str = Field(...)
-    version: int = Field(...)
-    baseline_as_of_date: date = Field(...)
+    session_id: str = Field(
+        ...,
+        description="Simulation session identifier used to produce projected and delta sections.",
+        examples=["SIM_0001"],
+    )
+    version: int = Field(
+        ...,
+        description="Simulation session version resolved by lotus-core for deterministic replay.",
+        examples=[3],
+    )
+    baseline_as_of_date: date = Field(
+        ...,
+        description="Baseline business date used to resolve the simulation comparison state.",
+        examples=["2026-02-27"],
+    )
 
 
 class CoreSnapshotPositionRecord(BaseModel):
-    security_id: str = Field(..., examples=["AAPL.OQ"])
-    quantity: Decimal = Field(..., examples=["100.0000000000"])
-    market_value_base: Optional[Decimal] = Field(None, examples=["19500.25"])
-    market_value_local: Optional[Decimal] = Field(None, examples=["18000.00"])
-    weight: Optional[Decimal] = Field(None, examples=["0.1245"])
-    currency: Optional[str] = Field(None, examples=["USD"])
+    security_id: str = Field(
+        ...,
+        description="Canonical Lotus security identifier.",
+        examples=["SEC_AAPL_US"],
+    )
+    quantity: Decimal = Field(
+        ...,
+        description="Position quantity at the requested snapshot state.",
+        examples=["100.0000000000"],
+    )
+    market_value_base: Optional[Decimal] = Field(
+        None,
+        description="Position market value in reporting currency.",
+        examples=["19500.25"],
+    )
+    market_value_local: Optional[Decimal] = Field(
+        None,
+        description="Position market value in instrument local currency.",
+        examples=["18000.00"],
+    )
+    weight: Optional[Decimal] = Field(
+        None,
+        description="Position weight versus portfolio total market value.",
+        examples=["0.1245"],
+    )
+    currency: Optional[str] = Field(
+        None,
+        description="Instrument local currency for market_value_local.",
+        examples=["USD"],
+    )
 
 
 class CoreSnapshotDeltaRecord(BaseModel):
-    security_id: str = Field(..., examples=["AAPL.OQ"])
-    baseline_quantity: Decimal = Field(..., examples=["100.0000000000"])
-    projected_quantity: Decimal = Field(..., examples=["120.0000000000"])
-    delta_quantity: Decimal = Field(..., examples=["20.0000000000"])
-    baseline_market_value_base: Optional[Decimal] = Field(None, examples=["19500.25"])
-    projected_market_value_base: Optional[Decimal] = Field(None, examples=["23400.30"])
-    delta_market_value_base: Optional[Decimal] = Field(None, examples=["3900.05"])
-    delta_weight: Optional[Decimal] = Field(None, examples=["0.0175"])
+    security_id: str = Field(
+        ...,
+        description="Canonical Lotus security identifier.",
+        examples=["SEC_AAPL_US"],
+    )
+    baseline_quantity: Decimal = Field(
+        ...,
+        description="Baseline quantity before applying simulation changes.",
+        examples=["100.0000000000"],
+    )
+    projected_quantity: Decimal = Field(
+        ...,
+        description="Projected quantity after applying simulation changes.",
+        examples=["120.0000000000"],
+    )
+    delta_quantity: Decimal = Field(
+        ...,
+        description="Projected quantity minus baseline quantity.",
+        examples=["20.0000000000"],
+    )
+    baseline_market_value_base: Optional[Decimal] = Field(
+        None,
+        description="Baseline market value in reporting currency.",
+        examples=["19500.25"],
+    )
+    projected_market_value_base: Optional[Decimal] = Field(
+        None,
+        description="Projected market value in reporting currency.",
+        examples=["23400.30"],
+    )
+    delta_market_value_base: Optional[Decimal] = Field(
+        None,
+        description="Projected market value minus baseline market value in reporting currency.",
+        examples=["3900.05"],
+    )
+    delta_weight: Optional[Decimal] = Field(
+        None,
+        description="Projected weight minus baseline weight.",
+        examples=["0.0175"],
+    )
 
 
 class CoreSnapshotInstrumentEnrichmentRecord(BaseModel):
-    security_id: str = Field(...)
-    isin: Optional[str] = Field(None)
-    asset_class: Optional[str] = Field(None)
-    sector: Optional[str] = Field(None)
-    country_of_risk: Optional[str] = Field(None)
-    instrument_name: Optional[str] = Field(None)
+    security_id: str = Field(
+        ...,
+        description="Canonical Lotus security identifier.",
+        examples=["SEC_AAPL_US"],
+    )
+    isin: Optional[str] = Field(
+        None,
+        description="ISIN associated with the security.",
+        examples=["US0378331005"],
+    )
+    asset_class: Optional[str] = Field(
+        None,
+        description="Instrument asset class used for portfolio grouping.",
+        examples=["EQUITY"],
+    )
+    sector: Optional[str] = Field(
+        None,
+        description="Instrument sector classification.",
+        examples=["TECHNOLOGY"],
+    )
+    country_of_risk: Optional[str] = Field(
+        None,
+        description="Primary country of risk exposure.",
+        examples=["US"],
+    )
+    instrument_name: Optional[str] = Field(
+        None,
+        description="Instrument display name.",
+        examples=["Apple Inc."],
+    )
 
 
 class CoreSnapshotPortfolioTotals(BaseModel):
-    baseline_total_market_value_base: Optional[Decimal] = Field(None)
-    projected_total_market_value_base: Optional[Decimal] = Field(None)
-    delta_total_market_value_base: Optional[Decimal] = Field(None)
+    baseline_total_market_value_base: Optional[Decimal] = Field(
+        None,
+        description="Portfolio baseline total market value in reporting currency.",
+        examples=["156600.40"],
+    )
+    projected_total_market_value_base: Optional[Decimal] = Field(
+        None,
+        description="Portfolio projected total market value in reporting currency.",
+        examples=["160500.45"],
+    )
+    delta_total_market_value_base: Optional[Decimal] = Field(
+        None,
+        description="Projected total minus baseline total in reporting currency.",
+        examples=["3900.05"],
+    )
 
 
 class CoreSnapshotSections(BaseModel):
-    positions_baseline: Optional[list[CoreSnapshotPositionRecord]] = None
-    positions_projected: Optional[list[CoreSnapshotPositionRecord]] = None
-    positions_delta: Optional[list[CoreSnapshotDeltaRecord]] = None
-    portfolio_totals: Optional[CoreSnapshotPortfolioTotals] = None
-    instrument_enrichment: Optional[list[CoreSnapshotInstrumentEnrichmentRecord]] = None
+    positions_baseline: Optional[list[CoreSnapshotPositionRecord]] = Field(
+        None,
+        description="Baseline positions resolved for as_of_date.",
+        examples=[[{"security_id": "SEC_AAPL_US", "quantity": "100.0000000000"}]],
+    )
+    positions_projected: Optional[list[CoreSnapshotPositionRecord]] = Field(
+        None,
+        description="Projected positions after applying simulation changes.",
+        examples=[[{"security_id": "SEC_AAPL_US", "quantity": "120.0000000000"}]],
+    )
+    positions_delta: Optional[list[CoreSnapshotDeltaRecord]] = Field(
+        None,
+        description="Per-security baseline versus projected deltas.",
+        examples=[[{"security_id": "SEC_AAPL_US", "delta_quantity": "20.0000000000"}]],
+    )
+    portfolio_totals: Optional[CoreSnapshotPortfolioTotals] = Field(
+        None,
+        description="Portfolio-level baseline/projected totals and delta.",
+        examples=[
+            {
+                "baseline_total_market_value_base": "156600.40",
+                "projected_total_market_value_base": "160500.45",
+                "delta_total_market_value_base": "3900.05",
+            }
+        ],
+    )
+    instrument_enrichment: Optional[list[CoreSnapshotInstrumentEnrichmentRecord]] = Field(
+        None,
+        description="Reference enrichment for securities included in snapshot sections.",
+        examples=[[{"security_id": "SEC_AAPL_US", "isin": "US0378331005"}]],
+    )
 
 
 class CoreSnapshotResponse(BaseModel):
-    portfolio_id: str = Field(...)
-    as_of_date: date = Field(...)
-    snapshot_mode: CoreSnapshotMode = Field(...)
-    generated_at: datetime = Field(...)
-    valuation_context: CoreSnapshotValuationContext = Field(...)
-    simulation: Optional[CoreSnapshotSimulationMetadata] = Field(None)
-    sections: CoreSnapshotSections = Field(...)
+    portfolio_id: str = Field(
+        ...,
+        description="Portfolio identifier for the generated snapshot.",
+        examples=["DEMO_DPM_EUR_001"],
+    )
+    as_of_date: date = Field(
+        ...,
+        description="Business date used to resolve baseline state.",
+        examples=["2026-02-27"],
+    )
+    snapshot_mode: CoreSnapshotMode = Field(
+        ...,
+        description="Snapshot mode used for this response.",
+        examples=["SIMULATION"],
+    )
+    generated_at: datetime = Field(
+        ...,
+        description="UTC timestamp when lotus-core generated the snapshot response.",
+        examples=["2026-02-27T10:30:00Z"],
+    )
+    valuation_context: CoreSnapshotValuationContext = Field(
+        ...,
+        description="Valuation and weight basis context applied to all sections.",
+        examples=[
+            {
+                "portfolio_currency": "EUR",
+                "reporting_currency": "USD",
+                "position_basis": "market_value_base",
+                "weight_basis": "total_market_value_base",
+            }
+        ],
+    )
+    simulation: Optional[CoreSnapshotSimulationMetadata] = Field(
+        None,
+        description="Simulation metadata present only when snapshot_mode=SIMULATION.",
+        examples=[{"session_id": "SIM_0001", "version": 3, "baseline_as_of_date": "2026-02-27"}],
+    )
+    sections: CoreSnapshotSections = Field(
+        ...,
+        description="Requested snapshot sections payload.",
+        examples=[
+            {
+                "positions_baseline": [{"security_id": "SEC_AAPL_US", "quantity": "100.0000000000"}],
+                "positions_projected": [
+                    {"security_id": "SEC_AAPL_US", "quantity": "120.0000000000"}
+                ],
+                "positions_delta": [
+                    {"security_id": "SEC_AAPL_US", "delta_quantity": "20.0000000000"}
+                ],
+            }
+        ],
+    )
 
     model_config = ConfigDict()
