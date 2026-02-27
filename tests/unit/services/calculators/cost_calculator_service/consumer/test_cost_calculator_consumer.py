@@ -15,6 +15,7 @@ from portfolio_common.idempotency_repository import IdempotencyRepository
 from portfolio_common.outbox_repository import OutboxRepository
 from core.models.transaction import Transaction as EngineTransaction
 from core.models.transaction import Fees
+from tests.unit.test_support.async_session_iter import make_single_session_getter
 
 pytestmark = pytest.mark.asyncio
 
@@ -42,8 +43,7 @@ def mock_dependencies():
     mock_transaction = AsyncMock()
     mock_db_session.begin.return_value = mock_transaction
     
-    async def get_session_gen():
-        yield mock_db_session
+    get_session_gen = make_single_session_getter(mock_db_session)
 
     with patch("src.services.calculators.cost_calculator_service.app.consumer.get_async_db_session", new=get_session_gen), \
          patch("src.services.calculators.cost_calculator_service.app.consumer.CostCalculatorRepository", return_value=mock_repo), \
