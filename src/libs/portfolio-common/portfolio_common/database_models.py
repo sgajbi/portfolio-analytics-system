@@ -188,6 +188,11 @@ class Transaction(Base):
     transaction_fx_rate = Column(Numeric(18, 10), nullable=True)
     net_cost_local = Column(Numeric(18, 10), nullable=True)
     realized_gain_loss_local = Column(Numeric(18, 10), nullable=True)
+    economic_event_id = Column(String, nullable=True, index=True)
+    linked_transaction_group_id = Column(String, nullable=True, index=True)
+    calculation_policy_id = Column(String, nullable=True)
+    calculation_policy_version = Column(String, nullable=True)
+    source_system = Column(String, nullable=True)
 
     costs = relationship("TransactionCost", back_populates="transaction", cascade="all, delete-orphan")
     cashflow = relationship("Cashflow", uselist=False, back_populates="transaction", cascade="all, delete-orphan")
