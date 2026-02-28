@@ -26,6 +26,37 @@ class Transaction(BaseModel):
         default=Decimal(0), json_schema_extra={"example": "5.0"}
     )
     settlement_date: Optional[datetime] = None
+    economic_event_id: Optional[str] = Field(
+        default=None,
+        json_schema_extra={"example": "EVT-2026-00987"},
+        description=(
+            "Canonical economic event identifier. Optional in Slice 1, "
+            "planned to become required in strict canonical mode."
+        ),
+    )
+    linked_transaction_group_id: Optional[str] = Field(
+        default=None,
+        json_schema_extra={"example": "LTG-2026-00456"},
+        description=(
+            "Canonical linkage group identifier for related entries. "
+            "Optional in Slice 1."
+        ),
+    )
+    calculation_policy_id: Optional[str] = Field(
+        default=None,
+        json_schema_extra={"example": "BUY_DEFAULT_POLICY"},
+        description="Resolved BUY policy identifier. Optional in Slice 1.",
+    )
+    calculation_policy_version: Optional[str] = Field(
+        default=None,
+        json_schema_extra={"example": "1.0.0"},
+        description="Resolved BUY policy version. Optional in Slice 1.",
+    )
+    source_system: Optional[str] = Field(
+        default=None,
+        json_schema_extra={"example": "OMS_PRIMARY"},
+        description="Upstream source-system identifier for lineage.",
+    )
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 

@@ -113,3 +113,29 @@ def test_transaction_model_dividend_with_zero_qty_price_succeeds():
     transaction = Transaction(**dividend_payload)
     assert transaction.quantity == Decimal("0")
     assert transaction.price == Decimal("0")
+
+
+def test_transaction_model_accepts_slice1_canonical_metadata_fields():
+    payload = {
+        "transaction_id": "BUY_META_001",
+        "portfolio_id": "PORT_META_001",
+        "instrument_id": "SEC_UST_5Y",
+        "security_id": "SEC_UST_5Y",
+        "transaction_date": "2026-03-01T10:00:00Z",
+        "transaction_type": "BUY",
+        "quantity": "10.0",
+        "price": "100.0",
+        "gross_transaction_amount": "1000.0",
+        "trade_currency": "USD",
+        "currency": "USD",
+        "settlement_date": "2026-03-03T10:00:00Z",
+        "economic_event_id": "EVT-2026-00987",
+        "linked_transaction_group_id": "LTG-2026-00456",
+        "calculation_policy_id": "BUY_DEFAULT_POLICY",
+        "calculation_policy_version": "1.0.0",
+        "source_system": "OMS_PRIMARY",
+    }
+    model = Transaction(**payload)
+    assert model.economic_event_id == "EVT-2026-00987"
+    assert model.linked_transaction_group_id == "LTG-2026-00456"
+    assert model.calculation_policy_id == "BUY_DEFAULT_POLICY"
