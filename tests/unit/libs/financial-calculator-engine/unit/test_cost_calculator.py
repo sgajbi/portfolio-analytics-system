@@ -49,7 +49,9 @@ def test_buy_strategy(cost_calculator, mock_disposition_engine, buy_transaction)
     cost_calculator.calculate_transaction_costs(buy_transaction)
     assert buy_transaction.net_cost_local == Decimal("1515.5")
     assert buy_transaction.net_cost == Decimal("1515.5")
-    assert buy_transaction.realized_gain_loss is None
+    assert buy_transaction.gross_cost == Decimal("1500")
+    assert buy_transaction.realized_gain_loss == Decimal("0")
+    assert buy_transaction.realized_gain_loss_local == Decimal("0")
     mock_disposition_engine.add_buy_lot.assert_called_once_with(buy_transaction)
 
 def test_buy_strategy_dual_currency(cost_calculator, mock_disposition_engine):
@@ -64,7 +66,46 @@ def test_buy_strategy_dual_currency(cost_calculator, mock_disposition_engine):
     cost_calculator.calculate_transaction_costs(dual_currency_buy)
     assert dual_currency_buy.net_cost_local == Decimal("15010")
     assert dual_currency_buy.net_cost == Decimal("17261.50")
+    assert dual_currency_buy.gross_cost == Decimal("17250.00")
+    assert dual_currency_buy.realized_gain_loss == Decimal("0")
+    assert dual_currency_buy.realized_gain_loss_local == Decimal("0")
     mock_disposition_engine.add_buy_lot.assert_called_once_with(dual_currency_buy)
+
+
+def test_buy_strategy_supports_policy_hook_for_accrued_interest_exclusion(
+    cost_calculator, mock_disposition_engine
+):
+    bond_buy = Transaction(
+        transaction_id="BOND_BUY_01", portfolio_id="P_USD", instrument_id="UST5Y", security_id="S_UST5Y",
+        transaction_type=TransactionType.BUY, transaction_date=datetime(2023, 1, 1),
+        quantity=Decimal("100"), gross_transaction_amount=Decimal("98000"),
+        trade_currency="USD", fees=Fees(brokerage=Decimal("40")), accrued_interest=Decimal("1250"),
+        portfolio_base_currency="USD", transaction_fx_rate=Decimal("1.0"),
+        calculation_policy_id="BUY_EXCLUDE_ACCRUED_INTEREST_FROM_BOOK_COST"
+    )
+
+    cost_calculator.calculate_transaction_costs(bond_buy)
+
+    assert bond_buy.net_cost_local == Decimal("98040")
+    assert bond_buy.net_cost == Decimal("98040")
+    assert bond_buy.realized_gain_loss == Decimal("0")
+    mock_disposition_engine.add_buy_lot.assert_called_once_with(bond_buy)
+
+
+def test_buy_strategy_rejects_zero_quantity_with_invariant_error(
+    cost_calculator, mock_disposition_engine, error_reporter
+):
+    invalid_buy = Transaction(
+        transaction_id="BUY_ZERO_QTY", portfolio_id="P1", instrument_id="AAPL", security_id="S1",
+        transaction_type=TransactionType.BUY, transaction_date=datetime(2023, 1, 1),
+        quantity=Decimal("0"), gross_transaction_amount=Decimal("1000"), trade_currency="USD",
+        portfolio_base_currency="USD", transaction_fx_rate=Decimal("1.0")
+    )
+
+    cost_calculator.calculate_transaction_costs(invalid_buy)
+
+    assert error_reporter.has_errors_for("BUY_ZERO_QTY")
+    mock_disposition_engine.add_buy_lot.assert_not_called()
 
 
 def test_sell_strategy_gain(cost_calculator, mock_disposition_engine, sell_transaction):
