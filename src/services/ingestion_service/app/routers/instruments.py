@@ -37,7 +37,7 @@ async def ingest_instruments(
     num_instruments = len(request.instruments)
     job_id = create_ingestion_job_id()
     correlation_id, request_id, trace_id = get_request_lineage()
-    await ingestion_job_service.create_job(
+    job_result = await ingestion_job_service.create_or_get_job(
         job_id=job_id,
         endpoint=str(http_request.url.path),
         entity_type="instrument",
@@ -46,7 +46,16 @@ async def ingest_instruments(
         correlation_id=correlation_id,
         request_id=request_id,
         trace_id=trace_id,
+        request_payload=request.model_dump(mode="json"),
     )
+    if not job_result.created:
+        return build_batch_ack(
+            message="Duplicate ingestion request accepted via idempotency replay.",
+            entity_type="instrument",
+            job_id=job_result.job.job_id,
+            accepted_count=job_result.job.accepted_count,
+            idempotency_key=idempotency_key,
+        )
     logger.info(
         "Received request to ingest instruments.",
         extra={"num_instruments": num_instruments, "idempotency_key": idempotency_key},
@@ -56,16 +65,16 @@ async def ingest_instruments(
         await ingestion_service.publish_instruments(
             request.instruments, idempotency_key=idempotency_key
         )
-        await ingestion_job_service.mark_queued(job_id)
+        await ingestion_job_service.mark_queued(job_result.job.job_id)
     except Exception as exc:
-        await ingestion_job_service.mark_failed(job_id, str(exc))
+        await ingestion_job_service.mark_failed(job_result.job.job_id, str(exc))
         raise
 
     logger.info("Instruments successfully queued.", extra={"num_instruments": num_instruments})
     return build_batch_ack(
         message="Instruments accepted for asynchronous ingestion processing.",
         entity_type="instrument",
-        job_id=job_id,
+        job_id=job_result.job.job_id,
         accepted_count=num_instruments,
         idempotency_key=idempotency_key,
     )

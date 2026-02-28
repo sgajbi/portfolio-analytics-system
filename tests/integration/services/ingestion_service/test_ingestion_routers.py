@@ -1,6 +1,7 @@
 # tests/integration/services/ingestion-service/test_ingestion_routers.py
 from datetime import UTC, datetime
 from io import BytesIO
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import httpx
@@ -66,8 +67,10 @@ async def async_test_client(mock_kafka_producer: MagicMock):
     class FakeIngestionJobService:
         def __init__(self):
             self.jobs: dict[str, IngestionJobResponse] = {}
+            self.job_payloads: dict[str, dict] = {}
+            self.failures: dict[str, list[dict]] = {}
 
-        async def create_job(
+        async def create_or_get_job(
             self,
             *,
             job_id: str,
@@ -78,7 +81,15 @@ async def async_test_client(mock_kafka_producer: MagicMock):
             correlation_id: str,
             request_id: str,
             trace_id: str,
-        ) -> None:
+            request_payload: dict | None,
+        ) -> SimpleNamespace:
+            if idempotency_key:
+                for existing in self.jobs.values():
+                    if (
+                        existing.endpoint == endpoint
+                        and existing.idempotency_key == idempotency_key
+                    ):
+                        return SimpleNamespace(job=existing, created=False)
             self.jobs[job_id] = IngestionJobResponse(
                 job_id=job_id,
                 endpoint=endpoint,
@@ -92,7 +103,12 @@ async def async_test_client(mock_kafka_producer: MagicMock):
                 submitted_at=datetime.now(UTC),
                 completed_at=None,
                 failure_reason=None,
+                retry_count=0,
+                last_retried_at=None,
             )
+            if request_payload:
+                self.job_payloads[job_id] = request_payload
+            return SimpleNamespace(job=self.jobs[job_id], created=True)
 
         async def mark_queued(self, job_id: str) -> None:
             if job_id not in self.jobs:
@@ -110,25 +126,81 @@ async def async_test_client(mock_kafka_producer: MagicMock):
             record.failure_reason = failure_reason
             record.completed_at = datetime.now(UTC)
             self.jobs[job_id] = record
+            self.failures.setdefault(job_id, []).append(
+                {
+                    "failure_id": f"fail_{len(self.failures.get(job_id, [])) + 1}",
+                    "job_id": job_id,
+                    "failure_phase": "publish",
+                    "failure_reason": failure_reason,
+                    "failed_at": datetime.now(UTC),
+                }
+            )
+
+        async def mark_retried(self, job_id: str) -> None:
+            if job_id not in self.jobs:
+                return
+            record = self.jobs[job_id]
+            record.retry_count += 1
+            record.last_retried_at = datetime.now(UTC)
+            self.jobs[job_id] = record
 
         async def get_job(self, job_id: str) -> IngestionJobResponse | None:
             return self.jobs.get(job_id)
+
+        async def get_job_replay_context(self, job_id: str) -> SimpleNamespace | None:
+            record = self.jobs.get(job_id)
+            if record is None:
+                return None
+            return SimpleNamespace(
+                job_id=job_id,
+                endpoint=record.endpoint,
+                entity_type=record.entity_type,
+                accepted_count=record.accepted_count,
+                idempotency_key=record.idempotency_key,
+                request_payload=self.job_payloads.get(job_id),
+            )
 
         async def list_jobs(
             self,
             *,
             status: str | None = None,
             entity_type: str | None = None,
+            submitted_from: datetime | None = None,
+            submitted_to: datetime | None = None,
+            cursor: str | None = None,
             limit: int = 100,
-        ) -> list[IngestionJobResponse]:
+        ) -> tuple[list[IngestionJobResponse], str | None]:
             values = list(self.jobs.values())
             filtered = [
                 job
                 for job in values
                 if (status is None or job.status == status)
                 and (entity_type is None or job.entity_type == entity_type)
+                and (submitted_from is None or job.submitted_at >= submitted_from)
+                and (submitted_to is None or job.submitted_at <= submitted_to)
             ]
-            return filtered[:limit]
+            if cursor:
+                for idx, row in enumerate(filtered):
+                    if row.job_id == cursor:
+                        filtered = filtered[idx + 1 :]
+                        break
+            return ([job.model_dump(mode="json") for job in filtered[:limit]], None)
+
+        async def list_failures(self, job_id: str, limit: int = 100) -> list[dict]:
+            return self.failures.get(job_id, [])[:limit]
+
+        async def get_health_summary(self):
+            total_jobs = len(self.jobs)
+            accepted_jobs = sum(1 for j in self.jobs.values() if j.status == "accepted")
+            queued_jobs = sum(1 for j in self.jobs.values() if j.status == "queued")
+            failed_jobs = sum(1 for j in self.jobs.values() if j.status == "failed")
+            return {
+                "total_jobs": total_jobs,
+                "accepted_jobs": accepted_jobs,
+                "queued_jobs": queued_jobs,
+                "failed_jobs": failed_jobs,
+                "backlog_jobs": accepted_jobs + queued_jobs,
+            }
 
     fake_job_service = FakeIngestionJobService()
     app.dependency_overrides[get_ingestion_job_service] = lambda: fake_job_service
@@ -281,6 +353,7 @@ async def test_ingestion_jobs_list_endpoint(async_test_client: httpx.AsyncClient
     body = response.json()
     assert "jobs" in body
     assert "total" in body
+    assert "next_cursor" in body
 
 
 async def test_ingestion_job_not_found(async_test_client: httpx.AsyncClient):
@@ -288,6 +361,84 @@ async def test_ingestion_job_not_found(async_test_client: httpx.AsyncClient):
     assert response.status_code == 404
     body = response.json()
     assert body["detail"]["code"] == "INGESTION_JOB_NOT_FOUND"
+
+
+async def test_ingestion_jobs_idempotency_replays_existing_job(
+    async_test_client: httpx.AsyncClient,
+):
+    payload = {
+        "transactions": [
+            {
+                "transaction_id": "TX_IDEMPOTENT_001",
+                "portfolio_id": "P1",
+                "instrument_id": "I1",
+                "security_id": "S1",
+                "transaction_date": "2025-08-12T10:00:00Z",
+                "transaction_type": "BUY",
+                "quantity": 1,
+                "price": 1,
+                "gross_transaction_amount": 1,
+                "trade_currency": "USD",
+                "currency": "USD",
+            }
+        ]
+    }
+    headers = {"X-Idempotency-Key": "idem-batch-001"}
+
+    first = await async_test_client.post("/ingest/transactions", json=payload, headers=headers)
+    second = await async_test_client.post("/ingest/transactions", json=payload, headers=headers)
+
+    assert first.status_code == 202
+    assert second.status_code == 202
+    assert first.json()["job_id"] == second.json()["job_id"]
+
+
+async def test_ingestion_job_failure_history_and_retry(
+    async_test_client: httpx.AsyncClient, mock_kafka_producer: MagicMock
+):
+    mock_kafka_producer.publish_message.side_effect = RuntimeError("broker timeout")
+    payload = {
+        "transactions": [
+            {
+                "transaction_id": "TX_FAIL_001",
+                "portfolio_id": "P1",
+                "instrument_id": "I1",
+                "security_id": "S1",
+                "transaction_date": "2025-08-12T10:00:00Z",
+                "transaction_type": "BUY",
+                "quantity": 1,
+                "price": 1,
+                "gross_transaction_amount": 1,
+                "trade_currency": "USD",
+                "currency": "USD",
+            }
+        ]
+    }
+
+    with pytest.raises(RuntimeError, match="broker timeout"):
+        await async_test_client.post("/ingest/transactions", json=payload)
+
+    jobs_response = await async_test_client.get("/ingestion/jobs", params={"status": "failed"})
+    assert jobs_response.status_code == 200
+    failed_job_id = jobs_response.json()["jobs"][0]["job_id"]
+
+    failure_history = await async_test_client.get(f"/ingestion/jobs/{failed_job_id}/failures")
+    assert failure_history.status_code == 200
+    assert failure_history.json()["total"] >= 1
+
+    mock_kafka_producer.publish_message.side_effect = None
+    retry_response = await async_test_client.post(f"/ingestion/jobs/{failed_job_id}/retry")
+    assert retry_response.status_code == 200
+    assert retry_response.json()["status"] == "queued"
+    assert retry_response.json()["retry_count"] == 1
+
+
+async def test_ingestion_health_summary(async_test_client: httpx.AsyncClient):
+    response = await async_test_client.get("/ingestion/health/summary")
+    assert response.status_code == 200
+    body = response.json()
+    assert "total_jobs" in body
+    assert "backlog_jobs" in body
 
 
 async def test_ingest_instruments_endpoint(

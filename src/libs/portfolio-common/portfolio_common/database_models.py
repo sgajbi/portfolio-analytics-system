@@ -488,6 +488,20 @@ class IngestionJob(Base):
     submitted_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     completed_at = Column(DateTime(timezone=True), nullable=True)
     failure_reason = Column(Text, nullable=True)
+    request_payload = Column(JSON, nullable=True)
+    retry_count = Column(Integer, nullable=False, default=0, server_default="0")
+    last_retried_at = Column(DateTime(timezone=True), nullable=True)
+
+
+class IngestionJobFailure(Base):
+    __tablename__ = "ingestion_job_failures"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    failure_id = Column(String, unique=True, index=True, nullable=False)
+    job_id = Column(String, ForeignKey("ingestion_jobs.job_id"), index=True, nullable=False)
+    failure_phase = Column(String, nullable=False)
+    failure_reason = Column(Text, nullable=False)
+    failed_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
 class PositionState(Base):

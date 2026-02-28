@@ -59,6 +59,16 @@ class IngestionJobResponse(BaseModel):
         description="Failure reason when status is failed.",
         examples=["Kafka publish timeout for topic raw_transactions."],
     )
+    retry_count: int = Field(
+        ge=0,
+        description="Number of retry attempts executed for this ingestion job.",
+        examples=[1],
+    )
+    last_retried_at: datetime | None = Field(
+        default=None,
+        description="Timestamp of the most recent retry attempt.",
+        examples=["2026-02-28T13:24:10.512Z"],
+    )
 
 
 class IngestionJobListResponse(BaseModel):
@@ -69,4 +79,73 @@ class IngestionJobListResponse(BaseModel):
         ge=0,
         description="Number of jobs returned in this response.",
         examples=[20],
+    )
+    next_cursor: str | None = Field(
+        default=None,
+        description=(
+            "Opaque cursor to fetch the next page of jobs, based on descending ingestion job order."
+        ),
+        examples=["job_01J5S0J6D3BAVMK2E1V0WQ7MCC"],
+    )
+
+
+class IngestionJobFailureResponse(BaseModel):
+    failure_id: str = Field(
+        description="Unique failure record identifier for this job failure event.",
+        examples=["fail_01J5S27P16BSKQ3R2P2HK67GQZ"],
+    )
+    job_id: str = Field(
+        description="Ingestion job identifier this failure event belongs to.",
+        examples=["job_01J5S0J6D3BAVMK2E1V0WQ7MCC"],
+    )
+    failure_phase: str = Field(
+        description="Pipeline phase where the job failure occurred.",
+        examples=["publish"],
+    )
+    failure_reason: str = Field(
+        description="Detailed failure reason captured at runtime.",
+        examples=["Kafka publish timeout for topic raw_transactions."],
+    )
+    failed_at: datetime = Field(
+        description="Timestamp when this failure event was captured.",
+        examples=["2026-02-28T13:23:09.021Z"],
+    )
+
+
+class IngestionJobFailureListResponse(BaseModel):
+    failures: list[IngestionJobFailureResponse] = Field(
+        description="Failure events captured for the requested ingestion job."
+    )
+    total: int = Field(
+        ge=0,
+        description="Number of failure events returned in this response.",
+        examples=[1],
+    )
+
+
+class IngestionHealthSummaryResponse(BaseModel):
+    total_jobs: int = Field(
+        ge=0,
+        description="Total ingestion jobs stored in operational state.",
+        examples=[2450],
+    )
+    accepted_jobs: int = Field(
+        ge=0,
+        description="Total jobs currently in accepted state.",
+        examples=[3],
+    )
+    queued_jobs: int = Field(
+        ge=0,
+        description="Total jobs currently queued for asynchronous processing.",
+        examples=[7],
+    )
+    failed_jobs: int = Field(
+        ge=0,
+        description="Total jobs currently marked as failed.",
+        examples=[2],
+    )
+    backlog_jobs: int = Field(
+        ge=0,
+        description="Operational backlog count (accepted + queued).",
+        examples=[10],
     )

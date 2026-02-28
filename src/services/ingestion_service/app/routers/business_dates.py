@@ -37,7 +37,7 @@ async def ingest_business_dates(
     num_dates = len(request.business_dates)
     job_id = create_ingestion_job_id()
     correlation_id, request_id, trace_id = get_request_lineage()
-    await ingestion_job_service.create_job(
+    job_result = await ingestion_job_service.create_or_get_job(
         job_id=job_id,
         endpoint=str(http_request.url.path),
         entity_type="business_date",
@@ -46,7 +46,16 @@ async def ingest_business_dates(
         correlation_id=correlation_id,
         request_id=request_id,
         trace_id=trace_id,
+        request_payload=request.model_dump(mode="json"),
     )
+    if not job_result.created:
+        return build_batch_ack(
+            message="Duplicate ingestion request accepted via idempotency replay.",
+            entity_type="business_date",
+            job_id=job_result.job.job_id,
+            accepted_count=job_result.job.accepted_count,
+            idempotency_key=idempotency_key,
+        )
     logger.info(
         "Received request to ingest business dates.",
         extra={"num_dates": num_dates, "idempotency_key": idempotency_key},
@@ -56,16 +65,16 @@ async def ingest_business_dates(
         await ingestion_service.publish_business_dates(
             request.business_dates, idempotency_key=idempotency_key
         )
-        await ingestion_job_service.mark_queued(job_id)
+        await ingestion_job_service.mark_queued(job_result.job.job_id)
     except Exception as exc:
-        await ingestion_job_service.mark_failed(job_id, str(exc))
+        await ingestion_job_service.mark_failed(job_result.job.job_id, str(exc))
         raise
 
     logger.info("Business dates successfully queued.", extra={"num_dates": num_dates})
     return build_batch_ack(
         message="Business dates accepted for asynchronous ingestion processing.",
         entity_type="business_date",
-        job_id=job_id,
+        job_id=job_result.job.job_id,
         accepted_count=num_dates,
         idempotency_key=idempotency_key,
     )

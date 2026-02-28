@@ -54,7 +54,7 @@ async def ingest_portfolio_bundle(
     )
     job_id = create_ingestion_job_id()
     correlation_id, request_id, trace_id = get_request_lineage()
-    await ingestion_job_service.create_job(
+    job_result = await ingestion_job_service.create_or_get_job(
         job_id=job_id,
         endpoint=str(http_request.url.path),
         entity_type="portfolio_bundle",
@@ -63,14 +63,23 @@ async def ingest_portfolio_bundle(
         correlation_id=correlation_id,
         request_id=request_id,
         trace_id=trace_id,
+        request_payload=request.model_dump(mode="json"),
     )
+    if not job_result.created:
+        return build_batch_ack(
+            message="Duplicate ingestion request accepted via idempotency replay.",
+            entity_type="portfolio_bundle",
+            job_id=job_result.job.job_id,
+            accepted_count=job_result.job.accepted_count,
+            idempotency_key=idempotency_key,
+        )
     try:
         published_counts = await ingestion_service.publish_portfolio_bundle(
             request, idempotency_key=idempotency_key
         )
-        await ingestion_job_service.mark_queued(job_id)
+        await ingestion_job_service.mark_queued(job_result.job.job_id)
     except Exception as exc:
-        await ingestion_job_service.mark_failed(job_id, str(exc))
+        await ingestion_job_service.mark_failed(job_result.job.job_id, str(exc))
         raise
 
     logger.info(
@@ -88,7 +97,7 @@ async def ingest_portfolio_bundle(
             f"Published counts: {published_counts}"
         ),
         entity_type="portfolio_bundle",
-        job_id=job_id,
+        job_id=job_result.job.job_id,
         accepted_count=accepted_count,
         idempotency_key=idempotency_key,
     )
