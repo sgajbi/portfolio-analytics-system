@@ -15,6 +15,7 @@ from portfolio_common.events import TransactionEvent
 from portfolio_common.db import get_async_db_session
 from portfolio_common.idempotency_repository import IdempotencyRepository
 from portfolio_common.outbox_repository import OutboxRepository
+from portfolio_common.monitoring import BUY_LIFECYCLE_STAGE_TOTAL
 from portfolio_common.config import KAFKA_PROCESSED_TRANSACTIONS_COMPLETED_TOPIC
 from portfolio_common.database_models import Portfolio
 
@@ -182,11 +183,31 @@ class CostCalculatorConsumer(BaseConsumer):
                     processed_new = [p for p in processed if p.transaction_id in new_transaction_ids]
 
                     for p_txn in processed_new:
+                        BUY_LIFECYCLE_STAGE_TOTAL.labels("persist_transaction_costs", "attempt").inc()
                         updated_txn = await repo.update_transaction_costs(p_txn)
+                        BUY_LIFECYCLE_STAGE_TOTAL.labels("persist_transaction_costs", "success").inc()
 
                         if p_txn.transaction_type == "BUY":
+                            BUY_LIFECYCLE_STAGE_TOTAL.labels("persist_lot_state", "attempt").inc()
                             await repo.upsert_buy_lot_state(p_txn)
+                            BUY_LIFECYCLE_STAGE_TOTAL.labels("persist_lot_state", "success").inc()
+                            BUY_LIFECYCLE_STAGE_TOTAL.labels("persist_accrued_offset_state", "attempt").inc()
                             await repo.upsert_accrued_income_offset_state(p_txn)
+                            BUY_LIFECYCLE_STAGE_TOTAL.labels("persist_accrued_offset_state", "success").inc()
+                            logger.info(
+                                "buy_state_persisted",
+                                extra={
+                                    "transaction_id": p_txn.transaction_id,
+                                    "economic_event_id": getattr(p_txn, "economic_event_id", None),
+                                    "linked_transaction_group_id": getattr(
+                                        p_txn, "linked_transaction_group_id", None
+                                    ),
+                                    "calculation_policy_id": getattr(p_txn, "calculation_policy_id", None),
+                                    "calculation_policy_version": getattr(
+                                        p_txn, "calculation_policy_version", None
+                                    ),
+                                },
+                            )
                         
                         if p_txn.fees and p_txn.fees.total_fees > 0:
                             updated_txn.trade_fee = p_txn.fees.total_fees
@@ -206,6 +227,7 @@ class CostCalculatorConsumer(BaseConsumer):
                             payload=full_event_to_publish.model_dump(mode='json'),
                             correlation_id=correlation_id
                         )
+                        BUY_LIFECYCLE_STAGE_TOTAL.labels("emit_outbox", "success").inc()
 
                     await idempotency_repo.mark_event_processed(
                         event_id, event.portfolio_id, SERVICE_NAME, correlation_id
@@ -215,9 +237,11 @@ class CostCalculatorConsumer(BaseConsumer):
             logger.error(f"Invalid TransactionEvent; sending to DLQ. Error: {e}", exc_info=True)
             await self._send_to_dlq_async(msg, ValueError("invalid payload"))
         except (DBAPIError, IntegrityError, FxRateNotFoundError, PortfolioNotFoundError):
+            BUY_LIFECYCLE_STAGE_TOTAL.labels("process_message", "retryable_error").inc()
             logger.warning("DB or data availability error; will retry...", exc_info=True)
             raise
         except Exception as e:
+            BUY_LIFECYCLE_STAGE_TOTAL.labels("process_message", "failed").inc()
             logger.error(
                 f"Unexpected error processing transaction {getattr(event, 'transaction_id', 'UNKNOWN')}. Sending to DLQ.",
                 exc_info=True

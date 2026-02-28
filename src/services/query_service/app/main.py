@@ -24,6 +24,7 @@ from .enterprise_readiness import (
     validate_enterprise_runtime_config,
 )
 from .routers import (
+    buy_state,
     capabilities,
     fx_rates,
     instruments,
@@ -174,6 +175,7 @@ app.include_router(health_router)
 # Register the API routers
 app.include_router(portfolios.router)
 app.include_router(positions.router)
+app.include_router(buy_state.router)
 app.include_router(transactions.router)
 app.include_router(instruments.router)
 app.include_router(prices.router)

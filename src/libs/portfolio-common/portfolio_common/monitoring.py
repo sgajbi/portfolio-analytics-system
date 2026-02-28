@@ -189,6 +189,12 @@ CASHFLOWS_CREATED_TOTAL = Counter(
     ["classification", "timing"]
 )
 
+BUY_LIFECYCLE_STAGE_TOTAL = Counter(
+    "buy_lifecycle_stage_total",
+    "Count of BUY lifecycle stage outcomes.",
+    ["stage", "status"],
+)
+
 # --------------------------------------------------------------------------------------
 # Optional generic HTTP metrics (use across services if helpful)
 # --------------------------------------------------------------------------------------

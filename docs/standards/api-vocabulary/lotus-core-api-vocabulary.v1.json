@@ -13,8 +13,36 @@
       "openApiVersion": "3.1.0"
     }
   ],
-  "generatedAt": "2026-02-28T03:59:05.136100+00:00",
+  "generatedAt": "2026-02-28T11:37:54.174189+00:00",
   "attributeCatalog": [
+    {
+      "semanticId": "lotus.accrued_interest_paid_local",
+      "canonicalTerm": "accrued_interest_paid_local",
+      "preferredName": "accrued_interest_paid_local",
+      "description": "Accrued interest paid on acquisition in local currency.",
+      "example": 10.5,
+      "type": "number",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "number"
+      ]
+    },
+    {
+      "semanticId": "lotus.acquisition_date",
+      "canonicalTerm": "acquisition_date",
+      "preferredName": "acquisition_date",
+      "description": "Lot acquisition date.",
+      "example": "2026-02-27",
+      "type": "string",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "string"
+      ]
+    },
     {
       "semanticId": "lotus.active_reprocessing_keys",
       "canonicalTerm": "active_reprocessing_keys",
@@ -209,8 +237,8 @@
       "semanticId": "lotus.calculation_policy_id",
       "canonicalTerm": "calculation_policy_id",
       "preferredName": "calculation_policy_id",
-      "description": "Resolved BUY policy identifier. Optional in Slice 1.",
-      "example": "BUY_DEFAULT_POLICY",
+      "description": "Calculation policy identifier used for BUY processing.",
+      "example": "CALCULATION_POLICY_001",
       "type": "object",
       "locations": [
         "body"
@@ -223,8 +251,10 @@
       "semanticId": "lotus.calculation_policy_version",
       "canonicalTerm": "calculation_policy_version",
       "preferredName": "calculation_policy_version",
-      "description": "Resolved BUY policy version. Optional in Slice 1.",
-      "example": "1.0.0",
+      "description": "Version of calculation policy used.",
+      "example": {
+        "id": "OBJ_001"
+      },
       "type": "object",
       "locations": [
         "body"
@@ -239,6 +269,66 @@
       "preferredName": "cashflow",
       "description": "transaction record field: cashflow.",
       "example": 3200.0,
+      "type": "object",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "object"
+      ]
+    },
+    {
+      "semanticId": "lotus.cashflow_amount",
+      "canonicalTerm": "cashflow_amount",
+      "preferredName": "cashflow_amount",
+      "description": "Linked cashflow amount.",
+      "example": {
+        "id": "OBJ_001"
+      },
+      "type": "object",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "object"
+      ]
+    },
+    {
+      "semanticId": "lotus.cashflow_classification",
+      "canonicalTerm": "cashflow_classification",
+      "preferredName": "cashflow_classification",
+      "description": "Cashflow classification.",
+      "example": {
+        "id": "OBJ_001"
+      },
+      "type": "object",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "object"
+      ]
+    },
+    {
+      "semanticId": "lotus.cashflow_currency",
+      "canonicalTerm": "cashflow_currency",
+      "preferredName": "cashflow_currency",
+      "description": "Currency of linked cashflow.",
+      "example": "USD",
+      "type": "object",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "object"
+      ]
+    },
+    {
+      "semanticId": "lotus.cashflow_date",
+      "canonicalTerm": "cashflow_date",
+      "preferredName": "cashflow_date",
+      "description": "Linked cashflow booking date.",
+      "example": "2026-02-27",
       "type": "object",
       "locations": [
         "body"
@@ -485,8 +575,8 @@
       "semanticId": "lotus.economic_event_id",
       "canonicalTerm": "economic_event_id",
       "preferredName": "economic_event_id",
-      "description": "Canonical economic event identifier. Optional in Slice 1, planned to become required in strict canonical mode.",
-      "example": "EVT-2026-00987",
+      "description": "Economic event identifier linking security/cash effects.",
+      "example": "ECONOMIC_EVENT_001",
       "type": "object",
       "locations": [
         "body"
@@ -792,7 +882,7 @@
       "semanticId": "lotus.instrument_id",
       "canonicalTerm": "instrument_id",
       "preferredName": "instrument_id",
-      "description": "Unique instrument identifier.",
+      "description": "Instrument identifier.",
       "example": "EQ_US_AAPL",
       "type": "string",
       "locations": [
@@ -1094,14 +1184,72 @@
       "semanticId": "lotus.linked_transaction_group_id",
       "canonicalTerm": "linked_transaction_group_id",
       "preferredName": "linked_transaction_group_id",
-      "description": "Canonical linkage group identifier for related entries. Optional in Slice 1.",
-      "example": "LTG-2026-00456",
+      "description": "Group ID linking related transactions.",
+      "example": "LINKED_TRANSACTION_GROUP_001",
       "type": "object",
       "locations": [
         "body"
       ],
       "observedTypes": [
         "object"
+      ]
+    },
+    {
+      "semanticId": "lotus.lot_cost_base",
+      "canonicalTerm": "lot_cost_base",
+      "preferredName": "lot_cost_base",
+      "description": "Lot cost in base currency.",
+      "example": 10.5,
+      "type": "number",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "number"
+      ]
+    },
+    {
+      "semanticId": "lotus.lot_cost_local",
+      "canonicalTerm": "lot_cost_local",
+      "preferredName": "lot_cost_local",
+      "description": "Lot cost in trade/local currency.",
+      "example": 10.5,
+      "type": "number",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "number"
+      ]
+    },
+    {
+      "semanticId": "lotus.lot_id",
+      "canonicalTerm": "lot_id",
+      "preferredName": "lot_id",
+      "description": "Stable lot identifier.",
+      "example": "LOT_001",
+      "type": "string",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "string"
+      ]
+    },
+    {
+      "semanticId": "lotus.lots",
+      "canonicalTerm": "lots",
+      "preferredName": "lots",
+      "description": "Current lot records for the portfolio-security key.",
+      "example": [
+        "LOTS_ITEM_VALUE"
+      ],
+      "type": "array",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "array"
       ]
     },
     {
@@ -1263,6 +1411,36 @@
       ]
     },
     {
+      "semanticId": "lotus.offset_id",
+      "canonicalTerm": "offset_id",
+      "preferredName": "offset_id",
+      "description": "Stable accrued-income offset identifier.",
+      "example": "OFFSET_001",
+      "type": "string",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "string"
+      ]
+    },
+    {
+      "semanticId": "lotus.offsets",
+      "canonicalTerm": "offsets",
+      "preferredName": "offsets",
+      "description": "Accrued-income offset records for the portfolio-security key.",
+      "example": [
+        "OFFSETS_ITEM_VALUE"
+      ],
+      "type": "array",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "array"
+      ]
+    },
+    {
       "semanticId": "lotus.open_date",
       "canonicalTerm": "open_date",
       "preferredName": "open_date",
@@ -1277,6 +1455,20 @@
       ]
     },
     {
+      "semanticId": "lotus.open_quantity",
+      "canonicalTerm": "open_quantity",
+      "preferredName": "open_quantity",
+      "description": "Current open quantity.",
+      "example": 100.0,
+      "type": "number",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "number"
+      ]
+    },
+    {
       "semanticId": "lotus.options",
       "canonicalTerm": "options",
       "preferredName": "options",
@@ -1288,6 +1480,20 @@
       ],
       "observedTypes": [
         "CoreSnapshotRequestOptions"
+      ]
+    },
+    {
+      "semanticId": "lotus.original_quantity",
+      "canonicalTerm": "original_quantity",
+      "preferredName": "original_quantity",
+      "description": "Original acquired quantity.",
+      "example": 100.0,
+      "type": "number",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "number"
       ]
     },
     {
@@ -1779,6 +1985,20 @@
       ]
     },
     {
+      "semanticId": "lotus.remaining_offset_local",
+      "canonicalTerm": "remaining_offset_local",
+      "preferredName": "remaining_offset_local",
+      "description": "Remaining accrued-income offset available for net-income calculations.",
+      "example": 10.5,
+      "type": "number",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "number"
+      ]
+    },
+    {
       "semanticId": "lotus.reporting_currency",
       "canonicalTerm": "reporting_currency",
       "preferredName": "reporting_currency",
@@ -2101,14 +2321,30 @@
       "semanticId": "lotus.source_system",
       "canonicalTerm": "source_system",
       "preferredName": "source_system",
-      "description": "Upstream source-system identifier for lineage.",
-      "example": "OMS_PRIMARY",
+      "description": "Source system from which this transaction originated.",
+      "example": {
+        "id": "OBJ_001"
+      },
       "type": "object",
       "locations": [
         "body"
       ],
       "observedTypes": [
         "object"
+      ]
+    },
+    {
+      "semanticId": "lotus.source_transaction_id",
+      "canonicalTerm": "source_transaction_id",
+      "preferredName": "source_transaction_id",
+      "description": "Transaction ID that created this lot.",
+      "example": "SOURCE_TRANSACTION_001",
+      "type": "string",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "string"
       ]
     },
     {
@@ -2333,7 +2569,8 @@
       "example": "TXN_0001",
       "type": "string",
       "locations": [
-        "body"
+        "body",
+        "path"
       ],
       "observedTypes": [
         "string"
@@ -2359,7 +2596,7 @@
       "semanticId": "lotus.transaction_type",
       "canonicalTerm": "transaction_type",
       "preferredName": "transaction_type",
-      "description": "transaction record field: transaction type.",
+      "description": "Transaction type.",
       "example": "BUY",
       "type": "string",
       "locations": [
@@ -2716,6 +2953,96 @@
       "exposure": "consumer_visible",
       "canonicalTerm": "portfolio_id",
       "semanticId": "lotus.portfolio_id"
+    },
+    {
+      "name": "portfolio_id",
+      "kind": "request_option",
+      "location": "path",
+      "type": "string",
+      "required": true,
+      "default": "",
+      "allowedValues": [],
+      "description": "Unique portfolio identifier.",
+      "example": "PORTFOLIO_001",
+      "behaviorImpact": "Affects get_position_lots_portfolios__portfolio_id__positions__security_id__lots_get request behavior.",
+      "exposure": "consumer_visible",
+      "canonicalTerm": "portfolio_id",
+      "semanticId": "lotus.portfolio_id"
+    },
+    {
+      "name": "security_id",
+      "kind": "request_option",
+      "location": "path",
+      "type": "string",
+      "required": true,
+      "default": "",
+      "allowedValues": [],
+      "description": "Unique security identifier.",
+      "example": "SECURITY_001",
+      "behaviorImpact": "Affects get_position_lots_portfolios__portfolio_id__positions__security_id__lots_get request behavior.",
+      "exposure": "consumer_visible",
+      "canonicalTerm": "security_id",
+      "semanticId": "lotus.security_id"
+    },
+    {
+      "name": "portfolio_id",
+      "kind": "request_option",
+      "location": "path",
+      "type": "string",
+      "required": true,
+      "default": "",
+      "allowedValues": [],
+      "description": "Unique portfolio identifier.",
+      "example": "PORTFOLIO_001",
+      "behaviorImpact": "Affects get_accrued_offsets_portfolios__portfolio_id__positions__security_id__accrued_offsets_get request behavior.",
+      "exposure": "consumer_visible",
+      "canonicalTerm": "portfolio_id",
+      "semanticId": "lotus.portfolio_id"
+    },
+    {
+      "name": "security_id",
+      "kind": "request_option",
+      "location": "path",
+      "type": "string",
+      "required": true,
+      "default": "",
+      "allowedValues": [],
+      "description": "Unique security identifier.",
+      "example": "SECURITY_001",
+      "behaviorImpact": "Affects get_accrued_offsets_portfolios__portfolio_id__positions__security_id__accrued_offsets_get request behavior.",
+      "exposure": "consumer_visible",
+      "canonicalTerm": "security_id",
+      "semanticId": "lotus.security_id"
+    },
+    {
+      "name": "portfolio_id",
+      "kind": "request_option",
+      "location": "path",
+      "type": "string",
+      "required": true,
+      "default": "",
+      "allowedValues": [],
+      "description": "Unique portfolio identifier.",
+      "example": "PORTFOLIO_001",
+      "behaviorImpact": "Affects get_buy_cash_linkage_portfolios__portfolio_id__transactions__transaction_id__cash_linkage_get request behavior.",
+      "exposure": "consumer_visible",
+      "canonicalTerm": "portfolio_id",
+      "semanticId": "lotus.portfolio_id"
+    },
+    {
+      "name": "transaction_id",
+      "kind": "request_option",
+      "location": "path",
+      "type": "string",
+      "required": true,
+      "default": "",
+      "allowedValues": [],
+      "description": "Unique transaction identifier.",
+      "example": "TRANSACTION_001",
+      "behaviorImpact": "Affects get_buy_cash_linkage_portfolios__portfolio_id__transactions__transaction_id__cash_linkage_get request behavior.",
+      "exposure": "consumer_visible",
+      "canonicalTerm": "transaction_id",
+      "semanticId": "lotus.transaction_id"
     },
     {
       "name": "portfolio_id",
@@ -4433,6 +4760,518 @@
             "type": "object",
             "semanticId": "lotus.weight",
             "attributeRef": "lotus.weight"
+          }
+        ]
+      }
+    },
+    {
+      "operationId": "get_position_lots_portfolios__portfolio_id__positions__security_id__lots_get",
+      "method": "GET",
+      "path": "/portfolios/{portfolio_id}/positions/{security_id}/lots",
+      "domain": "buy_state",
+      "serviceGroup": "query",
+      "tags": [
+        "BUY State"
+      ],
+      "summary": "Get BUY Lot State for a Position",
+      "description": "Returns durable BUY lot records for a portfolio-security key, including linkage and policy metadata used for lifecycle traceability.",
+      "naming": {
+        "boundedContext": "buy_state",
+        "canonicalTerms": [
+          "accrued_interest_paid_local",
+          "acquisition_date",
+          "calculation_policy_id",
+          "calculation_policy_version",
+          "economic_event_id",
+          "instrument_id",
+          "linked_transaction_group_id",
+          "lot_cost_base",
+          "lot_cost_local",
+          "lot_id",
+          "lots",
+          "open_quantity",
+          "original_quantity",
+          "portfolio_id",
+          "security_id",
+          "source_system",
+          "source_transaction_id"
+        ]
+      },
+      "request": {
+        "fields": [
+          {
+            "name": "portfolio_id",
+            "location": "path",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.portfolio_id",
+            "attributeRef": "lotus.portfolio_id"
+          },
+          {
+            "name": "security_id",
+            "location": "path",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.security_id",
+            "attributeRef": "lotus.security_id"
+          }
+        ]
+      },
+      "response": {
+        "httpStatus": 200,
+        "model": "PositionLotsResponse",
+        "fields": [
+          {
+            "name": "portfolio_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.portfolio_id",
+            "attributeRef": "lotus.portfolio_id"
+          },
+          {
+            "name": "security_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.security_id",
+            "attributeRef": "lotus.security_id"
+          },
+          {
+            "name": "lots",
+            "location": "body",
+            "required": true,
+            "type": "array",
+            "semanticId": "lotus.lots",
+            "attributeRef": "lotus.lots"
+          },
+          {
+            "name": "lots[].lot_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.lot_id",
+            "attributeRef": "lotus.lot_id"
+          },
+          {
+            "name": "lots[].source_transaction_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.source_transaction_id",
+            "attributeRef": "lotus.source_transaction_id"
+          },
+          {
+            "name": "lots[].portfolio_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.portfolio_id",
+            "attributeRef": "lotus.portfolio_id"
+          },
+          {
+            "name": "lots[].instrument_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.instrument_id",
+            "attributeRef": "lotus.instrument_id"
+          },
+          {
+            "name": "lots[].security_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.security_id",
+            "attributeRef": "lotus.security_id"
+          },
+          {
+            "name": "lots[].acquisition_date",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.acquisition_date",
+            "attributeRef": "lotus.acquisition_date"
+          },
+          {
+            "name": "lots[].original_quantity",
+            "location": "body",
+            "required": true,
+            "type": "number",
+            "semanticId": "lotus.original_quantity",
+            "attributeRef": "lotus.original_quantity"
+          },
+          {
+            "name": "lots[].open_quantity",
+            "location": "body",
+            "required": true,
+            "type": "number",
+            "semanticId": "lotus.open_quantity",
+            "attributeRef": "lotus.open_quantity"
+          },
+          {
+            "name": "lots[].lot_cost_local",
+            "location": "body",
+            "required": true,
+            "type": "number",
+            "semanticId": "lotus.lot_cost_local",
+            "attributeRef": "lotus.lot_cost_local"
+          },
+          {
+            "name": "lots[].lot_cost_base",
+            "location": "body",
+            "required": true,
+            "type": "number",
+            "semanticId": "lotus.lot_cost_base",
+            "attributeRef": "lotus.lot_cost_base"
+          },
+          {
+            "name": "lots[].accrued_interest_paid_local",
+            "location": "body",
+            "required": true,
+            "type": "number",
+            "semanticId": "lotus.accrued_interest_paid_local",
+            "attributeRef": "lotus.accrued_interest_paid_local"
+          },
+          {
+            "name": "lots[].economic_event_id",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.economic_event_id",
+            "attributeRef": "lotus.economic_event_id"
+          },
+          {
+            "name": "lots[].linked_transaction_group_id",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.linked_transaction_group_id",
+            "attributeRef": "lotus.linked_transaction_group_id"
+          },
+          {
+            "name": "lots[].calculation_policy_id",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.calculation_policy_id",
+            "attributeRef": "lotus.calculation_policy_id"
+          },
+          {
+            "name": "lots[].calculation_policy_version",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.calculation_policy_version",
+            "attributeRef": "lotus.calculation_policy_version"
+          },
+          {
+            "name": "lots[].source_system",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.source_system",
+            "attributeRef": "lotus.source_system"
+          }
+        ]
+      }
+    },
+    {
+      "operationId": "get_accrued_offsets_portfolios__portfolio_id__positions__security_id__accrued_offsets_get",
+      "method": "GET",
+      "path": "/portfolios/{portfolio_id}/positions/{security_id}/accrued-offsets",
+      "domain": "buy_state",
+      "serviceGroup": "query",
+      "tags": [
+        "BUY State"
+      ],
+      "summary": "Get BUY Accrued-Income Offset State",
+      "description": "Returns accrued-income offset state initialized by BUY events for a portfolio-security key.",
+      "naming": {
+        "boundedContext": "buy_state",
+        "canonicalTerms": [
+          "accrued_interest_paid_local",
+          "calculation_policy_id",
+          "calculation_policy_version",
+          "economic_event_id",
+          "instrument_id",
+          "linked_transaction_group_id",
+          "offset_id",
+          "offsets",
+          "portfolio_id",
+          "remaining_offset_local",
+          "security_id",
+          "source_system",
+          "source_transaction_id"
+        ]
+      },
+      "request": {
+        "fields": [
+          {
+            "name": "portfolio_id",
+            "location": "path",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.portfolio_id",
+            "attributeRef": "lotus.portfolio_id"
+          },
+          {
+            "name": "security_id",
+            "location": "path",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.security_id",
+            "attributeRef": "lotus.security_id"
+          }
+        ]
+      },
+      "response": {
+        "httpStatus": 200,
+        "model": "AccruedIncomeOffsetsResponse",
+        "fields": [
+          {
+            "name": "portfolio_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.portfolio_id",
+            "attributeRef": "lotus.portfolio_id"
+          },
+          {
+            "name": "security_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.security_id",
+            "attributeRef": "lotus.security_id"
+          },
+          {
+            "name": "offsets",
+            "location": "body",
+            "required": true,
+            "type": "array",
+            "semanticId": "lotus.offsets",
+            "attributeRef": "lotus.offsets"
+          },
+          {
+            "name": "offsets[].offset_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.offset_id",
+            "attributeRef": "lotus.offset_id"
+          },
+          {
+            "name": "offsets[].source_transaction_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.source_transaction_id",
+            "attributeRef": "lotus.source_transaction_id"
+          },
+          {
+            "name": "offsets[].portfolio_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.portfolio_id",
+            "attributeRef": "lotus.portfolio_id"
+          },
+          {
+            "name": "offsets[].instrument_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.instrument_id",
+            "attributeRef": "lotus.instrument_id"
+          },
+          {
+            "name": "offsets[].security_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.security_id",
+            "attributeRef": "lotus.security_id"
+          },
+          {
+            "name": "offsets[].accrued_interest_paid_local",
+            "location": "body",
+            "required": true,
+            "type": "number",
+            "semanticId": "lotus.accrued_interest_paid_local",
+            "attributeRef": "lotus.accrued_interest_paid_local"
+          },
+          {
+            "name": "offsets[].remaining_offset_local",
+            "location": "body",
+            "required": true,
+            "type": "number",
+            "semanticId": "lotus.remaining_offset_local",
+            "attributeRef": "lotus.remaining_offset_local"
+          },
+          {
+            "name": "offsets[].economic_event_id",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.economic_event_id",
+            "attributeRef": "lotus.economic_event_id"
+          },
+          {
+            "name": "offsets[].linked_transaction_group_id",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.linked_transaction_group_id",
+            "attributeRef": "lotus.linked_transaction_group_id"
+          },
+          {
+            "name": "offsets[].calculation_policy_id",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.calculation_policy_id",
+            "attributeRef": "lotus.calculation_policy_id"
+          },
+          {
+            "name": "offsets[].calculation_policy_version",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.calculation_policy_version",
+            "attributeRef": "lotus.calculation_policy_version"
+          },
+          {
+            "name": "offsets[].source_system",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.source_system",
+            "attributeRef": "lotus.source_system"
+          }
+        ]
+      }
+    },
+    {
+      "operationId": "get_buy_cash_linkage_portfolios__portfolio_id__transactions__transaction_id__cash_linkage_get",
+      "method": "GET",
+      "path": "/portfolios/{portfolio_id}/transactions/{transaction_id}/cash-linkage",
+      "domain": "buy_state",
+      "serviceGroup": "query",
+      "tags": [
+        "BUY State"
+      ],
+      "summary": "Get BUY Cash Linkage State",
+      "description": "Returns security-side BUY linkage fields and linked cashflow details for reconciliation.",
+      "naming": {
+        "boundedContext": "buy_state",
+        "canonicalTerms": [
+          "cashflow_amount",
+          "cashflow_classification",
+          "cashflow_currency",
+          "cashflow_date",
+          "economic_event_id",
+          "linked_transaction_group_id",
+          "portfolio_id",
+          "transaction_id",
+          "transaction_type"
+        ]
+      },
+      "request": {
+        "fields": [
+          {
+            "name": "portfolio_id",
+            "location": "path",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.portfolio_id",
+            "attributeRef": "lotus.portfolio_id"
+          },
+          {
+            "name": "transaction_id",
+            "location": "path",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.transaction_id",
+            "attributeRef": "lotus.transaction_id"
+          }
+        ]
+      },
+      "response": {
+        "httpStatus": 200,
+        "model": "BuyCashLinkageResponse",
+        "fields": [
+          {
+            "name": "portfolio_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.portfolio_id",
+            "attributeRef": "lotus.portfolio_id"
+          },
+          {
+            "name": "transaction_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.transaction_id",
+            "attributeRef": "lotus.transaction_id"
+          },
+          {
+            "name": "transaction_type",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.transaction_type",
+            "attributeRef": "lotus.transaction_type"
+          },
+          {
+            "name": "economic_event_id",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.economic_event_id",
+            "attributeRef": "lotus.economic_event_id"
+          },
+          {
+            "name": "linked_transaction_group_id",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.linked_transaction_group_id",
+            "attributeRef": "lotus.linked_transaction_group_id"
+          },
+          {
+            "name": "cashflow_date",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.cashflow_date",
+            "attributeRef": "lotus.cashflow_date"
+          },
+          {
+            "name": "cashflow_amount",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.cashflow_amount",
+            "attributeRef": "lotus.cashflow_amount"
+          },
+          {
+            "name": "cashflow_currency",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.cashflow_currency",
+            "attributeRef": "lotus.cashflow_currency"
+          },
+          {
+            "name": "cashflow_classification",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.cashflow_classification",
+            "attributeRef": "lotus.cashflow_classification"
           }
         ]
       }
