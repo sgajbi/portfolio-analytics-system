@@ -35,7 +35,7 @@ class IngestionAcceptedResponse(BaseModel):
 
 
 class BatchIngestionAcceptedResponse(IngestionAcceptedResponse):
-    ingestion_job_id: str = Field(
+    job_id: str = Field(
         description="Asynchronous ingestion job identifier for client-side tracking.",
         examples=["job_01J5S0J6D3BAVMK2E1V0WQ7MCC"],
     )

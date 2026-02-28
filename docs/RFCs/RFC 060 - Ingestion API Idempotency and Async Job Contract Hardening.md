@@ -14,7 +14,7 @@ This makes external system integrations harder to operate safely at scale, and i
 ## Goals
 - Introduce a canonical ingestion acknowledgment contract across ingestion APIs.
 - Add optional request idempotency contract via `X-Idempotency-Key`.
-- Return `ingestion_job_id` for asynchronous batch-style ingestion requests.
+- Return `job_id` for asynchronous batch-style ingestion requests.
 - Preserve API-first and observability-first operation patterns.
 
 ## Non-Goals
@@ -25,7 +25,7 @@ This makes external system integrations harder to operate safely at scale, and i
 ## Proposed Contract
 - Canonical response models:
   - `IngestionAcceptedResponse` (single-entity acceptance)
-  - `BatchIngestionAcceptedResponse` (batch acceptance + `ingestion_job_id`)
+  - `BatchIngestionAcceptedResponse` (batch acceptance + `job_id`)
 - Required lineage fields in responses:
   - `correlation_id`, `request_id`, `trace_id`
 - Optional retry safety field:
@@ -62,6 +62,7 @@ This makes external system integrations harder to operate safely at scale, and i
 
 ## Definition of Done (for this RFC phase)
 - Ingestion endpoints return canonical acceptance contract.
-- Batch endpoints include `ingestion_job_id`.
+- Batch endpoints include `job_id`.
 - `X-Idempotency-Key` is accepted and propagated to Kafka headers.
 - Tests pass and OpenAPI quality gate passes.
+

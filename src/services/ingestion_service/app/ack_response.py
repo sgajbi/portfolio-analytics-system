@@ -32,7 +32,7 @@ def build_batch_ack(
         message=message,
         entity_type=entity_type,
         accepted_count=accepted_count,
-        ingestion_job_id=create_ingestion_job_id(),
+        job_id=create_ingestion_job_id(),
         correlation_id=correlation_id,
         request_id=request_id,
         trace_id=trace_id,

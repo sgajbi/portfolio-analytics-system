@@ -100,7 +100,7 @@ async def test_ingest_transactions_endpoint(
     body = response.json()
     assert body["entity_type"] == "transaction"
     assert body["accepted_count"] == 1
-    assert "ingestion_job_id" in body
+    assert "job_id" in body
     mock_kafka_producer.publish_message.assert_called_once()
 
 
@@ -221,7 +221,7 @@ async def test_ingest_portfolio_bundle_endpoint(
     body = response.json()
     assert body["entity_type"] == "portfolio_bundle"
     assert body["accepted_count"] == 6
-    assert "ingestion_job_id" in body
+    assert "job_id" in body
     assert mock_kafka_producer.publish_message.call_count == 6
 
 
@@ -598,4 +598,5 @@ async def test_ingestion_endpoints_return_canonical_ack_contract(
     assert body["correlation_id"]
     assert body["request_id"]
     assert body["trace_id"]
-    assert "ingestion_job_id" in body
+    assert "job_id" in body
+
