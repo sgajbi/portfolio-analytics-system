@@ -1,5 +1,5 @@
 from app.DTOs.ingestion_ack_dto import BatchIngestionAcceptedResponse, IngestionAcceptedResponse
-from app.request_metadata import create_ingestion_job_id, get_request_lineage
+from app.request_metadata import get_request_lineage
 
 
 def build_single_ack(
@@ -24,6 +24,7 @@ def build_batch_ack(
     *,
     message: str,
     entity_type: str,
+    job_id: str,
     accepted_count: int,
     idempotency_key: str | None,
 ) -> BatchIngestionAcceptedResponse:
@@ -32,7 +33,7 @@ def build_batch_ack(
         message=message,
         entity_type=entity_type,
         accepted_count=accepted_count,
-        job_id=create_ingestion_job_id(),
+        job_id=job_id,
         correlation_id=correlation_id,
         request_id=request_id,
         trace_id=trace_id,

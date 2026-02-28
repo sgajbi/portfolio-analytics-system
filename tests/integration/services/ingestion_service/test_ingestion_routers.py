@@ -104,6 +104,55 @@ async def test_ingest_transactions_endpoint(
     mock_kafka_producer.publish_message.assert_called_once()
 
 
+async def test_ingestion_jobs_status_endpoint(
+    async_test_client: httpx.AsyncClient, mock_kafka_producer: MagicMock
+):
+    mock_kafka_producer.publish_message.reset_mock()
+    payload = {
+        "transactions": [
+            {
+                "transaction_id": "T100",
+                "portfolio_id": "P1",
+                "instrument_id": "I1",
+                "security_id": "S1",
+                "transaction_date": "2025-08-12T10:00:00Z",
+                "transaction_type": "BUY",
+                "quantity": 1,
+                "price": 1,
+                "gross_transaction_amount": 1,
+                "trade_currency": "USD",
+                "currency": "USD",
+            }
+        ]
+    }
+
+    ingest_response = await async_test_client.post("/ingest/transactions", json=payload)
+    assert ingest_response.status_code == 202
+    job_id = ingest_response.json()["job_id"]
+
+    job_response = await async_test_client.get(f"/ingestion/jobs/{job_id}")
+    assert job_response.status_code == 200
+    job_body = job_response.json()
+    assert job_body["job_id"] == job_id
+    assert job_body["status"] == "queued"
+    assert job_body["entity_type"] == "transaction"
+
+
+async def test_ingestion_jobs_list_endpoint(async_test_client: httpx.AsyncClient):
+    response = await async_test_client.get("/ingestion/jobs", params={"limit": 5})
+    assert response.status_code == 200
+    body = response.json()
+    assert "jobs" in body
+    assert "total" in body
+
+
+async def test_ingestion_job_not_found(async_test_client: httpx.AsyncClient):
+    response = await async_test_client.get("/ingestion/jobs/job_missing_001")
+    assert response.status_code == 404
+    body = response.json()
+    assert body["detail"]["code"] == "INGESTION_JOB_NOT_FOUND"
+
+
 async def test_ingest_instruments_endpoint(
     async_test_client: httpx.AsyncClient, mock_kafka_producer: MagicMock
 ):
@@ -599,4 +648,3 @@ async def test_ingestion_endpoints_return_canonical_ack_contract(
     assert body["request_id"]
     assert body["trace_id"]
     assert "job_id" in body
-

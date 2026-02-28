@@ -4,7 +4,13 @@ import logging
 from app.ack_response import build_batch_ack
 from app.DTOs.ingestion_ack_dto import BatchIngestionAcceptedResponse
 from app.DTOs.market_price_dto import MarketPriceIngestionRequest
-from app.request_metadata import IdempotencyKeyHeader, resolve_idempotency_key
+from app.request_metadata import (
+    IdempotencyKeyHeader,
+    create_ingestion_job_id,
+    get_request_lineage,
+    resolve_idempotency_key,
+)
+from app.services.ingestion_job_service import IngestionJobService, get_ingestion_job_service
 from app.services.ingestion_service import IngestionService, get_ingestion_service
 from fastapi import APIRouter, Depends, Request, status
 
@@ -25,22 +31,41 @@ async def ingest_market_prices(
     http_request: Request,
     idempotency_key_header: IdempotencyKeyHeader = None,
     ingestion_service: IngestionService = Depends(get_ingestion_service),
+    ingestion_job_service: IngestionJobService = Depends(get_ingestion_job_service),
 ):
     idempotency_key = idempotency_key_header or resolve_idempotency_key(http_request)
     num_prices = len(request.market_prices)
+    job_id = create_ingestion_job_id()
+    correlation_id, request_id, trace_id = get_request_lineage()
+    ingestion_job_service.create_job(
+        job_id=job_id,
+        endpoint=str(http_request.url.path),
+        entity_type="market_price",
+        accepted_count=num_prices,
+        idempotency_key=idempotency_key,
+        correlation_id=correlation_id,
+        request_id=request_id,
+        trace_id=trace_id,
+    )
     logger.info(
         "Received request to ingest market prices.",
         extra={"num_prices": num_prices, "idempotency_key": idempotency_key},
     )
 
-    await ingestion_service.publish_market_prices(
-        request.market_prices, idempotency_key=idempotency_key
-    )
+    try:
+        await ingestion_service.publish_market_prices(
+            request.market_prices, idempotency_key=idempotency_key
+        )
+        ingestion_job_service.mark_queued(job_id)
+    except Exception as exc:
+        ingestion_job_service.mark_failed(job_id, str(exc))
+        raise
 
     logger.info("Market prices successfully queued.", extra={"num_prices": num_prices})
     return build_batch_ack(
         message="Market prices accepted for asynchronous ingestion processing.",
         entity_type="market_price",
+        job_id=job_id,
         accepted_count=num_prices,
         idempotency_key=idempotency_key,
     )
