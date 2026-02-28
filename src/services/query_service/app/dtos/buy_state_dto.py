@@ -1,3 +1,4 @@
+from decimal import Decimal
 from datetime import date, datetime
 from typing import List, Optional
 
@@ -15,9 +16,9 @@ class PositionLotRecord(BaseModel):
     acquisition_date: date = Field(..., description="Lot acquisition date.", examples=["2026-02-28"])
     original_quantity: float = Field(..., description="Original acquired quantity.", examples=[100.0])
     open_quantity: float = Field(..., description="Current open quantity.", examples=[100.0])
-    lot_cost_local: float = Field(..., description="Lot cost in trade/local currency.", examples=[15005.5])
-    lot_cost_base: float = Field(..., description="Lot cost in base currency.", examples=[15005.5])
-    accrued_interest_paid_local: float = Field(
+    lot_cost_local: Decimal = Field(..., description="Lot cost in trade/local currency.", examples=[15005.5])
+    lot_cost_base: Decimal = Field(..., description="Lot cost in base currency.", examples=[15005.5])
+    accrued_interest_paid_local: Decimal = Field(
         ..., description="Accrued interest paid on acquisition in local currency.", examples=[1250.0]
     )
     economic_event_id: Optional[str] = Field(
@@ -55,10 +56,10 @@ class AccruedIncomeOffsetRecord(BaseModel):
     portfolio_id: str = Field(..., description="Portfolio identifier.", examples=["PORT-10001"])
     instrument_id: str = Field(..., description="Instrument identifier.", examples=["AAPL"])
     security_id: str = Field(..., description="Security identifier.", examples=["US0378331005"])
-    accrued_interest_paid_local: float = Field(
+    accrued_interest_paid_local: Decimal = Field(
         ..., description="Accrued interest paid at BUY booking in local currency.", examples=[1250.0]
     )
-    remaining_offset_local: float = Field(
+    remaining_offset_local: Decimal = Field(
         ..., description="Remaining accrued-income offset available for net-income calculations.", examples=[1250.0]
     )
     economic_event_id: Optional[str] = Field(
@@ -103,7 +104,7 @@ class BuyCashLinkageResponse(BaseModel):
     cashflow_date: Optional[datetime] = Field(
         None, description="Linked cashflow booking date.", examples=["2026-02-28T00:00:00Z"]
     )
-    cashflow_amount: Optional[float] = Field(
+    cashflow_amount: Optional[Decimal] = Field(
         None, description="Linked cashflow amount.", examples=[-15005.5]
     )
     cashflow_currency: Optional[str] = Field(

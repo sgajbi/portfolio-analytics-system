@@ -113,3 +113,23 @@ async def test_get_cash_linkage_not_found(async_test_client):
     response = await client.get("/portfolios/PORT-1/transactions/T404/cash-linkage")
     assert response.status_code == 404
     assert "not found" in response.json()["detail"]
+
+
+async def test_get_cash_linkage_success(async_test_client):
+    client, mock_service = async_test_client
+    response = await client.get("/portfolios/PORT-1/transactions/TXN-1/cash-linkage")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["transaction_id"] == "TXN-1"
+    assert payload["cashflow_classification"] == "INVESTMENT_OUTFLOW"
+    mock_service.get_buy_cash_linkage.assert_awaited_with(
+        portfolio_id="PORT-1", transaction_id="TXN-1"
+    )
+
+
+async def test_get_position_lots_not_found(async_test_client):
+    client, mock_service = async_test_client
+    mock_service.get_position_lots.side_effect = ValueError("portfolio missing")
+    response = await client.get("/portfolios/P404/positions/US0378331005/lots")
+    assert response.status_code == 404
+    assert "portfolio missing" in response.json()["detail"]

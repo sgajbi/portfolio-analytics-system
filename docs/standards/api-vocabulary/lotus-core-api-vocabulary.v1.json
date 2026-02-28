@@ -13,20 +13,20 @@
       "openApiVersion": "3.1.0"
     }
   ],
-  "generatedAt": "2026-02-28T11:37:54.174189+00:00",
+  "generatedAt": "2026-02-28T11:45:39.792930+00:00",
   "attributeCatalog": [
     {
       "semanticId": "lotus.accrued_interest_paid_local",
       "canonicalTerm": "accrued_interest_paid_local",
       "preferredName": "accrued_interest_paid_local",
       "description": "Accrued interest paid on acquisition in local currency.",
-      "example": 10.5,
-      "type": "number",
+      "example": "STANDARD",
+      "type": "string",
       "locations": [
         "body"
       ],
       "observedTypes": [
-        "number"
+        "string"
       ]
     },
     {
@@ -1199,13 +1199,13 @@
       "canonicalTerm": "lot_cost_base",
       "preferredName": "lot_cost_base",
       "description": "Lot cost in base currency.",
-      "example": 10.5,
-      "type": "number",
+      "example": "STANDARD",
+      "type": "string",
       "locations": [
         "body"
       ],
       "observedTypes": [
-        "number"
+        "string"
       ]
     },
     {
@@ -1213,13 +1213,13 @@
       "canonicalTerm": "lot_cost_local",
       "preferredName": "lot_cost_local",
       "description": "Lot cost in trade/local currency.",
-      "example": 10.5,
-      "type": "number",
+      "example": "STANDARD",
+      "type": "string",
       "locations": [
         "body"
       ],
       "observedTypes": [
-        "number"
+        "string"
       ]
     },
     {
@@ -1989,13 +1989,13 @@
       "canonicalTerm": "remaining_offset_local",
       "preferredName": "remaining_offset_local",
       "description": "Remaining accrued-income offset available for net-income calculations.",
-      "example": 10.5,
-      "type": "number",
+      "example": "STANDARD",
+      "type": "string",
       "locations": [
         "body"
       ],
       "observedTypes": [
-        "number"
+        "string"
       ]
     },
     {
@@ -4913,7 +4913,7 @@
             "name": "lots[].lot_cost_local",
             "location": "body",
             "required": true,
-            "type": "number",
+            "type": "string",
             "semanticId": "lotus.lot_cost_local",
             "attributeRef": "lotus.lot_cost_local"
           },
@@ -4921,7 +4921,7 @@
             "name": "lots[].lot_cost_base",
             "location": "body",
             "required": true,
-            "type": "number",
+            "type": "string",
             "semanticId": "lotus.lot_cost_base",
             "attributeRef": "lotus.lot_cost_base"
           },
@@ -4929,7 +4929,7 @@
             "name": "lots[].accrued_interest_paid_local",
             "location": "body",
             "required": true,
-            "type": "number",
+            "type": "string",
             "semanticId": "lotus.accrued_interest_paid_local",
             "attributeRef": "lotus.accrued_interest_paid_local"
           },
@@ -5097,7 +5097,7 @@
             "name": "offsets[].accrued_interest_paid_local",
             "location": "body",
             "required": true,
-            "type": "number",
+            "type": "string",
             "semanticId": "lotus.accrued_interest_paid_local",
             "attributeRef": "lotus.accrued_interest_paid_local"
           },
@@ -5105,7 +5105,7 @@
             "name": "offsets[].remaining_offset_local",
             "location": "body",
             "required": true,
-            "type": "number",
+            "type": "string",
             "semanticId": "lotus.remaining_offset_local",
             "attributeRef": "lotus.remaining_offset_local"
           },

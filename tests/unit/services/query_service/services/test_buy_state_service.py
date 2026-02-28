@@ -108,3 +108,14 @@ async def test_get_accrued_offsets_raises_when_portfolio_missing(mock_buy_state_
         service = BuyStateService(AsyncMock())
         with pytest.raises(ValueError, match="Portfolio with id P404 not found"):
             await service.get_accrued_offsets("P404", "US0378331005")
+
+
+async def test_get_buy_cash_linkage_raises_when_transaction_not_found(mock_buy_state_repo: AsyncMock):
+    with patch(
+        "src.services.query_service.app.services.buy_state_service.BuyStateRepository",
+        return_value=mock_buy_state_repo,
+    ):
+        mock_buy_state_repo.get_buy_cash_linkage.return_value = None
+        service = BuyStateService(AsyncMock())
+        with pytest.raises(ValueError, match="Transaction TXN-404 not found for portfolio PORT-1"):
+            await service.get_buy_cash_linkage("PORT-1", "TXN-404")
