@@ -232,12 +232,62 @@ class Cashflow(Base):
     calculation_type = Column(String, nullable=False)
     is_position_flow = Column(Boolean, server_default='f', nullable=False)
     is_portfolio_flow = Column(Boolean, server_default='f', nullable=False)
+    economic_event_id = Column(String, nullable=True, index=True)
+    linked_transaction_group_id = Column(String, nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
     transaction = relationship("Transaction", back_populates="cashflow")
 
     __table_args__ = (UniqueConstraint('transaction_id', name='_transaction_id_uc'),)
+
+
+class PositionLotState(Base):
+    __tablename__ = "position_lot_state"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    lot_id = Column(String, unique=True, index=True, nullable=False)
+    source_transaction_id = Column(
+        String, ForeignKey("transactions.transaction_id"), nullable=False, unique=True
+    )
+    portfolio_id = Column(String, ForeignKey("portfolios.portfolio_id"), index=True, nullable=False)
+    instrument_id = Column(String, nullable=False, index=True)
+    security_id = Column(String, nullable=False, index=True)
+    acquisition_date = Column(Date, nullable=False, index=True)
+    original_quantity = Column(Numeric(18, 10), nullable=False)
+    open_quantity = Column(Numeric(18, 10), nullable=False)
+    lot_cost_local = Column(Numeric(18, 10), nullable=False)
+    lot_cost_base = Column(Numeric(18, 10), nullable=False)
+    accrued_interest_paid_local = Column(Numeric(18, 10), nullable=False, server_default="0")
+    economic_event_id = Column(String, nullable=True, index=True)
+    linked_transaction_group_id = Column(String, nullable=True, index=True)
+    calculation_policy_id = Column(String, nullable=True)
+    calculation_policy_version = Column(String, nullable=True)
+    source_system = Column(String, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class AccruedIncomeOffsetState(Base):
+    __tablename__ = "accrued_income_offset_state"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    offset_id = Column(String, unique=True, index=True, nullable=False)
+    source_transaction_id = Column(
+        String, ForeignKey("transactions.transaction_id"), nullable=False, unique=True
+    )
+    portfolio_id = Column(String, ForeignKey("portfolios.portfolio_id"), index=True, nullable=False)
+    instrument_id = Column(String, nullable=False, index=True)
+    security_id = Column(String, nullable=False, index=True)
+    accrued_interest_paid_local = Column(Numeric(18, 10), nullable=False, server_default="0")
+    remaining_offset_local = Column(Numeric(18, 10), nullable=False, server_default="0")
+    economic_event_id = Column(String, nullable=True, index=True)
+    linked_transaction_group_id = Column(String, nullable=True, index=True)
+    calculation_policy_id = Column(String, nullable=True)
+    calculation_policy_version = Column(String, nullable=True)
+    source_system = Column(String, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
 class PositionTimeseries(Base):
     __tablename__ = 'position_timeseries'

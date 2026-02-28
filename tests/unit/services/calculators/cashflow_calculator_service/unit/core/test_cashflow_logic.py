@@ -40,6 +40,8 @@ def test_calculate_buy_transaction(mock_metric, base_transaction_event: Transact
     # ASSERT
     assert cashflow.amount < 0
     assert cashflow.amount == Decimal("-1005.50")
+    assert cashflow.economic_event_id is None
+    assert cashflow.linked_transaction_group_id is None
     assert cashflow.is_position_flow is True
     assert cashflow.is_portfolio_flow is False
     mock_metric.labels.assert_called_once_with(classification='INVESTMENT_OUTFLOW', timing='BOD')
@@ -176,4 +178,24 @@ def test_calculate_transfer_out_transaction(mock_metric, base_transaction_event:
     assert cashflow.is_portfolio_flow is True
     assert cashflow.amount < 0
     mock_metric.labels.assert_called_once_with(classification='TRANSFER', timing='EOD')
+    mock_metric.labels.return_value.inc.assert_called_once()
+
+
+@patch("src.services.calculators.cashflow_calculator_service.app.core.cashflow_logic.CASHFLOWS_CREATED_TOTAL")
+def test_calculate_buy_propagates_linkage_metadata(mock_metric, base_transaction_event: TransactionEvent):
+    """BUY cashflow should carry economic-event linkage metadata for reconciliation."""
+    event = base_transaction_event
+    event.economic_event_id = "EVT-2026-9001"
+    event.linked_transaction_group_id = "LTG-2026-9001"
+    rule = CashflowRule(
+        classification=CashflowClassification.INVESTMENT_OUTFLOW,
+        timing=CashflowTiming.BOD,
+        is_position_flow=True,
+        is_portfolio_flow=False,
+    )
+
+    cashflow = CashflowLogic.calculate(event, rule)
+
+    assert cashflow.economic_event_id == "EVT-2026-9001"
+    assert cashflow.linked_transaction_group_id == "LTG-2026-9001"
     mock_metric.labels.return_value.inc.assert_called_once()

@@ -3,7 +3,15 @@ from typing import List, Optional
 from datetime import date
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from portfolio_common.database_models import Transaction as DBTransaction, Portfolio, FxRate
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from decimal import Decimal
+from portfolio_common.database_models import (
+    Transaction as DBTransaction,
+    Portfolio,
+    FxRate,
+    PositionLotState,
+    AccruedIncomeOffsetState,
+)
 from core.models.transaction import Transaction as EngineTransaction
 
 class CostCalculatorRepository:
@@ -62,3 +70,57 @@ class CostCalculatorRepository:
             db_txn_to_update.realized_gain_loss_local = transaction_result.realized_gain_loss_local
         
         return db_txn_to_update
+
+    async def upsert_buy_lot_state(self, transaction_result: EngineTransaction) -> None:
+        """Persists BUY lot state as a durable, idempotent record."""
+        accrued_interest_local = getattr(transaction_result, "accrued_interest", None) or Decimal(0)
+        lot_payload = {
+            "lot_id": f"LOT-{transaction_result.transaction_id}",
+            "source_transaction_id": transaction_result.transaction_id,
+            "portfolio_id": transaction_result.portfolio_id,
+            "instrument_id": transaction_result.instrument_id,
+            "security_id": transaction_result.security_id,
+            "acquisition_date": transaction_result.transaction_date.date(),
+            "original_quantity": transaction_result.quantity,
+            "open_quantity": transaction_result.quantity,
+            "lot_cost_local": transaction_result.net_cost_local or Decimal(0),
+            "lot_cost_base": transaction_result.net_cost or Decimal(0),
+            "accrued_interest_paid_local": accrued_interest_local,
+            "economic_event_id": getattr(transaction_result, "economic_event_id", None),
+            "linked_transaction_group_id": getattr(transaction_result, "linked_transaction_group_id", None),
+            "calculation_policy_id": getattr(transaction_result, "calculation_policy_id", None),
+            "calculation_policy_version": getattr(transaction_result, "calculation_policy_version", None),
+            "source_system": getattr(transaction_result, "source_system", None),
+        }
+        stmt = pg_insert(PositionLotState).values(**lot_payload)
+        update_dict = {c.name: c for c in stmt.excluded if c.name not in ["id", "lot_id", "source_transaction_id"]}
+        await self.db.execute(
+            stmt.on_conflict_do_update(index_elements=["source_transaction_id"], set_=update_dict)
+        )
+
+    async def upsert_accrued_income_offset_state(self, transaction_result: EngineTransaction) -> None:
+        """Initializes or updates accrued-income offset state for BUY transactions."""
+        accrued_interest_local = getattr(transaction_result, "accrued_interest", None) or Decimal(0)
+        payload = {
+            "offset_id": f"AIO-{transaction_result.transaction_id}",
+            "source_transaction_id": transaction_result.transaction_id,
+            "portfolio_id": transaction_result.portfolio_id,
+            "instrument_id": transaction_result.instrument_id,
+            "security_id": transaction_result.security_id,
+            "accrued_interest_paid_local": accrued_interest_local,
+            "remaining_offset_local": accrued_interest_local,
+            "economic_event_id": getattr(transaction_result, "economic_event_id", None),
+            "linked_transaction_group_id": getattr(transaction_result, "linked_transaction_group_id", None),
+            "calculation_policy_id": getattr(transaction_result, "calculation_policy_id", None),
+            "calculation_policy_version": getattr(transaction_result, "calculation_policy_version", None),
+            "source_system": getattr(transaction_result, "source_system", None),
+        }
+        stmt = pg_insert(AccruedIncomeOffsetState).values(**payload)
+        update_dict = {
+            c.name: c
+            for c in stmt.excluded
+            if c.name not in ["id", "offset_id", "source_transaction_id"]
+        }
+        await self.db.execute(
+            stmt.on_conflict_do_update(index_elements=["source_transaction_id"], set_=update_dict)
+        )

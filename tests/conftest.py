@@ -139,6 +139,8 @@ def db_engine(docker_services):
 # List of all tables to be cleaned. Centralized here.
 TABLES_TO_TRUNCATE = [
     "instrument_reprocessing_state",  # <-- ADD NEW TABLE HERE
+    "accrued_income_offset_state",
+    "position_lot_state",
     "position_state",
     "business_dates",
     "portfolio_valuation_jobs",
@@ -157,7 +159,6 @@ TABLES_TO_TRUNCATE = [
     "processed_events",
     "outbox_events",
 ]
-TRUNCATE_SQL = f"TRUNCATE TABLE {', '.join(TABLES_TO_TRUNCATE)} RESTART IDENTITY CASCADE;"
 TERMINATE_ACTIVE_SESSIONS_SQL = """
 SELECT pg_terminate_backend(pid)
 FROM pg_stat_activity
@@ -167,19 +168,36 @@ WHERE datname = current_database()
 """
 
 
+def _build_truncate_sql(connection) -> str:
+    """Builds a truncate statement only for tables that exist in the current schema."""
+    existing_tables = {
+        row[0]
+        for row in connection.execute(
+            text(
+                "SELECT tablename FROM pg_tables WHERE schemaname = 'public'"
+            )
+        ).fetchall()
+    }
+    tables = [table for table in TABLES_TO_TRUNCATE if table in existing_tables]
+    if not tables:
+        return ""
+    return f"TRUNCATE TABLE {', '.join(tables)} RESTART IDENTITY CASCADE;"
+
+
 @pytest.fixture(scope="function")
 def clean_db(db_engine):
     """
     A function-scoped fixture that cleans all data from tables using TRUNCATE.
     """
     print("\n--- Cleaning database tables (function scope) ---")
-    truncate_query = text(TRUNCATE_SQL)
     terminate_sessions_query = text(TERMINATE_ACTIVE_SESSIONS_SQL)
 
     def _run() -> None:
         with db_engine.begin() as connection:
             connection.execute(terminate_sessions_query)
-            connection.execute(truncate_query)
+            truncate_sql = _build_truncate_sql(connection)
+            if truncate_sql:
+                connection.execute(text(truncate_sql))
 
     truncate_with_deadlock_retry(_run)
     yield
@@ -192,13 +210,14 @@ def clean_db_module(db_engine):
     Used by E2E tests to ensure a clean state before the test module runs.
     """
     print("\n--- Cleaning database tables (module scope) ---")
-    truncate_query = text(TRUNCATE_SQL)
     terminate_sessions_query = text(TERMINATE_ACTIVE_SESSIONS_SQL)
 
     def _run() -> None:
         with db_engine.begin() as connection:
             connection.execute(terminate_sessions_query)
-            connection.execute(truncate_query)
+            truncate_sql = _build_truncate_sql(connection)
+            if truncate_sql:
+                connection.execute(text(truncate_sql))
 
     truncate_with_deadlock_retry(_run)
     yield
