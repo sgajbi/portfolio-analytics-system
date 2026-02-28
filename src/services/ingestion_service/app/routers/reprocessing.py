@@ -1,11 +1,10 @@
 # src/services/ingestion_service/app/routers/reprocessing.py
 import logging
-from typing import Annotated
 
 from app.ack_response import build_batch_ack
 from app.DTOs.ingestion_ack_dto import BatchIngestionAcceptedResponse
-from app.request_metadata import get_request_lineage, resolve_idempotency_key
-from fastapi import APIRouter, Depends, Header, Request, status
+from app.request_metadata import IdempotencyKeyHeader, get_request_lineage, resolve_idempotency_key
+from fastapi import APIRouter, Depends, Request, status
 from portfolio_common.kafka_utils import KafkaProducer, get_kafka_producer
 
 from ..DTOs.reprocessing_dto import ReprocessingRequest
@@ -31,7 +30,7 @@ REPROCESSING_REQUESTED_TOPIC = "transactions_reprocessing_requested"
 async def reprocess_transactions(
     request: ReprocessingRequest,
     http_request: Request,
-    idempotency_key_header: Annotated[str | None, Header(alias="X-Idempotency-Key")] = None,
+    idempotency_key_header: IdempotencyKeyHeader = None,
     kafka_producer: KafkaProducer = Depends(get_kafka_producer),
 ):
     """
