@@ -183,6 +183,10 @@ class CostCalculatorConsumer(BaseConsumer):
 
                     for p_txn in processed_new:
                         updated_txn = await repo.update_transaction_costs(p_txn)
+
+                        if p_txn.transaction_type == "BUY":
+                            await repo.upsert_buy_lot_state(p_txn)
+                            await repo.upsert_accrued_income_offset_state(p_txn)
                         
                         if p_txn.fees and p_txn.fees.total_fees > 0:
                             updated_txn.trade_fee = p_txn.fees.total_fees

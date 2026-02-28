@@ -135,6 +135,8 @@ async def test_consumer_integration_with_engine(cost_calculator_consumer: CostCa
     updated_transaction_arg = mock_repo.update_transaction_costs.call_args[0][0]
     assert isinstance(updated_transaction_arg, EngineTransaction)
     assert updated_transaction_arg.realized_gain_loss == Decimal("250.0")
+    mock_repo.upsert_buy_lot_state.assert_not_called()
+    mock_repo.upsert_accrued_income_offset_state.assert_not_called()
     mock_idempotency_repo.mark_event_processed.assert_called_once()
     mock_outbox_repo.create_outbox_event.assert_called_once()
 
@@ -166,6 +168,8 @@ async def test_consumer_uses_trade_fee_in_calculation(
     assert updated_transaction_arg.net_cost == Decimal("1507.50")
     assert updated_transaction_arg.realized_gain_loss == Decimal("0")
     assert updated_transaction_arg.realized_gain_loss_local == Decimal("0")
+    mock_repo.upsert_buy_lot_state.assert_called_once()
+    mock_repo.upsert_accrued_income_offset_state.assert_called_once()
 
 async def test_consumer_propagates_epoch_field(
     cost_calculator_consumer: CostCalculatorConsumer, mock_buy_kafka_message: MagicMock, mock_dependencies

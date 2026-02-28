@@ -61,6 +61,8 @@ class CashflowLogic:
             calculation_type="NET", # Currently all are NET
             is_position_flow=rule.is_position_flow,
             is_portfolio_flow=rule.is_portfolio_flow,
+            economic_event_id=transaction.economic_event_id,
+            linked_transaction_group_id=transaction.linked_transaction_group_id,
             epoch=epoch or 0
         )
 
