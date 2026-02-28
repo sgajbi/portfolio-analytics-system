@@ -1,12 +1,13 @@
 import logging
 
-from app.DTOs.upload_dto import UploadCommitResponse, UploadEntityType, UploadPreviewResponse
 from app.adapter_mode import require_upload_adapter_enabled
+from app.DTOs.upload_dto import UploadCommitResponse, UploadEntityType, UploadPreviewResponse
+from app.services.ingestion_job_service import IngestionJobService, get_ingestion_job_service
 from app.services.upload_ingestion_service import (
     UploadIngestionService,
     get_upload_ingestion_service,
 )
-from fastapi import APIRouter, Depends, File, Form, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -73,7 +74,8 @@ async def preview_upload(
     tags=["Bulk Uploads"],
     summary="Commit validated bulk upload data",
     description=(
-        "Validates CSV/XLSX rows and publishes valid records to existing lotus-core ingestion topics. "
+        "Validates CSV/XLSX rows and publishes valid records to "
+        "existing lotus-core ingestion topics. "
         "By default rejects partial uploads; set allowPartial=true to publish valid rows only."
     ),
 )
@@ -83,7 +85,15 @@ async def commit_upload(
     allow_partial: bool = Form(False),
     _: None = Depends(require_upload_adapter_enabled),
     upload_service: UploadIngestionService = Depends(get_upload_ingestion_service),
+    ingestion_job_service: IngestionJobService = Depends(get_ingestion_job_service),
 ):
+    try:
+        await ingestion_job_service.assert_ingestion_writable()
+    except PermissionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={"code": "INGESTION_MODE_BLOCKS_WRITES", "message": str(exc)},
+        ) from exc
     content = await file.read()
     response = await upload_service.commit_upload(
         entity_type=entity_type,

@@ -22,6 +22,12 @@ from portfolio_common.logging_utils import correlation_id_var
 from portfolio_common.monitoring import KAFKA_MESSAGES_PUBLISHED_TOTAL
 
 
+class IngestionPublishError(RuntimeError):
+    def __init__(self, message: str, failed_record_keys: list[str]):
+        super().__init__(message)
+        self.failed_record_keys = failed_record_keys
+
+
 class IngestionService:
     def __init__(self, kafka_producer: KafkaProducer):
         self._kafka_producer = kafka_producer
@@ -42,13 +48,17 @@ class IngestionService:
         """Publishes a list of business dates to the raw business dates topic."""
         headers = self._get_headers(idempotency_key)
         for business_date in business_dates:
-            # Key by the date string to ensure messages for the same date go to the same partition
             key = business_date.business_date.isoformat()
             payload = business_date.model_dump()
-            self._kafka_producer.publish_message(
-                topic=KAFKA_RAW_BUSINESS_DATES_TOPIC, key=key, value=payload, headers=headers
-            )
-            KAFKA_MESSAGES_PUBLISHED_TOTAL.labels(topic=KAFKA_RAW_BUSINESS_DATES_TOPIC).inc()
+            try:
+                self._kafka_producer.publish_message(
+                    topic=KAFKA_RAW_BUSINESS_DATES_TOPIC, key=key, value=payload, headers=headers
+                )
+                KAFKA_MESSAGES_PUBLISHED_TOTAL.labels(topic=KAFKA_RAW_BUSINESS_DATES_TOPIC).inc()
+            except Exception as exc:
+                raise IngestionPublishError(
+                    f"Failed to publish business date '{key}'.", [key]
+                ) from exc
 
     async def publish_portfolios(
         self, portfolios: List[Portfolio], idempotency_key: str | None = None
@@ -57,13 +67,19 @@ class IngestionService:
         headers = self._get_headers(idempotency_key)
         for portfolio in portfolios:
             portfolio_payload = portfolio.model_dump()
-            self._kafka_producer.publish_message(
-                topic=KAFKA_RAW_PORTFOLIOS_TOPIC,
-                key=portfolio.portfolio_id,
-                value=portfolio_payload,
-                headers=headers,
-            )
-            KAFKA_MESSAGES_PUBLISHED_TOTAL.labels(topic=KAFKA_RAW_PORTFOLIOS_TOPIC).inc()
+            try:
+                self._kafka_producer.publish_message(
+                    topic=KAFKA_RAW_PORTFOLIOS_TOPIC,
+                    key=portfolio.portfolio_id,
+                    value=portfolio_payload,
+                    headers=headers,
+                )
+                KAFKA_MESSAGES_PUBLISHED_TOTAL.labels(topic=KAFKA_RAW_PORTFOLIOS_TOPIC).inc()
+            except Exception as exc:
+                raise IngestionPublishError(
+                    f"Failed to publish portfolio '{portfolio.portfolio_id}'.",
+                    [portfolio.portfolio_id],
+                ) from exc
 
     async def publish_transaction(
         self, transaction: Transaction, idempotency_key: str | None = None
@@ -71,13 +87,19 @@ class IngestionService:
         """Publishes a single transaction to the raw transactions topic."""
         headers = self._get_headers(idempotency_key)
         transaction_payload = transaction.model_dump()
-        self._kafka_producer.publish_message(
-            topic=KAFKA_RAW_TRANSACTIONS_TOPIC,
-            key=transaction.portfolio_id,
-            value=transaction_payload,
-            headers=headers,
-        )
-        KAFKA_MESSAGES_PUBLISHED_TOTAL.labels(topic=KAFKA_RAW_TRANSACTIONS_TOPIC).inc()
+        try:
+            self._kafka_producer.publish_message(
+                topic=KAFKA_RAW_TRANSACTIONS_TOPIC,
+                key=transaction.portfolio_id,
+                value=transaction_payload,
+                headers=headers,
+            )
+            KAFKA_MESSAGES_PUBLISHED_TOTAL.labels(topic=KAFKA_RAW_TRANSACTIONS_TOPIC).inc()
+        except Exception as exc:
+            raise IngestionPublishError(
+                f"Failed to publish transaction '{transaction.transaction_id}'.",
+                [transaction.transaction_id],
+            ) from exc
 
     async def publish_transactions(
         self, transactions: List[Transaction], idempotency_key: str | None = None
@@ -86,13 +108,19 @@ class IngestionService:
         headers = self._get_headers(idempotency_key)
         for transaction in transactions:
             transaction_payload = transaction.model_dump()
-            self._kafka_producer.publish_message(
-                topic=KAFKA_RAW_TRANSACTIONS_TOPIC,
-                key=transaction.portfolio_id,
-                value=transaction_payload,
-                headers=headers,
-            )
-            KAFKA_MESSAGES_PUBLISHED_TOTAL.labels(topic=KAFKA_RAW_TRANSACTIONS_TOPIC).inc()
+            try:
+                self._kafka_producer.publish_message(
+                    topic=KAFKA_RAW_TRANSACTIONS_TOPIC,
+                    key=transaction.portfolio_id,
+                    value=transaction_payload,
+                    headers=headers,
+                )
+                KAFKA_MESSAGES_PUBLISHED_TOTAL.labels(topic=KAFKA_RAW_TRANSACTIONS_TOPIC).inc()
+            except Exception as exc:
+                raise IngestionPublishError(
+                    f"Failed to publish transaction '{transaction.transaction_id}'.",
+                    [transaction.transaction_id],
+                ) from exc
 
     async def publish_instruments(
         self, instruments: List[Instrument], idempotency_key: str | None = None
@@ -101,13 +129,19 @@ class IngestionService:
         headers = self._get_headers(idempotency_key)
         for instrument in instruments:
             instrument_payload = instrument.model_dump()
-            self._kafka_producer.publish_message(
-                topic=KAFKA_INSTRUMENTS_TOPIC,
-                key=instrument.security_id,
-                value=instrument_payload,
-                headers=headers,
-            )
-            KAFKA_MESSAGES_PUBLISHED_TOTAL.labels(topic=KAFKA_INSTRUMENTS_TOPIC).inc()
+            try:
+                self._kafka_producer.publish_message(
+                    topic=KAFKA_INSTRUMENTS_TOPIC,
+                    key=instrument.security_id,
+                    value=instrument_payload,
+                    headers=headers,
+                )
+                KAFKA_MESSAGES_PUBLISHED_TOTAL.labels(topic=KAFKA_INSTRUMENTS_TOPIC).inc()
+            except Exception as exc:
+                raise IngestionPublishError(
+                    f"Failed to publish instrument '{instrument.security_id}'.",
+                    [instrument.security_id],
+                ) from exc
 
     async def publish_market_prices(
         self, market_prices: List[MarketPrice], idempotency_key: str | None = None
@@ -116,13 +150,19 @@ class IngestionService:
         headers = self._get_headers(idempotency_key)
         for price in market_prices:
             price_payload = price.model_dump()
-            self._kafka_producer.publish_message(
-                topic=KAFKA_MARKET_PRICES_TOPIC,
-                key=price.security_id,
-                value=price_payload,
-                headers=headers,
-            )
-            KAFKA_MESSAGES_PUBLISHED_TOTAL.labels(topic=KAFKA_MARKET_PRICES_TOPIC).inc()
+            try:
+                self._kafka_producer.publish_message(
+                    topic=KAFKA_MARKET_PRICES_TOPIC,
+                    key=price.security_id,
+                    value=price_payload,
+                    headers=headers,
+                )
+                KAFKA_MESSAGES_PUBLISHED_TOTAL.labels(topic=KAFKA_MARKET_PRICES_TOPIC).inc()
+            except Exception as exc:
+                raise IngestionPublishError(
+                    f"Failed to publish market price for '{price.security_id}'.",
+                    [price.security_id],
+                ) from exc
 
     async def publish_fx_rates(
         self, fx_rates: List[FxRate], idempotency_key: str | None = None
@@ -130,12 +170,18 @@ class IngestionService:
         """Publishes a list of FX rates to the fx_rates topic."""
         headers = self._get_headers(idempotency_key)
         for rate in fx_rates:
-            key = f"{rate.from_currency}-{rate.to_currency}"
+            key = f"{rate.from_currency}-{rate.to_currency}-{rate.rate_date.isoformat()}"
             rate_payload = rate.model_dump()
-            self._kafka_producer.publish_message(
-                topic=KAFKA_FX_RATES_TOPIC, key=key, value=rate_payload, headers=headers
-            )
-            KAFKA_MESSAGES_PUBLISHED_TOTAL.labels(topic=KAFKA_FX_RATES_TOPIC).inc()
+            try:
+                self._kafka_producer.publish_message(
+                    topic=KAFKA_FX_RATES_TOPIC, key=key, value=rate_payload, headers=headers
+                )
+                KAFKA_MESSAGES_PUBLISHED_TOTAL.labels(topic=KAFKA_FX_RATES_TOPIC).inc()
+            except Exception as exc:
+                raise IngestionPublishError(
+                    f"Failed to publish fx rate '{key}'.",
+                    [key],
+                ) from exc
 
     async def publish_portfolio_bundle(
         self, bundle: PortfolioBundleIngestionRequest, idempotency_key: str | None = None

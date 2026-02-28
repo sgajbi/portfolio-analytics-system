@@ -195,6 +195,34 @@ BUY_LIFECYCLE_STAGE_TOTAL = Counter(
     ["stage", "status"],
 )
 
+INGESTION_JOBS_CREATED_TOTAL = Counter(
+    "ingestion_jobs_created_total",
+    "Number of ingestion jobs created by endpoint and entity type.",
+    ["endpoint", "entity_type"],
+)
+
+INGESTION_JOBS_RETRIED_TOTAL = Counter(
+    "ingestion_jobs_retried_total",
+    "Number of ingestion job retries attempted.",
+    ["endpoint", "entity_type", "result"],
+)
+
+INGESTION_JOBS_FAILED_TOTAL = Counter(
+    "ingestion_jobs_failed_total",
+    "Number of ingestion jobs marked failed.",
+    ["endpoint", "entity_type", "failure_phase"],
+)
+
+INGESTION_BACKLOG_AGE_SECONDS = Gauge(
+    "ingestion_backlog_age_seconds",
+    "Current age in seconds of oldest non-terminal ingestion job.",
+)
+
+INGESTION_MODE_STATE = Gauge(
+    "ingestion_mode_state",
+    "Current ingestion operations mode: normal=0, paused=1, drain=2.",
+)
+
 # --------------------------------------------------------------------------------------
 # Optional generic HTTP metrics (use across services if helpful)
 # --------------------------------------------------------------------------------------

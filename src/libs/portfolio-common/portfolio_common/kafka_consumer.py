@@ -1,19 +1,21 @@
 # src/libs/portfolio-common/portfolio_common/kafka_consumer.py
-import logging
-import json
-import traceback
 import asyncio
 import functools
-import time
 import inspect
-from datetime import datetime, timezone
 from abc import ABC, abstractmethod
-from typing import Optional, Dict
-from confluent_kafka import Consumer, KafkaException, Message
+from datetime import datetime, timezone
+import logging
+import time
+import traceback
+from typing import Dict, Optional
+from uuid import uuid4
+from confluent_kafka import Consumer, Message
 
+from .database_models import ConsumerDlqEvent
+from .db import get_async_db_session
+from .exceptions import RetryableConsumerError
 from .kafka_utils import get_kafka_producer
 from .logging_utils import correlation_id_var, generate_correlation_id
-from .exceptions import RetryableConsumerError
 
 logger = logging.getLogger(__name__)
 
@@ -95,9 +97,36 @@ class BaseConsumer(ABC):
                 headers=dlq_headers
             )
             self._producer.flush(timeout=5)
+            await self._record_consumer_dlq_event(
+                msg=msg, error=error, correlation_id=correlation_id
+            )
             logger.warning(f"Message with key '{dlq_payload['original_key']}' sent to DLQ '{self.dlq_topic}'.")
         except Exception as e:
             logger.error(f"FATAL: Could not send message to DLQ. Error: {e}", exc_info=True)
+
+    async def _record_consumer_dlq_event(
+        self, msg: Message, error: Exception, correlation_id: str | None
+    ) -> None:
+        payload_excerpt = None
+        try:
+            raw_value = msg.value().decode("utf-8")
+            payload_excerpt = raw_value[:1500]
+        except Exception:
+            payload_excerpt = None
+        event = ConsumerDlqEvent(
+            event_id=f"cdlq_{uuid4().hex}",
+            original_topic=msg.topic(),
+            consumer_group=self._consumer_config["group.id"],
+            dlq_topic=self.dlq_topic or "",
+            original_key=msg.key().decode("utf-8") if msg.key() else None,
+            error_reason=str(error),
+            correlation_id=correlation_id,
+            payload_excerpt=payload_excerpt,
+        )
+        async for db in get_async_db_session():
+            async with db.begin():
+                db.add(event)
+            break
 
     @abstractmethod
     def process_message(self, msg: Message):

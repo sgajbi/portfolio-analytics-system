@@ -1,23 +1,31 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import uuid4
 
 from app.DTOs.ingestion_job_dto import (
+    ConsumerDlqEventResponse,
     IngestionHealthSummaryResponse,
     IngestionJobFailureResponse,
     IngestionJobResponse,
     IngestionJobStatus,
+    IngestionOpsModeResponse,
+    IngestionSloStatusResponse,
 )
-from portfolio_common.database_models import (
-    IngestionJob as DBIngestionJob,
-)
-from portfolio_common.database_models import (
-    IngestionJobFailure as DBIngestionJobFailure,
-)
+from portfolio_common.database_models import ConsumerDlqEvent as DBConsumerDlqEvent
+from portfolio_common.database_models import IngestionJob as DBIngestionJob
+from portfolio_common.database_models import IngestionJobFailure as DBIngestionJobFailure
+from portfolio_common.database_models import IngestionOpsControl as DBIngestionOpsControl
 from portfolio_common.db import get_async_db_session
+from portfolio_common.monitoring import (
+    INGESTION_BACKLOG_AGE_SECONDS,
+    INGESTION_JOBS_CREATED_TOTAL,
+    INGESTION_JOBS_FAILED_TOTAL,
+    INGESTION_JOBS_RETRIED_TOTAL,
+    INGESTION_MODE_STATE,
+)
 from sqlalchemy import and_, desc, func, select
 
 
@@ -29,6 +37,7 @@ class IngestionJobReplayContext:
     accepted_count: int
     idempotency_key: str | None
     request_payload: dict[str, Any] | None
+    submitted_at: datetime
 
 
 @dataclass(slots=True)
@@ -62,13 +71,28 @@ def _to_failure_response(failure: DBIngestionJobFailure) -> IngestionJobFailureR
         job_id=failure.job_id,
         failure_phase=failure.failure_phase,
         failure_reason=failure.failure_reason,
+        failed_record_keys=list(failure.failed_record_keys or []),
         failed_at=failure.failed_at,
+    )
+
+
+def _to_dlq_event_response(event: DBConsumerDlqEvent) -> ConsumerDlqEventResponse:
+    return ConsumerDlqEventResponse(
+        event_id=event.event_id,
+        original_topic=event.original_topic,
+        consumer_group=event.consumer_group,
+        dlq_topic=event.dlq_topic,
+        original_key=event.original_key,
+        error_reason=event.error_reason,
+        correlation_id=event.correlation_id,
+        payload_excerpt=event.payload_excerpt,
+        observed_at=event.observed_at,
     )
 
 
 class IngestionJobService:
     """
-    Persists ingestion request lifecycle for API-first operational visibility.
+    Persists ingestion lifecycle and operational controls for ingestion runbooks.
     """
 
     async def create_or_get_job(
@@ -115,6 +139,9 @@ class IngestionJobService:
                 )
                 db.add(row)
                 await db.flush()
+                INGESTION_JOBS_CREATED_TOTAL.labels(
+                    endpoint=endpoint, entity_type=entity_type
+                ).inc()
                 return IngestionJobCreateResult(job=_to_response(row), created=True)
 
         msg = "Unable to create ingestion job due to unavailable database session."
@@ -133,7 +160,11 @@ class IngestionJobService:
                 row.failure_reason = None
 
     async def mark_failed(
-        self, job_id: str, failure_reason: str, failure_phase: str = "publish"
+        self,
+        job_id: str,
+        failure_reason: str,
+        failure_phase: str = "publish",
+        failed_record_keys: list[str] | None = None,
     ) -> None:
         async for db in get_async_db_session():
             async with db.begin():
@@ -151,8 +182,14 @@ class IngestionJobService:
                         job_id=job_id,
                         failure_phase=failure_phase,
                         failure_reason=failure_reason,
+                        failed_record_keys=failed_record_keys or [],
                     )
                 )
+                INGESTION_JOBS_FAILED_TOTAL.labels(
+                    endpoint=row.endpoint,
+                    entity_type=row.entity_type,
+                    failure_phase=failure_phase,
+                ).inc()
 
     async def mark_retried(self, job_id: str) -> None:
         async for db in get_async_db_session():
@@ -164,6 +201,9 @@ class IngestionJobService:
                     return
                 row.retry_count = int(row.retry_count or 0) + 1
                 row.last_retried_at = datetime.now(UTC)
+                INGESTION_JOBS_RETRIED_TOTAL.labels(
+                    endpoint=row.endpoint, entity_type=row.entity_type, result="accepted"
+                ).inc()
 
     async def get_job(self, job_id: str) -> IngestionJobResponse | None:
         async for db in get_async_db_session():
@@ -188,6 +228,7 @@ class IngestionJobService:
                 accepted_count=row.accepted_count,
                 idempotency_key=row.idempotency_key,
                 request_payload=payload,
+                submitted_at=row.submitted_at,
             )
         return None
 
@@ -287,6 +328,165 @@ class IngestionJobService:
             failed_jobs=0,
             backlog_jobs=0,
         )
+
+    async def get_slo_status(
+        self,
+        *,
+        lookback_minutes: int = 60,
+        failure_rate_threshold: float = 0.03,
+        queue_latency_threshold_seconds: float = 5.0,
+        backlog_age_threshold_seconds: float = 300.0,
+    ) -> IngestionSloStatusResponse:
+        async for db in get_async_db_session():
+            since = datetime.now(UTC) - timedelta(minutes=lookback_minutes)
+            jobs = (
+                await db.scalars(select(DBIngestionJob).where(DBIngestionJob.submitted_at >= since))
+            ).all()
+            total_jobs = len(jobs)
+            failed_jobs = len([j for j in jobs if j.status == "failed"])
+
+            latencies = [
+                (j.completed_at - j.submitted_at).total_seconds()
+                for j in jobs
+                if j.completed_at is not None
+            ]
+            latencies.sort()
+            if not latencies:
+                p95_latency = 0.0
+            else:
+                p95_index = max(0, min(len(latencies) - 1, int(len(latencies) * 0.95) - 1))
+                p95_latency = float(latencies[p95_index])
+
+            non_terminal = [j for j in jobs if j.status in {"accepted", "queued"}]
+            if non_terminal:
+                oldest = min(non_terminal, key=lambda item: item.submitted_at)
+                backlog_age_seconds = float(
+                    (datetime.now(UTC) - oldest.submitted_at).total_seconds()
+                )
+            else:
+                backlog_age_seconds = 0.0
+            INGESTION_BACKLOG_AGE_SECONDS.set(backlog_age_seconds)
+
+            failure_rate = float(failed_jobs / total_jobs) if total_jobs else 0.0
+            return IngestionSloStatusResponse(
+                lookback_minutes=lookback_minutes,
+                total_jobs=total_jobs,
+                failed_jobs=failed_jobs,
+                failure_rate=failure_rate,
+                p95_queue_latency_seconds=p95_latency,
+                backlog_age_seconds=backlog_age_seconds,
+                breach_failure_rate=failure_rate > failure_rate_threshold,
+                breach_queue_latency=p95_latency > queue_latency_threshold_seconds,
+                breach_backlog_age=backlog_age_seconds > backlog_age_threshold_seconds,
+            )
+        return IngestionSloStatusResponse(
+            lookback_minutes=lookback_minutes,
+            total_jobs=0,
+            failed_jobs=0,
+            failure_rate=0.0,
+            p95_queue_latency_seconds=0.0,
+            backlog_age_seconds=0.0,
+            breach_failure_rate=False,
+            breach_queue_latency=False,
+            breach_backlog_age=False,
+        )
+
+    async def list_consumer_dlq_events(
+        self,
+        *,
+        limit: int = 100,
+        original_topic: str | None = None,
+        consumer_group: str | None = None,
+    ) -> list[ConsumerDlqEventResponse]:
+        async for db in get_async_db_session():
+            stmt = select(DBConsumerDlqEvent)
+            if original_topic:
+                stmt = stmt.where(DBConsumerDlqEvent.original_topic == original_topic)
+            if consumer_group:
+                stmt = stmt.where(DBConsumerDlqEvent.consumer_group == consumer_group)
+            rows = (
+                await db.scalars(
+                    stmt.order_by(desc(DBConsumerDlqEvent.observed_at)).limit(limit)
+                )
+            ).all()
+            return [_to_dlq_event_response(row) for row in rows]
+        return []
+
+    async def get_ops_mode(self) -> IngestionOpsModeResponse:
+        async for db in get_async_db_session():
+            row = await db.scalar(
+                select(DBIngestionOpsControl).where(DBIngestionOpsControl.id == 1).limit(1)
+            )
+            if row is None:
+                row = DBIngestionOpsControl(
+                    id=1,
+                    mode="normal",
+                    replay_window_start=None,
+                    replay_window_end=None,
+                    updated_by="system_bootstrap",
+                )
+                async with db.begin():
+                    db.add(row)
+                    await db.flush()
+            return IngestionOpsModeResponse(
+                mode=row.mode,  # type: ignore[arg-type]
+                replay_window_start=row.replay_window_start,
+                replay_window_end=row.replay_window_end,
+                updated_by=row.updated_by,
+                updated_at=row.updated_at,
+            )
+        raise RuntimeError("Unable to read ingestion ops mode.")
+
+    async def update_ops_mode(
+        self,
+        *,
+        mode: str,
+        replay_window_start: datetime | None,
+        replay_window_end: datetime | None,
+        updated_by: str | None,
+    ) -> IngestionOpsModeResponse:
+        async for db in get_async_db_session():
+            async with db.begin():
+                row = await db.scalar(
+                    select(DBIngestionOpsControl).where(DBIngestionOpsControl.id == 1).limit(1)
+                )
+                if row is None:
+                    row = DBIngestionOpsControl(id=1, mode="normal")
+                    db.add(row)
+                    await db.flush()
+                row.mode = mode
+                row.replay_window_start = replay_window_start
+                row.replay_window_end = replay_window_end
+                row.updated_by = updated_by
+                row.updated_at = datetime.now(UTC)
+            return IngestionOpsModeResponse(
+                mode=row.mode,  # type: ignore[arg-type]
+                replay_window_start=row.replay_window_start,
+                replay_window_end=row.replay_window_end,
+                updated_by=row.updated_by,
+                updated_at=row.updated_at,
+            )
+        raise RuntimeError("Unable to update ingestion ops mode.")
+
+    async def assert_ingestion_writable(self) -> None:
+        mode = await self.get_ops_mode()
+        INGESTION_MODE_STATE.set({"normal": 0, "paused": 1, "drain": 2}[mode.mode])
+        if mode.mode in {"paused", "drain"}:
+            raise PermissionError(
+                f"Ingestion is currently in '{mode.mode}' mode and not accepting new requests."
+            )
+
+    async def assert_retry_allowed(self, submitted_at: datetime) -> None:
+        mode = await self.get_ops_mode()
+        if mode.mode == "paused":
+            raise PermissionError("Retries are blocked while ingestion is paused.")
+        now = datetime.now(UTC)
+        if mode.replay_window_start and now < mode.replay_window_start:
+            raise PermissionError("Current time is before configured replay window.")
+        if mode.replay_window_end and now > mode.replay_window_end:
+            raise PermissionError("Current time is after configured replay window.")
+        if now < submitted_at:
+            raise PermissionError("Retry blocked: job submission timestamp is in the future.")
 
 
 _INGESTION_JOB_SERVICE = IngestionJobService()
