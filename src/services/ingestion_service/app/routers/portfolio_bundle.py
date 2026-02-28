@@ -11,8 +11,12 @@ from app.request_metadata import (
     resolve_idempotency_key,
 )
 from app.services.ingestion_job_service import IngestionJobService, get_ingestion_job_service
-from app.services.ingestion_service import IngestionService, get_ingestion_service
-from fastapi import APIRouter, Depends, Request, status
+from app.services.ingestion_service import (
+    IngestionPublishError,
+    IngestionService,
+    get_ingestion_service,
+)
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -44,6 +48,13 @@ async def ingest_portfolio_bundle(
     ingestion_job_service: IngestionJobService = Depends(get_ingestion_job_service),
 ):
     idempotency_key = idempotency_key_header or resolve_idempotency_key(http_request)
+    try:
+        await ingestion_job_service.assert_ingestion_writable()
+    except PermissionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={"code": "INGESTION_MODE_BLOCKS_WRITES", "message": str(exc)},
+        ) from exc
     accepted_count = (
         len(request.business_dates)
         + len(request.portfolios)
@@ -78,6 +89,13 @@ async def ingest_portfolio_bundle(
             request, idempotency_key=idempotency_key
         )
         await ingestion_job_service.mark_queued(job_result.job.job_id)
+    except IngestionPublishError as exc:
+        await ingestion_job_service.mark_failed(
+            job_result.job.job_id,
+            str(exc),
+            failed_record_keys=exc.failed_record_keys,
+        )
+        raise
     except Exception as exc:
         await ingestion_job_service.mark_failed(job_result.job.job_id, str(exc))
         raise

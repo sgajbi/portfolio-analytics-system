@@ -1,4 +1,5 @@
 from datetime import datetime
+from decimal import Decimal
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -106,6 +107,11 @@ class IngestionJobFailureResponse(BaseModel):
         description="Detailed failure reason captured at runtime.",
         examples=["Kafka publish timeout for topic raw_transactions."],
     )
+    failed_record_keys: list[str] = Field(
+        default_factory=list,
+        description="Subset of record keys that failed during publish/retry processing.",
+        examples=[["TXN-2026-000145", "TXN-2026-000146"]],
+    )
     failed_at: datetime = Field(
         description="Timestamp when this failure event was captured.",
         examples=["2026-02-28T13:23:09.021Z"],
@@ -148,4 +154,165 @@ class IngestionHealthSummaryResponse(BaseModel):
         ge=0,
         description="Operational backlog count (accepted + queued).",
         examples=[10],
+    )
+
+
+class IngestionSloStatusResponse(BaseModel):
+    lookback_minutes: int = Field(
+        ge=1,
+        description="Lookback window in minutes used for SLO calculations.",
+        examples=[60],
+    )
+    total_jobs: int = Field(
+        ge=0,
+        description="Number of jobs observed in the lookback window.",
+        examples=[320],
+    )
+    failed_jobs: int = Field(
+        ge=0,
+        description="Number of failed jobs observed in the lookback window.",
+        examples=[4],
+    )
+    failure_rate: Decimal = Field(
+        ge=Decimal("0"),
+        description="Failed jobs divided by total jobs in the lookback window.",
+        examples=["0.0125"],
+    )
+    p95_queue_latency_seconds: float = Field(
+        ge=0.0,
+        description="95th percentile latency from job submission to queue completion.",
+        examples=[1.42],
+    )
+    backlog_age_seconds: float = Field(
+        ge=0.0,
+        description="Age in seconds of the oldest non-terminal ingestion job.",
+        examples=[74.0],
+    )
+    breach_failure_rate: bool = Field(
+        description="Whether failure rate exceeds configured threshold.",
+        examples=[False],
+    )
+    breach_queue_latency: bool = Field(
+        description="Whether p95 queue latency exceeds configured threshold.",
+        examples=[False],
+    )
+    breach_backlog_age: bool = Field(
+        description="Whether backlog age exceeds configured threshold.",
+        examples=[False],
+    )
+
+
+class IngestionRetryRequest(BaseModel):
+    record_keys: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Optional subset of record keys to replay. Empty list replays full stored payload."
+        ),
+        examples=[["TXN-2026-000145", "TXN-2026-000146"]],
+    )
+    dry_run: bool = Field(
+        default=False,
+        description="When true, validates retry scope without publishing messages.",
+        examples=[False],
+    )
+
+
+class IngestionOpsModeResponse(BaseModel):
+    mode: Literal["normal", "paused", "drain"] = Field(
+        description="Current ingestion operations mode.",
+        examples=["normal"],
+    )
+    replay_window_start: datetime | None = Field(
+        default=None,
+        description="Start timestamp for allowed retry replay operations.",
+        examples=["2026-03-01T00:00:00Z"],
+    )
+    replay_window_end: datetime | None = Field(
+        default=None,
+        description="End timestamp for allowed retry replay operations.",
+        examples=["2026-03-01T06:00:00Z"],
+    )
+    updated_by: str | None = Field(
+        default=None,
+        description="Principal or automation actor who last changed ops mode.",
+        examples=["ops_automation"],
+    )
+    updated_at: datetime = Field(
+        description="Timestamp of last ops mode update.",
+        examples=["2026-02-28T22:15:07.234Z"],
+    )
+
+
+class IngestionOpsModeUpdateRequest(BaseModel):
+    mode: Literal["normal", "paused", "drain"] = Field(
+        description="Target ingestion operations mode.",
+        examples=["paused"],
+    )
+    replay_window_start: datetime | None = Field(
+        default=None,
+        description="Optional replay window start for retry operations.",
+        examples=["2026-03-01T00:00:00Z"],
+    )
+    replay_window_end: datetime | None = Field(
+        default=None,
+        description="Optional replay window end for retry operations.",
+        examples=["2026-03-01T06:00:00Z"],
+    )
+    updated_by: str | None = Field(
+        default=None,
+        description="Actor label for audit trail.",
+        examples=["ops_automation"],
+    )
+
+
+class ConsumerDlqEventResponse(BaseModel):
+    event_id: str = Field(
+        description="Unique audit identifier for a consumer dead-letter event.",
+        examples=["cdlq_01J5VK4Y4EPMTVF1B0HF4CAHB6"],
+    )
+    original_topic: str = Field(
+        description="Original Kafka topic where message processing failed.",
+        examples=["raw_transactions"],
+    )
+    consumer_group: str = Field(
+        description="Consumer group that rejected the message.",
+        examples=["persistence-service-group"],
+    )
+    dlq_topic: str = Field(
+        description="Dead-letter topic where failed message was published.",
+        examples=["persistence_service.dlq"],
+    )
+    original_key: str | None = Field(
+        default=None,
+        description="Original message key, if available.",
+        examples=["TXN-2026-000145"],
+    )
+    error_reason: str = Field(
+        description="Error reason captured when consumer rejected the message.",
+        examples=["ValidationError: portfolio_id is required"],
+    )
+    correlation_id: str | None = Field(
+        default=None,
+        description="Correlation identifier associated with the failed message.",
+        examples=["ING:7f4a64b0-35f4-41bc-8f74-cb556f2ad9a3"],
+    )
+    payload_excerpt: str | None = Field(
+        default=None,
+        description="Truncated payload excerpt for operational triage.",
+        examples=['{"transaction_id":"TXN-2026-000145"}'],
+    )
+    observed_at: datetime = Field(
+        description="Timestamp when the DLQ event was observed.",
+        examples=["2026-02-28T22:11:05.812Z"],
+    )
+
+
+class ConsumerDlqEventListResponse(BaseModel):
+    events: list[ConsumerDlqEventResponse] = Field(
+        description="Consumer dead-letter events for operational triage."
+    )
+    total: int = Field(
+        ge=0,
+        description="Number of DLQ events returned.",
+        examples=[25],
     )

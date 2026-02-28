@@ -10,8 +10,12 @@ from app.request_metadata import (
     resolve_idempotency_key,
 )
 from app.services.ingestion_job_service import IngestionJobService, get_ingestion_job_service
-from app.services.ingestion_service import IngestionService, get_ingestion_service
-from fastapi import APIRouter, Depends, Request, status
+from app.services.ingestion_service import (
+    IngestionPublishError,
+    IngestionService,
+    get_ingestion_service,
+)
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -32,6 +36,14 @@ async def ingest_transaction(
     ingestion_service: IngestionService = Depends(get_ingestion_service),
 ):
     idempotency_key = idempotency_key_header or resolve_idempotency_key(request)
+    ingestion_job_service = get_ingestion_job_service()
+    try:
+        await ingestion_job_service.assert_ingestion_writable()
+    except PermissionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={"code": "INGESTION_MODE_BLOCKS_WRITES", "message": str(exc)},
+        ) from exc
     logger.info(
         "Received single transaction.",
         extra={
@@ -41,7 +53,17 @@ async def ingest_transaction(
         },
     )
 
-    await ingestion_service.publish_transaction(transaction, idempotency_key=idempotency_key)
+    try:
+        await ingestion_service.publish_transaction(transaction, idempotency_key=idempotency_key)
+    except IngestionPublishError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "code": "INGESTION_PUBLISH_FAILED",
+                "message": str(exc),
+                "failed_record_keys": exc.failed_record_keys,
+            },
+        ) from exc
 
     logger.info(
         "Transaction successfully queued.", extra={"transaction_id": transaction.transaction_id}
@@ -71,6 +93,13 @@ async def ingest_transactions(
     ingestion_job_service: IngestionJobService = Depends(get_ingestion_job_service),
 ):
     idempotency_key = idempotency_key_header or resolve_idempotency_key(http_request)
+    try:
+        await ingestion_job_service.assert_ingestion_writable()
+    except PermissionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={"code": "INGESTION_MODE_BLOCKS_WRITES", "message": str(exc)},
+        ) from exc
     num_transactions = len(request.transactions)
     job_id = create_ingestion_job_id()
     correlation_id, request_id, trace_id = get_request_lineage()
@@ -107,6 +136,13 @@ async def ingest_transactions(
             request.transactions, idempotency_key=idempotency_key
         )
         await ingestion_job_service.mark_queued(job_result.job.job_id)
+    except IngestionPublishError as exc:
+        await ingestion_job_service.mark_failed(
+            job_result.job.job_id,
+            str(exc),
+            failed_record_keys=exc.failed_record_keys,
+        )
+        raise
     except Exception as exc:
         await ingestion_job_service.mark_failed(job_result.job.job_id, str(exc))
         raise

@@ -69,6 +69,9 @@ async def async_test_client(mock_kafka_producer: MagicMock):
             self.jobs: dict[str, IngestionJobResponse] = {}
             self.job_payloads: dict[str, dict] = {}
             self.failures: dict[str, list[dict]] = {}
+            self.mode = "normal"
+            self.replay_window_start = None
+            self.replay_window_end = None
 
         async def create_or_get_job(
             self,
@@ -118,7 +121,13 @@ async def async_test_client(mock_kafka_producer: MagicMock):
             record.completed_at = datetime.now(UTC)
             self.jobs[job_id] = record
 
-        async def mark_failed(self, job_id: str, failure_reason: str) -> None:
+        async def mark_failed(
+            self,
+            job_id: str,
+            failure_reason: str,
+            failure_phase: str = "publish",
+            failed_record_keys: list[str] | None = None,
+        ) -> None:
             if job_id not in self.jobs:
                 return
             record = self.jobs[job_id]
@@ -130,8 +139,9 @@ async def async_test_client(mock_kafka_producer: MagicMock):
                 {
                     "failure_id": f"fail_{len(self.failures.get(job_id, [])) + 1}",
                     "job_id": job_id,
-                    "failure_phase": "publish",
+                    "failure_phase": failure_phase,
                     "failure_reason": failure_reason,
+                    "failed_record_keys": failed_record_keys or [],
                     "failed_at": datetime.now(UTC),
                 }
             )
@@ -158,6 +168,7 @@ async def async_test_client(mock_kafka_producer: MagicMock):
                 accepted_count=record.accepted_count,
                 idempotency_key=record.idempotency_key,
                 request_payload=self.job_payloads.get(job_id),
+                submitted_at=record.submitted_at,
             )
 
         async def list_jobs(
@@ -201,6 +212,76 @@ async def async_test_client(mock_kafka_producer: MagicMock):
                 "failed_jobs": failed_jobs,
                 "backlog_jobs": accepted_jobs + queued_jobs,
             }
+
+        async def get_slo_status(
+            self,
+            *,
+            lookback_minutes: int = 60,
+            failure_rate_threshold: float = 0.03,
+            queue_latency_threshold_seconds: float = 5.0,
+            backlog_age_threshold_seconds: float = 300.0,
+        ):
+            total_jobs = len(self.jobs)
+            failed_jobs = sum(1 for j in self.jobs.values() if j.status == "failed")
+            failure_rate = (failed_jobs / total_jobs) if total_jobs else 0.0
+            return {
+                "lookback_minutes": lookback_minutes,
+                "total_jobs": total_jobs,
+                "failed_jobs": failed_jobs,
+                "failure_rate": failure_rate,
+                "p95_queue_latency_seconds": 0.2,
+                "backlog_age_seconds": 0.0,
+                "breach_failure_rate": failure_rate > failure_rate_threshold,
+                "breach_queue_latency": False,
+                "breach_backlog_age": False,
+            }
+
+        async def list_consumer_dlq_events(
+            self,
+            *,
+            limit: int = 100,
+            original_topic: str | None = None,
+            consumer_group: str | None = None,
+        ) -> list[dict]:
+            return []
+
+        async def get_ops_mode(self):
+            return {
+                "mode": self.mode,
+                "replay_window_start": self.replay_window_start,
+                "replay_window_end": self.replay_window_end,
+                "updated_by": "test",
+                "updated_at": datetime.now(UTC),
+            }
+
+        async def update_ops_mode(
+            self,
+            *,
+            mode: str,
+            replay_window_start: datetime | None,
+            replay_window_end: datetime | None,
+            updated_by: str | None,
+        ):
+            self.mode = mode
+            self.replay_window_start = replay_window_start
+            self.replay_window_end = replay_window_end
+            return {
+                "mode": self.mode,
+                "replay_window_start": self.replay_window_start,
+                "replay_window_end": self.replay_window_end,
+                "updated_by": updated_by,
+                "updated_at": datetime.now(UTC),
+            }
+
+        async def assert_ingestion_writable(self) -> None:
+            if self.mode in {"paused", "drain"}:
+                raise PermissionError(
+                    f"Ingestion is currently in '{self.mode}' mode and not accepting new requests."
+                )
+
+        async def assert_retry_allowed(self, submitted_at: datetime) -> None:
+            if self.mode == "paused":
+                raise PermissionError("Retries are blocked while ingestion is paused.")
 
     fake_job_service = FakeIngestionJobService()
     app.dependency_overrides[get_ingestion_job_service] = lambda: fake_job_service
@@ -415,7 +496,7 @@ async def test_ingestion_job_failure_history_and_retry(
         ]
     }
 
-    with pytest.raises(RuntimeError, match="broker timeout"):
+    with pytest.raises(Exception, match="Failed to publish transaction"):
         await async_test_client.post("/ingest/transactions", json=payload)
 
     jobs_response = await async_test_client.get("/ingestion/jobs", params={"status": "failed"})
@@ -433,12 +514,108 @@ async def test_ingestion_job_failure_history_and_retry(
     assert retry_response.json()["retry_count"] == 1
 
 
+async def test_ingestion_job_partial_retry_dry_run(
+    async_test_client: httpx.AsyncClient, mock_kafka_producer: MagicMock
+):
+    payload = {
+        "transactions": [
+            {
+                "transaction_id": "TX_PARTIAL_001",
+                "portfolio_id": "P1",
+                "instrument_id": "I1",
+                "security_id": "S1",
+                "transaction_date": "2025-08-12T10:00:00Z",
+                "transaction_type": "BUY",
+                "quantity": 1,
+                "price": 1,
+                "gross_transaction_amount": 1,
+                "trade_currency": "USD",
+                "currency": "USD",
+            },
+            {
+                "transaction_id": "TX_PARTIAL_002",
+                "portfolio_id": "P1",
+                "instrument_id": "I2",
+                "security_id": "S2",
+                "transaction_date": "2025-08-12T10:00:00Z",
+                "transaction_type": "BUY",
+                "quantity": 1,
+                "price": 1,
+                "gross_transaction_amount": 1,
+                "trade_currency": "USD",
+                "currency": "USD",
+            },
+        ]
+    }
+    ingest_response = await async_test_client.post("/ingest/transactions", json=payload)
+    assert ingest_response.status_code == 202
+    job_id = ingest_response.json()["job_id"]
+
+    dry_run = await async_test_client.post(
+        f"/ingestion/jobs/{job_id}/retry",
+        json={"record_keys": ["TX_PARTIAL_002"], "dry_run": True},
+    )
+    assert dry_run.status_code == 200
+
+
 async def test_ingestion_health_summary(async_test_client: httpx.AsyncClient):
     response = await async_test_client.get("/ingestion/health/summary")
     assert response.status_code == 200
     body = response.json()
     assert "total_jobs" in body
     assert "backlog_jobs" in body
+
+
+async def test_ingestion_slo_status(async_test_client: httpx.AsyncClient):
+    response = await async_test_client.get("/ingestion/health/slo")
+    assert response.status_code == 200
+    body = response.json()
+    assert "failure_rate" in body
+    assert "p95_queue_latency_seconds" in body
+
+
+async def test_ingestion_ops_control_mode_blocks_writes(
+    async_test_client: httpx.AsyncClient,
+):
+    update_response = await async_test_client.put(
+        "/ingestion/ops/control",
+        json={"mode": "paused", "updated_by": "test"},
+    )
+    assert update_response.status_code == 200
+
+    payload = {
+        "transactions": [
+            {
+                "transaction_id": "TX_BLOCKED_001",
+                "portfolio_id": "P1",
+                "instrument_id": "I1",
+                "security_id": "S1",
+                "transaction_date": "2025-08-12T10:00:00Z",
+                "transaction_type": "BUY",
+                "quantity": 1,
+                "price": 1,
+                "gross_transaction_amount": 1,
+                "trade_currency": "USD",
+                "currency": "USD",
+            }
+        ]
+    }
+    blocked = await async_test_client.post("/ingest/transactions", json=payload)
+    assert blocked.status_code == 503
+
+    restore_response = await async_test_client.put(
+        "/ingestion/ops/control",
+        json={"mode": "normal", "updated_by": "test"},
+    )
+    assert restore_response.status_code == 200
+
+
+async def test_ingestion_consumer_dlq_events_endpoint(async_test_client: httpx.AsyncClient):
+    response = await async_test_client.get("/ingestion/dlq/consumer-events")
+    assert response.status_code == 200
+    body = response.json()
+    assert "events" in body
+    assert "total" in body
 
 
 async def test_ingest_instruments_endpoint(

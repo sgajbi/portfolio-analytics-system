@@ -10,7 +10,7 @@ from app.request_metadata import (
     resolve_idempotency_key,
 )
 from app.services.ingestion_job_service import IngestionJobService, get_ingestion_job_service
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from portfolio_common.kafka_utils import KafkaProducer, get_kafka_producer
 
 from ..DTOs.reprocessing_dto import ReprocessingRequest
@@ -46,6 +46,13 @@ async def reprocess_transactions(
     """
     num_to_reprocess = len(request.transaction_ids)
     idempotency_key = idempotency_key_header or resolve_idempotency_key(http_request)
+    try:
+        await ingestion_job_service.assert_ingestion_writable()
+    except PermissionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={"code": "INGESTION_MODE_BLOCKS_WRITES", "message": str(exc)},
+        ) from exc
     correlation_id, request_id, trace_id = get_request_lineage()
     job_id = create_ingestion_job_id()
     job_result = await ingestion_job_service.create_or_get_job(
@@ -88,7 +95,11 @@ async def reprocess_transactions(
         kafka_producer.flush(timeout=5)
         await ingestion_job_service.mark_queued(job_result.job.job_id)
     except Exception as exc:
-        await ingestion_job_service.mark_failed(job_result.job.job_id, str(exc))
+        await ingestion_job_service.mark_failed(
+            job_result.job.job_id,
+            str(exc),
+            failed_record_keys=request.transaction_ids,
+        )
         raise
 
     logger.info(f"Successfully queued {num_to_reprocess} reprocessing requests.")

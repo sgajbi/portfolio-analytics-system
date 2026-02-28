@@ -501,7 +501,34 @@ class IngestionJobFailure(Base):
     job_id = Column(String, ForeignKey("ingestion_jobs.job_id"), index=True, nullable=False)
     failure_phase = Column(String, nullable=False)
     failure_reason = Column(Text, nullable=False)
+    failed_record_keys = Column(JSON, nullable=True)
     failed_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class IngestionOpsControl(Base):
+    __tablename__ = "ingestion_ops_control"
+
+    id = Column(Integer, primary_key=True, autoincrement=False)
+    mode = Column(String, nullable=False, server_default="normal")
+    replay_window_start = Column(DateTime(timezone=True), nullable=True)
+    replay_window_end = Column(DateTime(timezone=True), nullable=True)
+    updated_by = Column(String, nullable=True)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class ConsumerDlqEvent(Base):
+    __tablename__ = "consumer_dlq_events"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    event_id = Column(String, unique=True, index=True, nullable=False)
+    original_topic = Column(String, index=True, nullable=False)
+    consumer_group = Column(String, index=True, nullable=False)
+    dlq_topic = Column(String, index=True, nullable=False)
+    original_key = Column(String, nullable=True)
+    error_reason = Column(Text, nullable=False)
+    correlation_id = Column(String, nullable=True)
+    payload_excerpt = Column(Text, nullable=True)
+    observed_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
 class PositionState(Base):
