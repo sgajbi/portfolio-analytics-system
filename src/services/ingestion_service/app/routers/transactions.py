@@ -1,12 +1,11 @@
 import logging
-from typing import Annotated
 
 from app.ack_response import build_batch_ack, build_single_ack
 from app.DTOs.ingestion_ack_dto import BatchIngestionAcceptedResponse, IngestionAcceptedResponse
 from app.DTOs.transaction_dto import Transaction, TransactionIngestionRequest
-from app.request_metadata import resolve_idempotency_key
+from app.request_metadata import IdempotencyKeyHeader, resolve_idempotency_key
 from app.services.ingestion_service import IngestionService, get_ingestion_service
-from fastapi import APIRouter, Depends, Header, Request, status
+from fastapi import APIRouter, Depends, Request, status
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -23,15 +22,7 @@ router = APIRouter()
 async def ingest_transaction(
     transaction: Transaction,
     request: Request,
-    idempotency_key_header: Annotated[
-        str | None,
-        Header(
-            alias="X-Idempotency-Key",
-            description=(
-                "Optional idempotency key to make retries safe for the same logical request."
-            ),
-        ),
-    ] = None,
+    idempotency_key_header: IdempotencyKeyHeader = None,
     ingestion_service: IngestionService = Depends(get_ingestion_service),
 ):
     idempotency_key = idempotency_key_header or resolve_idempotency_key(request)
@@ -69,15 +60,7 @@ async def ingest_transaction(
 async def ingest_transactions(
     request: TransactionIngestionRequest,
     http_request: Request,
-    idempotency_key_header: Annotated[
-        str | None,
-        Header(
-            alias="X-Idempotency-Key",
-            description=(
-                "Optional idempotency key to make retries safe for the same logical request."
-            ),
-        ),
-    ] = None,
+    idempotency_key_header: IdempotencyKeyHeader = None,
     ingestion_service: IngestionService = Depends(get_ingestion_service),
 ):
     idempotency_key = idempotency_key_header or resolve_idempotency_key(http_request)

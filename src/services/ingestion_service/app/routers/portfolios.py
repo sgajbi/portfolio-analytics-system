@@ -1,12 +1,11 @@
 import logging
-from typing import Annotated
 
 from app.ack_response import build_batch_ack
 from app.DTOs.ingestion_ack_dto import BatchIngestionAcceptedResponse
 from app.DTOs.portfolio_dto import PortfolioIngestionRequest
-from app.request_metadata import resolve_idempotency_key
+from app.request_metadata import IdempotencyKeyHeader, resolve_idempotency_key
 from app.services.ingestion_service import IngestionService, get_ingestion_service
-from fastapi import APIRouter, Depends, Header, Request, status
+from fastapi import APIRouter, Depends, Request, status
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -23,7 +22,7 @@ router = APIRouter()
 async def ingest_portfolios(
     request: PortfolioIngestionRequest,
     http_request: Request,
-    idempotency_key_header: Annotated[str | None, Header(alias="X-Idempotency-Key")] = None,
+    idempotency_key_header: IdempotencyKeyHeader = None,
     ingestion_service: IngestionService = Depends(get_ingestion_service),
 ):
     idempotency_key = idempotency_key_header or resolve_idempotency_key(http_request)
