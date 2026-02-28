@@ -1,4 +1,5 @@
 from datetime import datetime
+from decimal import Decimal
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -172,10 +173,10 @@ class IngestionSloStatusResponse(BaseModel):
         description="Number of failed jobs observed in the lookback window.",
         examples=[4],
     )
-    failure_rate: float = Field(
-        ge=0.0,
+    failure_rate: Decimal = Field(
+        ge=Decimal("0"),
         description="Failed jobs divided by total jobs in the lookback window.",
-        examples=[0.0125],
+        examples=["0.0125"],
     )
     p95_queue_latency_seconds: float = Field(
         ge=0.0,

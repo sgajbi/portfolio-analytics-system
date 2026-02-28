@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from typing import Any
 from uuid import uuid4
 
@@ -333,7 +334,7 @@ class IngestionJobService:
         self,
         *,
         lookback_minutes: int = 60,
-        failure_rate_threshold: float = 0.03,
+        failure_rate_threshold: Decimal = Decimal("0.03"),
         queue_latency_threshold_seconds: float = 5.0,
         backlog_age_threshold_seconds: float = 300.0,
     ) -> IngestionSloStatusResponse:
@@ -367,7 +368,11 @@ class IngestionJobService:
                 backlog_age_seconds = 0.0
             INGESTION_BACKLOG_AGE_SECONDS.set(backlog_age_seconds)
 
-            failure_rate = float(failed_jobs / total_jobs) if total_jobs else 0.0
+            failure_rate = (
+                Decimal(failed_jobs) / Decimal(total_jobs)
+                if total_jobs
+                else Decimal("0")
+            )
             return IngestionSloStatusResponse(
                 lookback_minutes=lookback_minutes,
                 total_jobs=total_jobs,
@@ -383,7 +388,7 @@ class IngestionJobService:
             lookback_minutes=lookback_minutes,
             total_jobs=0,
             failed_jobs=0,
-            failure_rate=0.0,
+            failure_rate=Decimal("0"),
             p95_queue_latency_seconds=0.0,
             backlog_age_seconds=0.0,
             breach_failure_rate=False,
