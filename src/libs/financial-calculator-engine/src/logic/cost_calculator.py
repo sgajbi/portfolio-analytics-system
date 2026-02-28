@@ -10,16 +10,53 @@ from logic.error_reporter import ErrorReporter
 class TransactionCostStrategy(Protocol):
     def calculate_costs(self, transaction: Transaction, disposition_engine: DispositionEngine, error_reporter: ErrorReporter) -> None: ...
 
+ACCRUED_INTEREST_EXCLUDED_FROM_BOOK_COST_POLICIES = {
+    "BUY_EXCLUDE_ACCRUED_INTEREST_FROM_BOOK_COST",
+}
+
+
+def _is_accrued_interest_excluded_from_book_cost(transaction: Transaction) -> bool:
+    policy_id = getattr(transaction, "calculation_policy_id", None)
+    return isinstance(policy_id, str) and policy_id in ACCRUED_INTEREST_EXCLUDED_FROM_BOOK_COST_POLICIES
+
+
+def _add_buy_invariant_error(error_reporter: ErrorReporter, transaction: Transaction, message: str) -> None:
+    error_reporter.add_error(transaction.transaction_id, f"BUY invariant violation: {message}")
+
+
 class BuyStrategy:
     def calculate_costs(self, transaction: Transaction, disposition_engine: DispositionEngine, error_reporter: ErrorReporter) -> None:
         total_fees_local = transaction.fees.total_fees if transaction.fees else Decimal(0)
         accrued_interest_local = transaction.accrued_interest or Decimal(0)
-        
-        transaction.gross_cost = transaction.gross_transaction_amount
-        transaction.net_cost_local = transaction.gross_transaction_amount + total_fees_local + accrued_interest_local
-        
+
+        # Principal in base currency for consistent accounting output.
         fx_rate = transaction.transaction_fx_rate or Decimal(1)
+        transaction.gross_cost = transaction.gross_transaction_amount * fx_rate
+
+        if _is_accrued_interest_excluded_from_book_cost(transaction):
+            transaction.net_cost_local = transaction.gross_transaction_amount + total_fees_local
+        else:
+            transaction.net_cost_local = transaction.gross_transaction_amount + total_fees_local + accrued_interest_local
+
         transaction.net_cost = transaction.net_cost_local * fx_rate
+        transaction.realized_gain_loss = Decimal(0)
+        transaction.realized_gain_loss_local = Decimal(0)
+
+        if transaction.quantity <= Decimal(0):
+            _add_buy_invariant_error(error_reporter, transaction, "quantity_delta must be > 0.")
+            return
+        if transaction.gross_cost < Decimal(0):
+            _add_buy_invariant_error(error_reporter, transaction, "gross_cost must be >= 0.")
+            return
+        if transaction.net_cost_local < Decimal(0):
+            _add_buy_invariant_error(error_reporter, transaction, "book_cost_local must be >= 0.")
+            return
+        if transaction.net_cost < Decimal(0):
+            _add_buy_invariant_error(error_reporter, transaction, "book_cost_base must be >= 0.")
+            return
+        if transaction.realized_gain_loss != Decimal(0) or transaction.realized_gain_loss_local != Decimal(0):
+            _add_buy_invariant_error(error_reporter, transaction, "realized P&L must be explicit zero for BUY.")
+            return
         
         if transaction.quantity > Decimal(0):
             try:

@@ -164,6 +164,8 @@ async def test_consumer_uses_trade_fee_in_calculation(
     updated_transaction_arg = mock_repo.update_transaction_costs.call_args[0][0]
     
     assert updated_transaction_arg.net_cost == Decimal("1507.50")
+    assert updated_transaction_arg.realized_gain_loss == Decimal("0")
+    assert updated_transaction_arg.realized_gain_loss_local == Decimal("0")
 
 async def test_consumer_propagates_epoch_field(
     cost_calculator_consumer: CostCalculatorConsumer, mock_buy_kafka_message: MagicMock, mock_dependencies

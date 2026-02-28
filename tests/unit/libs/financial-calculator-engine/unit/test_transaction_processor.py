@@ -92,6 +92,8 @@ def test_transaction_processor_handles_backdated_insert(transaction_processor: T
     # Check that the costs for the buy transactions are correct
     assert results["BUY_1"].net_cost == Decimal("1000")
     assert results["BUY_2_BACKDATED"].net_cost == Decimal("800")
+    assert results["BUY_1"].realized_gain_loss == Decimal("0")
+    assert results["BUY_2_BACKDATED"].realized_gain_loss == Decimal("0")
 
 @patch('engine.transaction_processor.RECALCULATION_DURATION_SECONDS')
 @patch('engine.transaction_processor.RECALCULATION_DEPTH')
