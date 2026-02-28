@@ -52,15 +52,15 @@ async def test_ingest_portfolios_endpoint(
     payload = {
         "portfolios": [
             {
-                "portfolioId": "P1",
-                "baseCurrency": "USD",
-                "openDate": "2025-01-01",
-                "cifId": "c",
+                "portfolio_id": "P1",
+                "base_currency": "USD",
+                "open_date": "2025-01-01",
+                "client_id": "c",
                 "status": "s",
-                "riskExposure": "r",
-                "investmentTimeHorizon": "i",
-                "portfolioType": "t",
-                "bookingCenter": "b",
+                "risk_exposure": "r",
+                "investment_time_horizon": "i",
+                "portfolio_type": "t",
+                "booking_center_code": "b",
             }
         ]
     }
@@ -97,6 +97,10 @@ async def test_ingest_transactions_endpoint(
     response = await async_test_client.post("/ingest/transactions", json=payload)
 
     assert response.status_code == 202
+    body = response.json()
+    assert body["entity_type"] == "transaction"
+    assert body["accepted_count"] == 1
+    assert "job_id" in body
     mock_kafka_producer.publish_message.assert_called_once()
 
 
@@ -108,11 +112,11 @@ async def test_ingest_instruments_endpoint(
     payload = {
         "instruments": [
             {
-                "securityId": "S1",
+                "security_id": "S1",
                 "name": "N1",
                 "isin": "I1",
-                "instrumentCurrency": "USD",
-                "productType": "E",
+                "currency": "USD",
+                "product_type": "E",
             }
         ]
     }
@@ -130,7 +134,7 @@ async def test_ingest_market_prices_endpoint(
     mock_kafka_producer.publish_message.reset_mock()
     payload = {
         "market_prices": [
-            {"securityId": "S1", "priceDate": "2025-01-01", "price": 100, "currency": "USD"}
+            {"security_id": "S1", "price_date": "2025-01-01", "price": 100, "currency": "USD"}
         ]
     }
 
@@ -147,7 +151,7 @@ async def test_ingest_fx_rates_endpoint(
     mock_kafka_producer.publish_message.reset_mock()
     payload = {
         "fx_rates": [
-            {"fromCurrency": "USD", "toCurrency": "EUR", "rateDate": "2025-01-01", "rate": 0.9}
+            {"from_currency": "USD", "to_currency": "EUR", "rate_date": "2025-01-01", "rate": 0.9}
         ]
     }
 
@@ -163,29 +167,29 @@ async def test_ingest_portfolio_bundle_endpoint(
     """Tests the POST /ingest/portfolio-bundle endpoint."""
     mock_kafka_producer.publish_message.reset_mock()
     payload = {
-        "sourceSystem": "UI_UPLOAD",
+        "source_system": "UI_UPLOAD",
         "mode": "UPSERT",
-        "businessDates": [{"businessDate": "2026-01-02"}],
+        "business_dates": [{"business_date": "2026-01-02"}],
         "portfolios": [
             {
-                "portfolioId": "P1",
-                "baseCurrency": "USD",
-                "openDate": "2025-01-01",
-                "cifId": "c",
+                "portfolio_id": "P1",
+                "base_currency": "USD",
+                "open_date": "2025-01-01",
+                "client_id": "c",
                 "status": "s",
-                "riskExposure": "r",
-                "investmentTimeHorizon": "i",
-                "portfolioType": "t",
-                "bookingCenter": "b",
+                "risk_exposure": "r",
+                "investment_time_horizon": "i",
+                "portfolio_type": "t",
+                "booking_center_code": "b",
             }
         ],
         "instruments": [
             {
-                "securityId": "S1",
+                "security_id": "S1",
                 "name": "N1",
                 "isin": "I1",
-                "instrumentCurrency": "USD",
-                "productType": "E",
+                "currency": "USD",
+                "product_type": "E",
             }
         ],
         "transactions": [
@@ -203,11 +207,11 @@ async def test_ingest_portfolio_bundle_endpoint(
                 "currency": "USD",
             }
         ],
-        "marketPrices": [
-            {"securityId": "S1", "priceDate": "2026-01-02", "price": 100, "currency": "USD"}
+        "market_prices": [
+            {"security_id": "S1", "price_date": "2026-01-02", "price": 100, "currency": "USD"}
         ],
-        "fxRates": [
-            {"fromCurrency": "USD", "toCurrency": "EUR", "rateDate": "2026-01-02", "rate": 0.9}
+        "fx_rates": [
+            {"from_currency": "USD", "to_currency": "EUR", "rate_date": "2026-01-02", "rate": 0.9}
         ],
     }
 
@@ -215,8 +219,9 @@ async def test_ingest_portfolio_bundle_endpoint(
 
     assert response.status_code == 202
     body = response.json()
-    assert body["published_counts"]["portfolios"] == 1
-    assert body["published_counts"]["transactions"] == 1
+    assert body["entity_type"] == "portfolio_bundle"
+    assert body["accepted_count"] == 6
+    assert "job_id" in body
     assert mock_kafka_producer.publish_message.call_count == 6
 
 
@@ -234,7 +239,7 @@ async def test_ingest_portfolio_bundle_rejects_metadata_only_payload(
     async_test_client: httpx.AsyncClient, mock_kafka_producer: MagicMock
 ):
     payload = {
-        "sourceSystem": "UI_UPLOAD",
+        "source_system": "UI_UPLOAD",
         "mode": "UPSERT",
     }
 
@@ -250,9 +255,9 @@ async def test_ingest_portfolio_bundle_disabled_by_feature_flag(
 ):
     monkeypatch.setenv("LOTUS_CORE_INGEST_PORTFOLIO_BUNDLE_ENABLED", "false")
     payload = {
-        "sourceSystem": "UI_UPLOAD",
+        "source_system": "UI_UPLOAD",
         "mode": "UPSERT",
-        "businessDates": [{"businessDate": "2026-01-02"}],
+        "business_dates": [{"business_date": "2026-01-02"}],
     }
     response = await async_test_client.post("/ingest/portfolio-bundle", json=payload)
 
@@ -286,7 +291,7 @@ async def test_upload_preview_transactions_csv(async_test_client: httpx.AsyncCli
     response = await async_test_client.post(
         "/ingest/uploads/preview",
         files={"file": ("transactions.csv", csv_content, "text/csv")},
-        data={"entityType": "transactions", "sampleSize": "10"},
+        data={"entity_type": "transactions", "sample_size": "10"},
     )
 
     assert response.status_code == 200
@@ -306,7 +311,7 @@ async def test_upload_preview_disabled_by_feature_flag(
     response = await async_test_client.post(
         "/ingest/uploads/preview",
         files={"file": ("transactions.csv", csv_content, "text/csv")},
-        data={"entityType": "transactions", "sampleSize": "10"},
+        data={"entity_type": "transactions", "sample_size": "10"},
     )
 
     assert response.status_code == 410
@@ -331,7 +336,7 @@ async def test_upload_commit_transactions_csv_partial(
     response = await async_test_client.post(
         "/ingest/uploads/commit",
         files={"file": ("transactions.csv", csv_content, "text/csv")},
-        data={"entityType": "transactions", "allowPartial": "true"},
+        data={"entity_type": "transactions", "allow_partial": "true"},
     )
 
     assert response.status_code == 202
@@ -349,7 +354,7 @@ async def test_upload_commit_disabled_by_feature_flag(
     response = await async_test_client.post(
         "/ingest/uploads/commit",
         files={"file": ("transactions.csv", csv_content, "text/csv")},
-        data={"entityType": "transactions", "allowPartial": "true"},
+        data={"entity_type": "transactions", "allow_partial": "true"},
     )
 
     assert response.status_code == 410
@@ -364,7 +369,7 @@ async def test_upload_commit_xlsx_rejects_invalid_without_partial(
 ):
     mock_kafka_producer.publish_message.reset_mock()
     xlsx_content = _xlsx_upload_bytes(
-        headers=["securityId", "name", "isin", "instrumentCurrency", "productType"],
+        headers=["security_id", "name", "isin", "currency", "product_type"],
         rows=[
             ["SEC1", "Bond A", "ISIN1", "USD", "Bond"],
             ["SEC2", "", "ISIN2", "USD", "Bond"],
@@ -380,7 +385,7 @@ async def test_upload_commit_xlsx_rejects_invalid_without_partial(
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             )
         },
-        data={"entityType": "instruments"},
+        data={"entity_type": "instruments"},
     )
 
     assert response.status_code == 422
@@ -402,7 +407,7 @@ async def test_upload_preview_rejects_malformed_xlsx(
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             )
         },
-        data={"entityType": "instruments", "sampleSize": "10"},
+        data={"entity_type": "instruments", "sample_size": "10"},
     )
 
     assert response.status_code == 400
@@ -419,7 +424,7 @@ async def test_upload_preview_rejects_bad_encoding_csv(
     response = await async_test_client.post(
         "/ingest/uploads/preview",
         files={"file": ("bad-encoding.csv", bad_csv, "text/csv")},
-        data={"entityType": "transactions", "sampleSize": "10"},
+        data={"entity_type": "transactions", "sample_size": "10"},
     )
 
     assert response.status_code == 400
@@ -442,7 +447,7 @@ async def test_upload_commit_rejects_malformed_xlsx(
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             )
         },
-        data={"entityType": "instruments", "allowPartial": "false"},
+        data={"entity_type": "instruments", "allow_partial": "false"},
     )
 
     assert response.status_code == 400
@@ -459,7 +464,7 @@ async def test_upload_commit_rejects_bad_encoding_csv(
     response = await async_test_client.post(
         "/ingest/uploads/commit",
         files={"file": ("bad-encoding.csv", bad_csv, "text/csv")},
-        data={"entityType": "transactions", "allowPartial": "false"},
+        data={"entity_type": "transactions", "allow_partial": "false"},
     )
 
     assert response.status_code == 400
@@ -479,3 +484,119 @@ async def test_reprocess_transactions_rejects_empty_transaction_ids(
 
     assert response.status_code == 422
     mock_kafka_producer.publish_message.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("path", "payload", "entity_type"),
+    [
+        (
+            "/ingest/portfolios",
+            {
+                "portfolios": [
+                    {
+                        "portfolio_id": "P1",
+                        "base_currency": "USD",
+                        "open_date": "2025-01-01",
+                        "client_id": "c",
+                        "status": "s",
+                        "risk_exposure": "r",
+                        "investment_time_horizon": "i",
+                        "portfolio_type": "t",
+                        "booking_center_code": "b",
+                    }
+                ]
+            },
+            "portfolio",
+        ),
+        (
+            "/ingest/transactions",
+            {
+                "transactions": [
+                    {
+                        "transaction_id": "T1",
+                        "portfolio_id": "P1",
+                        "instrument_id": "I1",
+                        "security_id": "S1",
+                        "transaction_date": "2025-08-12T10:00:00Z",
+                        "transaction_type": "BUY",
+                        "quantity": 1,
+                        "price": 1,
+                        "gross_transaction_amount": 1,
+                        "trade_currency": "USD",
+                        "currency": "USD",
+                    }
+                ]
+            },
+            "transaction",
+        ),
+        (
+            "/ingest/instruments",
+            {
+                "instruments": [
+                    {
+                        "security_id": "S1",
+                        "name": "N1",
+                        "isin": "I1",
+                        "currency": "USD",
+                        "product_type": "E",
+                    }
+                ]
+            },
+            "instrument",
+        ),
+        (
+            "/ingest/market-prices",
+            {
+                "market_prices": [
+                    {
+                        "security_id": "S1",
+                        "price_date": "2025-01-01",
+                        "price": 100,
+                        "currency": "USD",
+                    }
+                ]
+            },
+            "market_price",
+        ),
+        (
+            "/ingest/fx-rates",
+            {
+                "fx_rates": [
+                    {
+                        "from_currency": "USD",
+                        "to_currency": "EUR",
+                        "rate_date": "2025-01-01",
+                        "rate": 0.9,
+                    }
+                ]
+            },
+            "fx_rate",
+        ),
+        (
+            "/ingest/business-dates",
+            {"business_dates": [{"business_date": "2025-01-01"}]},
+            "business_date",
+        ),
+    ],
+)
+async def test_ingestion_endpoints_return_canonical_ack_contract(
+    async_test_client: httpx.AsyncClient,
+    path: str,
+    payload: dict,
+    entity_type: str,
+):
+    response = await async_test_client.post(
+        path,
+        json=payload,
+        headers={"X-Idempotency-Key": "integration-ingestion-idempotency-001"},
+    )
+    assert response.status_code == 202
+    body = response.json()
+    assert body["entity_type"] == entity_type
+    assert body["accepted_count"] >= 1
+    assert body["idempotency_key"] == "integration-ingestion-idempotency-001"
+    assert body["correlation_id"]
+    assert body["request_id"]
+    assert body["trace_id"]
+    assert "job_id" in body
+

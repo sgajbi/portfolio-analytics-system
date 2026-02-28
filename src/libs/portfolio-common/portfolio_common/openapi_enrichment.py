@@ -5,7 +5,6 @@ from __future__ import annotations
 import re
 from typing import Any
 
-
 _EXAMPLE_BY_KEY = {
     "portfolio_id": "DEMO_DPM_EUR_001",
     "session_id": "SIM_0001",
@@ -28,6 +27,31 @@ _EXAMPLE_BY_KEY = {
     "workflow_key": "portfolio_bulk_onboarding",
     "contract_version": "v1",
     "source_service": "lotus-core",
+    "asset_class": "Equity",
+    "instrument_type": "CommonStock",
+    "issuer_name": "Apple Inc.",
+    "issuer_country": "US",
+    "isin": "US0378331005",
+    "cusip": "037833100",
+    "sedol": "2046251",
+    "ticker": "AAPL",
+    "security_name": "Apple Inc. Common Stock",
+    "price_date": "2026-02-27",
+    "transaction_type": "BUY",
+    "quantity": 100.0,
+    "price": 182.35,
+    "trade_fee": 7.5,
+    "gross_transaction_amount": 18235.0,
+    "net_cost": 18242.5,
+    "trade_currency": "USD",
+    "from_currency": "USD",
+    "to_currency": "SGD",
+    "rate": 1.3524,
+    "methodology": "EOD_CLOSE",
+    "source_system": "OMS_PRIMARY",
+    "correlation_id": "ING:1a2b3c4d-1234-5678-9abc-000000000001",
+    "request_id": "REQ:1a2b3c4d-1234-5678-9abc-000000000001",
+    "trace_id": "5f475bcbfb2c4fb68b1b6a2ed2d1c216",
 }
 
 
@@ -92,7 +116,9 @@ def _infer_example(prop_name: str, prop_schema: dict[str, Any]) -> Any:
         return "2026-02-27T10:30:00Z"
     if "status" in key:
         return "ACTIVE"
-    return f"{key.upper()}_VALUE"
+    if schema_type == "string":
+        return f"example_{key}"
+    return f"{key}_example"
 
 
 def _infer_description(model_name: str, prop_name: str, prop_schema: dict[str, Any]) -> str:
@@ -174,6 +200,13 @@ def _ensure_schema_documentation(schema: dict[str, Any]) -> None:
 
 def enrich_openapi_schema(schema: dict[str, Any], service_name: str) -> dict[str, Any]:
     """Mutate schema in-place to ensure minimum documentation completeness."""
+    info = schema.setdefault("info", {})
+    info.setdefault("title", f"Lotus Core {service_name} API")
+    if "lotus" not in (info.get("description") or "").lower():
+        branded_desc = (info.get("description") or "").strip()
+        prefix = "Lotus platform API contract."
+        info["description"] = f"{prefix} {branded_desc}".strip()
+
     _ensure_operation_documentation(schema, service_name=service_name)
     _ensure_schema_documentation(schema)
     return schema
