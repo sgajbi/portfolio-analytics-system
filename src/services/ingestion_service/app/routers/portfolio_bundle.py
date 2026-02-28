@@ -54,7 +54,7 @@ async def ingest_portfolio_bundle(
     )
     job_id = create_ingestion_job_id()
     correlation_id, request_id, trace_id = get_request_lineage()
-    ingestion_job_service.create_job(
+    await ingestion_job_service.create_job(
         job_id=job_id,
         endpoint=str(http_request.url.path),
         entity_type="portfolio_bundle",
@@ -68,9 +68,9 @@ async def ingest_portfolio_bundle(
         published_counts = await ingestion_service.publish_portfolio_bundle(
             request, idempotency_key=idempotency_key
         )
-        ingestion_job_service.mark_queued(job_id)
+        await ingestion_job_service.mark_queued(job_id)
     except Exception as exc:
-        ingestion_job_service.mark_failed(job_id, str(exc))
+        await ingestion_job_service.mark_failed(job_id, str(exc))
         raise
 
     logger.info(
@@ -92,3 +92,4 @@ async def ingest_portfolio_bundle(
         accepted_count=accepted_count,
         idempotency_key=idempotency_key,
     )
+
