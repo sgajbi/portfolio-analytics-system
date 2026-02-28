@@ -13,7 +13,7 @@
       "openApiVersion": "3.1.0"
     }
   ],
-  "generatedAt": "2026-02-27T12:11:33.165292+00:00",
+  "generatedAt": "2026-02-28T03:59:05.136100+00:00",
   "attributeCatalog": [
     {
       "semanticId": "lotus.active_reprocessing_keys",
@@ -203,6 +203,34 @@
       ],
       "observedTypes": [
         "array"
+      ]
+    },
+    {
+      "semanticId": "lotus.calculation_policy_id",
+      "canonicalTerm": "calculation_policy_id",
+      "preferredName": "calculation_policy_id",
+      "description": "Resolved BUY policy identifier. Optional in Slice 1.",
+      "example": "BUY_DEFAULT_POLICY",
+      "type": "object",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "object"
+      ]
+    },
+    {
+      "semanticId": "lotus.calculation_policy_version",
+      "canonicalTerm": "calculation_policy_version",
+      "preferredName": "calculation_policy_version",
+      "description": "Resolved BUY policy version. Optional in Slice 1.",
+      "example": "1.0.0",
+      "type": "object",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "object"
       ]
     },
     {
@@ -451,6 +479,20 @@
       ],
       "observedTypes": [
         "string"
+      ]
+    },
+    {
+      "semanticId": "lotus.economic_event_id",
+      "canonicalTerm": "economic_event_id",
+      "preferredName": "economic_event_id",
+      "description": "Canonical economic event identifier. Optional in Slice 1, planned to become required in strict canonical mode.",
+      "example": "EVT-2026-00987",
+      "type": "object",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "object"
       ]
     },
     {
@@ -1046,6 +1088,20 @@
       ],
       "observedTypes": [
         "integer"
+      ]
+    },
+    {
+      "semanticId": "lotus.linked_transaction_group_id",
+      "canonicalTerm": "linked_transaction_group_id",
+      "preferredName": "linked_transaction_group_id",
+      "description": "Canonical linkage group identifier for related entries. Optional in Slice 1.",
+      "example": "LTG-2026-00456",
+      "type": "object",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "object"
       ]
     },
     {
@@ -2045,8 +2101,8 @@
       "semanticId": "lotus.source_system",
       "canonicalTerm": "source_system",
       "preferredName": "source_system",
-      "description": "Upstream source system identifier for audit and lineage.",
-      "example": "UI_UPLOAD",
+      "description": "Upstream source-system identifier for lineage.",
+      "example": "OMS_PRIMARY",
       "type": "object",
       "locations": [
         "body"
@@ -7909,15 +7965,20 @@
       "naming": {
         "boundedContext": "transactions",
         "canonicalTerms": [
+          "calculation_policy_id",
+          "calculation_policy_version",
           "created_at",
           "currency",
+          "economic_event_id",
           "gross_transaction_amount",
           "instrument_id",
+          "linked_transaction_group_id",
           "portfolio_id",
           "price",
           "quantity",
           "security_id",
           "settlement_date",
+          "source_system",
           "trade_currency",
           "trade_fee",
           "transaction_date",
@@ -8032,6 +8093,46 @@
             "attributeRef": "lotus.settlement_date"
           },
           {
+            "name": "economic_event_id",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.economic_event_id",
+            "attributeRef": "lotus.economic_event_id"
+          },
+          {
+            "name": "linked_transaction_group_id",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.linked_transaction_group_id",
+            "attributeRef": "lotus.linked_transaction_group_id"
+          },
+          {
+            "name": "calculation_policy_id",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.calculation_policy_id",
+            "attributeRef": "lotus.calculation_policy_id"
+          },
+          {
+            "name": "calculation_policy_version",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.calculation_policy_version",
+            "attributeRef": "lotus.calculation_policy_version"
+          },
+          {
+            "name": "source_system",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.source_system",
+            "attributeRef": "lotus.source_system"
+          },
+          {
             "name": "created_at",
             "location": "body",
             "required": false,
@@ -8061,15 +8162,20 @@
       "naming": {
         "boundedContext": "transactions",
         "canonicalTerms": [
+          "calculation_policy_id",
+          "calculation_policy_version",
           "created_at",
           "currency",
+          "economic_event_id",
           "gross_transaction_amount",
           "instrument_id",
+          "linked_transaction_group_id",
           "portfolio_id",
           "price",
           "quantity",
           "security_id",
           "settlement_date",
+          "source_system",
           "trade_currency",
           "trade_fee",
           "transaction_date",
@@ -8191,6 +8297,46 @@
             "type": "object",
             "semanticId": "lotus.settlement_date",
             "attributeRef": "lotus.settlement_date"
+          },
+          {
+            "name": "transactions[].economic_event_id",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.economic_event_id",
+            "attributeRef": "lotus.economic_event_id"
+          },
+          {
+            "name": "transactions[].linked_transaction_group_id",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.linked_transaction_group_id",
+            "attributeRef": "lotus.linked_transaction_group_id"
+          },
+          {
+            "name": "transactions[].calculation_policy_id",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.calculation_policy_id",
+            "attributeRef": "lotus.calculation_policy_id"
+          },
+          {
+            "name": "transactions[].calculation_policy_version",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.calculation_policy_version",
+            "attributeRef": "lotus.calculation_policy_version"
+          },
+          {
+            "name": "transactions[].source_system",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.source_system",
+            "attributeRef": "lotus.source_system"
           },
           {
             "name": "transactions[].created_at",
@@ -8610,12 +8756,15 @@
           "booking_center_code",
           "business_date",
           "business_dates",
+          "calculation_policy_id",
+          "calculation_policy_version",
           "client_id",
           "close_date",
           "cost_basis_method",
           "country_of_risk",
           "created_at",
           "currency",
+          "economic_event_id",
           "from_currency",
           "fx_rates",
           "gross_transaction_amount",
@@ -8626,6 +8775,7 @@
           "isin",
           "issuer_id",
           "issuer_name",
+          "linked_transaction_group_id",
           "market_prices",
           "maturity_date",
           "mode",
@@ -9044,6 +9194,46 @@
             "type": "object",
             "semanticId": "lotus.settlement_date",
             "attributeRef": "lotus.settlement_date"
+          },
+          {
+            "name": "transactions[].economic_event_id",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.economic_event_id",
+            "attributeRef": "lotus.economic_event_id"
+          },
+          {
+            "name": "transactions[].linked_transaction_group_id",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.linked_transaction_group_id",
+            "attributeRef": "lotus.linked_transaction_group_id"
+          },
+          {
+            "name": "transactions[].calculation_policy_id",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.calculation_policy_id",
+            "attributeRef": "lotus.calculation_policy_id"
+          },
+          {
+            "name": "transactions[].calculation_policy_version",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.calculation_policy_version",
+            "attributeRef": "lotus.calculation_policy_version"
+          },
+          {
+            "name": "transactions[].source_system",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.source_system",
+            "attributeRef": "lotus.source_system"
           },
           {
             "name": "transactions[].created_at",
