@@ -7,6 +7,7 @@ from uuid import uuid4
 from app.routers import (
     business_dates,
     fx_rates,
+    ingestion_jobs,
     instruments,
     market_prices,
     portfolio_bundle,
@@ -202,3 +203,4 @@ app.include_router(business_dates.router)
 app.include_router(reprocessing.router)
 app.include_router(portfolio_bundle.router)
 app.include_router(uploads.router)
+app.include_router(ingestion_jobs.router)
