@@ -377,13 +377,13 @@ Use the following board in PR descriptions and weekly status updates:
 
 | Slice | Name | Status | Owner | PRs | Test Gate | Evidence | Notes |
 |---|---|---|---|---|---|---|---|
-| 0 | Baseline characterization | DONE | lotus-core engineering | pending | local green | gap matrix + characterization tests | Baseline lock established; canonical lock migration required in later slices |
-| 1 | Canonical contract + validation | TODO | TBD |  |  |  |  |
-| 2 | Persistence + linkage + policy metadata | TODO | TBD |  |  |  |  |
-| 3 | Calculations + invariants | TODO | TBD |  |  |  |  |
-| 4 | Position/lot/cash/offset | TODO | TBD |  |  |  |  |
-| 5 | Query + observability | TODO | TBD |  |  |  |  |
-| 6 | Final conformance gate | TODO | TBD |  |  |  |  |
+| 0 | Baseline characterization | DONE | lotus-core engineering | merged | local + CI green | `BUY-SLICE-0-GAP-ASSESSMENT.md` + characterization tests | Baseline lock established and used as migration guardrail. |
+| 1 | Canonical contract + validation | DONE | lotus-core engineering | merged | local + CI green | `BUY-SLICE-1-VALIDATION-REASON-CODES.md` + validator tests | Deterministic BUY reason-code foundation implemented. |
+| 2 | Persistence + linkage + policy metadata | DONE | lotus-core engineering | merged | local + CI green | `BUY-SLICE-2-PERSISTENCE-METADATA.md` + repository tests | Transaction linkage/policy metadata persisted with idempotent updates. |
+| 3 | Calculations + invariants | DONE | lotus-core engineering | merged | local + CI green | `BUY-SLICE-3-CALCULATION-INVARIANTS.md` + financial engine tests | Canonical BUY invariants and explicit realized P&L zero behavior enforced. |
+| 4 | Position/lot/cash/offset | DONE | lotus-core engineering | merged | local + CI green | `BUY-SLICE-4-LOT-CASH-OFFSET.md` + integration tests | Durable lot and accrued-offset state added with linkage propagation. |
+| 5 | Query + observability | DONE | lotus-core engineering | merged | local + CI green | `BUY-SLICE-5-QUERY-OBSERVABILITY.md` + query tests | BUY lot/offset/cash-linkage endpoints and lifecycle telemetry implemented. |
+| 6 | Final conformance gate | DONE | lotus-core engineering | pending | local green | `BUY-SLICE-6-CONFORMANCE-REPORT.md` + `buy-rfc` suite | Final section-level conformance map and dedicated CI regression suite added. |
 
 Status values:
 
