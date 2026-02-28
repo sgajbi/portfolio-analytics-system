@@ -28,6 +28,19 @@ SUITES: dict[str, list[str]] = {
         "tests/e2e/test_query_service_observability.py",
         "tests/e2e/test_complex_portfolio_lifecycle.py",
     ],
+    "buy-rfc": [
+        "tests/unit/transaction_specs/test_buy_slice0_characterization.py",
+        "tests/unit/libs/portfolio_common/test_buy_validation.py",
+        "tests/unit/libs/portfolio_common/test_transaction_metadata_contract.py",
+        "tests/unit/services/ingestion_service/test_transaction_model.py",
+        "tests/unit/libs/financial-calculator-engine/unit/test_cost_calculator.py",
+        "tests/unit/libs/financial-calculator-engine/unit/test_transaction_processor.py",
+        "tests/unit/services/calculators/cashflow_calculator_service/unit/core/test_cashflow_logic.py",
+        "tests/unit/services/query_service/repositories/test_buy_state_repository.py",
+        "tests/unit/services/query_service/services/test_buy_state_service.py",
+        "tests/integration/services/calculators/cost_calculator_service/test_int_cost_repository_lot_offset.py",
+        "tests/integration/services/query_service/test_buy_state_router.py",
+    ],
 }
 
 SOURCE = "src/services/query_service/app"

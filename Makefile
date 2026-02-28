@@ -1,4 +1,4 @@
-.PHONY: install lint typecheck architecture-guard monetary-float-guard no-alias-gate openapi-gate api-vocabulary-gate warning-gate migration-smoke migration-apply test test-unit test-unit-db test-integration-lite test-e2e-smoke security-audit check coverage-gate ci ci-local docker-build clean
+.PHONY: install lint typecheck architecture-guard monetary-float-guard no-alias-gate openapi-gate api-vocabulary-gate warning-gate migration-smoke migration-apply test test-unit test-unit-db test-integration-lite test-buy-rfc test-e2e-smoke security-audit check coverage-gate ci ci-local docker-build clean
 
 install:
 	python scripts/bootstrap_dev.py
@@ -46,6 +46,9 @@ test-unit-db:
 
 test-integration-lite:
 	python scripts/test_manifest.py --suite integration-lite --quiet
+
+test-buy-rfc:
+	python scripts/test_manifest.py --suite buy-rfc --quiet
 
 test-e2e-smoke:
 	python scripts/test_manifest.py --suite e2e-smoke --quiet
