@@ -4,33 +4,32 @@ import time
 from contextlib import asynccontextmanager
 from uuid import uuid4
 
+from app.routers import (
+    business_dates,
+    fx_rates,
+    instruments,
+    market_prices,
+    portfolio_bundle,
+    portfolios,
+    reprocessing,
+    transactions,
+    uploads,
+)
 from fastapi import FastAPI, Request, status
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
-from prometheus_fastapi_instrumentator import Instrumentator
-
+from portfolio_common.health import create_health_router
 from portfolio_common.kafka_utils import get_kafka_producer
 from portfolio_common.logging_utils import (
-    setup_logging,
     correlation_id_var,
-    request_id_var,
-    trace_id_var,
     generate_correlation_id,
+    request_id_var,
+    setup_logging,
+    trace_id_var,
 )
-from portfolio_common.health import create_health_router
 from portfolio_common.monitoring import HTTP_REQUEST_LATENCY_SECONDS, HTTP_REQUESTS_TOTAL
 from portfolio_common.openapi_enrichment import enrich_openapi_schema
-from app.routers import (
-    transactions,
-    instruments,
-    market_prices,
-    fx_rates,
-    portfolios,
-    business_dates,
-    reprocessing,
-    portfolio_bundle,
-    uploads,
-)
+from prometheus_fastapi_instrumentator import Instrumentator
 
 SERVICE_PREFIX = "ING"
 SERVICE_NAME = "ingestion_service"
@@ -67,9 +66,14 @@ async def lifespan(app: FastAPI):
 
 # Main FastAPI app instance
 app = FastAPI(
-    title="Ingestion Service",
-    description="Service for ingesting financial data and publishing it to Kafka.",
+    title="Lotus Core Ingestion API",
+    description=(
+        "Lotus Core Ingestion API for onboarding canonical financial data into Lotus Core. "
+        "Supports Lotus-standard ingestion contracts for portfolios, instruments, transactions, "
+        "market prices, FX rates, business dates, and controlled reprocessing workflows."
+    ),
     version="0.5.0",
+    contact={"name": "Lotus Platform Engineering"},
     lifespan=lifespan,
 )
 

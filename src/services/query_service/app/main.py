@@ -57,9 +57,14 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Query Service",
-    description="Service for querying portfolio analytics data.",
+    title="Lotus Core Query API",
+    description=(
+        "Lotus Core Query API for portfolio and position data access. "
+        "Provides Lotus-standard, API-first read models for portfolios, positions, "
+        "transactions, lineage, operations support, and simulation."
+    ),
     version="0.2.0",
+    contact={"name": "Lotus Platform Engineering"},
     lifespan=lifespan,
 )
 app.middleware("http")(build_enterprise_audit_middleware())
