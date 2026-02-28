@@ -97,6 +97,11 @@ class TransactionEvent(BaseModel):
     transaction_fx_rate: Optional[Decimal] = None
     net_cost_local: Optional[Decimal] = None
     realized_gain_loss_local: Optional[Decimal] = None
+    economic_event_id: Optional[str] = None
+    linked_transaction_group_id: Optional[str] = None
+    calculation_policy_id: Optional[str] = None
+    calculation_policy_version: Optional[str] = None
+    source_system: Optional[str] = None
     epoch: Optional[int] = None
 
 class DailyPositionSnapshotPersistedEvent(BaseModel):

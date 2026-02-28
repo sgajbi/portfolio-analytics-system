@@ -206,3 +206,70 @@ async def test_transaction_repository_is_idempotent(clean_db, async_db_session: 
     stmt2 = select(func.count()).select_from(select(DBTransaction).where(DBTransaction.transaction_id == event.transaction_id).subquery())
     count2 = (await async_db_session.execute(stmt2)).scalar()
     assert count2 == 1
+
+
+async def test_transaction_repository_persists_linkage_and_policy_metadata(
+    clean_db, async_db_session: AsyncSession
+):
+    """
+    BUY metadata required by RFC-059 Slice 2 must persist and remain updateable via UPSERT.
+    """
+    repo = TransactionDBRepository(async_db_session)
+
+    async_db_session.add(
+        Portfolio(
+            portfolio_id="PORT_META_01",
+            base_currency="USD",
+            open_date=date(2024, 1, 1),
+            risk_exposure="High",
+            investment_time_horizon="Long",
+            portfolio_type="Discretionary",
+            booking_center_code="SG",
+            client_id="CIF_META_01",
+            status="ACTIVE",
+        )
+    )
+    await async_db_session.commit()
+
+    event = TransactionEvent(
+        transaction_id="META_TEST_01",
+        portfolio_id="PORT_META_01",
+        instrument_id="INST_META_01",
+        security_id="SEC_META_01",
+        transaction_date=datetime(2026, 2, 28, 10, 0, 0),
+        transaction_type="BUY",
+        quantity=Decimal("100"),
+        price=Decimal("10"),
+        gross_transaction_amount=Decimal("1000"),
+        trade_currency="USD",
+        currency="USD",
+        economic_event_id="EVT-2026-1001",
+        linked_transaction_group_id="LTG-2026-2001",
+        calculation_policy_id="BUY_DEFAULT_POLICY",
+        calculation_policy_version="1.0.0",
+        source_system="OMS_PRIMARY",
+    )
+
+    await repo.create_or_update_transaction(event)
+    await async_db_session.commit()
+
+    stmt = select(DBTransaction).where(DBTransaction.transaction_id == "META_TEST_01")
+    persisted = (await async_db_session.execute(stmt)).scalar_one()
+    assert persisted.economic_event_id == "EVT-2026-1001"
+    assert persisted.linked_transaction_group_id == "LTG-2026-2001"
+    assert persisted.calculation_policy_id == "BUY_DEFAULT_POLICY"
+    assert persisted.calculation_policy_version == "1.0.0"
+    assert persisted.source_system == "OMS_PRIMARY"
+
+    updated = event.model_copy(
+        update={
+            "calculation_policy_version": "1.0.1",
+            "source_system": "OMS_FALLBACK",
+        }
+    )
+    await repo.create_or_update_transaction(updated)
+    await async_db_session.commit()
+
+    persisted_after_upsert = (await async_db_session.execute(stmt)).scalar_one()
+    assert persisted_after_upsert.calculation_policy_version == "1.0.1"
+    assert persisted_after_upsert.source_system == "OMS_FALLBACK"
