@@ -121,6 +121,44 @@ This package is consumed by ingestion/persistence/calculators/query orchestratio
 
 Exact schema finalized during slice 1/2 design reviews.
 
+### 6.3 Canonical modeling boundaries (mandatory guardrail)
+
+To avoid model drift and overloading a single transaction object, BUY implementation must follow these boundaries.
+
+1. Default transaction model (shared across all transaction types):
+   - identity and linkage: `transaction_id`, `transaction_type`, `economic_event_id`, `linked_transaction_group_id`
+   - lifecycle core: trade/settlement/booking/value dates and processing status
+   - scope references: `portfolio_id`, `instrument_id`, `security_id`
+   - currency context: trade/base currency and effective FX context
+   - control metadata: policy id/version, source-system traceability, correlation metadata
+
+2. BUY-specific extension model:
+   - quantity, execution/clean/dirty price fields
+   - fee component inputs
+   - accrued-interest input and treatment flags
+   - BUY-specific validations and semantic invariants
+
+3. Derived effect models (separate from input contracts):
+   - `PositionEffect`
+   - `CostBasisEffect`
+   - `CashflowEffect`
+   - `LotEffect`
+   - `AccruedIncomeOffsetEffect`
+   - `RealizedPnlEffect` (explicit zeroes for BUY)
+
+4. Reference/domain models (separate bounded context):
+   - `Instrument`: master/reference attributes only (identifiers, classification, issuer hierarchy, static reference attributes)
+   - `Portfolio`: mandate/base-currency/policy profile context
+   - `FxRate` and `MarketPrice`: market reference time-series context
+   - Policy catalogs: versioned behavior controls
+
+5. Explicit anti-patterns (not allowed):
+   - putting transaction execution/effect state into `Instrument`
+   - embedding long-lived lot/offset state directly into raw transaction input contracts
+   - mixing canonical shared fields and BUY-only fields without explicit model composition
+
+All Slice 1+ implementation PRs must include a boundary check against this section.
+
 ## 7. Incremental Slice Plan
 
 ## Slice 0 - Baseline and characterization lock
@@ -328,6 +366,8 @@ Risk 4: Lot/offset semantics introduce accounting drift if partially implemented
    - API-visible reason-code payload now vs internal-only first and API exposure in later slice.
 4. Timing policy scope in first BUY delivery:
    - support both trade/settlement timing in first release vs staged enablement.
+5. Physical schema strategy for model boundaries:
+   - single-table additive extension vs dedicated normalized effect tables by domain (`lot`, `offset`, `cash_linkage`, `processing_state`).
 
 ## 12. Slice Tracking Plan
 
