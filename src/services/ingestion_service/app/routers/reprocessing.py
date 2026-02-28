@@ -48,7 +48,7 @@ async def reprocess_transactions(
     idempotency_key = idempotency_key_header or resolve_idempotency_key(http_request)
     correlation_id, request_id, trace_id = get_request_lineage()
     job_id = create_ingestion_job_id()
-    ingestion_job_service.create_job(
+    await ingestion_job_service.create_job(
         job_id=job_id,
         endpoint=str(http_request.url.path),
         entity_type="reprocessing_request",
@@ -77,9 +77,9 @@ async def reprocess_transactions(
             )
 
         kafka_producer.flush(timeout=5)
-        ingestion_job_service.mark_queued(job_id)
+        await ingestion_job_service.mark_queued(job_id)
     except Exception as exc:
-        ingestion_job_service.mark_failed(job_id, str(exc))
+        await ingestion_job_service.mark_failed(job_id, str(exc))
         raise
 
     logger.info(f"Successfully queued {num_to_reprocess} reprocessing requests.")
@@ -90,3 +90,4 @@ async def reprocess_transactions(
         accepted_count=num_to_reprocess,
         idempotency_key=idempotency_key,
     )
+

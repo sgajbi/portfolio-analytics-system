@@ -36,7 +36,7 @@ async def ingest_portfolios(
     num_portfolios = len(request.portfolios)
     job_id = create_ingestion_job_id()
     correlation_id, request_id, trace_id = get_request_lineage()
-    ingestion_job_service.create_job(
+    await ingestion_job_service.create_job(
         job_id=job_id,
         endpoint=str(http_request.url.path),
         entity_type="portfolio",
@@ -55,9 +55,9 @@ async def ingest_portfolios(
         await ingestion_service.publish_portfolios(
             request.portfolios, idempotency_key=idempotency_key
         )
-        ingestion_job_service.mark_queued(job_id)
+        await ingestion_job_service.mark_queued(job_id)
     except Exception as exc:
-        ingestion_job_service.mark_failed(job_id, str(exc))
+        await ingestion_job_service.mark_failed(job_id, str(exc))
         raise
 
     logger.info("Portfolios successfully queued.", extra={"num_portfolios": num_portfolios})
@@ -68,3 +68,4 @@ async def ingest_portfolios(
         accepted_count=num_portfolios,
         idempotency_key=idempotency_key,
     )
+

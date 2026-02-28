@@ -20,7 +20,7 @@ async def get_ingestion_job(
     job_id: str,
     ingestion_job_service: IngestionJobService = Depends(get_ingestion_job_service),
 ):
-    job = ingestion_job_service.get_job(job_id)
+    job = await ingestion_job_service.get_job(job_id)
     if job is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -50,7 +50,7 @@ async def list_ingestion_jobs(
     ingestion_job_service: IngestionJobService = Depends(get_ingestion_job_service),
 ):
     status_value = status_filter if status_filter in {"accepted", "queued", "failed"} else None
-    jobs = ingestion_job_service.list_jobs(
+    jobs = await ingestion_job_service.list_jobs(
         status=status_value, entity_type=entity_type, limit=limit
     )
     return IngestionJobListResponse(jobs=jobs, total=len(jobs))

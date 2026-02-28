@@ -1,4 +1,5 @@
 # tests/integration/services/ingestion-service/test_ingestion_routers.py
+from datetime import UTC, datetime
 from io import BytesIO
 from unittest.mock import MagicMock
 
@@ -8,7 +9,38 @@ import pytest_asyncio
 from openpyxl import Workbook
 from portfolio_common.kafka_utils import KafkaProducer, get_kafka_producer
 
+from src.services.ingestion_service.app.DTOs.ingestion_job_dto import IngestionJobResponse
 from src.services.ingestion_service.app.main import app
+from src.services.ingestion_service.app.routers import (
+    business_dates as business_dates_router,
+)
+from src.services.ingestion_service.app.routers import (
+    fx_rates as fx_rates_router,
+)
+from src.services.ingestion_service.app.routers import (
+    ingestion_jobs as ingestion_jobs_router,
+)
+from src.services.ingestion_service.app.routers import (
+    instruments as instruments_router,
+)
+from src.services.ingestion_service.app.routers import (
+    market_prices as market_prices_router,
+)
+from src.services.ingestion_service.app.routers import (
+    portfolio_bundle as portfolio_bundle_router,
+)
+from src.services.ingestion_service.app.routers import (
+    portfolios as portfolios_router,
+)
+from src.services.ingestion_service.app.routers import (
+    reprocessing as reprocessing_router,
+)
+from src.services.ingestion_service.app.routers import (
+    transactions as transactions_router,
+)
+from src.services.ingestion_service.app.services.ingestion_job_service import (
+    get_ingestion_job_service,
+)
 
 # Mark all tests in this file as async
 pytestmark = pytest.mark.asyncio
@@ -31,6 +63,101 @@ async def async_test_client(mock_kafka_producer: MagicMock):
     def override_get_kafka_producer():
         return mock_kafka_producer
 
+    class FakeIngestionJobService:
+        def __init__(self):
+            self.jobs: dict[str, IngestionJobResponse] = {}
+
+        async def create_job(
+            self,
+            *,
+            job_id: str,
+            endpoint: str,
+            entity_type: str,
+            accepted_count: int,
+            idempotency_key: str | None,
+            correlation_id: str,
+            request_id: str,
+            trace_id: str,
+        ) -> None:
+            self.jobs[job_id] = IngestionJobResponse(
+                job_id=job_id,
+                endpoint=endpoint,
+                entity_type=entity_type,
+                status="accepted",
+                accepted_count=accepted_count,
+                idempotency_key=idempotency_key,
+                correlation_id=correlation_id,
+                request_id=request_id,
+                trace_id=trace_id,
+                submitted_at=datetime.now(UTC),
+                completed_at=None,
+                failure_reason=None,
+            )
+
+        async def mark_queued(self, job_id: str) -> None:
+            if job_id not in self.jobs:
+                return
+            record = self.jobs[job_id]
+            record.status = "queued"
+            record.completed_at = datetime.now(UTC)
+            self.jobs[job_id] = record
+
+        async def mark_failed(self, job_id: str, failure_reason: str) -> None:
+            if job_id not in self.jobs:
+                return
+            record = self.jobs[job_id]
+            record.status = "failed"
+            record.failure_reason = failure_reason
+            record.completed_at = datetime.now(UTC)
+            self.jobs[job_id] = record
+
+        async def get_job(self, job_id: str) -> IngestionJobResponse | None:
+            return self.jobs.get(job_id)
+
+        async def list_jobs(
+            self,
+            *,
+            status: str | None = None,
+            entity_type: str | None = None,
+            limit: int = 100,
+        ) -> list[IngestionJobResponse]:
+            values = list(self.jobs.values())
+            filtered = [
+                job
+                for job in values
+                if (status is None or job.status == status)
+                and (entity_type is None or job.entity_type == entity_type)
+            ]
+            return filtered[:limit]
+
+    fake_job_service = FakeIngestionJobService()
+    app.dependency_overrides[get_ingestion_job_service] = lambda: fake_job_service
+    app.dependency_overrides[transactions_router.get_ingestion_job_service] = (
+        lambda: fake_job_service
+    )
+    app.dependency_overrides[portfolios_router.get_ingestion_job_service] = (
+        lambda: fake_job_service
+    )
+    app.dependency_overrides[instruments_router.get_ingestion_job_service] = (
+        lambda: fake_job_service
+    )
+    app.dependency_overrides[market_prices_router.get_ingestion_job_service] = (
+        lambda: fake_job_service
+    )
+    app.dependency_overrides[fx_rates_router.get_ingestion_job_service] = lambda: fake_job_service
+    app.dependency_overrides[business_dates_router.get_ingestion_job_service] = (
+        lambda: fake_job_service
+    )
+    app.dependency_overrides[portfolio_bundle_router.get_ingestion_job_service] = (
+        lambda: fake_job_service
+    )
+    app.dependency_overrides[reprocessing_router.get_ingestion_job_service] = (
+        lambda: fake_job_service
+    )
+    app.dependency_overrides[ingestion_jobs_router.get_ingestion_job_service] = (
+        lambda: fake_job_service
+    )
+
     app.dependency_overrides[get_kafka_producer] = override_get_kafka_producer
 
     # --- THIS IS THE FIX ---
@@ -41,7 +168,17 @@ async def async_test_client(mock_kafka_producer: MagicMock):
         yield client
 
     # Clean up the override after the test
-    del app.dependency_overrides[get_kafka_producer]
+    app.dependency_overrides.pop(get_kafka_producer, None)
+    app.dependency_overrides.pop(get_ingestion_job_service, None)
+    app.dependency_overrides.pop(transactions_router.get_ingestion_job_service, None)
+    app.dependency_overrides.pop(portfolios_router.get_ingestion_job_service, None)
+    app.dependency_overrides.pop(instruments_router.get_ingestion_job_service, None)
+    app.dependency_overrides.pop(market_prices_router.get_ingestion_job_service, None)
+    app.dependency_overrides.pop(fx_rates_router.get_ingestion_job_service, None)
+    app.dependency_overrides.pop(business_dates_router.get_ingestion_job_service, None)
+    app.dependency_overrides.pop(portfolio_bundle_router.get_ingestion_job_service, None)
+    app.dependency_overrides.pop(reprocessing_router.get_ingestion_job_service, None)
+    app.dependency_overrides.pop(ingestion_jobs_router.get_ingestion_job_service, None)
 
 
 async def test_ingest_portfolios_endpoint(

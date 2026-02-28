@@ -37,7 +37,7 @@ async def ingest_fx_rates(
     num_rates = len(request.fx_rates)
     job_id = create_ingestion_job_id()
     correlation_id, request_id, trace_id = get_request_lineage()
-    ingestion_job_service.create_job(
+    await ingestion_job_service.create_job(
         job_id=job_id,
         endpoint=str(http_request.url.path),
         entity_type="fx_rate",
@@ -54,9 +54,9 @@ async def ingest_fx_rates(
 
     try:
         await ingestion_service.publish_fx_rates(request.fx_rates, idempotency_key=idempotency_key)
-        ingestion_job_service.mark_queued(job_id)
+        await ingestion_job_service.mark_queued(job_id)
     except Exception as exc:
-        ingestion_job_service.mark_failed(job_id, str(exc))
+        await ingestion_job_service.mark_failed(job_id, str(exc))
         raise
 
     logger.info("FX rates successfully queued.", extra={"num_rates": num_rates})
@@ -67,3 +67,4 @@ async def ingest_fx_rates(
         accepted_count=num_rates,
         idempotency_key=idempotency_key,
     )
+
