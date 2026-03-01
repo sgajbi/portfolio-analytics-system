@@ -328,7 +328,7 @@ Risk 4: Coupling between cost, position, and cash modules can cause regressions.
 | Slice | Name | Status | Owner | PRs | Test Gate | Evidence | Notes |
 |---|---|---|---|---|---|---|---|
 | 0 | Baseline characterization | DONE | lotus-core engineering | pending | local green | `SELL-SLICE-0-GAP-ASSESSMENT.md` + `test_sell_slice0_characterization.py` | Baseline lock established and gap matrix captured. |
-| 1 | Canonical contract + validation | TODO | lotus-core engineering | pending | pending | `SELL-SLICE-1-VALIDATION-REASON-CODES.md` | Deterministic SELL reason-code foundation. |
+| 1 | Canonical contract + validation | DONE | lotus-core engineering | pending | local green | `SELL-SLICE-1-VALIDATION-REASON-CODES.md` + `test_sell_validation.py` | Deterministic SELL reason-code foundation implemented in transaction domain. |
 | 2 | Persistence + linkage + policy metadata | TODO | lotus-core engineering | pending | pending | `SELL-SLICE-2-PERSISTENCE-METADATA.md` | Disposal linkage and policy traceability. |
 | 3 | Calculations + invariants | TODO | lotus-core engineering | pending | pending | `SELL-SLICE-3-CALCULATION-INVARIANTS.md` | Realized P&L decomposition and invariant enforcement. |
 | 4 | Lot disposal + oversell + cash linkage | TODO | lotus-core engineering | pending | pending | `SELL-SLICE-4-DISPOSAL-CASH-LINKAGE.md` | Deterministic disposal and reconciliation behavior. |
