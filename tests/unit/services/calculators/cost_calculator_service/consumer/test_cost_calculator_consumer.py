@@ -18,6 +18,10 @@ from src.services.calculators.cost_calculator_service.app.consumer import (
     CostCalculatorConsumer,
     PortfolioNotFoundError,
 )
+from portfolio_common.transaction_domain import (
+    SELL_DEFAULT_POLICY_ID,
+    SELL_DEFAULT_POLICY_VERSION,
+)
 from src.services.calculators.cost_calculator_service.app.repository import CostCalculatorRepository
 from tests.unit.test_support.async_session_iter import make_single_session_getter
 
@@ -187,6 +191,16 @@ async def test_consumer_integration_with_engine(
     updated_transaction_arg = mock_repo.update_transaction_costs.call_args[0][0]
     assert isinstance(updated_transaction_arg, EngineTransaction)
     assert updated_transaction_arg.realized_gain_loss == Decimal("250.0")
+    assert updated_transaction_arg.economic_event_id == "EVT-SELL-PORT_COST_01-SELL01"
+    assert (
+        updated_transaction_arg.linked_transaction_group_id
+        == "LTG-SELL-PORT_COST_01-SELL01"
+    )
+    assert updated_transaction_arg.calculation_policy_id == SELL_DEFAULT_POLICY_ID
+    assert (
+        updated_transaction_arg.calculation_policy_version
+        == SELL_DEFAULT_POLICY_VERSION
+    )
     mock_repo.upsert_buy_lot_state.assert_not_called()
     mock_repo.upsert_accrued_income_offset_state.assert_not_called()
     mock_idempotency_repo.mark_event_processed.assert_called_once()

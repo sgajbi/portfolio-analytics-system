@@ -1,5 +1,5 @@
 # libs/financial-calculator-engine/src/logic/cost_calculator.py
-from typing import Protocol, Optional
+from typing import Protocol
 from decimal import Decimal
 
 from core.models.transaction import Transaction
@@ -22,6 +22,12 @@ def _is_accrued_interest_excluded_from_book_cost(transaction: Transaction) -> bo
 
 def _add_buy_invariant_error(error_reporter: ErrorReporter, transaction: Transaction, message: str) -> None:
     error_reporter.add_error(transaction.transaction_id, f"BUY invariant violation: {message}")
+
+
+def _add_sell_invariant_error(
+    error_reporter: ErrorReporter, transaction: Transaction, message: str
+) -> None:
+    error_reporter.add_error(transaction.transaction_id, f"SELL invariant violation: {message}")
 
 
 class BuyStrategy:
@@ -68,8 +74,23 @@ class SellStrategy:
     def calculate_costs(self, transaction: Transaction, disposition_engine: DispositionEngine, error_reporter: ErrorReporter) -> None:
         sell_fees_local = transaction.fees.total_fees if transaction.fees else Decimal(0)
         net_sell_proceeds_local = transaction.gross_transaction_amount - sell_fees_local
+        if net_sell_proceeds_local < Decimal(0):
+            _add_sell_invariant_error(
+                error_reporter,
+                transaction,
+                "net_sell_proceeds_local must be >= 0.",
+            )
+            return
+
         fx_rate = transaction.transaction_fx_rate or Decimal(1)
         net_sell_proceeds_base = net_sell_proceeds_local * fx_rate
+        if net_sell_proceeds_base < Decimal(0):
+            _add_sell_invariant_error(
+                error_reporter,
+                transaction,
+                "net_sell_proceeds_base must be >= 0.",
+            )
+            return
         
         cogs_base, cogs_local, consumed_quantity, error_reason = disposition_engine.consume_sell_quantity(transaction)
         
@@ -77,12 +98,33 @@ class SellStrategy:
             error_reporter.add_error(transaction.transaction_id, error_reason)
             return
 
-        if consumed_quantity > Decimal(0):
-            transaction.realized_gain_loss_local = net_sell_proceeds_local - cogs_local
-            transaction.realized_gain_loss = net_sell_proceeds_base - cogs_base
-            transaction.net_cost = -cogs_base
-            transaction.net_cost_local = -cogs_local
-            transaction.gross_cost = -cogs_base
+        if consumed_quantity <= Decimal(0):
+            _add_sell_invariant_error(
+                error_reporter, transaction, "consumed_quantity must be > 0."
+            )
+            return
+
+        if cogs_base < Decimal(0) or cogs_local < Decimal(0):
+            _add_sell_invariant_error(
+                error_reporter,
+                transaction,
+                "disposed cost basis must be non-negative.",
+            )
+            return
+
+        transaction.realized_gain_loss_local = net_sell_proceeds_local - cogs_local
+        transaction.realized_gain_loss = net_sell_proceeds_base - cogs_base
+        transaction.net_cost = -cogs_base
+        transaction.net_cost_local = -cogs_local
+        transaction.gross_cost = -cogs_base
+
+        if transaction.net_cost > Decimal(0) or transaction.net_cost_local > Decimal(0):
+            _add_sell_invariant_error(
+                error_reporter,
+                transaction,
+                "net_cost and net_cost_local must be <= 0 for SELL disposal.",
+            )
+            return
 
 class CashInflowStrategy:
     def calculate_costs(self, transaction: Transaction, disposition_engine: DispositionEngine, error_reporter: ErrorReporter) -> None:

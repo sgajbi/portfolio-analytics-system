@@ -132,6 +132,46 @@ def test_sell_strategy_dual_currency(cost_calculator, mock_disposition_engine):
     assert dual_currency_sell.net_cost == Decimal("-8250")
     assert dual_currency_sell.net_cost_local == Decimal("-7500")
 
+
+def test_sell_strategy_rejects_negative_net_proceeds(
+    cost_calculator, mock_disposition_engine, error_reporter
+):
+    invalid_sell = Transaction(
+        transaction_id="SELL_NEG_PROCEEDS",
+        portfolio_id="P1",
+        instrument_id="AAPL",
+        security_id="S1",
+        transaction_type=TransactionType.SELL,
+        transaction_date=datetime(2023, 1, 10),
+        quantity=Decimal("5"),
+        gross_transaction_amount=Decimal("100"),
+        trade_currency="USD",
+        fees=Fees(brokerage=Decimal("150")),
+        portfolio_base_currency="USD",
+        transaction_fx_rate=Decimal("1.0"),
+    )
+
+    cost_calculator.calculate_transaction_costs(invalid_sell)
+
+    assert error_reporter.has_errors_for("SELL_NEG_PROCEEDS")
+    mock_disposition_engine.consume_sell_quantity.assert_not_called()
+
+
+def test_sell_strategy_rejects_non_positive_consumed_quantity(
+    cost_calculator, mock_disposition_engine, error_reporter, sell_transaction
+):
+    mock_disposition_engine.consume_sell_quantity.return_value = (
+        Decimal("500"),
+        Decimal("500"),
+        Decimal("0"),
+        None,
+    )
+
+    cost_calculator.calculate_transaction_costs(sell_transaction)
+
+    assert error_reporter.has_errors_for("SELL001")
+
+
 def test_sell_strategy_multi_lot_fifo():
     error_reporter = ErrorReporter()
     fifo_strategy = FIFOBasisStrategy()

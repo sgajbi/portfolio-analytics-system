@@ -22,6 +22,7 @@ from portfolio_common.kafka_consumer import BaseConsumer
 from portfolio_common.logging_utils import correlation_id_var
 from portfolio_common.monitoring import BUY_LIFECYCLE_STAGE_TOTAL
 from portfolio_common.outbox_repository import OutboxRepository
+from portfolio_common.transaction_domain import enrich_sell_transaction_metadata
 from pydantic import ValidationError
 from sqlalchemy.exc import DBAPIError, IntegrityError
 from tenacity import before_log, retry, retry_if_exception_type, stop_after_attempt, wait_fixed
@@ -140,6 +141,7 @@ class CostCalculatorConsumer(BaseConsumer):
         try:
             data = json.loads(value)
             event = TransactionEvent.model_validate(data)
+            event = enrich_sell_transaction_metadata(event)
 
             async for db in get_async_db_session():
                 async with db.begin():

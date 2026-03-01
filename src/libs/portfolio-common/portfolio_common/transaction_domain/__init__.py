@@ -14,6 +14,11 @@ from .sell_validation import (
     validate_sell_transaction,
 )
 from .sell_reason_codes import SellValidationReasonCode
+from .sell_linkage import (
+    SELL_DEFAULT_POLICY_ID,
+    SELL_DEFAULT_POLICY_VERSION,
+    enrich_sell_transaction_metadata,
+)
 
 __all__ = [
     "BuyCanonicalTransaction",
@@ -26,5 +31,8 @@ __all__ = [
     "SellValidationIssue",
     "SellValidationReasonCode",
     "validate_sell_transaction",
+    "SELL_DEFAULT_POLICY_ID",
+    "SELL_DEFAULT_POLICY_VERSION",
+    "enrich_sell_transaction_metadata",
 ]
 
