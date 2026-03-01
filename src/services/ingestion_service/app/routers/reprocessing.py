@@ -4,9 +4,7 @@ import logging
 from app.ack_response import build_batch_ack
 from app.DTOs.ingestion_ack_dto import BatchIngestionAcceptedResponse
 from app.ops_controls import enforce_ingestion_write_rate_limit
-from app.request_metadata import (
-    IdempotencyKeyHeader,
-    create_ingestion_job_id,
+from app.request_metadata import (    create_ingestion_job_id,
     get_request_lineage,
     resolve_idempotency_key,
 )
@@ -37,9 +35,7 @@ REPROCESSING_REQUESTED_TOPIC = "transactions_reprocessing_requested"
 )
 async def reprocess_transactions(
     request: ReprocessingRequest,
-    http_request: Request,
-    idempotency_key_header: IdempotencyKeyHeader = None,
-    kafka_producer: KafkaProducer = Depends(get_kafka_producer),
+    http_request: Request,    kafka_producer: KafkaProducer = Depends(get_kafka_producer),
     ingestion_job_service: IngestionJobService = Depends(get_ingestion_job_service),
 ):
     """
@@ -47,7 +43,7 @@ async def reprocess_transactions(
     event for each to a Kafka topic.
     """
     num_to_reprocess = len(request.transaction_ids)
-    idempotency_key = idempotency_key_header or resolve_idempotency_key(http_request)
+    idempotency_key = resolve_idempotency_key(http_request)
     try:
         await ingestion_job_service.assert_ingestion_writable()
     except PermissionError as exc:
@@ -122,3 +118,4 @@ async def reprocess_transactions(
         accepted_count=num_to_reprocess,
         idempotency_key=idempotency_key,
     )
+

@@ -13,7 +13,7 @@
       "openApiVersion": "3.1.0"
     }
   ],
-  "generatedAt": "2026-03-01T05:32:09.197024+00:00",
+  "generatedAt": "2026-03-01T06:01:33.346752+00:00",
   "attributeCatalog": [
     {
       "semanticId": "lotus.accepted_count",
@@ -1274,22 +1274,6 @@
       ],
       "observedTypes": [
         "string"
-      ]
-    },
-    {
-      "semanticId": "lotus.from",
-      "canonicalTerm": "from",
-      "preferredName": "from",
-      "description": "Canonical from value used in request parameter.",
-      "example": {
-        "id": "OBJ_001"
-      },
-      "type": "object",
-      "locations": [
-        "query"
-      ],
-      "observedTypes": [
-        "object"
       ]
     },
     {
@@ -3585,6 +3569,38 @@
       ]
     },
     {
+      "semanticId": "lotus.submitted_from",
+      "canonicalTerm": "submitted_from",
+      "preferredName": "submitted_from",
+      "description": "Canonical submitted from value used in request parameter.",
+      "example": {
+        "id": "OBJ_001"
+      },
+      "type": "object",
+      "locations": [
+        "query"
+      ],
+      "observedTypes": [
+        "object"
+      ]
+    },
+    {
+      "semanticId": "lotus.submitted_to",
+      "canonicalTerm": "submitted_to",
+      "preferredName": "submitted_to",
+      "description": "Canonical submitted to value used in request parameter.",
+      "example": {
+        "id": "OBJ_001"
+      },
+      "type": "object",
+      "locations": [
+        "query"
+      ],
+      "observedTypes": [
+        "object"
+      ]
+    },
+    {
       "semanticId": "lotus.suggested_action",
       "canonicalTerm": "suggested_action",
       "preferredName": "suggested_action",
@@ -3642,22 +3658,6 @@
       ],
       "observedTypes": [
         "integer"
-      ]
-    },
-    {
-      "semanticId": "lotus.to",
-      "canonicalTerm": "to",
-      "preferredName": "to",
-      "description": "Canonical to value used in request parameter.",
-      "example": {
-        "id": "OBJ_001"
-      },
-      "type": "object",
-      "locations": [
-        "query"
-      ],
-      "observedTypes": [
-        "object"
       ]
     },
     {
@@ -4144,38 +4144,6 @@
       ],
       "observedTypes": [
         "array"
-      ]
-    },
-    {
-      "semanticId": "lotus.x_idempotency_key",
-      "canonicalTerm": "x_idempotency_key",
-      "preferredName": "x_idempotency_key",
-      "description": "Optional idempotency key to make retries safe for the same logical request.",
-      "example": {
-        "id": "OBJ_001"
-      },
-      "type": "object",
-      "locations": [
-        "header"
-      ],
-      "observedTypes": [
-        "object"
-      ]
-    },
-    {
-      "semanticId": "lotus.x_lotus_ops_token",
-      "canonicalTerm": "x_lotus_ops_token",
-      "preferredName": "x_lotus_ops_token",
-      "description": "Operations token for privileged ingestion runbook APIs (health controls, retry, DLQ triage, idempotency diagnostics).",
-      "example": {
-        "id": "OBJ_001"
-      },
-      "type": "object",
-      "locations": [
-        "header"
-      ],
-      "observedTypes": [
-        "object"
       ]
     }
   ],
@@ -5357,141 +5325,6 @@
       "semanticId": "lotus.session_id"
     },
     {
-      "name": "X-Idempotency-Key",
-      "kind": "request_option",
-      "location": "header",
-      "type": "object",
-      "required": false,
-      "default": "",
-      "allowedValues": [],
-      "description": "Optional idempotency key to make retries safe for the same logical request.",
-      "example": "STANDARD",
-      "behaviorImpact": "Affects ingest_portfolios_ingest_portfolios_post request behavior.",
-      "exposure": "consumer_visible",
-      "canonicalTerm": "x_idempotency_key",
-      "semanticId": "lotus.x_idempotency_key"
-    },
-    {
-      "name": "X-Idempotency-Key",
-      "kind": "request_option",
-      "location": "header",
-      "type": "object",
-      "required": false,
-      "default": "",
-      "allowedValues": [],
-      "description": "Optional idempotency key to make retries safe for the same logical request.",
-      "example": "STANDARD",
-      "behaviorImpact": "Affects ingest_transaction_ingest_transaction_post request behavior.",
-      "exposure": "consumer_visible",
-      "canonicalTerm": "x_idempotency_key",
-      "semanticId": "lotus.x_idempotency_key"
-    },
-    {
-      "name": "X-Idempotency-Key",
-      "kind": "request_option",
-      "location": "header",
-      "type": "object",
-      "required": false,
-      "default": "",
-      "allowedValues": [],
-      "description": "Optional idempotency key to make retries safe for the same logical request.",
-      "example": "STANDARD",
-      "behaviorImpact": "Affects ingest_transactions_ingest_transactions_post request behavior.",
-      "exposure": "consumer_visible",
-      "canonicalTerm": "x_idempotency_key",
-      "semanticId": "lotus.x_idempotency_key"
-    },
-    {
-      "name": "X-Idempotency-Key",
-      "kind": "request_option",
-      "location": "header",
-      "type": "object",
-      "required": false,
-      "default": "",
-      "allowedValues": [],
-      "description": "Optional idempotency key to make retries safe for the same logical request.",
-      "example": "STANDARD",
-      "behaviorImpact": "Affects ingest_instruments_ingest_instruments_post request behavior.",
-      "exposure": "consumer_visible",
-      "canonicalTerm": "x_idempotency_key",
-      "semanticId": "lotus.x_idempotency_key"
-    },
-    {
-      "name": "X-Idempotency-Key",
-      "kind": "request_option",
-      "location": "header",
-      "type": "object",
-      "required": false,
-      "default": "",
-      "allowedValues": [],
-      "description": "Optional idempotency key to make retries safe for the same logical request.",
-      "example": "STANDARD",
-      "behaviorImpact": "Affects ingest_market_prices_ingest_market_prices_post request behavior.",
-      "exposure": "consumer_visible",
-      "canonicalTerm": "x_idempotency_key",
-      "semanticId": "lotus.x_idempotency_key"
-    },
-    {
-      "name": "X-Idempotency-Key",
-      "kind": "request_option",
-      "location": "header",
-      "type": "object",
-      "required": false,
-      "default": "",
-      "allowedValues": [],
-      "description": "Optional idempotency key to make retries safe for the same logical request.",
-      "example": "STANDARD",
-      "behaviorImpact": "Affects ingest_fx_rates_ingest_fx_rates_post request behavior.",
-      "exposure": "consumer_visible",
-      "canonicalTerm": "x_idempotency_key",
-      "semanticId": "lotus.x_idempotency_key"
-    },
-    {
-      "name": "X-Idempotency-Key",
-      "kind": "request_option",
-      "location": "header",
-      "type": "object",
-      "required": false,
-      "default": "",
-      "allowedValues": [],
-      "description": "Optional idempotency key to make retries safe for the same logical request.",
-      "example": "STANDARD",
-      "behaviorImpact": "Affects ingest_business_dates_ingest_business_dates_post request behavior.",
-      "exposure": "consumer_visible",
-      "canonicalTerm": "x_idempotency_key",
-      "semanticId": "lotus.x_idempotency_key"
-    },
-    {
-      "name": "X-Idempotency-Key",
-      "kind": "request_option",
-      "location": "header",
-      "type": "object",
-      "required": false,
-      "default": "",
-      "allowedValues": [],
-      "description": "Optional idempotency key to make retries safe for the same logical request.",
-      "example": "STANDARD",
-      "behaviorImpact": "Affects reprocess_transactions_reprocess_transactions_post request behavior.",
-      "exposure": "consumer_visible",
-      "canonicalTerm": "x_idempotency_key",
-      "semanticId": "lotus.x_idempotency_key"
-    },
-    {
-      "name": "X-Idempotency-Key",
-      "kind": "request_option",
-      "location": "header",
-      "type": "object",
-      "required": false,
-      "default": "",
-      "allowedValues": [],
-      "description": "Optional idempotency key to make retries safe for the same logical request.",
-      "example": "STANDARD",
-      "behaviorImpact": "Affects ingest_portfolio_bundle_ingest_portfolio_bundle_post request behavior.",
-      "exposure": "consumer_visible",
-      "canonicalTerm": "x_idempotency_key",
-      "semanticId": "lotus.x_idempotency_key"
-    },
-    {
       "name": "job_id",
       "kind": "request_option",
       "location": "path",
@@ -5505,21 +5338,6 @@
       "exposure": "consumer_visible",
       "canonicalTerm": "job_id",
       "semanticId": "lotus.job_id"
-    },
-    {
-      "name": "X-Lotus-Ops-Token",
-      "kind": "request_option",
-      "location": "header",
-      "type": "object",
-      "required": false,
-      "default": "",
-      "allowedValues": [],
-      "description": "Operations token for privileged ingestion runbook APIs (health controls, retry, DLQ triage, idempotency diagnostics).",
-      "example": "STANDARD",
-      "behaviorImpact": "Affects get_ingestion_job_ingestion_jobs__job_id__get request behavior.",
-      "exposure": "consumer_visible",
-      "canonicalTerm": "x_lotus_ops_token",
-      "semanticId": "lotus.x_lotus_ops_token"
     },
     {
       "name": "status",
@@ -5552,34 +5370,34 @@
       "semanticId": "lotus.entity_type"
     },
     {
-      "name": "from",
+      "name": "submitted_from",
       "kind": "request_option",
       "location": "query",
       "type": "object",
       "required": false,
       "default": "",
       "allowedValues": [],
-      "description": "Canonical from value used in request parameter.",
+      "description": "Canonical submitted from value used in request parameter.",
       "example": "STANDARD",
       "behaviorImpact": "Affects list_ingestion_jobs_ingestion_jobs_get request behavior.",
       "exposure": "consumer_visible",
-      "canonicalTerm": "from",
-      "semanticId": "lotus.from"
+      "canonicalTerm": "submitted_from",
+      "semanticId": "lotus.submitted_from"
     },
     {
-      "name": "to",
+      "name": "submitted_to",
       "kind": "request_option",
       "location": "query",
       "type": "object",
       "required": false,
       "default": "",
       "allowedValues": [],
-      "description": "Canonical to value used in request parameter.",
+      "description": "Canonical submitted to value used in request parameter.",
       "example": "STANDARD",
       "behaviorImpact": "Affects list_ingestion_jobs_ingestion_jobs_get request behavior.",
       "exposure": "consumer_visible",
-      "canonicalTerm": "to",
-      "semanticId": "lotus.to"
+      "canonicalTerm": "submitted_to",
+      "semanticId": "lotus.submitted_to"
     },
     {
       "name": "cursor",
@@ -5612,21 +5430,6 @@
       "semanticId": "lotus.limit"
     },
     {
-      "name": "X-Lotus-Ops-Token",
-      "kind": "request_option",
-      "location": "header",
-      "type": "object",
-      "required": false,
-      "default": "",
-      "allowedValues": [],
-      "description": "Operations token for privileged ingestion runbook APIs (health controls, retry, DLQ triage, idempotency diagnostics).",
-      "example": "STANDARD",
-      "behaviorImpact": "Affects list_ingestion_jobs_ingestion_jobs_get request behavior.",
-      "exposure": "consumer_visible",
-      "canonicalTerm": "x_lotus_ops_token",
-      "semanticId": "lotus.x_lotus_ops_token"
-    },
-    {
       "name": "job_id",
       "kind": "request_option",
       "location": "path",
@@ -5657,21 +5460,6 @@
       "semanticId": "lotus.limit"
     },
     {
-      "name": "X-Lotus-Ops-Token",
-      "kind": "request_option",
-      "location": "header",
-      "type": "object",
-      "required": false,
-      "default": "",
-      "allowedValues": [],
-      "description": "Operations token for privileged ingestion runbook APIs (health controls, retry, DLQ triage, idempotency diagnostics).",
-      "example": "STANDARD",
-      "behaviorImpact": "Affects list_ingestion_job_failures_ingestion_jobs__job_id__failures_get request behavior.",
-      "exposure": "consumer_visible",
-      "canonicalTerm": "x_lotus_ops_token",
-      "semanticId": "lotus.x_lotus_ops_token"
-    },
-    {
       "name": "job_id",
       "kind": "request_option",
       "location": "path",
@@ -5687,21 +5475,6 @@
       "semanticId": "lotus.job_id"
     },
     {
-      "name": "X-Lotus-Ops-Token",
-      "kind": "request_option",
-      "location": "header",
-      "type": "object",
-      "required": false,
-      "default": "",
-      "allowedValues": [],
-      "description": "Operations token for privileged ingestion runbook APIs (health controls, retry, DLQ triage, idempotency diagnostics).",
-      "example": "STANDARD",
-      "behaviorImpact": "Affects get_ingestion_job_records_ingestion_jobs__job_id__records_get request behavior.",
-      "exposure": "consumer_visible",
-      "canonicalTerm": "x_lotus_ops_token",
-      "semanticId": "lotus.x_lotus_ops_token"
-    },
-    {
       "name": "job_id",
       "kind": "request_option",
       "location": "path",
@@ -5715,51 +5488,6 @@
       "exposure": "consumer_visible",
       "canonicalTerm": "job_id",
       "semanticId": "lotus.job_id"
-    },
-    {
-      "name": "X-Lotus-Ops-Token",
-      "kind": "request_option",
-      "location": "header",
-      "type": "object",
-      "required": false,
-      "default": "",
-      "allowedValues": [],
-      "description": "Operations token for privileged ingestion runbook APIs (health controls, retry, DLQ triage, idempotency diagnostics).",
-      "example": "STANDARD",
-      "behaviorImpact": "Affects retry_ingestion_job_ingestion_jobs__job_id__retry_post request behavior.",
-      "exposure": "consumer_visible",
-      "canonicalTerm": "x_lotus_ops_token",
-      "semanticId": "lotus.x_lotus_ops_token"
-    },
-    {
-      "name": "X-Lotus-Ops-Token",
-      "kind": "request_option",
-      "location": "header",
-      "type": "object",
-      "required": false,
-      "default": "",
-      "allowedValues": [],
-      "description": "Operations token for privileged ingestion runbook APIs (health controls, retry, DLQ triage, idempotency diagnostics).",
-      "example": "STANDARD",
-      "behaviorImpact": "Affects get_ingestion_health_summary_ingestion_health_summary_get request behavior.",
-      "exposure": "consumer_visible",
-      "canonicalTerm": "x_lotus_ops_token",
-      "semanticId": "lotus.x_lotus_ops_token"
-    },
-    {
-      "name": "X-Lotus-Ops-Token",
-      "kind": "request_option",
-      "location": "header",
-      "type": "object",
-      "required": false,
-      "default": "",
-      "allowedValues": [],
-      "description": "Operations token for privileged ingestion runbook APIs (health controls, retry, DLQ triage, idempotency diagnostics).",
-      "example": "STANDARD",
-      "behaviorImpact": "Affects get_ingestion_health_lag_ingestion_health_lag_get request behavior.",
-      "exposure": "consumer_visible",
-      "canonicalTerm": "x_lotus_ops_token",
-      "semanticId": "lotus.x_lotus_ops_token"
     },
     {
       "name": "lookback_minutes",
@@ -5790,21 +5518,6 @@
       "exposure": "consumer_visible",
       "canonicalTerm": "limit",
       "semanticId": "lotus.limit"
-    },
-    {
-      "name": "X-Lotus-Ops-Token",
-      "kind": "request_option",
-      "location": "header",
-      "type": "object",
-      "required": false,
-      "default": "",
-      "allowedValues": [],
-      "description": "Operations token for privileged ingestion runbook APIs (health controls, retry, DLQ triage, idempotency diagnostics).",
-      "example": "STANDARD",
-      "behaviorImpact": "Affects get_ingestion_consumer_lag_ingestion_health_consumer_lag_get request behavior.",
-      "exposure": "consumer_visible",
-      "canonicalTerm": "x_lotus_ops_token",
-      "semanticId": "lotus.x_lotus_ops_token"
     },
     {
       "name": "lookback_minutes",
@@ -5867,21 +5580,6 @@
       "semanticId": "lotus.backlog_age_threshold_seconds"
     },
     {
-      "name": "X-Lotus-Ops-Token",
-      "kind": "request_option",
-      "location": "header",
-      "type": "object",
-      "required": false,
-      "default": "",
-      "allowedValues": [],
-      "description": "Operations token for privileged ingestion runbook APIs (health controls, retry, DLQ triage, idempotency diagnostics).",
-      "example": "STANDARD",
-      "behaviorImpact": "Affects get_ingestion_slo_status_ingestion_health_slo_get request behavior.",
-      "exposure": "consumer_visible",
-      "canonicalTerm": "x_lotus_ops_token",
-      "semanticId": "lotus.x_lotus_ops_token"
-    },
-    {
       "name": "lookback_minutes",
       "kind": "request_option",
       "location": "query",
@@ -5927,21 +5625,6 @@
       "semanticId": "lotus.backlog_growth_threshold"
     },
     {
-      "name": "X-Lotus-Ops-Token",
-      "kind": "request_option",
-      "location": "header",
-      "type": "object",
-      "required": false,
-      "default": "",
-      "allowedValues": [],
-      "description": "Operations token for privileged ingestion runbook APIs (health controls, retry, DLQ triage, idempotency diagnostics).",
-      "example": "STANDARD",
-      "behaviorImpact": "Affects get_ingestion_error_budget_status_ingestion_health_error_budget_get request behavior.",
-      "exposure": "consumer_visible",
-      "canonicalTerm": "x_lotus_ops_token",
-      "semanticId": "lotus.x_lotus_ops_token"
-    },
-    {
       "name": "lookback_minutes",
       "kind": "request_option",
       "location": "query",
@@ -5972,21 +5655,6 @@
       "semanticId": "lotus.limit"
     },
     {
-      "name": "X-Lotus-Ops-Token",
-      "kind": "request_option",
-      "location": "header",
-      "type": "object",
-      "required": false,
-      "default": "",
-      "allowedValues": [],
-      "description": "Operations token for privileged ingestion runbook APIs (health controls, retry, DLQ triage, idempotency diagnostics).",
-      "example": "STANDARD",
-      "behaviorImpact": "Affects get_ingestion_backlog_breakdown_ingestion_health_backlog_breakdown_get request behavior.",
-      "exposure": "consumer_visible",
-      "canonicalTerm": "x_lotus_ops_token",
-      "semanticId": "lotus.x_lotus_ops_token"
-    },
-    {
       "name": "threshold_seconds",
       "kind": "request_option",
       "location": "query",
@@ -6015,21 +5683,6 @@
       "exposure": "consumer_visible",
       "canonicalTerm": "limit",
       "semanticId": "lotus.limit"
-    },
-    {
-      "name": "X-Lotus-Ops-Token",
-      "kind": "request_option",
-      "location": "header",
-      "type": "object",
-      "required": false,
-      "default": "",
-      "allowedValues": [],
-      "description": "Operations token for privileged ingestion runbook APIs (health controls, retry, DLQ triage, idempotency diagnostics).",
-      "example": "STANDARD",
-      "behaviorImpact": "Affects list_ingestion_stalled_jobs_ingestion_health_stalled_jobs_get request behavior.",
-      "exposure": "consumer_visible",
-      "canonicalTerm": "x_lotus_ops_token",
-      "semanticId": "lotus.x_lotus_ops_token"
     },
     {
       "name": "limit",
@@ -6077,21 +5730,6 @@
       "semanticId": "lotus.consumer_group"
     },
     {
-      "name": "X-Lotus-Ops-Token",
-      "kind": "request_option",
-      "location": "header",
-      "type": "object",
-      "required": false,
-      "default": "",
-      "allowedValues": [],
-      "description": "Operations token for privileged ingestion runbook APIs (health controls, retry, DLQ triage, idempotency diagnostics).",
-      "example": "STANDARD",
-      "behaviorImpact": "Affects list_consumer_dlq_events_ingestion_dlq_consumer_events_get request behavior.",
-      "exposure": "consumer_visible",
-      "canonicalTerm": "x_lotus_ops_token",
-      "semanticId": "lotus.x_lotus_ops_token"
-    },
-    {
       "name": "event_id",
       "kind": "request_option",
       "location": "path",
@@ -6105,21 +5743,6 @@
       "exposure": "consumer_visible",
       "canonicalTerm": "event_id",
       "semanticId": "lotus.event_id"
-    },
-    {
-      "name": "X-Lotus-Ops-Token",
-      "kind": "request_option",
-      "location": "header",
-      "type": "object",
-      "required": false,
-      "default": "",
-      "allowedValues": [],
-      "description": "Operations token for privileged ingestion runbook APIs (health controls, retry, DLQ triage, idempotency diagnostics).",
-      "example": "STANDARD",
-      "behaviorImpact": "Affects replay_consumer_dlq_event_ingestion_dlq_consumer_events__event_id__replay_post request behavior.",
-      "exposure": "consumer_visible",
-      "canonicalTerm": "x_lotus_ops_token",
-      "semanticId": "lotus.x_lotus_ops_token"
     },
     {
       "name": "limit",
@@ -6197,21 +5820,6 @@
       "semanticId": "lotus.job_id"
     },
     {
-      "name": "X-Lotus-Ops-Token",
-      "kind": "request_option",
-      "location": "header",
-      "type": "object",
-      "required": false,
-      "default": "",
-      "allowedValues": [],
-      "description": "Operations token for privileged ingestion runbook APIs (health controls, retry, DLQ triage, idempotency diagnostics).",
-      "example": "STANDARD",
-      "behaviorImpact": "Affects list_ingestion_replay_audits_ingestion_audit_replays_get request behavior.",
-      "exposure": "consumer_visible",
-      "canonicalTerm": "x_lotus_ops_token",
-      "semanticId": "lotus.x_lotus_ops_token"
-    },
-    {
       "name": "replay_id",
       "kind": "request_option",
       "location": "path",
@@ -6225,51 +5833,6 @@
       "exposure": "consumer_visible",
       "canonicalTerm": "replay_id",
       "semanticId": "lotus.replay_id"
-    },
-    {
-      "name": "X-Lotus-Ops-Token",
-      "kind": "request_option",
-      "location": "header",
-      "type": "object",
-      "required": false,
-      "default": "",
-      "allowedValues": [],
-      "description": "Operations token for privileged ingestion runbook APIs (health controls, retry, DLQ triage, idempotency diagnostics).",
-      "example": "STANDARD",
-      "behaviorImpact": "Affects get_ingestion_replay_audit_ingestion_audit_replays__replay_id__get request behavior.",
-      "exposure": "consumer_visible",
-      "canonicalTerm": "x_lotus_ops_token",
-      "semanticId": "lotus.x_lotus_ops_token"
-    },
-    {
-      "name": "X-Lotus-Ops-Token",
-      "kind": "request_option",
-      "location": "header",
-      "type": "object",
-      "required": false,
-      "default": "",
-      "allowedValues": [],
-      "description": "Operations token for privileged ingestion runbook APIs (health controls, retry, DLQ triage, idempotency diagnostics).",
-      "example": "STANDARD",
-      "behaviorImpact": "Affects get_ingestion_ops_control_ingestion_ops_control_get request behavior.",
-      "exposure": "consumer_visible",
-      "canonicalTerm": "x_lotus_ops_token",
-      "semanticId": "lotus.x_lotus_ops_token"
-    },
-    {
-      "name": "X-Lotus-Ops-Token",
-      "kind": "request_option",
-      "location": "header",
-      "type": "object",
-      "required": false,
-      "default": "",
-      "allowedValues": [],
-      "description": "Operations token for privileged ingestion runbook APIs (health controls, retry, DLQ triage, idempotency diagnostics).",
-      "example": "STANDARD",
-      "behaviorImpact": "Affects update_ingestion_ops_control_ingestion_ops_control_put request behavior.",
-      "exposure": "consumer_visible",
-      "canonicalTerm": "x_lotus_ops_token",
-      "semanticId": "lotus.x_lotus_ops_token"
     },
     {
       "name": "lookback_minutes",
@@ -6300,21 +5863,6 @@
       "exposure": "consumer_visible",
       "canonicalTerm": "limit",
       "semanticId": "lotus.limit"
-    },
-    {
-      "name": "X-Lotus-Ops-Token",
-      "kind": "request_option",
-      "location": "header",
-      "type": "object",
-      "required": false,
-      "default": "",
-      "allowedValues": [],
-      "description": "Operations token for privileged ingestion runbook APIs (health controls, retry, DLQ triage, idempotency diagnostics).",
-      "example": "STANDARD",
-      "behaviorImpact": "Affects get_ingestion_idempotency_diagnostics_ingestion_idempotency_diagnostics_get request behavior.",
-      "exposure": "consumer_visible",
-      "canonicalTerm": "x_lotus_ops_token",
-      "semanticId": "lotus.x_lotus_ops_token"
     },
     {
       "name": "LOTUS_CORE_CAP_SUPPORT_APIS_ENABLED",
@@ -11446,20 +10994,11 @@
           "request_id",
           "risk_exposure",
           "status",
-          "trace_id",
-          "x_idempotency_key"
+          "trace_id"
         ]
       },
       "request": {
         "fields": [
-          {
-            "name": "X-Idempotency-Key",
-            "location": "header",
-            "required": false,
-            "type": "object",
-            "semanticId": "lotus.x_idempotency_key",
-            "attributeRef": "lotus.x_idempotency_key"
-          },
           {
             "name": "portfolios",
             "location": "body",
@@ -11692,20 +11231,11 @@
           "trade_fee",
           "transaction_date",
           "transaction_id",
-          "transaction_type",
-          "x_idempotency_key"
+          "transaction_type"
         ]
       },
       "request": {
         "fields": [
-          {
-            "name": "X-Idempotency-Key",
-            "location": "header",
-            "required": false,
-            "type": "object",
-            "semanticId": "lotus.x_idempotency_key",
-            "attributeRef": "lotus.x_idempotency_key"
-          },
           {
             "name": "transaction_id",
             "location": "body",
@@ -11964,20 +11494,11 @@
           "transaction_date",
           "transaction_id",
           "transaction_type",
-          "transactions",
-          "x_idempotency_key"
+          "transactions"
         ]
       },
       "request": {
         "fields": [
-          {
-            "name": "X-Idempotency-Key",
-            "location": "header",
-            "required": false,
-            "type": "object",
-            "semanticId": "lotus.x_idempotency_key",
-            "attributeRef": "lotus.x_idempotency_key"
-          },
           {
             "name": "transactions",
             "location": "body",
@@ -12247,20 +11768,11 @@
           "security_id",
           "trace_id",
           "ultimate_parent_issuer_id",
-          "ultimate_parent_issuer_name",
-          "x_idempotency_key"
+          "ultimate_parent_issuer_name"
         ]
       },
       "request": {
         "fields": [
-          {
-            "name": "X-Idempotency-Key",
-            "location": "header",
-            "required": false,
-            "type": "object",
-            "semanticId": "lotus.x_idempotency_key",
-            "attributeRef": "lotus.x_idempotency_key"
-          },
           {
             "name": "instruments",
             "location": "body",
@@ -12480,20 +11992,11 @@
           "price_date",
           "request_id",
           "security_id",
-          "trace_id",
-          "x_idempotency_key"
+          "trace_id"
         ]
       },
       "request": {
         "fields": [
-          {
-            "name": "X-Idempotency-Key",
-            "location": "header",
-            "required": false,
-            "type": "object",
-            "semanticId": "lotus.x_idempotency_key",
-            "attributeRef": "lotus.x_idempotency_key"
-          },
           {
             "name": "market_prices",
             "location": "body",
@@ -12633,20 +12136,11 @@
           "rate_date",
           "request_id",
           "to_currency",
-          "trace_id",
-          "x_idempotency_key"
+          "trace_id"
         ]
       },
       "request": {
         "fields": [
-          {
-            "name": "X-Idempotency-Key",
-            "location": "header",
-            "required": false,
-            "type": "object",
-            "semanticId": "lotus.x_idempotency_key",
-            "attributeRef": "lotus.x_idempotency_key"
-          },
           {
             "name": "fx_rates",
             "location": "body",
@@ -12783,20 +12277,11 @@
           "job_id",
           "message",
           "request_id",
-          "trace_id",
-          "x_idempotency_key"
+          "trace_id"
         ]
       },
       "request": {
         "fields": [
-          {
-            "name": "X-Idempotency-Key",
-            "location": "header",
-            "required": false,
-            "type": "object",
-            "semanticId": "lotus.x_idempotency_key",
-            "attributeRef": "lotus.x_idempotency_key"
-          },
           {
             "name": "business_dates",
             "location": "body",
@@ -12908,20 +12393,11 @@
           "message",
           "request_id",
           "trace_id",
-          "transaction_ids",
-          "x_idempotency_key"
+          "transaction_ids"
         ]
       },
       "request": {
         "fields": [
-          {
-            "name": "X-Idempotency-Key",
-            "location": "header",
-            "required": false,
-            "type": "object",
-            "semanticId": "lotus.x_idempotency_key",
-            "attributeRef": "lotus.x_idempotency_key"
-          },
           {
             "name": "transaction_ids",
             "location": "body",
@@ -13081,20 +12557,11 @@
           "transaction_type",
           "transactions",
           "ultimate_parent_issuer_id",
-          "ultimate_parent_issuer_name",
-          "x_idempotency_key"
+          "ultimate_parent_issuer_name"
         ]
       },
       "request": {
         "fields": [
-          {
-            "name": "X-Idempotency-Key",
-            "location": "header",
-            "required": false,
-            "type": "object",
-            "semanticId": "lotus.x_idempotency_key",
-            "attributeRef": "lotus.x_idempotency_key"
-          },
           {
             "name": "source_system",
             "location": "body",
@@ -13912,8 +13379,7 @@
           "retry_count",
           "status",
           "submitted_at",
-          "trace_id",
-          "x_lotus_ops_token"
+          "trace_id"
         ]
       },
       "request": {
@@ -13925,14 +13391,6 @@
             "type": "string",
             "semanticId": "lotus.job_id",
             "attributeRef": "lotus.job_id"
-          },
-          {
-            "name": "X-Lotus-Ops-Token",
-            "location": "header",
-            "required": false,
-            "type": "object",
-            "semanticId": "lotus.x_lotus_ops_token",
-            "attributeRef": "lotus.x_lotus_ops_token"
           }
         ]
       },
@@ -14076,7 +13534,6 @@
           "endpoint",
           "entity_type",
           "failure_reason",
-          "from",
           "idempotency_key",
           "job_id",
           "jobs",
@@ -14087,10 +13544,10 @@
           "retry_count",
           "status",
           "submitted_at",
-          "to",
+          "submitted_from",
+          "submitted_to",
           "total",
-          "trace_id",
-          "x_lotus_ops_token"
+          "trace_id"
         ]
       },
       "request": {
@@ -14112,20 +13569,20 @@
             "attributeRef": "lotus.entity_type"
           },
           {
-            "name": "from",
+            "name": "submitted_from",
             "location": "query",
             "required": false,
             "type": "object",
-            "semanticId": "lotus.from",
-            "attributeRef": "lotus.from"
+            "semanticId": "lotus.submitted_from",
+            "attributeRef": "lotus.submitted_from"
           },
           {
-            "name": "to",
+            "name": "submitted_to",
             "location": "query",
             "required": false,
             "type": "object",
-            "semanticId": "lotus.to",
-            "attributeRef": "lotus.to"
+            "semanticId": "lotus.submitted_to",
+            "attributeRef": "lotus.submitted_to"
           },
           {
             "name": "cursor",
@@ -14142,14 +13599,6 @@
             "type": "integer",
             "semanticId": "lotus.limit",
             "attributeRef": "lotus.limit"
-          },
-          {
-            "name": "X-Lotus-Ops-Token",
-            "location": "header",
-            "required": false,
-            "type": "object",
-            "semanticId": "lotus.x_lotus_ops_token",
-            "attributeRef": "lotus.x_lotus_ops_token"
           }
         ]
       },
@@ -14318,8 +13767,7 @@
           "failures",
           "job_id",
           "limit",
-          "total",
-          "x_lotus_ops_token"
+          "total"
         ]
       },
       "request": {
@@ -14339,14 +13787,6 @@
             "type": "integer",
             "semanticId": "lotus.limit",
             "attributeRef": "lotus.limit"
-          },
-          {
-            "name": "X-Lotus-Ops-Token",
-            "location": "header",
-            "required": false,
-            "type": "object",
-            "semanticId": "lotus.x_lotus_ops_token",
-            "attributeRef": "lotus.x_lotus_ops_token"
           }
         ]
       },
@@ -14439,8 +13879,7 @@
           "entity_type",
           "failed_record_keys",
           "job_id",
-          "replayable_record_keys",
-          "x_lotus_ops_token"
+          "replayable_record_keys"
         ]
       },
       "request": {
@@ -14452,14 +13891,6 @@
             "type": "string",
             "semanticId": "lotus.job_id",
             "attributeRef": "lotus.job_id"
-          },
-          {
-            "name": "X-Lotus-Ops-Token",
-            "location": "header",
-            "required": false,
-            "type": "object",
-            "semanticId": "lotus.x_lotus_ops_token",
-            "attributeRef": "lotus.x_lotus_ops_token"
           }
         ]
       },
@@ -14539,8 +13970,7 @@
           "retry_count",
           "status",
           "submitted_at",
-          "trace_id",
-          "x_lotus_ops_token"
+          "trace_id"
         ]
       },
       "request": {
@@ -14552,14 +13982,6 @@
             "type": "string",
             "semanticId": "lotus.job_id",
             "attributeRef": "lotus.job_id"
-          },
-          {
-            "name": "X-Lotus-Ops-Token",
-            "location": "header",
-            "required": false,
-            "type": "object",
-            "semanticId": "lotus.x_lotus_ops_token",
-            "attributeRef": "lotus.x_lotus_ops_token"
           },
           {
             "name": "record_keys",
@@ -14716,21 +14138,11 @@
           "backlog_jobs",
           "failed_jobs",
           "queued_jobs",
-          "total_jobs",
-          "x_lotus_ops_token"
+          "total_jobs"
         ]
       },
       "request": {
-        "fields": [
-          {
-            "name": "X-Lotus-Ops-Token",
-            "location": "header",
-            "required": false,
-            "type": "object",
-            "semanticId": "lotus.x_lotus_ops_token",
-            "attributeRef": "lotus.x_lotus_ops_token"
-          }
-        ]
+        "fields": []
       },
       "response": {
         "httpStatus": 200,
@@ -14797,21 +14209,11 @@
           "backlog_jobs",
           "failed_jobs",
           "queued_jobs",
-          "total_jobs",
-          "x_lotus_ops_token"
+          "total_jobs"
         ]
       },
       "request": {
-        "fields": [
-          {
-            "name": "X-Lotus-Ops-Token",
-            "location": "header",
-            "required": false,
-            "type": "object",
-            "semanticId": "lotus.x_lotus_ops_token",
-            "attributeRef": "lotus.x_lotus_ops_token"
-          }
-        ]
+        "fields": []
       },
       "response": {
         "httpStatus": 200,
@@ -14883,8 +14285,7 @@
           "limit",
           "lookback_minutes",
           "original_topic",
-          "total_groups",
-          "x_lotus_ops_token"
+          "total_groups"
         ]
       },
       "request": {
@@ -14904,14 +14305,6 @@
             "type": "integer",
             "semanticId": "lotus.limit",
             "attributeRef": "lotus.limit"
-          },
-          {
-            "name": "X-Lotus-Ops-Token",
-            "location": "header",
-            "required": false,
-            "type": "object",
-            "semanticId": "lotus.x_lotus_ops_token",
-            "attributeRef": "lotus.x_lotus_ops_token"
           }
         ]
       },
@@ -15019,8 +14412,7 @@
           "lookback_minutes",
           "p95_queue_latency_seconds",
           "queue_latency_threshold_seconds",
-          "total_jobs",
-          "x_lotus_ops_token"
+          "total_jobs"
         ]
       },
       "request": {
@@ -15056,14 +14448,6 @@
             "type": "number",
             "semanticId": "lotus.backlog_age_threshold_seconds",
             "attributeRef": "lotus.backlog_age_threshold_seconds"
-          },
-          {
-            "name": "X-Lotus-Ops-Token",
-            "location": "header",
-            "required": false,
-            "type": "object",
-            "semanticId": "lotus.x_lotus_ops_token",
-            "attributeRef": "lotus.x_lotus_ops_token"
           }
         ]
       },
@@ -15172,8 +14556,7 @@
           "previous_backlog_jobs",
           "previous_lookback_minutes",
           "remaining_error_budget",
-          "total_jobs",
-          "x_lotus_ops_token"
+          "total_jobs"
         ]
       },
       "request": {
@@ -15201,14 +14584,6 @@
             "type": "integer",
             "semanticId": "lotus.backlog_growth_threshold",
             "attributeRef": "lotus.backlog_growth_threshold"
-          },
-          {
-            "name": "X-Lotus-Ops-Token",
-            "location": "header",
-            "required": false,
-            "type": "object",
-            "semanticId": "lotus.x_lotus_ops_token",
-            "attributeRef": "lotus.x_lotus_ops_token"
           }
         ]
       },
@@ -15334,8 +14709,7 @@
           "oldest_backlog_submitted_at",
           "queued_jobs",
           "total_backlog_jobs",
-          "total_jobs",
-          "x_lotus_ops_token"
+          "total_jobs"
         ]
       },
       "request": {
@@ -15355,14 +14729,6 @@
             "type": "integer",
             "semanticId": "lotus.limit",
             "attributeRef": "lotus.limit"
-          },
-          {
-            "name": "X-Lotus-Ops-Token",
-            "location": "header",
-            "required": false,
-            "type": "object",
-            "semanticId": "lotus.x_lotus_ops_token",
-            "attributeRef": "lotus.x_lotus_ops_token"
           }
         ]
       },
@@ -15502,8 +14868,7 @@
           "submitted_at",
           "suggested_action",
           "threshold_seconds",
-          "total",
-          "x_lotus_ops_token"
+          "total"
         ]
       },
       "request": {
@@ -15523,14 +14888,6 @@
             "type": "integer",
             "semanticId": "lotus.limit",
             "attributeRef": "lotus.limit"
-          },
-          {
-            "name": "X-Lotus-Ops-Token",
-            "location": "header",
-            "required": false,
-            "type": "object",
-            "semanticId": "lotus.x_lotus_ops_token",
-            "attributeRef": "lotus.x_lotus_ops_token"
           }
         ]
       },
@@ -15654,8 +15011,7 @@
           "original_key",
           "original_topic",
           "payload_excerpt",
-          "total",
-          "x_lotus_ops_token"
+          "total"
         ]
       },
       "request": {
@@ -15683,14 +15039,6 @@
             "type": "object",
             "semanticId": "lotus.consumer_group",
             "attributeRef": "lotus.consumer_group"
-          },
-          {
-            "name": "X-Lotus-Ops-Token",
-            "location": "header",
-            "required": false,
-            "type": "object",
-            "semanticId": "lotus.x_lotus_ops_token",
-            "attributeRef": "lotus.x_lotus_ops_token"
           }
         ]
       },
@@ -15810,8 +15158,7 @@
           "message",
           "replay_audit_id",
           "replay_fingerprint",
-          "replay_status",
-          "x_lotus_ops_token"
+          "replay_status"
         ]
       },
       "request": {
@@ -15823,14 +15170,6 @@
             "type": "string",
             "semanticId": "lotus.event_id",
             "attributeRef": "lotus.event_id"
-          },
-          {
-            "name": "X-Lotus-Ops-Token",
-            "location": "header",
-            "required": false,
-            "type": "object",
-            "semanticId": "lotus.x_lotus_ops_token",
-            "attributeRef": "lotus.x_lotus_ops_token"
           },
           {
             "name": "dry_run",
@@ -15934,8 +15273,7 @@
           "replay_status",
           "requested_at",
           "requested_by",
-          "total",
-          "x_lotus_ops_token"
+          "total"
         ]
       },
       "request": {
@@ -15979,14 +15317,6 @@
             "type": "object",
             "semanticId": "lotus.job_id",
             "attributeRef": "lotus.job_id"
-          },
-          {
-            "name": "X-Lotus-Ops-Token",
-            "location": "header",
-            "required": false,
-            "type": "object",
-            "semanticId": "lotus.x_lotus_ops_token",
-            "attributeRef": "lotus.x_lotus_ops_token"
           }
         ]
       },
@@ -16143,8 +15473,7 @@
           "replay_reason",
           "replay_status",
           "requested_at",
-          "requested_by",
-          "x_lotus_ops_token"
+          "requested_by"
         ]
       },
       "request": {
@@ -16156,14 +15485,6 @@
             "type": "string",
             "semanticId": "lotus.replay_id",
             "attributeRef": "lotus.replay_id"
-          },
-          {
-            "name": "X-Lotus-Ops-Token",
-            "location": "header",
-            "required": false,
-            "type": "object",
-            "semanticId": "lotus.x_lotus_ops_token",
-            "attributeRef": "lotus.x_lotus_ops_token"
           }
         ]
       },
@@ -16296,21 +15617,11 @@
           "replay_window_end",
           "replay_window_start",
           "updated_at",
-          "updated_by",
-          "x_lotus_ops_token"
+          "updated_by"
         ]
       },
       "request": {
-        "fields": [
-          {
-            "name": "X-Lotus-Ops-Token",
-            "location": "header",
-            "required": false,
-            "type": "object",
-            "semanticId": "lotus.x_lotus_ops_token",
-            "attributeRef": "lotus.x_lotus_ops_token"
-          }
-        ]
+        "fields": []
       },
       "response": {
         "httpStatus": 200,
@@ -16377,20 +15688,11 @@
           "replay_window_end",
           "replay_window_start",
           "updated_at",
-          "updated_by",
-          "x_lotus_ops_token"
+          "updated_by"
         ]
       },
       "request": {
         "fields": [
-          {
-            "name": "X-Lotus-Ops-Token",
-            "location": "header",
-            "required": false,
-            "type": "object",
-            "semanticId": "lotus.x_lotus_ops_token",
-            "attributeRef": "lotus.x_lotus_ops_token"
-          },
           {
             "name": "mode",
             "location": "body",
@@ -16497,8 +15799,7 @@
           "limit",
           "lookback_minutes",
           "total_keys",
-          "usage_count",
-          "x_lotus_ops_token"
+          "usage_count"
         ]
       },
       "request": {
@@ -16518,14 +15819,6 @@
             "type": "integer",
             "semanticId": "lotus.limit",
             "attributeRef": "lotus.limit"
-          },
-          {
-            "name": "X-Lotus-Ops-Token",
-            "location": "header",
-            "required": false,
-            "type": "object",
-            "semanticId": "lotus.x_lotus_ops_token",
-            "attributeRef": "lotus.x_lotus_ops_token"
           }
         ]
       },

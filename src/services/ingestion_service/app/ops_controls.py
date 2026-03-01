@@ -9,9 +9,8 @@ from collections import defaultdict, deque
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from threading import Lock
-from typing import Annotated
 
-from fastapi import Header, HTTPException, Request, status
+from fastapi import HTTPException, Request, status
 
 
 def _as_bool(value: str | None, default: bool) -> bool:
@@ -32,18 +31,6 @@ RATE_LIMIT_ENABLED = _as_bool(os.getenv("LOTUS_CORE_INGEST_RATE_LIMIT_ENABLED"),
 RATE_LIMIT_WINDOW_SECONDS = int(os.getenv("LOTUS_CORE_INGEST_RATE_LIMIT_WINDOW_SECONDS", "60"))
 RATE_LIMIT_MAX_REQUESTS = int(os.getenv("LOTUS_CORE_INGEST_RATE_LIMIT_MAX_REQUESTS", "120"))
 RATE_LIMIT_MAX_RECORDS = int(os.getenv("LOTUS_CORE_INGEST_RATE_LIMIT_MAX_RECORDS", "10000"))
-
-OpsTokenHeader = Annotated[
-    str | None,
-    Header(
-        alias="X-Lotus-Ops-Token",
-        description=(
-            "Operations token for privileged ingestion runbook APIs "
-            "(health controls, retry, DLQ triage, idempotency diagnostics)."
-        ),
-    ),
-]
-
 
 @dataclass(slots=True)
 class _WriteEvent:
@@ -90,8 +77,9 @@ def enforce_ingestion_write_rate_limit(*, endpoint: str, record_count: int) -> N
 
 async def require_ops_token(
     request: Request,
-    ops_token: OpsTokenHeader = None,
 ) -> str:
+    ops_token = request.headers.get("X-Lotus-Ops-Token")
+
     def _validate_hs256_jwt(token: str) -> str | None:
         if not OPS_JWT_HS256_SECRET:
             raise HTTPException(
