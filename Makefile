@@ -1,11 +1,12 @@
-.PHONY: install lint typecheck architecture-guard monetary-float-guard no-alias-gate openapi-gate api-vocabulary-gate warning-gate migration-smoke migration-apply test test-unit test-unit-db test-integration-lite test-buy-rfc test-e2e-smoke security-audit check coverage-gate ci ci-local docker-build clean
+.PHONY: install lint typecheck architecture-guard monetary-float-guard no-alias-gate openapi-gate api-vocabulary-gate warning-gate migration-smoke migration-apply test test-unit test-unit-db test-integration-lite test-buy-rfc test-e2e-smoke test-docker-smoke security-audit check coverage-gate ci ci-local docker-build clean
 
 install:
 	python scripts/bootstrap_dev.py
 
 lint:
 	python -m ruff check src/services/query_service/app src/services/ingestion_service/app/main.py src/libs/portfolio-common/portfolio_common/openapi_enrichment.py tests/unit/services/query_service tests/unit/libs/portfolio-common/test_openapi_enrichment.py tests/test_support tests/unit/test_support scripts/test_manifest.py scripts/coverage_gate.py scripts/openapi_quality_gate.py scripts/warning_budget_gate.py scripts/api_vocabulary_inventory.py scripts/no_alias_contract_guard.py --ignore E501,I001
-	python -m ruff format --check src/services/query_service/app/main.py src/services/ingestion_service/app/main.py src/libs/portfolio-common/portfolio_common/openapi_enrichment.py tests/unit/services/query_service/test_openapi_quality_gate.py tests/unit/services/query_service/test_api_vocabulary_inventory.py tests/unit/libs/portfolio-common/test_openapi_enrichment.py scripts/test_manifest.py scripts/coverage_gate.py scripts/openapi_quality_gate.py scripts/warning_budget_gate.py scripts/api_vocabulary_inventory.py scripts/no_alias_contract_guard.py
+	python -m ruff check scripts/docker_endpoint_smoke.py --ignore E501,I001
+	python -m ruff format --check src/services/query_service/app/main.py src/services/ingestion_service/app/main.py src/libs/portfolio-common/portfolio_common/openapi_enrichment.py tests/unit/services/query_service/test_openapi_quality_gate.py tests/unit/services/query_service/test_api_vocabulary_inventory.py tests/unit/libs/portfolio-common/test_openapi_enrichment.py scripts/test_manifest.py scripts/coverage_gate.py scripts/openapi_quality_gate.py scripts/warning_budget_gate.py scripts/api_vocabulary_inventory.py scripts/no_alias_contract_guard.py scripts/docker_endpoint_smoke.py
 	$(MAKE) monetary-float-guard
 
 monetary-float-guard:
@@ -52,6 +53,9 @@ test-buy-rfc:
 
 test-e2e-smoke:
 	python scripts/test_manifest.py --suite e2e-smoke --quiet
+
+test-docker-smoke:
+	python scripts/docker_endpoint_smoke.py --build
 
 security-audit:
 	python -m pip_audit -r tests/requirements.txt

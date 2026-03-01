@@ -181,6 +181,22 @@ To run the E2E smoke suite locally (requires Docker engine running):
 make test-e2e-smoke
 ```
 
+To run deterministic docker endpoint smoke (ingestion -> persistence -> query):
+
+```bash
+make test-docker-smoke
+```
+
+Optional deterministic controls:
+
+```bash
+# Reuse running stack without compose operations
+python scripts/docker_endpoint_smoke.py --skip-compose
+
+# Reset volumes for a clean-state deterministic run
+python scripts/docker_endpoint_smoke.py --reset-volumes --build
+```
+
 ## Verifying the Workflow
 
 1.  **Ingest Data (Automated by Default)**:
