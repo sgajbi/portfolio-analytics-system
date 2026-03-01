@@ -1,229 +1,166 @@
-# RFC 063 - Stateful Analytics Input Contracts for lotus-performance APIs
+# RFC 063 - Lotus-Core Stateful Analytics Data Contracts (Delta-Only)
 
 ## Status
-Proposed
+Proposed (Revised)
 
 ## Date
 2026-03-01
 
 ## Owners
-- lotus-core (authoritative stateful data provider)
-- lotus-performance (analytics computation owner)
+- lotus-core (canonical data provider)
+- lotus-performance (analytics consumer)
 - lotus-platform (contract governance)
 
-## 1. Problem Statement
-`lotus-performance` exposes analytics APIs (`/performance/twr`, `/performance/mwr`, `/performance/attribution`, `/contribution`, `/analytics/positions`, `/integration/returns/series`) that are fully computable in stateless mode today but not fully backed by stable lotus-core stateful input contracts.
+## 1. Objective
+Define the minimum lotus-core data contracts required for stateful analytics in lotus-performance.
 
-Observed contract gaps on `lotus-core` `main`:
-1. `POST /integration/portfolios/{portfolio_id}/performance-input` is not present.
-2. `POST /portfolios/{portfolio_id}/positions-analytics` is not present.
+This RFC is delta-only:
+1. If a capability already exists and is compliant, no implementation change is required.
+2. This RFC requests only missing or partially compliant capabilities.
 
-As a result, stateful-mode enablement across all lotus-performance APIs is inconsistent and integration behavior is fragile.
-
-## 2. Decision
-Define and implement a dedicated stateful-input contract suite in lotus-core for lotus-performance analytics, while preserving ownership boundaries:
-1. lotus-core owns canonical source data and integration input payloads.
-2. lotus-performance owns all analytics calculations and response semantics.
-
-## 3. Scope
-This RFC defines required lotus-core query contracts and their required data points for:
-1. TWR
-2. MWR
-3. Attribution
-4. Contribution
-5. Positions analytics feed
-6. Returns-series feed (portfolio + benchmark + risk-free)
+## 2. Scope
+In scope:
+1. Portfolio valuation and cash-flow time series required for TWR and MWR.
+2. Position valuation time series required for contribution and attribution.
+3. Portfolio, instrument, and classification reference data required for grouping and decomposition.
+4. Contract semantics, naming, quality, and error behavior.
 
 Out of scope:
-1. Changes to lotus-performance formulas or scoring methodology.
-2. UI/gateway response contracts.
-3. Data ingestion mechanics (covered in ingestion RFCs).
+1. lotus-performance internal calculation logic.
+2. Consumer endpoint design in lotus-performance.
+3. New benchmark/risk-free contract design (covered by RFC-062).
 
-## 4. API-to-Data Requirements Matrix
+## 3. Dependency Baseline
+RFC-062 remains authoritative for benchmark and risk-free contracts.
 
-### 4.1 `lotus-performance` API: `POST /performance/twr` (stateful mode)
-Required lotus-core endpoint:
-1. `POST /integration/portfolios/{portfolio_id}/performance-input`
+Implication:
+1. No new benchmark or risk-free contract is requested in RFC-063.
+2. Only implementation quality/coverage gaps against RFC-062 should be addressed if discovered.
 
-Required response data points:
-1. `portfolio_id`
-2. `performance_start_date`
-3. `valuation_points[]` with each row containing:
-   - `day`
-   - `perf_date`
-   - `begin_mv`
-   - `bod_cf`
-   - `eod_cf`
-   - `mgmt_fees`
-   - `end_mv`
-4. `pas_contract_version`
-5. `consumer_system`
+Terminology:
+1. `as_of_date` is the request cutoff/context date.
+2. `valuation_date` is the observation date for each returned time-series point.
 
-### 4.2 `lotus-performance` API: `POST /performance/mwr` (stateful mode)
-Required lotus-core endpoint:
-1. `POST /integration/portfolios/{portfolio_id}/mwr-input`
+## 4. Required Datasets and Canonical Fields
 
-Required response data points:
+### 4.1 Portfolio Valuation and Cash-Flow Time Series
+Purpose:
+1. Single canonical input for both TWR and MWR.
+
+Required request controls:
 1. `portfolio_id`
 2. `as_of_date`
-3. `start_date`
-4. `end_date`
-5. `begin_mv`
-6. `end_mv`
-7. `cash_flows[]`:
-   - `date`
+3. window selector:
+   - explicit: `start_date`, `end_date`
+   - or relative-period selector
+4. `reporting_currency` (optional but supported)
+5. `consumer_system`
+
+Required response metadata:
+1. `portfolio_id`
+2. `portfolio_currency`
+3. `reporting_currency` (effective output currency)
+4. `portfolio_open_date`
+5. `portfolio_close_date` (nullable)
+6. `performance_end_date` (nullable)
+7. `contract_version`
+8. `lineage`
+
+Required time-series fields per observation:
+1. `valuation_date`
+2. `beginning_market_value`
+3. `ending_market_value`
+4. `cash_flows[]` with fields:
    - `amount`
-   - optional: `type` (`external_flow`, `fee`, `tax`, etc.)
-8. `currency`
-9. `contract_version`
+   - `timing` (`bod` or `eod`)
+   - `cash_flow_type` (for example `external_flow`, `fee`, `tax`, `transfer`)
 
-### 4.3 `lotus-performance` API: `POST /performance/attribution` (stateful mode)
-Required lotus-core endpoint:
-1. `POST /integration/portfolios/{portfolio_id}/attribution-input`
+Optional convenience fields (non-canonical aliases):
+1. `beginning_of_day_cash_flow`
+2. `end_of_day_cash_flow`
+3. `management_fee_amount`
 
-Required response data points:
-1. `portfolio_id`
-2. `report_start_date`
-3. `report_end_date`
-4. `group_by_dimensions[]` (requested dimensions resolved)
-5. `portfolio_data`:
-   - `metric_basis`
-   - `valuation_points[]` (`day`, `perf_date`, `begin_mv`, `bod_cf`, `eod_cf`, `mgmt_fees`, `end_mv`)
-6. `instruments_data[]`:
-   - `instrument_id`
-   - `meta{}` (must contain all requested `group_by` dimensions)
-   - `valuation_points[]` with same fields as portfolio
-7. `benchmark_groups_data[]`:
-   - `key{}` (dimension map)
-   - `observations[]`:
-     - `date`
-     - `weight_bop`
-     - `return_base`
-     - optional: `return_local`
-     - optional: `return_fx`
-8. `currency_context`:
-   - `portfolio_currency`
-   - `reporting_currency`
-9. `contract_version`
+Rules:
+1. Canonical representation is `cash_flows[]`; convenience fields are optional.
+2. No separate valuation source should be required for MWR.
 
-### 4.4 `lotus-performance` API: `POST /contribution` (stateful mode)
-Required lotus-core endpoint:
-1. `POST /integration/portfolios/{portfolio_id}/contribution-input`
+### 4.2 Position Valuation Time Series
+Purpose:
+1. Contribution and attribution inputs at instrument/group level.
 
-Required response data points:
-1. `portfolio_id`
-2. `report_start_date`
-3. `report_end_date`
-4. `portfolio_data`:
-   - `metric_basis`
-   - `valuation_points[]` (`day`, `perf_date`, `begin_mv`, `bod_cf`, `eod_cf`, `mgmt_fees`, `end_mv`)
-5. `positions_data[]`:
-   - `position_id`
-   - `meta{}`
-   - `valuation_points[]` with same fields
-6. optional hierarchy hints:
-   - `supported_hierarchy_dimensions[]`
-7. `currency_context`
-8. `contract_version`
-
-### 4.5 `lotus-performance` API: `POST /analytics/positions` (stateful mode)
-Required lotus-core endpoint:
-1. `POST /integration/portfolios/{portfolio_id}/positions-analytics-input`
-
-Required response data points:
+Required request controls:
 1. `portfolio_id`
 2. `as_of_date`
-3. `total_market_value`
-4. `positions[]` (normalized row payload sufficient for lotus-performance passthrough and downstream consumers)
-5. `contract_version`
+3. window selector (`start_date`, `end_date`) when series output is requested
+4. grouping selector (`sections`/`dimensions`)
+5. `reporting_currency` (optional but supported)
 
-### 4.6 `lotus-performance` API: `POST /integration/returns/series` (`core_api_ref`)
-Required lotus-core endpoints:
-1. `POST /integration/portfolios/{portfolio_id}/performance-input`
-2. `POST /integration/portfolios/{portfolio_id}/benchmark-assignment` (already present)
-3. `POST /integration/benchmarks/{benchmark_id}/return-series` (already present)
-4. `POST /integration/reference/risk-free-series` (already present)
-
-Required response data points:
-1. Portfolio leg from `performance-input`:
-   - `performance_start_date`
-   - `valuation_points[]` (`day`, `perf_date`, `begin_mv`, `bod_cf`, `eod_cf`, `mgmt_fees`, `end_mv`)
-2. Benchmark leg:
-   - assignment: `benchmark_id`
-   - series points: `series_date`, `benchmark_return`
-3. Risk-free leg:
-   - series points: `series_date`, `value`
-   - `series_mode` (`return_series` or `annualized_rate_series`)
-   - rate conventions (when applicable)
-
-## 5. Contract Definitions (Normative)
-
-### 5.1 `POST /integration/portfolios/{portfolio_id}/performance-input`
-Request:
-1. `as_of_date`
-2. `lookback_days`
-3. `consumer_system`
-
-Response:
+Required response metadata:
 1. `portfolio_id`
-2. `performance_start_date`
-3. `valuation_points[]` with required daily valuation fields
-4. `pas_contract_version`
-5. `consumer_system`
-6. `lineage`
+2. `portfolio_currency`
+3. `reporting_currency`
+4. `contract_version`
+5. `lineage`
 
-### 5.2 `POST /integration/portfolios/{portfolio_id}/mwr-input`
-Request:
-1. `as_of_date`
-2. `window` (`start_date`, `end_date`) or `period`
-3. `consumer_system`
+Required identifiers and dimensions:
+1. `position_id`
+2. `security_id`
+3. grouping dimensions as supported by taxonomy (for example `asset_class`, `sector`, `region`, `country`)
 
-Response:
-1. `portfolio_id`
-2. `as_of_date`
-3. `start_date`
-4. `end_date`
-5. `begin_mv`
-6. `end_mv`
-7. `cash_flows[]` (`date`, `amount`, optional `type`)
-8. `currency`
-9. `contract_version`
-10. `lineage`
+Required valuation fields per observation:
+1. `valuation_date`
+2. `beginning_market_value_position_currency`
+3. `ending_market_value_position_currency`
+4. `beginning_market_value_portfolio_currency`
+5. `ending_market_value_portfolio_currency`
+6. `beginning_market_value_reporting_currency` (when reporting currency differs)
+7. `ending_market_value_reporting_currency` (when reporting currency differs)
 
-### 5.3 `POST /integration/portfolios/{portfolio_id}/attribution-input`
-Request:
-1. `report_start_date`
-2. `report_end_date`
-3. `group_by_dimensions[]`
-4. `consumer_system`
-5. optional `reporting_currency`
+Optional valuation field per observation:
+1. `cash_flows[]` using the same structure as portfolio-level cash flows
 
-Response:
-1. Full payload listed in section 4.3
+Optional fields:
+1. `quantity` (optional; not required for base contribution math)
+2. `issuer_id` (optional; required only for issuer-level analytics use cases)
 
-### 5.4 `POST /integration/portfolios/{portfolio_id}/contribution-input`
-Request:
-1. `report_start_date`
-2. `report_end_date`
-3. optional `hierarchy[]`
-4. `consumer_system`
-5. optional `reporting_currency`
+### 4.3 Portfolio, Instrument, and Taxonomy Reference Data
+Purpose:
+1. Stable grouping, decomposition, and enrichment.
 
-Response:
-1. Full payload listed in section 4.4
+Required reference payloads:
+1. Portfolio reference:
+   - `portfolio_id`, `portfolio_currency`, `portfolio_open_date`, `portfolio_close_date`, mandate/category labels
+2. Instrument reference:
+   - `security_id`, display identifiers, trading currency
+3. Classification taxonomy:
+   - effective-dated canonical labels/dimensions used in grouping
+4. Optional issuer hierarchy (only when requested):
+   - `issuer_id`, `ultimate_parent_issuer_id`
 
-### 5.5 `POST /integration/portfolios/{portfolio_id}/positions-analytics-input`
-Request:
-1. `as_of_date`
-2. `sections[]`
-3. optional `performance_periods[]`
-4. `consumer_system`
+### 4.4 Benchmark and Risk-Free Data
+Requirement:
+1. Use RFC-062 contracts as-is.
+2. If integration tests expose a gap, fix the gap against RFC-062 semantics rather than adding new contract types here.
 
-Response:
-1. Full payload listed in section 4.5
+## 5. Delta Requests (Only If Missing)
+Implement only missing or partially compliant items from section 4:
+1. Lifecycle metadata completeness in portfolio time series.
+2. Typed `cash_flows[]` completeness and cash-flow classification consistency.
+3. Reporting-currency behavior and explicit output currency metadata.
+4. Multi-currency valuation completeness in position time series.
+5. Effective-dated taxonomy consistency for grouping dimensions.
+6. Contract metadata completeness (`contract_version`, `lineage`).
+7. RFC-062 benchmark/risk-free coverage and diagnostics quality gaps (if any).
 
-## 6. Error Contract
-All endpoints in this RFC must use deterministic lotus-core integration error mapping:
+## 6. Naming and Contract Standards
+1. Canonical field names must be `snake_case`.
+2. Currency context must be explicit in field names.
+3. Canonical names must be self-explanatory; abbreviations are allowed only as optional compatibility aliases.
+4. No alias-only definitions in canonical contracts.
+5. OpenAPI and vocabulary assets must comply with RFC-0067.
+
+## 7. Error Semantics
+Contracts must map failures to stable error classes:
 1. `INVALID_REQUEST`
 2. `RESOURCE_NOT_FOUND`
 3. `INSUFFICIENT_DATA`
@@ -231,29 +168,20 @@ All endpoints in this RFC must use deterministic lotus-core integration error ma
 5. `CONTRACT_VIOLATION_UPSTREAM`
 6. `UNSUPPORTED_CONFIGURATION`
 
-## 7. Non-Functional Requirements
-1. Deterministic ordering for all time-series arrays.
-2. No duplicate dates per series.
-3. Effective-dated determinism (same inputs and as-of context produce replay-equivalent payloads).
-4. Correlation/request/trace propagation headers must be accepted and echoed.
-5. OpenAPI + API vocabulary inventory compliance per RFC-0067.
+## 8. Non-Functional Requirements
+1. Deterministic ordering for all time-series observations.
+2. No duplicate `valuation_date` within a logical series key.
+3. Logical series keys must be explicit:
+   - portfolio series key: `portfolio_id` + `reporting_currency`
+   - position series key: `portfolio_id` + `position_id` + `reporting_currency`
+4. Effective-dated determinism for assignments and taxonomy.
+5. Correlation/request/trace propagation in integration responses.
 
-## 8. Compatibility and Migration
-1. Existing RFC-062 endpoints remain authoritative for benchmark/risk-free contracts.
-2. `performance-input` and `positions-analytics-input` are required to unblock full stateful mode across all lotus-performance APIs.
-3. lotus-performance will keep stateless request modes as fallback until all stateful contracts are available in production.
-
-## 9. Test Requirements
-1. Unit tests for all new request/response validators and policy branches.
-2. Integration tests for each endpoint covering:
-   - happy path
-   - missing data
-   - unsupported configuration
-   - deterministic ordering and uniqueness
-3. Contract smoke tests proving lotus-performance can run each stateful API path against lotus-core contracts.
-
-## 10. Acceptance Criteria
-1. All endpoints in section 5 are implemented in lotus-core query service.
-2. `lotus-performance` runs stateful mode for TWR, MWR, attribution, contribution, positions, and returns-series without direct DB coupling.
-3. RFC-0067 gates pass for lotus-core contract surfaces.
-4. Cross-repo CI contract tests between lotus-core and lotus-performance are green.
+## 9. Acceptance Criteria
+1. A gap assessment is documented for section 4 capabilities (`exists`, `partial`, `missing`).
+2. Only `partial` and `missing` capabilities are implemented.
+3. Portfolio time-series contract is sufficient for both TWR and MWR consumers.
+4. Reporting-currency behavior is validated for portfolio and position datasets.
+5. Lifecycle dates (`portfolio_open_date`, `portfolio_close_date`, `performance_end_date`) are populated and validated, including nullable handling for close/end dates.
+6. Benchmark/risk-free integration remains RFC-062 compliant.
+7. Cross-repo integration tests pass for stateful analytics readiness.
