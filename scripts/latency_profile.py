@@ -11,7 +11,6 @@ import argparse
 import json
 import statistics
 import subprocess
-import sys
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
