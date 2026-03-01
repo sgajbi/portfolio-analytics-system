@@ -1,10 +1,13 @@
 from portfolio_common.events import TransactionEvent
 
-SELL_DEFAULT_POLICY_ID = "SELL_DEFAULT_POLICY"
+SELL_FIFO_POLICY_ID = "SELL_FIFO_POLICY"
+SELL_AVCO_POLICY_ID = "SELL_AVCO_POLICY"
 SELL_DEFAULT_POLICY_VERSION = "1.0.0"
 
 
-def enrich_sell_transaction_metadata(event: TransactionEvent) -> TransactionEvent:
+def enrich_sell_transaction_metadata(
+    event: TransactionEvent, *, cost_basis_method: str | None = None
+) -> TransactionEvent:
     """
     Ensures SELL events carry deterministic linkage and policy metadata.
     Existing upstream-provided values are preserved.
@@ -20,7 +23,11 @@ def enrich_sell_transaction_metadata(event: TransactionEvent) -> TransactionEven
         event.linked_transaction_group_id
         or f"LTG-SELL-{event.portfolio_id}-{event.transaction_id}"
     )
-    calculation_policy_id = event.calculation_policy_id or SELL_DEFAULT_POLICY_ID
+    if cost_basis_method == "AVCO":
+        resolved_policy_id = SELL_AVCO_POLICY_ID
+    else:
+        resolved_policy_id = SELL_FIFO_POLICY_ID
+    calculation_policy_id = event.calculation_policy_id or resolved_policy_id
     calculation_policy_version = (
         event.calculation_policy_version or SELL_DEFAULT_POLICY_VERSION
     )

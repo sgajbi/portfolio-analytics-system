@@ -13,6 +13,9 @@ class TransactionCostStrategy(Protocol):
 ACCRUED_INTEREST_EXCLUDED_FROM_BOOK_COST_POLICIES = {
     "BUY_EXCLUDE_ACCRUED_INTEREST_FROM_BOOK_COST",
 }
+SELL_ALLOW_OVERSOLD_POLICIES = {
+    "SELL_ALLOW_OVERSOLD_POLICY",
+}
 
 
 def _is_accrued_interest_excluded_from_book_cost(transaction: Transaction) -> bool:
@@ -92,6 +95,29 @@ class SellStrategy:
             )
             return
         
+        available_quantity = disposition_engine.get_available_quantity(
+            transaction.portfolio_id, transaction.instrument_id
+        )
+        policy_id = getattr(transaction, "calculation_policy_id", None)
+        allows_oversold = (
+            isinstance(policy_id, str)
+            and policy_id in SELL_ALLOW_OVERSOLD_POLICIES
+        )
+        if transaction.quantity > available_quantity:
+            if allows_oversold:
+                _add_sell_invariant_error(
+                    error_reporter,
+                    transaction,
+                    "oversold policy is configured but not supported in current engine.",
+                )
+            else:
+                _add_sell_invariant_error(
+                    error_reporter,
+                    transaction,
+                    "sell quantity exceeds available holdings under strict oversell policy.",
+                )
+            return
+
         cogs_base, cogs_local, consumed_quantity, error_reason = disposition_engine.consume_sell_quantity(transaction)
         
         if error_reason:

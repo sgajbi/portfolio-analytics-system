@@ -141,7 +141,6 @@ class CostCalculatorConsumer(BaseConsumer):
         try:
             data = json.loads(value)
             event = TransactionEvent.model_validate(data)
-            event = enrich_sell_transaction_metadata(event)
 
             async for db in get_async_db_session():
                 async with db.begin():
@@ -160,6 +159,9 @@ class CostCalculatorConsumer(BaseConsumer):
                         )
 
                     cost_basis_method = portfolio.cost_basis_method or "FIFO"
+                    event = enrich_sell_transaction_metadata(
+                        event, cost_basis_method=cost_basis_method
+                    )
 
                     history_db = await repo.get_transaction_history(
                         portfolio_id=event.portfolio_id,
