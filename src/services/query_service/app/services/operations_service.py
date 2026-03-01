@@ -1,3 +1,5 @@
+import asyncio
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..dtos.operations_dto import (
@@ -21,13 +23,20 @@ class OperationsService:
 
     async def get_support_overview(self, portfolio_id: str) -> SupportOverviewResponse:
         await self._ensure_portfolio_exists(portfolio_id)
-        current_epoch = await self.repo.get_current_portfolio_epoch(portfolio_id)
-        active_reprocessing_keys = await self.repo.get_active_reprocessing_keys_count(portfolio_id)
-        pending_valuation_jobs = await self.repo.get_pending_valuation_jobs_count(portfolio_id)
-        pending_aggregation_jobs = await self.repo.get_pending_aggregation_jobs_count(portfolio_id)
-        latest_transaction_date = await self.repo.get_latest_transaction_date(portfolio_id)
-        latest_position_snapshot_date = await self.repo.get_latest_snapshot_date_for_current_epoch(
-            portfolio_id
+        (
+            current_epoch,
+            active_reprocessing_keys,
+            pending_valuation_jobs,
+            pending_aggregation_jobs,
+            latest_transaction_date,
+            latest_position_snapshot_date,
+        ) = await asyncio.gather(
+            self.repo.get_current_portfolio_epoch(portfolio_id),
+            self.repo.get_active_reprocessing_keys_count(portfolio_id),
+            self.repo.get_pending_valuation_jobs_count(portfolio_id),
+            self.repo.get_pending_aggregation_jobs_count(portfolio_id),
+            self.repo.get_latest_transaction_date(portfolio_id),
+            self.repo.get_latest_snapshot_date_for_current_epoch(portfolio_id),
         )
 
         return SupportOverviewResponse(
@@ -48,14 +57,20 @@ class OperationsService:
                 f"'{portfolio_id}' and security '{security_id}'"
             )
 
-        latest_history_date = await self.repo.get_latest_position_history_date(
-            portfolio_id, security_id, position_state.epoch
-        )
-        latest_snapshot_date = await self.repo.get_latest_daily_snapshot_date(
-            portfolio_id, security_id, position_state.epoch
-        )
-        latest_valuation_job = await self.repo.get_latest_valuation_job(
-            portfolio_id, security_id, position_state.epoch
+        (
+            latest_history_date,
+            latest_snapshot_date,
+            latest_valuation_job,
+        ) = await asyncio.gather(
+            self.repo.get_latest_position_history_date(
+                portfolio_id, security_id, position_state.epoch
+            ),
+            self.repo.get_latest_daily_snapshot_date(
+                portfolio_id, security_id, position_state.epoch
+            ),
+            self.repo.get_latest_valuation_job(
+                portfolio_id, security_id, position_state.epoch
+            ),
         )
 
         return LineageResponse(
@@ -83,17 +98,19 @@ class OperationsService:
         security_id: str | None = None,
     ) -> LineageKeyListResponse:
         await self._ensure_portfolio_exists(portfolio_id)
-        total = await self.repo.get_lineage_keys_count(
-            portfolio_id=portfolio_id,
-            reprocessing_status=reprocessing_status,
-            security_id=security_id,
-        )
-        keys = await self.repo.get_lineage_keys(
-            portfolio_id=portfolio_id,
-            skip=skip,
-            limit=limit,
-            reprocessing_status=reprocessing_status,
-            security_id=security_id,
+        total, keys = await asyncio.gather(
+            self.repo.get_lineage_keys_count(
+                portfolio_id=portfolio_id,
+                reprocessing_status=reprocessing_status,
+                security_id=security_id,
+            ),
+            self.repo.get_lineage_keys(
+                portfolio_id=portfolio_id,
+                skip=skip,
+                limit=limit,
+                reprocessing_status=reprocessing_status,
+                security_id=security_id,
+            ),
         )
         return LineageKeyListResponse(
             portfolio_id=portfolio_id,
@@ -115,9 +132,11 @@ class OperationsService:
         self, portfolio_id: str, skip: int, limit: int, status: str | None = None
     ) -> SupportJobListResponse:
         await self._ensure_portfolio_exists(portfolio_id)
-        total = await self.repo.get_valuation_jobs_count(portfolio_id=portfolio_id, status=status)
-        jobs = await self.repo.get_valuation_jobs(
-            portfolio_id=portfolio_id, skip=skip, limit=limit, status=status
+        total, jobs = await asyncio.gather(
+            self.repo.get_valuation_jobs_count(portfolio_id=portfolio_id, status=status),
+            self.repo.get_valuation_jobs(
+                portfolio_id=portfolio_id, skip=skip, limit=limit, status=status
+            ),
         )
         return SupportJobListResponse(
             portfolio_id=portfolio_id,
@@ -142,9 +161,11 @@ class OperationsService:
         self, portfolio_id: str, skip: int, limit: int, status: str | None = None
     ) -> SupportJobListResponse:
         await self._ensure_portfolio_exists(portfolio_id)
-        total = await self.repo.get_aggregation_jobs_count(portfolio_id=portfolio_id, status=status)
-        jobs = await self.repo.get_aggregation_jobs(
-            portfolio_id=portfolio_id, skip=skip, limit=limit, status=status
+        total, jobs = await asyncio.gather(
+            self.repo.get_aggregation_jobs_count(portfolio_id=portfolio_id, status=status),
+            self.repo.get_aggregation_jobs(
+                portfolio_id=portfolio_id, skip=skip, limit=limit, status=status
+            ),
         )
         return SupportJobListResponse(
             portfolio_id=portfolio_id,

@@ -1,5 +1,4 @@
 # src/services/query_service/app/services/position_service.py
-import asyncio
 import logging
 from datetime import date
 from decimal import Decimal
@@ -155,8 +154,7 @@ class PositionService:
             for position in positions:
                 position.weight = Decimal(0)
 
-        held_since_tasks = []
-        task_indexes = []
+        held_since_requests: list[tuple[int, str, int, date]] = []
         for idx, ((position_row, _instrument, pos_state), position) in enumerate(
             zip(db_results, positions)
         ):
@@ -164,18 +162,16 @@ class PositionService:
             if epoch is None:
                 position.held_since_date = position.position_date
                 continue
-            held_since_tasks.append(
-                self.repo.get_held_since_date(
-                    portfolio_id=portfolio_id,
-                    security_id=position_row.security_id,
-                    epoch=epoch,
-                )
+            held_since_requests.append(
+                (idx, str(position_row.security_id), int(epoch), position.position_date)
             )
-            task_indexes.append(idx)
 
-        if held_since_tasks:
-            held_since_results = await asyncio.gather(*held_since_tasks)
-            for idx, held_since_date in zip(task_indexes, held_since_results):
-                positions[idx].held_since_date = held_since_date or positions[idx].position_date
+        if held_since_requests:
+            held_since_map = await self.repo.get_held_since_dates(
+                portfolio_id=portfolio_id,
+                security_epoch_pairs=[(security_id, epoch) for _, security_id, epoch, _ in held_since_requests],
+            )
+            for idx, security_id, epoch, default_date in held_since_requests:
+                positions[idx].held_since_date = held_since_map.get((security_id, epoch), default_date)
 
         return PortfolioPositionsResponse(portfolio_id=portfolio_id, positions=positions)

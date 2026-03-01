@@ -90,6 +90,15 @@ async def test_reference_data_repository_methods_cover_query_contracts() -> None
             ]
         ),
         _FakeExecuteResult([SimpleNamespace(taxonomy_scope="index")]),
+        _FakeExecuteResult(
+            [
+                SimpleNamespace(
+                    benchmark_id="B1",
+                    index_id="IDX_1",
+                    composition_weight=Decimal("0.5"),
+                )
+            ]
+        ),
         _FakeExecuteResult([SimpleNamespace(index_id="IDX_1", composition_weight=Decimal("0.5"))]),
         _FakeExecuteResult(
             [
@@ -143,6 +152,11 @@ async def test_reference_data_repository_methods_cover_query_contracts() -> None
     assert await repo.list_index_return_series("IDX_1", date(2026, 1, 1), date(2026, 1, 2))
     assert await repo.list_risk_free_series("USD", date(2026, 1, 1), date(2026, 1, 2))
     assert await repo.list_taxonomy(date(2026, 1, 1), taxonomy_scope="index")
+    grouped_components = await repo.list_benchmark_components_for_benchmarks(
+        benchmark_ids=["B1"],
+        as_of_date=date(2026, 1, 1),
+    )
+    assert grouped_components["B1"][0].index_id == "IDX_1"
 
     benchmark_coverage = await repo.get_benchmark_coverage(
         benchmark_id="B1",

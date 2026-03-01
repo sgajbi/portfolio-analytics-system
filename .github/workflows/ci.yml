@@ -201,6 +201,49 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+  latency-gate:
+    name: Latency Gate
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'push' ||
+      github.event_name == 'pull_request'
+    needs: [quality]
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install Tooling and Project Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          make install
+
+      - name: Run endpoint latency gate
+        run: make test-latency-gate
+
+      - name: Capture docker compose logs on failure
+        if: failure()
+        run: docker compose logs > latency-gate-logs.txt
+
+      - name: Upload latency artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: latency-gate-artifacts
+          path: |
+            output/task-runs/*latency-profile*.json
+            output/task-runs/*latency-profile*.md
+            latency-gate-logs.txt
+          if-no-files-found: warn
+          retention-days: 14
+
   e2e-smoke:
     name: E2E Smoke
     if: >
