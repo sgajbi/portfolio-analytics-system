@@ -27,7 +27,11 @@ router = APIRouter()
     response_model=BatchIngestionAcceptedResponse,
     tags=["Portfolios"],
     summary="Ingest portfolios",
-    description="Accepts canonical portfolios and publishes them for asynchronous processing.",
+    description=(
+        "What: Accept canonical portfolio master records.\n"
+        "How: Validate portfolio schema, enforce idempotency/mode checks, and publish asynchronously for persistence.\n"
+        "When: Use when onboarding or updating portfolio metadata from upstream systems."
+    ),
 )
 async def ingest_portfolios(
     request: PortfolioIngestionRequest,
@@ -95,4 +99,3 @@ async def ingest_portfolios(
         accepted_count=num_portfolios,
         idempotency_key=idempotency_key,
     )
-

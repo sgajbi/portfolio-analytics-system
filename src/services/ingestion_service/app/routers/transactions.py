@@ -27,7 +27,11 @@ router = APIRouter()
     response_model=IngestionAcceptedResponse,
     tags=["Transactions"],
     summary="Ingest a single transaction",
-    description=("Accepts a canonical transaction and publishes it for asynchronous processing."),
+    description=(
+        "What: Accept one canonical transaction record for ledger ingestion.\n"
+        "How: Validate contract, enforce idempotency/mode controls, then publish asynchronously to Kafka.\n"
+        "When: Use for low-volume operational corrections or single-record onboarding."
+    ),
 )
 async def ingest_transaction(
     transaction: Transaction,
@@ -82,7 +86,9 @@ async def ingest_transaction(
     tags=["Transactions"],
     summary="Ingest a transaction batch",
     description=(
-        "Accepts a batch of canonical transactions and publishes them for asynchronous processing."
+        "What: Accept a batch of canonical transaction records.\n"
+        "How: Persist ingestion job metadata, validate payload, and publish all valid records asynchronously.\n"
+        "When: Use for standard API-driven batch ingestion workflows."
     ),
 )
 async def ingest_transactions(
@@ -155,4 +161,3 @@ async def ingest_transactions(
         accepted_count=num_transactions,
         idempotency_key=idempotency_key,
     )
-

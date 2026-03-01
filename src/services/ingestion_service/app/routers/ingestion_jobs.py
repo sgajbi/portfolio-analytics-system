@@ -44,9 +44,7 @@ def _filter_payload_by_record_keys(
     key_set = set(record_keys)
     if endpoint == "/ingest/transactions":
         rows = [
-            row
-            for row in payload.get("transactions", [])
-            if row.get("transaction_id") in key_set
+            row for row in payload.get("transactions", []) if row.get("transaction_id") in key_set
         ]
         return {"transactions": rows}
     if endpoint == "/ingest/portfolios":
@@ -65,9 +63,7 @@ def _filter_payload_by_record_keys(
     if endpoint == "/reprocess/transactions":
         rows = [txn_id for txn_id in payload.get("transaction_ids", []) if txn_id in key_set]
         return {"transaction_ids": rows}
-    raise ValueError(
-        f"Partial retry is not supported for endpoint '{endpoint}'."
-    )
+    raise ValueError(f"Partial retry is not supported for endpoint '{endpoint}'.")
 
 
 async def _replay_job_payload(
@@ -146,7 +142,11 @@ async def _replay_job_payload(
     status_code=status.HTTP_200_OK,
     tags=["Ingestion Operations"],
     summary="Get ingestion job status",
-    description="Returns ingestion job lifecycle status and operational metadata by job_id.",
+    description=(
+        "What: Return lifecycle state and metadata for one ingestion job.\n"
+        "How: Read canonical ingestion-job state by job_id.\n"
+        "When: Use to track asynchronous ingestion completion or failure for a submitted request."
+    ),
 )
 async def get_ingestion_job(
     job_id: str,
@@ -171,8 +171,9 @@ async def get_ingestion_job(
     tags=["Ingestion Operations"],
     summary="List ingestion jobs",
     description=(
-        "Returns ingestion jobs for operational monitoring with status/entity/date filters "
-        "and cursor pagination."
+        "What: List ingestion jobs with operational filtering and pagination.\n"
+        "How: Query canonical job records using status/entity/date filters and cursor pagination.\n"
+        "When: Use for runbook dashboards, triage, and service-operations monitoring."
     ),
 )
 async def list_ingestion_jobs(
@@ -202,7 +203,11 @@ async def list_ingestion_jobs(
     status_code=status.HTTP_200_OK,
     tags=["Ingestion Operations"],
     summary="List ingestion job failures",
-    description="Returns failure history captured for an ingestion job.",
+    description=(
+        "What: Return failure events recorded for a specific ingestion job.\n"
+        "How: Read ingestion job failure history with most-recent-first ordering.\n"
+        "When: Use during incident triage to identify failure phases and impacted record keys."
+    ),
 )
 async def list_ingestion_job_failures(
     job_id: str,
@@ -229,7 +234,9 @@ async def list_ingestion_job_failures(
     tags=["Ingestion Operations"],
     summary="Retry a failed ingestion job",
     description=(
-        "Replays full or partial stored payload for a failed ingestion job."
+        "What: Retry a failed ingestion job using full or partial payload replay.\n"
+        "How: Rehydrate stored request payload, apply optional record-key filtering, and republish asynchronously.\n"
+        "When: Use after root cause remediation to recover failed ingestion without direct DB operations."
     ),
 )
 async def retry_ingestion_job(
@@ -328,7 +335,11 @@ async def retry_ingestion_job(
     status_code=status.HTTP_200_OK,
     tags=["Ingestion Operations"],
     summary="Get ingestion operational health summary",
-    description="Returns aggregate ingestion job health counters for operations.",
+    description=(
+        "What: Return aggregate ingestion counters (accepted/queued/failed/backlog).\n"
+        "How: Compute summary from canonical ingestion job state.\n"
+        "When: Use for fast operational health checks and dashboards."
+    ),
 )
 async def get_ingestion_health_summary(
     ingestion_job_service: IngestionJobService = Depends(get_ingestion_job_service),
@@ -342,7 +353,11 @@ async def get_ingestion_health_summary(
     status_code=status.HTTP_200_OK,
     tags=["Ingestion Operations"],
     summary="Get ingestion backlog indicators",
-    description="Returns ingestion lag indicators derived from accepted and queued jobs.",
+    description=(
+        "What: Return backlog-oriented counters derived from non-terminal jobs.\n"
+        "How: Reuse canonical health summary state for lag visibility.\n"
+        "When: Use when operations need a quick backlog signal during ingestion incidents."
+    ),
 )
 async def get_ingestion_health_lag(
     ingestion_job_service: IngestionJobService = Depends(get_ingestion_job_service),
@@ -357,8 +372,9 @@ async def get_ingestion_health_lag(
     tags=["Ingestion Operations"],
     summary="Evaluate ingestion SLO status",
     description=(
-        "Evaluates ingestion failure-rate, queue latency, and backlog-age indicators "
-        "for alert-ready operations visibility."
+        "What: Evaluate ingestion SLO signals for failure rate, queue latency, and backlog age.\n"
+        "How: Compute lookback-window metrics and compare against caller thresholds.\n"
+        "When: Use for alert evaluation, on-call triage, and operational readiness checks."
     ),
 )
 async def get_ingestion_slo_status(
@@ -383,8 +399,9 @@ async def get_ingestion_slo_status(
     tags=["Ingestion Operations"],
     summary="Get ingestion backlog breakdown by endpoint and entity",
     description=(
-        "Returns grouped backlog counters and failure-rate indicators for ingestion "
-        "endpoints, enabling targeted operational triage."
+        "What: Return grouped backlog/failure-rate metrics by endpoint and entity type.\n"
+        "How: Aggregate canonical ingestion jobs into endpoint/entity groups with oldest backlog age.\n"
+        "When: Use to isolate the highest-impact ingestion pipeline segment during incidents."
     ),
 )
 async def get_ingestion_backlog_breakdown(
@@ -405,8 +422,9 @@ async def get_ingestion_backlog_breakdown(
     tags=["Ingestion Operations"],
     summary="List stalled ingestion jobs",
     description=(
-        "Returns accepted/queued jobs older than threshold_seconds with runbook-oriented "
-        "suggested actions."
+        "What: List ingestion jobs stalled in accepted/queued state beyond threshold.\n"
+        "How: Filter canonical jobs by age and status, then attach runbook-oriented suggestions.\n"
+        "When: Use to identify concrete stuck jobs requiring operator intervention."
     ),
 )
 async def list_ingestion_stalled_jobs(
@@ -426,7 +444,11 @@ async def list_ingestion_stalled_jobs(
     status_code=status.HTTP_200_OK,
     tags=["Ingestion Operations"],
     summary="List consumer dead-letter events",
-    description="Returns persistence consumer DLQ events for API-first operational triage.",
+    description=(
+        "What: Return dead-letter events produced by downstream consumers.\n"
+        "How: Query persisted consumer DLQ audit records with optional topic/group filters.\n"
+        "When: Use to investigate consumer-side validation/processing failures without DB access."
+    ),
 )
 async def list_consumer_dlq_events(
     limit: int = Query(default=100, ge=1, le=500),
@@ -446,7 +468,11 @@ async def list_consumer_dlq_events(
     status_code=status.HTTP_200_OK,
     tags=["Ingestion Operations"],
     summary="Get ingestion operations control mode",
-    description="Returns current ingestion mode (normal/paused/drain) and retry replay window.",
+    description=(
+        "What: Return current ingestion control mode and replay window.\n"
+        "How: Read canonical ingestion operations control state.\n"
+        "When: Use before maintenance, pause/drain actions, or controlled replay operations."
+    ),
 )
 async def get_ingestion_ops_control(
     ingestion_job_service: IngestionJobService = Depends(get_ingestion_job_service),
@@ -460,7 +486,11 @@ async def get_ingestion_ops_control(
     status_code=status.HTTP_200_OK,
     tags=["Ingestion Operations"],
     summary="Update ingestion operations control mode",
-    description="Updates ingestion mode and optional replay window for runbook operations.",
+    description=(
+        "What: Update ingestion control mode and optional replay window.\n"
+        "How: Persist operational mode transition with validation on replay window boundaries.\n"
+        "When: Use for planned maintenance, controlled drain, or replay governance actions."
+    ),
 )
 async def update_ingestion_ops_control(
     update_request: IngestionOpsModeUpdateRequest,

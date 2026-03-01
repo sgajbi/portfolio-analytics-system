@@ -169,6 +169,12 @@ To run the full local quality gate (lint + mypy + combined coverage gate):
 make ci-local
 ```
 
+To enforce ingestion endpoint documentation contract (`What/How/When` in OpenAPI descriptions):
+
+```bash
+make ingestion-contract-gate
+```
+
 To run architecture boundary checks:
 
 ```bash
