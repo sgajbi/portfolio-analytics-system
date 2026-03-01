@@ -33,7 +33,15 @@ class CheckResult:
 
 
 def _run(cmd: list[str], cwd: Path) -> None:
-    completed = subprocess.run(cmd, cwd=cwd, check=False, capture_output=True, text=True)
+    completed = subprocess.run(
+        cmd,
+        cwd=cwd,
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
     if completed.returncode != 0:
         print(f"Command failed ({completed.returncode}): {' '.join(cmd)}", file=sys.stderr)
         if completed.stdout:
@@ -41,6 +49,24 @@ def _run(cmd: list[str], cwd: Path) -> None:
         if completed.stderr:
             print(completed.stderr, file=sys.stderr)
         raise RuntimeError("command failed")
+
+
+def _compose_up_with_retry(*, compose_file: str, repo_root: Path, build: bool) -> None:
+    up_cmd = ["docker", "compose", "-f", compose_file, "up", "-d"]
+    if build:
+        up_cmd.append("--build")
+
+    attempts = 2
+    for attempt in range(1, attempts + 1):
+        try:
+            _run(up_cmd, cwd=repo_root)
+            return
+        except RuntimeError:
+            if attempt == attempts:
+                raise
+            # Handle transient Kafka/ZK startup races by recycling containers once.
+            _run(["docker", "compose", "-f", compose_file, "down"], cwd=repo_root)
+            time.sleep(5)
 
 
 def _call(
@@ -186,10 +212,7 @@ def main() -> int:
     if not args.skip_compose:
         if args.reset_volumes:
             _run(["docker", "compose", "-f", compose_file, "down", "-v"], cwd=repo_root)
-        up_cmd = ["docker", "compose", "-f", compose_file, "up", "-d"]
-        if args.build:
-            up_cmd.append("--build")
-        _run(up_cmd, cwd=repo_root)
+        _compose_up_with_retry(compose_file=compose_file, repo_root=repo_root, build=args.build)
 
     _wait_ready(args.ingestion_base_url, args.ready_timeout_seconds)
     _wait_ready(args.query_base_url, args.ready_timeout_seconds)
