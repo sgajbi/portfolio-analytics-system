@@ -5,9 +5,7 @@ from app.adapter_mode import require_portfolio_bundle_adapter_enabled
 from app.DTOs.ingestion_ack_dto import BatchIngestionAcceptedResponse
 from app.DTOs.portfolio_bundle_dto import PortfolioBundleIngestionRequest
 from app.ops_controls import enforce_ingestion_write_rate_limit
-from app.request_metadata import (
-    IdempotencyKeyHeader,
-    create_ingestion_job_id,
+from app.request_metadata import (    create_ingestion_job_id,
     get_request_lineage,
     resolve_idempotency_key,
 )
@@ -43,13 +41,11 @@ router = APIRouter()
 )
 async def ingest_portfolio_bundle(
     request: PortfolioBundleIngestionRequest,
-    http_request: Request,
-    idempotency_key_header: IdempotencyKeyHeader = None,
-    _: None = Depends(require_portfolio_bundle_adapter_enabled),
+    http_request: Request,    _: None = Depends(require_portfolio_bundle_adapter_enabled),
     ingestion_service: IngestionService = Depends(get_ingestion_service),
     ingestion_job_service: IngestionJobService = Depends(get_ingestion_job_service),
 ):
-    idempotency_key = idempotency_key_header or resolve_idempotency_key(http_request)
+    idempotency_key = resolve_idempotency_key(http_request)
     try:
         await ingestion_job_service.assert_ingestion_writable()
     except PermissionError as exc:
@@ -131,3 +127,4 @@ async def ingest_portfolio_bundle(
         accepted_count=accepted_count,
         idempotency_key=idempotency_key,
     )
+

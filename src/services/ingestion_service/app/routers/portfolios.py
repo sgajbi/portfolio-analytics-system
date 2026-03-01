@@ -4,9 +4,7 @@ from app.ack_response import build_batch_ack
 from app.DTOs.ingestion_ack_dto import BatchIngestionAcceptedResponse
 from app.DTOs.portfolio_dto import PortfolioIngestionRequest
 from app.ops_controls import enforce_ingestion_write_rate_limit
-from app.request_metadata import (
-    IdempotencyKeyHeader,
-    create_ingestion_job_id,
+from app.request_metadata import (    create_ingestion_job_id,
     get_request_lineage,
     resolve_idempotency_key,
 )
@@ -36,12 +34,10 @@ router = APIRouter()
 )
 async def ingest_portfolios(
     request: PortfolioIngestionRequest,
-    http_request: Request,
-    idempotency_key_header: IdempotencyKeyHeader = None,
-    ingestion_service: IngestionService = Depends(get_ingestion_service),
+    http_request: Request,    ingestion_service: IngestionService = Depends(get_ingestion_service),
     ingestion_job_service: IngestionJobService = Depends(get_ingestion_job_service),
 ):
-    idempotency_key = idempotency_key_header or resolve_idempotency_key(http_request)
+    idempotency_key = resolve_idempotency_key(http_request)
     try:
         await ingestion_job_service.assert_ingestion_writable()
     except PermissionError as exc:
@@ -109,3 +105,4 @@ async def ingest_portfolios(
         accepted_count=num_portfolios,
         idempotency_key=idempotency_key,
     )
+

@@ -209,15 +209,15 @@ async def get_ingestion_job(
     ),
 )
 async def list_ingestion_jobs(
-    status_filter: str | None = Query(default=None, alias="status"),
+    status: str | None = Query(default=None),
     entity_type: str | None = Query(default=None),
-    submitted_from: datetime | None = Query(default=None, alias="from"),
-    submitted_to: datetime | None = Query(default=None, alias="to"),
+    submitted_from: datetime | None = Query(default=None),
+    submitted_to: datetime | None = Query(default=None),
     cursor: str | None = Query(default=None),
     limit: int = Query(default=100, ge=1, le=500),
     ingestion_job_service: IngestionJobService = Depends(get_ingestion_job_service),
 ):
-    status_value = status_filter if status_filter in {"accepted", "queued", "failed"} else None
+    status_value = status if status in {"accepted", "queued", "failed"} else None
     jobs, next_cursor = await ingestion_job_service.list_jobs(
         status=status_value,
         entity_type=entity_type,
