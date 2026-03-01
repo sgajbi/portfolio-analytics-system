@@ -53,3 +53,21 @@ groups:
 - Ingestion mode state (`normal=0`, `paused=1`, `drain=2`).
 - Backlog age trend and backlog size (`accepted + queued`).
 - Consumer DLQ events by original topic and consumer group.
+
+## Operational API Surfaces
+
+- `GET /ingestion/health/summary`
+- `GET /ingestion/health/lag`
+- `GET /ingestion/health/slo`
+- `GET /ingestion/health/backlog-breakdown`
+- `GET /ingestion/health/stalled-jobs`
+- `GET /ingestion/dlq/consumer-events`
+- `GET /ingestion/ops/control`
+- `PUT /ingestion/ops/control`
+
+## Triage Workflow
+
+- Start with `/ingestion/health/slo` to confirm threshold breaches.
+- Use `/ingestion/health/backlog-breakdown` to isolate the worst endpoint/entity group.
+- Use `/ingestion/health/stalled-jobs` to identify the oldest impacted jobs and act on the suggested actions.
+- Validate consumer fault patterns via `/ingestion/dlq/consumer-events`.

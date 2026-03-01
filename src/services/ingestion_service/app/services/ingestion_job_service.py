@@ -7,6 +7,8 @@ from typing import Any
 from uuid import uuid4
 
 from app.DTOs.ingestion_job_dto import (
+    IngestionBacklogBreakdownItemResponse,
+    IngestionBacklogBreakdownResponse,
     ConsumerDlqEventResponse,
     IngestionHealthSummaryResponse,
     IngestionJobFailureResponse,
@@ -14,6 +16,8 @@ from app.DTOs.ingestion_job_dto import (
     IngestionJobStatus,
     IngestionOpsModeResponse,
     IngestionSloStatusResponse,
+    IngestionStalledJobListResponse,
+    IngestionStalledJobResponse,
 )
 from portfolio_common.database_models import ConsumerDlqEvent as DBConsumerDlqEvent
 from portfolio_common.database_models import IngestionJob as DBIngestionJob
@@ -394,6 +398,152 @@ class IngestionJobService:
             breach_failure_rate=False,
             breach_queue_latency=False,
             breach_backlog_age=False,
+        )
+
+    async def get_backlog_breakdown(
+        self,
+        *,
+        lookback_minutes: int = 1440,
+        limit: int = 200,
+    ) -> IngestionBacklogBreakdownResponse:
+        async for db in get_async_db_session():
+            since = datetime.now(UTC) - timedelta(minutes=lookback_minutes)
+            jobs = (
+                await db.scalars(
+                    select(DBIngestionJob)
+                    .where(DBIngestionJob.submitted_at >= since)
+                    .order_by(desc(DBIngestionJob.submitted_at))
+                )
+            ).all()
+
+            grouped: dict[tuple[str, str], dict[str, Any]] = {}
+            now_utc = datetime.now(UTC)
+            for job in jobs:
+                key = (job.endpoint, job.entity_type)
+                state = grouped.setdefault(
+                    key,
+                    {
+                        "total": 0,
+                        "accepted": 0,
+                        "queued": 0,
+                        "failed": 0,
+                        "oldest_backlog_submitted_at": None,
+                    },
+                )
+                state["total"] += 1
+                if job.status == "accepted":
+                    state["accepted"] += 1
+                elif job.status == "queued":
+                    state["queued"] += 1
+                elif job.status == "failed":
+                    state["failed"] += 1
+
+                if job.status in {"accepted", "queued"}:
+                    oldest = state["oldest_backlog_submitted_at"]
+                    if oldest is None or job.submitted_at < oldest:
+                        state["oldest_backlog_submitted_at"] = job.submitted_at
+
+            rows: list[IngestionBacklogBreakdownItemResponse] = []
+            for (endpoint, entity_type), state in grouped.items():
+                backlog_jobs = int(state["accepted"] + state["queued"])
+                oldest_backlog_submitted_at = state["oldest_backlog_submitted_at"]
+                oldest_backlog_age_seconds = (
+                    float((now_utc - oldest_backlog_submitted_at).total_seconds())
+                    if oldest_backlog_submitted_at is not None
+                    else 0.0
+                )
+                total_jobs = int(state["total"])
+                failed_jobs = int(state["failed"])
+                failure_rate = (
+                    Decimal(failed_jobs) / Decimal(total_jobs)
+                    if total_jobs
+                    else Decimal("0")
+                )
+                rows.append(
+                    IngestionBacklogBreakdownItemResponse(
+                        endpoint=endpoint,
+                        entity_type=entity_type,
+                        total_jobs=total_jobs,
+                        accepted_jobs=int(state["accepted"]),
+                        queued_jobs=int(state["queued"]),
+                        failed_jobs=failed_jobs,
+                        backlog_jobs=backlog_jobs,
+                        oldest_backlog_submitted_at=oldest_backlog_submitted_at,
+                        oldest_backlog_age_seconds=oldest_backlog_age_seconds,
+                        failure_rate=failure_rate,
+                    )
+                )
+
+            rows = sorted(
+                rows,
+                key=lambda item: (item.backlog_jobs, item.oldest_backlog_age_seconds),
+                reverse=True,
+            )[:limit]
+
+            return IngestionBacklogBreakdownResponse(
+                lookback_minutes=lookback_minutes,
+                total_backlog_jobs=sum(item.backlog_jobs for item in rows),
+                groups=rows,
+            )
+
+        return IngestionBacklogBreakdownResponse(
+            lookback_minutes=lookback_minutes,
+            total_backlog_jobs=0,
+            groups=[],
+        )
+
+    async def list_stalled_jobs(
+        self,
+        *,
+        threshold_seconds: int = 300,
+        limit: int = 100,
+    ) -> IngestionStalledJobListResponse:
+        async for db in get_async_db_session():
+            cutoff = datetime.now(UTC) - timedelta(seconds=threshold_seconds)
+            rows = (
+                await db.scalars(
+                    select(DBIngestionJob)
+                    .where(
+                        and_(
+                            DBIngestionJob.status.in_(["accepted", "queued"]),
+                            DBIngestionJob.submitted_at <= cutoff,
+                        )
+                    )
+                    .order_by(DBIngestionJob.submitted_at.asc())
+                    .limit(limit)
+                )
+            ).all()
+            now_utc = datetime.now(UTC)
+            jobs: list[IngestionStalledJobResponse] = []
+            for row in rows:
+                queue_age_seconds = float((now_utc - row.submitted_at).total_seconds())
+                suggested_action = (
+                    "Investigate consumer lag and retry this job once root cause is resolved."
+                    if row.status == "accepted"
+                    else "Inspect downstream processing bottlenecks and verify queued job drain progress."
+                )
+                jobs.append(
+                    IngestionStalledJobResponse(
+                        job_id=row.job_id,
+                        endpoint=row.endpoint,
+                        entity_type=row.entity_type,
+                        status=row.status,  # type: ignore[arg-type]
+                        submitted_at=row.submitted_at,
+                        queue_age_seconds=queue_age_seconds,
+                        retry_count=row.retry_count,
+                        suggested_action=suggested_action,
+                    )
+                )
+            return IngestionStalledJobListResponse(
+                threshold_seconds=threshold_seconds,
+                total=len(jobs),
+                jobs=jobs,
+            )
+
+        return IngestionStalledJobListResponse(
+            threshold_seconds=threshold_seconds,
+            total=0,
+            jobs=[],
         )
 
     async def list_consumer_dlq_events(
