@@ -86,6 +86,7 @@ jobs:
           - suite: unit-db
           - suite: integration-lite
           - suite: buy-rfc
+          - suite: sell-rfc
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4

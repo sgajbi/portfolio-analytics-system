@@ -20,7 +20,7 @@ from portfolio_common.exceptions import RetryableConsumerError
 from portfolio_common.idempotency_repository import IdempotencyRepository
 from portfolio_common.kafka_consumer import BaseConsumer
 from portfolio_common.logging_utils import correlation_id_var
-from portfolio_common.monitoring import BUY_LIFECYCLE_STAGE_TOTAL
+from portfolio_common.monitoring import BUY_LIFECYCLE_STAGE_TOTAL, SELL_LIFECYCLE_STAGE_TOTAL
 from portfolio_common.outbox_repository import OutboxRepository
 from portfolio_common.transaction_domain import enrich_sell_transaction_metadata
 from pydantic import ValidationError
@@ -78,6 +78,14 @@ class CostCalculatorConsumer(BaseConsumer):
             cost_calculator=cost_calculator,
             error_reporter=error_reporter,
         )
+
+    @staticmethod
+    def _record_lifecycle_stage(transaction_type: str, stage: str, status: str) -> None:
+        normalized_type = (transaction_type or "").upper()
+        if normalized_type == "BUY":
+            BUY_LIFECYCLE_STAGE_TOTAL.labels(stage, status).inc()
+        if normalized_type == "SELL":
+            SELL_LIFECYCLE_STAGE_TOTAL.labels(stage, status).inc()
 
     def _transform_event_for_engine(self, event: TransactionEvent) -> dict:
         """
@@ -200,27 +208,49 @@ class CostCalculatorConsumer(BaseConsumer):
                     ]
 
                     for p_txn in processed_new:
-                        BUY_LIFECYCLE_STAGE_TOTAL.labels(
-                            "persist_transaction_costs", "attempt"
-                        ).inc()
+                        self._record_lifecycle_stage(
+                            p_txn.transaction_type, "persist_transaction_costs", "attempt"
+                        )
                         updated_txn = await repo.update_transaction_costs(p_txn)
-                        BUY_LIFECYCLE_STAGE_TOTAL.labels(
-                            "persist_transaction_costs", "success"
-                        ).inc()
+                        self._record_lifecycle_stage(
+                            p_txn.transaction_type, "persist_transaction_costs", "success"
+                        )
 
                         if p_txn.transaction_type == "BUY":
-                            BUY_LIFECYCLE_STAGE_TOTAL.labels("persist_lot_state", "attempt").inc()
+                            self._record_lifecycle_stage(
+                                p_txn.transaction_type, "persist_lot_state", "attempt"
+                            )
                             await repo.upsert_buy_lot_state(p_txn)
-                            BUY_LIFECYCLE_STAGE_TOTAL.labels("persist_lot_state", "success").inc()
-                            BUY_LIFECYCLE_STAGE_TOTAL.labels(
-                                "persist_accrued_offset_state", "attempt"
-                            ).inc()
+                            self._record_lifecycle_stage(
+                                p_txn.transaction_type, "persist_lot_state", "success"
+                            )
+                            self._record_lifecycle_stage(
+                                p_txn.transaction_type, "persist_accrued_offset_state", "attempt"
+                            )
                             await repo.upsert_accrued_income_offset_state(p_txn)
-                            BUY_LIFECYCLE_STAGE_TOTAL.labels(
-                                "persist_accrued_offset_state", "success"
-                            ).inc()
+                            self._record_lifecycle_stage(
+                                p_txn.transaction_type, "persist_accrued_offset_state", "success"
+                            )
                             logger.info(
                                 "buy_state_persisted",
+                                extra={
+                                    "transaction_id": p_txn.transaction_id,
+                                    "economic_event_id": getattr(p_txn, "economic_event_id", None),
+                                    "linked_transaction_group_id": getattr(
+                                        p_txn, "linked_transaction_group_id", None
+                                    ),
+                                    "calculation_policy_id": getattr(
+                                        p_txn, "calculation_policy_id", None
+                                    ),
+                                    "calculation_policy_version": getattr(
+                                        p_txn, "calculation_policy_version", None
+                                    ),
+                                },
+                            )
+
+                        if p_txn.transaction_type == "SELL":
+                            logger.info(
+                                "sell_state_persisted",
                                 extra={
                                     "transaction_id": p_txn.transaction_id,
                                     "economic_event_id": getattr(p_txn, "economic_event_id", None),
@@ -254,7 +284,9 @@ class CostCalculatorConsumer(BaseConsumer):
                             payload=full_event_to_publish.model_dump(mode="json"),
                             correlation_id=correlation_id,
                         )
-                        BUY_LIFECYCLE_STAGE_TOTAL.labels("emit_outbox", "success").inc()
+                        self._record_lifecycle_stage(
+                            p_txn.transaction_type, "emit_outbox", "success"
+                        )
 
                     await idempotency_repo.mark_event_processed(
                         event_id, event.portfolio_id, SERVICE_NAME, correlation_id
@@ -267,16 +299,22 @@ class CostCalculatorConsumer(BaseConsumer):
             # Missing FX is a temporal dependency issue. Defer the message so Kafka can redeliver
             # after additional FX events are persisted instead of DLQing the transaction.
             BUY_LIFECYCLE_STAGE_TOTAL.labels("process_message", "retryable_error").inc()
+            if getattr(event, "transaction_type", "").upper() == "SELL":
+                SELL_LIFECYCLE_STAGE_TOTAL.labels("process_message", "retryable_error").inc()
             logger.warning(
                 "FX dependency not available yet; deferring message without DLQ.", exc_info=True
             )
             raise RetryableConsumerError(str(e))
         except (DBAPIError, IntegrityError, PortfolioNotFoundError):
             BUY_LIFECYCLE_STAGE_TOTAL.labels("process_message", "retryable_error").inc()
+            if getattr(event, "transaction_type", "").upper() == "SELL":
+                SELL_LIFECYCLE_STAGE_TOTAL.labels("process_message", "retryable_error").inc()
             logger.warning("DB or data availability error; will retry...", exc_info=True)
             raise
         except Exception as e:
             BUY_LIFECYCLE_STAGE_TOTAL.labels("process_message", "failed").inc()
+            if getattr(event, "transaction_type", "").upper() == "SELL":
+                SELL_LIFECYCLE_STAGE_TOTAL.labels("process_message", "failed").inc()
             transaction_id = getattr(event, "transaction_id", "UNKNOWN")
             logger.error(
                 f"Unexpected error processing transaction {transaction_id}. Sending to DLQ.",

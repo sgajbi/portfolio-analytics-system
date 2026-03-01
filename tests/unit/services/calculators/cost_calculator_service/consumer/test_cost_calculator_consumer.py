@@ -193,22 +193,13 @@ async def test_consumer_integration_with_engine(
     assert isinstance(updated_transaction_arg, EngineTransaction)
     assert updated_transaction_arg.realized_gain_loss == Decimal("250.0")
     assert updated_transaction_arg.economic_event_id == "EVT-SELL-PORT_COST_01-SELL01"
-    assert (
-        updated_transaction_arg.linked_transaction_group_id
-        == "LTG-SELL-PORT_COST_01-SELL01"
-    )
+    assert updated_transaction_arg.linked_transaction_group_id == "LTG-SELL-PORT_COST_01-SELL01"
     assert updated_transaction_arg.calculation_policy_id == SELL_FIFO_POLICY_ID
-    assert (
-        updated_transaction_arg.calculation_policy_version
-        == SELL_DEFAULT_POLICY_VERSION
-    )
+    assert updated_transaction_arg.calculation_policy_version == SELL_DEFAULT_POLICY_VERSION
     mock_outbox_repo.create_outbox_event.assert_called_once()
     payload = mock_outbox_repo.create_outbox_event.call_args.kwargs["payload"]
     assert payload["economic_event_id"] == "EVT-SELL-PORT_COST_01-SELL01"
-    assert (
-        payload["linked_transaction_group_id"]
-        == "LTG-SELL-PORT_COST_01-SELL01"
-    )
+    assert payload["linked_transaction_group_id"] == "LTG-SELL-PORT_COST_01-SELL01"
     mock_repo.upsert_buy_lot_state.assert_not_called()
     mock_repo.upsert_accrued_income_offset_state.assert_not_called()
     mock_idempotency_repo.mark_event_processed.assert_called_once()
@@ -401,10 +392,7 @@ async def test_consumer_assigns_avco_sell_policy_metadata(
 
     updated_transaction_arg = mock_repo.update_transaction_costs.call_args[0][0]
     assert updated_transaction_arg.calculation_policy_id == SELL_AVCO_POLICY_ID
-    assert (
-        updated_transaction_arg.calculation_policy_version
-        == SELL_DEFAULT_POLICY_VERSION
-    )
+    assert updated_transaction_arg.calculation_policy_version == SELL_DEFAULT_POLICY_VERSION
 
 
 async def test_consumer_defer_when_fx_rate_missing(
@@ -437,3 +425,59 @@ async def test_consumer_defer_when_fx_rate_missing(
         await cost_calculator_consumer.process_message(mock_buy_kafka_message)
 
     cost_calculator_consumer._send_to_dlq_async.assert_not_awaited()
+
+
+async def test_consumer_emits_sell_lifecycle_metrics(
+    cost_calculator_consumer: CostCalculatorConsumer,
+    mock_sell_kafka_message: MagicMock,
+    mock_dependencies,
+):
+    mock_repo = mock_dependencies["repo"]
+    mock_idempotency_repo = mock_dependencies["idempotency_repo"]
+
+    buy_history = DBTransaction(
+        transaction_id="BUY01",
+        portfolio_id="PORT_COST_01",
+        security_id="SEC_COST_01",
+        instrument_id="AAPL",
+        transaction_type="BUY",
+        transaction_date=datetime(2025, 1, 10),
+        quantity=Decimal("10"),
+        price=Decimal("150.0"),
+        gross_transaction_amount=Decimal("1500.0"),
+        trade_currency="USD",
+        currency="USD",
+        net_cost=Decimal("1500"),
+        net_cost_local=Decimal("1500"),
+        transaction_fx_rate=Decimal("1.0"),
+        trade_fee=Decimal("0.0"),
+    )
+    mock_idempotency_repo.is_event_processed.return_value = False
+    mock_repo.get_transaction_history.return_value = [buy_history]
+    mock_repo.get_portfolio.return_value = Portfolio(
+        base_currency="USD", portfolio_id="PORT_COST_01"
+    )
+    mock_repo.get_fx_rate.return_value = None
+    mock_repo.update_transaction_costs.side_effect = lambda arg: arg
+
+    sell_counter = MagicMock()
+    sell_counter.labels.return_value = MagicMock(inc=MagicMock())
+    buy_counter = MagicMock()
+    buy_counter.labels.return_value = MagicMock(inc=MagicMock())
+
+    with (
+        patch(
+            "src.services.calculators.cost_calculator_service.app.consumer.SELL_LIFECYCLE_STAGE_TOTAL",
+            sell_counter,
+        ),
+        patch(
+            "src.services.calculators.cost_calculator_service.app.consumer.BUY_LIFECYCLE_STAGE_TOTAL",
+            buy_counter,
+        ),
+    ):
+        await cost_calculator_consumer.process_message(mock_sell_kafka_message)
+
+    stage_calls = {(args[0], args[1]) for args, _ in sell_counter.labels.call_args_list}
+    assert ("persist_transaction_costs", "attempt") in stage_calls
+    assert ("persist_transaction_costs", "success") in stage_calls
+    assert ("emit_outbox", "success") in stage_calls

@@ -34,6 +34,7 @@ from .routers import (
     portfolios,
     positions,
     prices,
+    sell_state,
     simulation,
     transactions,
 )
@@ -181,6 +182,7 @@ app.include_router(health_router)
 app.include_router(portfolios.router)
 app.include_router(positions.router)
 app.include_router(buy_state.router)
+app.include_router(sell_state.router)
 app.include_router(transactions.router)
 app.include_router(instruments.router)
 app.include_router(prices.router)
