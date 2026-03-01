@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Depends, Query
 from typing import cast
+
+from fastapi import APIRouter, Depends, Query
 
 from ..dtos.capabilities_dto import ConsumerSystem, IntegrationCapabilitiesResponse
 from ..services.capabilities_service import CapabilitiesService
 
-router = APIRouter(prefix="/integration", tags=["Integration"])
+router = APIRouter(prefix="/integration", tags=["Integration Contracts"])
 
 
 def get_capabilities_service() -> CapabilitiesService:
@@ -16,8 +17,11 @@ def get_capabilities_service() -> CapabilitiesService:
     response_model=IntegrationCapabilitiesResponse,
     summary="Get lotus-core Integration Capabilities",
     description=(
-        "Returns backend-governed lotus-core capability and workflow flags for a consumer system "
-        "and tenant context. Intended for lotus-gateway/UI and lotus-manage feature control."
+        "What: Return policy-resolved integration capabilities for a consumer and tenant context.\n"
+        "How: Applies environment and tenant-policy overrides, then derives workflow states from "
+        "canonical feature dependencies.\n"
+        "When: Used by downstream services and UI clients to enable only supported lotus-core "
+        "integration paths."
     ),
 )
 async def get_integration_capabilities(
@@ -37,4 +41,3 @@ async def get_integration_capabilities(
         tenant_id=tenant_id,
     )
     return cast(IntegrationCapabilitiesResponse, response)
-

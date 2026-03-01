@@ -113,3 +113,16 @@ def test_capabilities_ignores_invalid_tenant_entries_and_non_dict_workflow_overr
     workflow_map = {workflow.workflow_key: workflow.enabled for workflow in response.workflows}
     assert response.policy_version == "tenant-x-v1"
     assert workflow_map["portfolio_bulk_onboarding"] is True
+
+
+def test_capabilities_workflow_required_features_are_canonical() -> None:
+    service = CapabilitiesService()
+    response = service.get_integration_capabilities(
+        consumer_system="lotus-gateway",
+        tenant_id="default",
+    )
+
+    feature_keys = {feature.key for feature in response.features}
+    for workflow in response.workflows:
+        assert workflow.required_features
+        assert set(workflow.required_features).issubset(feature_keys)
