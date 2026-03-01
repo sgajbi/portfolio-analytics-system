@@ -15,7 +15,9 @@ from core.enums.transaction_type import TransactionType
 
 @pytest.fixture
 def mock_disposition_engine():
-    return MagicMock(spec=DispositionEngine)
+    mock = MagicMock(spec=DispositionEngine)
+    mock.get_available_quantity.return_value = Decimal("1000000")
+    return mock
 
 @pytest.fixture
 def error_reporter():
@@ -170,6 +172,29 @@ def test_sell_strategy_rejects_non_positive_consumed_quantity(
     cost_calculator.calculate_transaction_costs(sell_transaction)
 
     assert error_reporter.has_errors_for("SELL001")
+
+
+def test_sell_strategy_blocks_oversold_under_strict_policy(
+    cost_calculator, mock_disposition_engine, error_reporter, sell_transaction
+):
+    mock_disposition_engine.get_available_quantity.return_value = Decimal("3")
+
+    cost_calculator.calculate_transaction_costs(sell_transaction)
+
+    assert error_reporter.has_errors_for("SELL001")
+    mock_disposition_engine.consume_sell_quantity.assert_not_called()
+
+
+def test_sell_strategy_reports_unsupported_oversold_policy(
+    cost_calculator, mock_disposition_engine, error_reporter, sell_transaction
+):
+    sell_transaction.calculation_policy_id = "SELL_ALLOW_OVERSOLD_POLICY"
+    mock_disposition_engine.get_available_quantity.return_value = Decimal("3")
+
+    cost_calculator.calculate_transaction_costs(sell_transaction)
+
+    assert error_reporter.has_errors_for("SELL001")
+    mock_disposition_engine.consume_sell_quantity.assert_not_called()
 
 
 def test_sell_strategy_multi_lot_fifo():

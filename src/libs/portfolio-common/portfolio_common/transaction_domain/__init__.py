@@ -15,7 +15,8 @@ from .sell_validation import (
 )
 from .sell_reason_codes import SellValidationReasonCode
 from .sell_linkage import (
-    SELL_DEFAULT_POLICY_ID,
+    SELL_AVCO_POLICY_ID,
+    SELL_FIFO_POLICY_ID,
     SELL_DEFAULT_POLICY_VERSION,
     enrich_sell_transaction_metadata,
 )
@@ -31,7 +32,8 @@ __all__ = [
     "SellValidationIssue",
     "SellValidationReasonCode",
     "validate_sell_transaction",
-    "SELL_DEFAULT_POLICY_ID",
+    "SELL_AVCO_POLICY_ID",
+    "SELL_FIFO_POLICY_ID",
     "SELL_DEFAULT_POLICY_VERSION",
     "enrich_sell_transaction_metadata",
 ]

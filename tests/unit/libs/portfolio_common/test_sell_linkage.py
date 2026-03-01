@@ -3,7 +3,8 @@ from decimal import Decimal
 
 from portfolio_common.events import TransactionEvent
 from portfolio_common.transaction_domain import (
-    SELL_DEFAULT_POLICY_ID,
+    SELL_AVCO_POLICY_ID,
+    SELL_FIFO_POLICY_ID,
     SELL_DEFAULT_POLICY_VERSION,
     enrich_sell_transaction_metadata,
 )
@@ -32,7 +33,7 @@ def test_enrich_sell_metadata_populates_defaults() -> None:
         enriched.linked_transaction_group_id
         == "LTG-SELL-PORT-LINK-001-SELL-LINK-001"
     )
-    assert enriched.calculation_policy_id == SELL_DEFAULT_POLICY_ID
+    assert enriched.calculation_policy_id == SELL_FIFO_POLICY_ID
     assert enriched.calculation_policy_version == SELL_DEFAULT_POLICY_VERSION
 
 
@@ -50,3 +51,9 @@ def test_enrich_sell_metadata_preserves_upstream_values() -> None:
     assert enriched.linked_transaction_group_id == "LTG-UPSTREAM-001"
     assert enriched.calculation_policy_id == "SELL_SPECIAL_POLICY"
     assert enriched.calculation_policy_version == "2.1.0"
+
+
+def test_enrich_sell_metadata_uses_avco_policy_when_requested() -> None:
+    enriched = enrich_sell_transaction_metadata(_sell_event(), cost_basis_method="AVCO")
+    assert enriched.calculation_policy_id == SELL_AVCO_POLICY_ID
+    assert enriched.calculation_policy_version == SELL_DEFAULT_POLICY_VERSION

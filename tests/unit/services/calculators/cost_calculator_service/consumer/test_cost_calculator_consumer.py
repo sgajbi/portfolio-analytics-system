@@ -19,7 +19,8 @@ from src.services.calculators.cost_calculator_service.app.consumer import (
     PortfolioNotFoundError,
 )
 from portfolio_common.transaction_domain import (
-    SELL_DEFAULT_POLICY_ID,
+    SELL_AVCO_POLICY_ID,
+    SELL_FIFO_POLICY_ID,
     SELL_DEFAULT_POLICY_VERSION,
 )
 from src.services.calculators.cost_calculator_service.app.repository import CostCalculatorRepository
@@ -196,10 +197,17 @@ async def test_consumer_integration_with_engine(
         updated_transaction_arg.linked_transaction_group_id
         == "LTG-SELL-PORT_COST_01-SELL01"
     )
-    assert updated_transaction_arg.calculation_policy_id == SELL_DEFAULT_POLICY_ID
+    assert updated_transaction_arg.calculation_policy_id == SELL_FIFO_POLICY_ID
     assert (
         updated_transaction_arg.calculation_policy_version
         == SELL_DEFAULT_POLICY_VERSION
+    )
+    mock_outbox_repo.create_outbox_event.assert_called_once()
+    payload = mock_outbox_repo.create_outbox_event.call_args.kwargs["payload"]
+    assert payload["economic_event_id"] == "EVT-SELL-PORT_COST_01-SELL01"
+    assert (
+        payload["linked_transaction_group_id"]
+        == "LTG-SELL-PORT_COST_01-SELL01"
     )
     mock_repo.upsert_buy_lot_state.assert_not_called()
     mock_repo.upsert_accrued_income_offset_state.assert_not_called()
@@ -354,6 +362,49 @@ async def test_consumer_selects_avco_strategy_for_portfolio(
         # ASSERT
         mock_avco.assert_called_once()
         mock_fifo.assert_not_called()
+
+
+async def test_consumer_assigns_avco_sell_policy_metadata(
+    cost_calculator_consumer: CostCalculatorConsumer,
+    mock_sell_kafka_message: MagicMock,
+    mock_dependencies,
+):
+    mock_repo = mock_dependencies["repo"]
+    mock_idempotency_repo = mock_dependencies["idempotency_repo"]
+
+    mock_idempotency_repo.is_event_processed.return_value = False
+    buy_history = DBTransaction(
+        transaction_id="BUY_AVCO_01",
+        portfolio_id="PORT_COST_01",
+        security_id="SEC_COST_01",
+        instrument_id="AAPL",
+        transaction_type="BUY",
+        transaction_date=datetime(2025, 1, 10),
+        quantity=Decimal("20"),
+        price=Decimal("150.0"),
+        gross_transaction_amount=Decimal("3000.0"),
+        trade_currency="USD",
+        currency="USD",
+        net_cost=Decimal("3000"),
+        net_cost_local=Decimal("3000"),
+        transaction_fx_rate=Decimal("1.0"),
+        trade_fee=Decimal("0.0"),
+    )
+    mock_repo.get_transaction_history.return_value = [buy_history]
+    mock_repo.get_portfolio.return_value = Portfolio(
+        base_currency="USD", portfolio_id="PORT_COST_01", cost_basis_method="AVCO"
+    )
+    mock_repo.get_fx_rate.return_value = None
+    mock_repo.update_transaction_costs.side_effect = lambda arg: arg
+
+    await cost_calculator_consumer.process_message(mock_sell_kafka_message)
+
+    updated_transaction_arg = mock_repo.update_transaction_costs.call_args[0][0]
+    assert updated_transaction_arg.calculation_policy_id == SELL_AVCO_POLICY_ID
+    assert (
+        updated_transaction_arg.calculation_policy_version
+        == SELL_DEFAULT_POLICY_VERSION
+    )
 
 
 async def test_consumer_defer_when_fx_rate_missing(
