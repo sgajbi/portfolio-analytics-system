@@ -1,6 +1,6 @@
 from typing import cast
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from portfolio_common.db import get_async_db_session
@@ -166,9 +166,12 @@ async def resolve_portfolio_benchmark_assignment(
     request: BenchmarkAssignmentRequest,
     integration_service: IntegrationService = Depends(get_integration_service),
 ) -> BenchmarkAssignmentResponse:
-    response = await integration_service.resolve_benchmark_assignment(
+    response = cast(
+        BenchmarkAssignmentResponse | None,
+        await integration_service.resolve_benchmark_assignment(
         portfolio_id=portfolio_id,
         as_of_date=request.as_of_date,
+    ),
     )
     if response is None:
         raise HTTPException(
@@ -194,7 +197,10 @@ async def fetch_benchmark_definition(
     request: BenchmarkDefinitionRequest,
     integration_service: IntegrationService = Depends(get_integration_service),
 ) -> BenchmarkDefinitionResponse:
-    response = await integration_service.get_benchmark_definition(benchmark_id, request.as_of_date)
+    response = cast(
+        BenchmarkDefinitionResponse | None,
+        await integration_service.get_benchmark_definition(benchmark_id, request.as_of_date),
+    )
     if response is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -217,11 +223,14 @@ async def fetch_benchmark_catalog(
     request: BenchmarkCatalogRequest,
     integration_service: IntegrationService = Depends(get_integration_service),
 ) -> BenchmarkCatalogResponse:
-    return await integration_service.list_benchmark_catalog(
-        as_of_date=request.as_of_date,
-        benchmark_type=request.benchmark_type,
-        benchmark_currency=request.benchmark_currency,
-        benchmark_status=request.benchmark_status,
+    return cast(
+        BenchmarkCatalogResponse,
+        await integration_service.list_benchmark_catalog(
+            as_of_date=request.as_of_date,
+            benchmark_type=request.benchmark_type,
+            benchmark_currency=request.benchmark_currency,
+            benchmark_status=request.benchmark_status,
+        ),
     )
 
 
@@ -239,11 +248,14 @@ async def fetch_index_catalog(
     request: IndexCatalogRequest,
     integration_service: IntegrationService = Depends(get_integration_service),
 ) -> IndexCatalogResponse:
-    return await integration_service.list_index_catalog(
-        as_of_date=request.as_of_date,
-        index_currency=request.index_currency,
-        index_type=request.index_type,
-        index_status=request.index_status,
+    return cast(
+        IndexCatalogResponse,
+        await integration_service.list_index_catalog(
+            as_of_date=request.as_of_date,
+            index_currency=request.index_currency,
+            index_type=request.index_type,
+            index_status=request.index_status,
+        ),
     )
 
 
@@ -262,7 +274,12 @@ async def fetch_benchmark_market_series(
     request: BenchmarkMarketSeriesRequest,
     integration_service: IntegrationService = Depends(get_integration_service),
 ) -> BenchmarkMarketSeriesResponse:
-    return await integration_service.get_benchmark_market_series(benchmark_id=benchmark_id, request=request)
+    return cast(
+        BenchmarkMarketSeriesResponse,
+        await integration_service.get_benchmark_market_series(
+            benchmark_id=benchmark_id, request=request
+        ),
+    )
 
 
 @router.post(
@@ -280,7 +297,10 @@ async def fetch_index_price_series(
     request: IndexSeriesRequest,
     integration_service: IntegrationService = Depends(get_integration_service),
 ) -> IndexPriceSeriesResponse:
-    return await integration_service.get_index_price_series(index_id=index_id, request=request)
+    return cast(
+        IndexPriceSeriesResponse,
+        await integration_service.get_index_price_series(index_id=index_id, request=request),
+    )
 
 
 @router.post(
@@ -298,7 +318,10 @@ async def fetch_index_return_series(
     request: IndexSeriesRequest,
     integration_service: IntegrationService = Depends(get_integration_service),
 ) -> IndexReturnSeriesResponse:
-    return await integration_service.get_index_return_series(index_id=index_id, request=request)
+    return cast(
+        IndexReturnSeriesResponse,
+        await integration_service.get_index_return_series(index_id=index_id, request=request),
+    )
 
 
 @router.post(
@@ -316,9 +339,12 @@ async def fetch_benchmark_return_series(
     request: BenchmarkReturnSeriesRequest,
     integration_service: IntegrationService = Depends(get_integration_service),
 ) -> BenchmarkReturnSeriesResponse:
-    return await integration_service.get_benchmark_return_series(
-        benchmark_id=benchmark_id,
-        request=request,
+    return cast(
+        BenchmarkReturnSeriesResponse,
+        await integration_service.get_benchmark_return_series(
+            benchmark_id=benchmark_id,
+            request=request,
+        ),
     )
 
 
@@ -336,7 +362,10 @@ async def fetch_risk_free_series(
     request: RiskFreeSeriesRequest,
     integration_service: IntegrationService = Depends(get_integration_service),
 ) -> RiskFreeSeriesResponse:
-    return await integration_service.get_risk_free_series(request=request)
+    return cast(
+        RiskFreeSeriesResponse,
+        await integration_service.get_risk_free_series(request=request),
+    )
 
 
 @router.post(
@@ -353,9 +382,12 @@ async def fetch_classification_taxonomy(
     request: ClassificationTaxonomyRequest,
     integration_service: IntegrationService = Depends(get_integration_service),
 ) -> ClassificationTaxonomyResponse:
-    return await integration_service.get_classification_taxonomy(
-        as_of_date=request.as_of_date,
-        taxonomy_scope=request.taxonomy_scope,
+    return cast(
+        ClassificationTaxonomyResponse,
+        await integration_service.get_classification_taxonomy(
+            as_of_date=request.as_of_date,
+            taxonomy_scope=request.taxonomy_scope,
+        ),
     )
 
 
@@ -374,10 +406,13 @@ async def get_benchmark_coverage(
     request: CoverageRequest,
     integration_service: IntegrationService = Depends(get_integration_service),
 ) -> CoverageResponse:
-    return await integration_service.get_benchmark_coverage(
-        benchmark_id=benchmark_id,
-        start_date=request.window.start_date,
-        end_date=request.window.end_date,
+    return cast(
+        CoverageResponse,
+        await integration_service.get_benchmark_coverage(
+            benchmark_id=benchmark_id,
+            start_date=request.window.start_date,
+            end_date=request.window.end_date,
+        ),
     )
 
 
@@ -393,12 +428,15 @@ async def get_benchmark_coverage(
 )
 async def get_risk_free_coverage(
     currency: str = Query(..., description="Risk-free series currency.", examples=["USD"]),
-    request: CoverageRequest = ...,
+    request: CoverageRequest = Body(...),
     integration_service: IntegrationService = Depends(get_integration_service),
 ) -> CoverageResponse:
-    return await integration_service.get_risk_free_coverage(
-        currency=currency,
-        start_date=request.window.start_date,
-        end_date=request.window.end_date,
+    return cast(
+        CoverageResponse,
+        await integration_service.get_risk_free_coverage(
+            currency=currency,
+            start_date=request.window.start_date,
+            end_date=request.window.end_date,
+        ),
     )
 
