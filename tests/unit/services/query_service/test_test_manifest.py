@@ -26,6 +26,11 @@ def test_unit_db_suite_tracks_db_dependent_tests() -> None:
     )
 
 
+def test_sell_rfc_suite_includes_sell_query_contract_tests() -> None:
+    sell_suite = get_suite("sell-rfc")
+    assert "tests/integration/services/query_service/test_sell_state_router.py" in sell_suite
+
+
 def test_manifest_paths_exist_for_all_suites() -> None:
     for suite_name in SUITES:
         validate_suite_paths(suite_name)

@@ -5,7 +5,7 @@
 - Document ID: RFC-061
 - Title: SELL Transaction RFC Implementation Plan
 - Version: 1.0.0
-- Status: Proposed
+- Status: Implemented
 - Owner: lotus-core engineering
 - Related Specs:
   - `docs/rfc-transaction-specs/transactions/SELL/RFC-SELL-01.md`
@@ -332,8 +332,8 @@ Risk 4: Coupling between cost, position, and cash modules can cause regressions.
 | 2 | Persistence + linkage + policy metadata | DONE | lotus-core engineering | pending | local green | `SELL-SLICE-2-PERSISTENCE-METADATA.md` + `test_sell_linkage.py` | Deterministic SELL linkage/policy metadata enrichment integrated pre-persistence. |
 | 3 | Calculations + invariants | DONE | lotus-core engineering | pending | local green | `SELL-SLICE-3-CALCULATION-INVARIANTS.md` + `test_cost_calculator.py` | SELL proceeds/consumption/sign invariants enforced in cost engine with deterministic errors. |
 | 4 | Lot disposal + oversell + cash linkage | DONE | lotus-core engineering | pending | local green | `SELL-SLICE-4-DISPOSAL-CASH-LINKAGE.md` + linkage/consumer/cost tests | Deterministic disposal policy tagging and strict oversell gates added with linkage propagation checks. |
-| 5 | Query + observability | TODO | lotus-core engineering | pending | pending | `SELL-SLICE-5-QUERY-OBSERVABILITY.md` | Audit-ready API visibility and diagnostics. |
-| 6 | Final conformance gate | TODO | lotus-core engineering | pending | pending | `SELL-SLICE-6-CONFORMANCE-REPORT.md` | Full section-level conformance evidence. |
+| 5 | Query + observability | DONE | lotus-core engineering | merged | local + CI green | `SELL-SLICE-5-QUERY-OBSERVABILITY.md` + sell query tests | SELL disposal/cash-linkage APIs and lifecycle telemetry implemented. |
+| 6 | Final conformance gate | DONE | lotus-core engineering | merged | local + CI green | `SELL-SLICE-6-CONFORMANCE-REPORT.md` + `sell-rfc` suite | Final section-level conformance evidence and dedicated CI regression suite added. |
 
 Status values: `TODO`, `IN_PROGRESS`, `REVIEW`, `BLOCKED`, `DONE`.
 

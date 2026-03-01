@@ -41,6 +41,16 @@ SUITES: dict[str, list[str]] = {
         "tests/integration/services/calculators/cost_calculator_service/test_int_cost_repository_lot_offset.py",
         "tests/integration/services/query_service/test_buy_state_router.py",
     ],
+    "sell-rfc": [
+        "tests/unit/transaction_specs/test_sell_slice0_characterization.py",
+        "tests/unit/libs/portfolio_common/test_sell_validation.py",
+        "tests/unit/libs/portfolio_common/test_sell_linkage.py",
+        "tests/unit/libs/financial-calculator-engine/unit/test_cost_calculator.py",
+        "tests/unit/services/calculators/cost_calculator_service/consumer/test_cost_calculator_consumer.py",
+        "tests/unit/services/query_service/repositories/test_sell_state_repository.py",
+        "tests/unit/services/query_service/services/test_sell_state_service.py",
+        "tests/integration/services/query_service/test_sell_state_router.py",
+    ],
 }
 
 SOURCE = "src/services/query_service/app"

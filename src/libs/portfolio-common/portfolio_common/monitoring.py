@@ -209,6 +209,12 @@ BUY_LIFECYCLE_STAGE_TOTAL = Counter(
     ["stage", "status"],
 )
 
+SELL_LIFECYCLE_STAGE_TOTAL = Counter(
+    "sell_lifecycle_stage_total",
+    "Count of SELL lifecycle stage outcomes.",
+    ["stage", "status"],
+)
+
 INGESTION_JOBS_CREATED_TOTAL = Counter(
     "ingestion_jobs_created_total",
     "Number of ingestion jobs created by endpoint and entity type.",

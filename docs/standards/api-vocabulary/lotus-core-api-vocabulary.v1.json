@@ -13,7 +13,7 @@
       "openApiVersion": "3.1.0"
     }
   ],
-  "generatedAt": "2026-03-01T02:52:19.610059+00:00",
+  "generatedAt": "2026-03-01T05:26:11.824845+00:00",
   "attributeCatalog": [
     {
       "semanticId": "lotus.accepted_count",
@@ -435,7 +435,7 @@
       "semanticId": "lotus.cashflow",
       "canonicalTerm": "cashflow",
       "preferredName": "cashflow",
-      "description": "transaction record field: cashflow.",
+      "description": "Linked cashflow details when available.",
       "example": "cashflow_example",
       "type": "object",
       "locations": [
@@ -820,6 +820,34 @@
       ],
       "observedTypes": [
         "string"
+      ]
+    },
+    {
+      "semanticId": "lotus.disposal_cost_basis_base",
+      "canonicalTerm": "disposal_cost_basis_base",
+      "preferredName": "disposal_cost_basis_base",
+      "description": "Disposed cost basis in portfolio base currency (absolute value).",
+      "example": "disposal_cost_basis_base_example",
+      "type": "object",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "object"
+      ]
+    },
+    {
+      "semanticId": "lotus.disposal_cost_basis_local",
+      "canonicalTerm": "disposal_cost_basis_local",
+      "preferredName": "disposal_cost_basis_local",
+      "description": "Disposed cost basis in trade/local currency (absolute value).",
+      "example": "disposal_cost_basis_local_example",
+      "type": "object",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "object"
       ]
     },
     {
@@ -1313,7 +1341,7 @@
       "semanticId": "lotus.gross_transaction_amount",
       "canonicalTerm": "gross_transaction_amount",
       "preferredName": "gross_transaction_amount",
-      "description": "Monetary value for gross transaction amount.",
+      "description": "Gross transaction amount before fees.",
       "example": 18235.0,
       "type": "number",
       "locations": [
@@ -2037,7 +2065,7 @@
       "semanticId": "lotus.net_cost",
       "canonicalTerm": "net_cost",
       "preferredName": "net_cost",
-      "description": "transaction record field: net cost.",
+      "description": "Net cost impact in base currency. SELL disposal values are negative.",
       "example": 18242.5,
       "type": "object",
       "locations": [
@@ -2051,7 +2079,7 @@
       "semanticId": "lotus.net_cost_local",
       "canonicalTerm": "net_cost_local",
       "preferredName": "net_cost_local",
-      "description": "transaction record field: net cost local.",
+      "description": "Net cost impact in local/trade currency. SELL disposal values are negative.",
       "example": "net_cost_local_example",
       "type": "object",
       "locations": [
@@ -2073,6 +2101,34 @@
       ],
       "observedTypes": [
         "number"
+      ]
+    },
+    {
+      "semanticId": "lotus.net_sell_proceeds_base",
+      "canonicalTerm": "net_sell_proceeds_base",
+      "preferredName": "net_sell_proceeds_base",
+      "description": "Net SELL proceeds in portfolio base currency after fees.",
+      "example": "net_sell_proceeds_base_example",
+      "type": "object",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "object"
+      ]
+    },
+    {
+      "semanticId": "lotus.net_sell_proceeds_local",
+      "canonicalTerm": "net_sell_proceeds_local",
+      "preferredName": "net_sell_proceeds_local",
+      "description": "Net SELL proceeds in trade/local currency after fees.",
+      "example": "net_sell_proceeds_local_example",
+      "type": "object",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "object"
       ]
     },
     {
@@ -2566,7 +2622,7 @@
       "semanticId": "lotus.price",
       "canonicalTerm": "price",
       "preferredName": "price",
-      "description": "Rate/price value for price.",
+      "description": "Execution price per unit.",
       "example": 182.35,
       "type": "string",
       "locations": [
@@ -2686,6 +2742,20 @@
       ]
     },
     {
+      "semanticId": "lotus.quantity_disposed",
+      "canonicalTerm": "quantity_disposed",
+      "preferredName": "quantity_disposed",
+      "description": "Absolute quantity disposed by this SELL.",
+      "example": "example_quantity_disposed",
+      "type": "string",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "string"
+      ]
+    },
+    {
       "semanticId": "lotus.queue_age_seconds",
       "canonicalTerm": "queue_age_seconds",
       "preferredName": "queue_age_seconds",
@@ -2790,8 +2860,22 @@
       "semanticId": "lotus.realized_gain_loss",
       "canonicalTerm": "realized_gain_loss",
       "preferredName": "realized_gain_loss",
-      "description": "transaction record field: realized gain loss.",
+      "description": "Realized gain/loss in base currency.",
       "example": "realized_gain_loss_example",
+      "type": "object",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "object"
+      ]
+    },
+    {
+      "semanticId": "lotus.realized_gain_loss_base",
+      "canonicalTerm": "realized_gain_loss_base",
+      "preferredName": "realized_gain_loss_base",
+      "description": "Realized gain/loss in portfolio base currency for this SELL.",
+      "example": "realized_gain_loss_base_example",
       "type": "object",
       "locations": [
         "body"
@@ -2804,7 +2888,7 @@
       "semanticId": "lotus.realized_gain_loss_local",
       "canonicalTerm": "realized_gain_loss_local",
       "preferredName": "realized_gain_loss_local",
-      "description": "transaction record field: realized gain loss local.",
+      "description": "Realized gain/loss in trade/local currency for this SELL.",
       "example": "realized_gain_loss_local_example",
       "type": "object",
       "locations": [
@@ -3215,6 +3299,22 @@
       "description": "Canonical Lotus security identifiers to enrich.",
       "example": [
         "example_security_ids_item"
+      ],
+      "type": "array",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "array"
+      ]
+    },
+    {
+      "semanticId": "lotus.sell_disposals",
+      "canonicalTerm": "sell_disposals",
+      "preferredName": "sell_disposals",
+      "description": "SELL disposal records in descending transaction date order.",
+      "example": [
+        "sell_disposals_item_example"
       ],
       "type": "array",
       "locations": [
@@ -3733,7 +3833,7 @@
       "semanticId": "lotus.transaction_date",
       "canonicalTerm": "transaction_date",
       "preferredName": "transaction_date",
-      "description": "Timestamp for transaction date.",
+      "description": "Timestamp when the SELL transaction was booked.",
       "example": "2026-02-27T10:30:00Z",
       "type": "string",
       "locations": [
@@ -3747,7 +3847,7 @@
       "semanticId": "lotus.transaction_fx_rate",
       "canonicalTerm": "transaction_fx_rate",
       "preferredName": "transaction_fx_rate",
-      "description": "Rate/price value for transaction fx rate.",
+      "description": "FX rate from local/trade currency to portfolio base currency.",
       "example": "transaction_fx_rate_example",
       "type": "object",
       "locations": [
@@ -4301,6 +4401,66 @@
       "description": "Unique transaction identifier.",
       "example": "TRANSACTION_001",
       "behaviorImpact": "Affects get_buy_cash_linkage_portfolios__portfolio_id__transactions__transaction_id__cash_linkage_get request behavior.",
+      "exposure": "consumer_visible",
+      "canonicalTerm": "transaction_id",
+      "semanticId": "lotus.transaction_id"
+    },
+    {
+      "name": "portfolio_id",
+      "kind": "request_option",
+      "location": "path",
+      "type": "string",
+      "required": true,
+      "default": "",
+      "allowedValues": [],
+      "description": "Unique portfolio identifier.",
+      "example": "PORTFOLIO_001",
+      "behaviorImpact": "Affects get_sell_disposals_portfolios__portfolio_id__positions__security_id__sell_disposals_get request behavior.",
+      "exposure": "consumer_visible",
+      "canonicalTerm": "portfolio_id",
+      "semanticId": "lotus.portfolio_id"
+    },
+    {
+      "name": "security_id",
+      "kind": "request_option",
+      "location": "path",
+      "type": "string",
+      "required": true,
+      "default": "",
+      "allowedValues": [],
+      "description": "Unique security identifier.",
+      "example": "SECURITY_001",
+      "behaviorImpact": "Affects get_sell_disposals_portfolios__portfolio_id__positions__security_id__sell_disposals_get request behavior.",
+      "exposure": "consumer_visible",
+      "canonicalTerm": "security_id",
+      "semanticId": "lotus.security_id"
+    },
+    {
+      "name": "portfolio_id",
+      "kind": "request_option",
+      "location": "path",
+      "type": "string",
+      "required": true,
+      "default": "",
+      "allowedValues": [],
+      "description": "Unique portfolio identifier.",
+      "example": "PORTFOLIO_001",
+      "behaviorImpact": "Affects get_sell_cash_linkage_portfolios__portfolio_id__transactions__transaction_id__sell_cash_linkage_get request behavior.",
+      "exposure": "consumer_visible",
+      "canonicalTerm": "portfolio_id",
+      "semanticId": "lotus.portfolio_id"
+    },
+    {
+      "name": "transaction_id",
+      "kind": "request_option",
+      "location": "path",
+      "type": "string",
+      "required": true,
+      "default": "",
+      "allowedValues": [],
+      "description": "Unique transaction identifier.",
+      "example": "TRANSACTION_001",
+      "behaviorImpact": "Affects get_sell_cash_linkage_portfolios__portfolio_id__transactions__transaction_id__sell_cash_linkage_get request behavior.",
       "exposure": "consumer_visible",
       "canonicalTerm": "transaction_id",
       "semanticId": "lotus.transaction_id"
@@ -7498,6 +7658,361 @@
       }
     },
     {
+      "operationId": "get_sell_disposals_portfolios__portfolio_id__positions__security_id__sell_disposals_get",
+      "method": "GET",
+      "path": "/portfolios/{portfolio_id}/positions/{security_id}/sell-disposals",
+      "domain": "sell_state",
+      "serviceGroup": "query",
+      "tags": [
+        "SELL State"
+      ],
+      "summary": "Get SELL Disposal State for a Position",
+      "description": "Returns SELL disposal records for a portfolio-security key, including disposed quantity, disposed cost basis, realized P&L, and policy/linkage metadata for audit and reconciliation.",
+      "naming": {
+        "boundedContext": "sell_state",
+        "canonicalTerms": [
+          "calculation_policy_id",
+          "calculation_policy_version",
+          "disposal_cost_basis_base",
+          "disposal_cost_basis_local",
+          "economic_event_id",
+          "instrument_id",
+          "linked_transaction_group_id",
+          "net_sell_proceeds_base",
+          "net_sell_proceeds_local",
+          "portfolio_id",
+          "quantity_disposed",
+          "realized_gain_loss_base",
+          "realized_gain_loss_local",
+          "security_id",
+          "sell_disposals",
+          "source_system",
+          "transaction_date",
+          "transaction_id"
+        ]
+      },
+      "request": {
+        "fields": [
+          {
+            "name": "portfolio_id",
+            "location": "path",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.portfolio_id",
+            "attributeRef": "lotus.portfolio_id"
+          },
+          {
+            "name": "security_id",
+            "location": "path",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.security_id",
+            "attributeRef": "lotus.security_id"
+          }
+        ]
+      },
+      "response": {
+        "httpStatus": 200,
+        "model": "SellDisposalsResponse",
+        "fields": [
+          {
+            "name": "portfolio_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.portfolio_id",
+            "attributeRef": "lotus.portfolio_id"
+          },
+          {
+            "name": "security_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.security_id",
+            "attributeRef": "lotus.security_id"
+          },
+          {
+            "name": "sell_disposals",
+            "location": "body",
+            "required": true,
+            "type": "array",
+            "semanticId": "lotus.sell_disposals",
+            "attributeRef": "lotus.sell_disposals"
+          },
+          {
+            "name": "sell_disposals[].transaction_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.transaction_id",
+            "attributeRef": "lotus.transaction_id"
+          },
+          {
+            "name": "sell_disposals[].transaction_date",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.transaction_date",
+            "attributeRef": "lotus.transaction_date"
+          },
+          {
+            "name": "sell_disposals[].instrument_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.instrument_id",
+            "attributeRef": "lotus.instrument_id"
+          },
+          {
+            "name": "sell_disposals[].security_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.security_id",
+            "attributeRef": "lotus.security_id"
+          },
+          {
+            "name": "sell_disposals[].quantity_disposed",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.quantity_disposed",
+            "attributeRef": "lotus.quantity_disposed"
+          },
+          {
+            "name": "sell_disposals[].disposal_cost_basis_base",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.disposal_cost_basis_base",
+            "attributeRef": "lotus.disposal_cost_basis_base"
+          },
+          {
+            "name": "sell_disposals[].disposal_cost_basis_local",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.disposal_cost_basis_local",
+            "attributeRef": "lotus.disposal_cost_basis_local"
+          },
+          {
+            "name": "sell_disposals[].net_sell_proceeds_base",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.net_sell_proceeds_base",
+            "attributeRef": "lotus.net_sell_proceeds_base"
+          },
+          {
+            "name": "sell_disposals[].net_sell_proceeds_local",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.net_sell_proceeds_local",
+            "attributeRef": "lotus.net_sell_proceeds_local"
+          },
+          {
+            "name": "sell_disposals[].realized_gain_loss_base",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.realized_gain_loss_base",
+            "attributeRef": "lotus.realized_gain_loss_base"
+          },
+          {
+            "name": "sell_disposals[].realized_gain_loss_local",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.realized_gain_loss_local",
+            "attributeRef": "lotus.realized_gain_loss_local"
+          },
+          {
+            "name": "sell_disposals[].economic_event_id",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.economic_event_id",
+            "attributeRef": "lotus.economic_event_id"
+          },
+          {
+            "name": "sell_disposals[].linked_transaction_group_id",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.linked_transaction_group_id",
+            "attributeRef": "lotus.linked_transaction_group_id"
+          },
+          {
+            "name": "sell_disposals[].calculation_policy_id",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.calculation_policy_id",
+            "attributeRef": "lotus.calculation_policy_id"
+          },
+          {
+            "name": "sell_disposals[].calculation_policy_version",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.calculation_policy_version",
+            "attributeRef": "lotus.calculation_policy_version"
+          },
+          {
+            "name": "sell_disposals[].source_system",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.source_system",
+            "attributeRef": "lotus.source_system"
+          }
+        ]
+      }
+    },
+    {
+      "operationId": "get_sell_cash_linkage_portfolios__portfolio_id__transactions__transaction_id__sell_cash_linkage_get",
+      "method": "GET",
+      "path": "/portfolios/{portfolio_id}/transactions/{transaction_id}/sell-cash-linkage",
+      "domain": "sell_state",
+      "serviceGroup": "query",
+      "tags": [
+        "SELL State"
+      ],
+      "summary": "Get SELL Cash Linkage State",
+      "description": "Returns security-side SELL linkage fields and linked settlement cashflow details for deterministic reconciliation.",
+      "naming": {
+        "boundedContext": "sell_state",
+        "canonicalTerms": [
+          "calculation_policy_id",
+          "calculation_policy_version",
+          "cashflow_amount",
+          "cashflow_classification",
+          "cashflow_currency",
+          "cashflow_date",
+          "economic_event_id",
+          "linked_transaction_group_id",
+          "portfolio_id",
+          "transaction_id",
+          "transaction_type"
+        ]
+      },
+      "request": {
+        "fields": [
+          {
+            "name": "portfolio_id",
+            "location": "path",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.portfolio_id",
+            "attributeRef": "lotus.portfolio_id"
+          },
+          {
+            "name": "transaction_id",
+            "location": "path",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.transaction_id",
+            "attributeRef": "lotus.transaction_id"
+          }
+        ]
+      },
+      "response": {
+        "httpStatus": 200,
+        "model": "SellCashLinkageResponse",
+        "fields": [
+          {
+            "name": "portfolio_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.portfolio_id",
+            "attributeRef": "lotus.portfolio_id"
+          },
+          {
+            "name": "transaction_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.transaction_id",
+            "attributeRef": "lotus.transaction_id"
+          },
+          {
+            "name": "transaction_type",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.transaction_type",
+            "attributeRef": "lotus.transaction_type"
+          },
+          {
+            "name": "economic_event_id",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.economic_event_id",
+            "attributeRef": "lotus.economic_event_id"
+          },
+          {
+            "name": "linked_transaction_group_id",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.linked_transaction_group_id",
+            "attributeRef": "lotus.linked_transaction_group_id"
+          },
+          {
+            "name": "calculation_policy_id",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.calculation_policy_id",
+            "attributeRef": "lotus.calculation_policy_id"
+          },
+          {
+            "name": "calculation_policy_version",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.calculation_policy_version",
+            "attributeRef": "lotus.calculation_policy_version"
+          },
+          {
+            "name": "cashflow_date",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.cashflow_date",
+            "attributeRef": "lotus.cashflow_date"
+          },
+          {
+            "name": "cashflow_amount",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.cashflow_amount",
+            "attributeRef": "lotus.cashflow_amount"
+          },
+          {
+            "name": "cashflow_currency",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.cashflow_currency",
+            "attributeRef": "lotus.cashflow_currency"
+          },
+          {
+            "name": "cashflow_classification",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.cashflow_classification",
+            "attributeRef": "lotus.cashflow_classification"
+          }
+        ]
+      }
+    },
+    {
       "operationId": "get_transactions_portfolios__portfolio_id__transactions_get",
       "method": "GET",
       "path": "/portfolios/{portfolio_id}/transactions",
@@ -7511,12 +8026,16 @@
       "naming": {
         "boundedContext": "transactions",
         "canonicalTerms": [
+          "calculation_policy_id",
+          "calculation_policy_version",
           "cashflow",
           "currency",
+          "economic_event_id",
           "end_date",
           "gross_transaction_amount",
           "instrument_id",
           "limit",
+          "linked_transaction_group_id",
           "net_cost",
           "net_cost_local",
           "portfolio_id",
@@ -7528,6 +8047,7 @@
           "skip",
           "sort_by",
           "sort_order",
+          "source_system",
           "start_date",
           "total",
           "transaction_date",
@@ -7760,6 +8280,46 @@
             "type": "object",
             "semanticId": "lotus.transaction_fx_rate",
             "attributeRef": "lotus.transaction_fx_rate"
+          },
+          {
+            "name": "transactions[].economic_event_id",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.economic_event_id",
+            "attributeRef": "lotus.economic_event_id"
+          },
+          {
+            "name": "transactions[].linked_transaction_group_id",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.linked_transaction_group_id",
+            "attributeRef": "lotus.linked_transaction_group_id"
+          },
+          {
+            "name": "transactions[].calculation_policy_id",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.calculation_policy_id",
+            "attributeRef": "lotus.calculation_policy_id"
+          },
+          {
+            "name": "transactions[].calculation_policy_version",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.calculation_policy_version",
+            "attributeRef": "lotus.calculation_policy_version"
+          },
+          {
+            "name": "transactions[].source_system",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.source_system",
+            "attributeRef": "lotus.source_system"
           },
           {
             "name": "transactions[].cashflow",
