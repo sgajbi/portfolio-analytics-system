@@ -6,6 +6,7 @@ from app.DTOs.business_date_dto import BusinessDateIngestionRequest
 from app.DTOs.fx_rate_dto import FxRateIngestionRequest
 from app.DTOs.ingestion_job_dto import (
     ConsumerDlqEventListResponse,
+    IngestionBacklogBreakdownResponse,
     IngestionHealthSummaryResponse,
     IngestionJobFailureListResponse,
     IngestionJobListResponse,
@@ -14,6 +15,7 @@ from app.DTOs.ingestion_job_dto import (
     IngestionOpsModeUpdateRequest,
     IngestionRetryRequest,
     IngestionSloStatusResponse,
+    IngestionStalledJobListResponse,
 )
 from app.DTOs.instrument_dto import InstrumentIngestionRequest
 from app.DTOs.market_price_dto import MarketPriceIngestionRequest
@@ -371,6 +373,50 @@ async def get_ingestion_slo_status(
         failure_rate_threshold=failure_rate_threshold,
         queue_latency_threshold_seconds=queue_latency_threshold_seconds,
         backlog_age_threshold_seconds=backlog_age_threshold_seconds,
+    )
+
+
+@router.get(
+    "/ingestion/health/backlog-breakdown",
+    response_model=IngestionBacklogBreakdownResponse,
+    status_code=status.HTTP_200_OK,
+    tags=["Ingestion Operations"],
+    summary="Get ingestion backlog breakdown by endpoint and entity",
+    description=(
+        "Returns grouped backlog counters and failure-rate indicators for ingestion "
+        "endpoints, enabling targeted operational triage."
+    ),
+)
+async def get_ingestion_backlog_breakdown(
+    lookback_minutes: int = Query(default=1440, ge=5, le=10080),
+    limit: int = Query(default=200, ge=1, le=500),
+    ingestion_job_service: IngestionJobService = Depends(get_ingestion_job_service),
+):
+    return await ingestion_job_service.get_backlog_breakdown(
+        lookback_minutes=lookback_minutes,
+        limit=limit,
+    )
+
+
+@router.get(
+    "/ingestion/health/stalled-jobs",
+    response_model=IngestionStalledJobListResponse,
+    status_code=status.HTTP_200_OK,
+    tags=["Ingestion Operations"],
+    summary="List stalled ingestion jobs",
+    description=(
+        "Returns accepted/queued jobs older than threshold_seconds with runbook-oriented "
+        "suggested actions."
+    ),
+)
+async def list_ingestion_stalled_jobs(
+    threshold_seconds: int = Query(default=300, ge=30, le=86400),
+    limit: int = Query(default=100, ge=1, le=500),
+    ingestion_job_service: IngestionJobService = Depends(get_ingestion_job_service),
+):
+    return await ingestion_job_service.list_stalled_jobs(
+        threshold_seconds=threshold_seconds,
+        limit=limit,
     )
 
 

@@ -1,5 +1,6 @@
 # tests/integration/services/ingestion-service/test_ingestion_routers.py
 from datetime import UTC, datetime
+from decimal import Decimal
 from io import BytesIO
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -217,13 +218,17 @@ async def async_test_client(mock_kafka_producer: MagicMock):
             self,
             *,
             lookback_minutes: int = 60,
-            failure_rate_threshold: float = 0.03,
+            failure_rate_threshold: Decimal = Decimal("0.03"),
             queue_latency_threshold_seconds: float = 5.0,
             backlog_age_threshold_seconds: float = 300.0,
         ):
             total_jobs = len(self.jobs)
             failed_jobs = sum(1 for j in self.jobs.values() if j.status == "failed")
-            failure_rate = (failed_jobs / total_jobs) if total_jobs else 0.0
+            failure_rate = (
+                Decimal(failed_jobs) / Decimal(total_jobs)
+                if total_jobs
+                else Decimal("0")
+            )
             return {
                 "lookback_minutes": lookback_minutes,
                 "total_jobs": total_jobs,
@@ -234,6 +239,56 @@ async def async_test_client(mock_kafka_producer: MagicMock):
                 "breach_failure_rate": failure_rate > failure_rate_threshold,
                 "breach_queue_latency": False,
                 "breach_backlog_age": False,
+            }
+
+        async def get_backlog_breakdown(
+            self,
+            *,
+            lookback_minutes: int = 1440,
+            limit: int = 200,
+        ):
+            return {
+                "lookback_minutes": lookback_minutes,
+                "total_backlog_jobs": 1,
+                "groups": [
+                    {
+                        "endpoint": "/ingest/transactions",
+                        "entity_type": "transaction",
+                        "total_jobs": 3,
+                        "accepted_jobs": 1,
+                        "queued_jobs": 0,
+                        "failed_jobs": 2,
+                        "backlog_jobs": 1,
+                        "oldest_backlog_submitted_at": datetime.now(UTC),
+                        "oldest_backlog_age_seconds": 12.0,
+                        "failure_rate": Decimal("0.6667"),
+                    }
+                ][:limit],
+            }
+
+        async def list_stalled_jobs(
+            self,
+            *,
+            threshold_seconds: int = 300,
+            limit: int = 100,
+        ):
+            return {
+                "threshold_seconds": threshold_seconds,
+                "total": 1,
+                "jobs": [
+                    {
+                        "job_id": "job_stalled_001",
+                        "endpoint": "/ingest/transactions",
+                        "entity_type": "transaction",
+                        "status": "accepted",
+                        "submitted_at": datetime.now(UTC),
+                        "queue_age_seconds": 901.0,
+                        "retry_count": 0,
+                        "suggested_action": (
+                            "Investigate consumer lag and retry this job once root cause is resolved."
+                        ),
+                    }
+                ][:limit],
             }
 
         async def list_consumer_dlq_events(
@@ -572,6 +627,24 @@ async def test_ingestion_slo_status(async_test_client: httpx.AsyncClient):
     body = response.json()
     assert "failure_rate" in body
     assert "p95_queue_latency_seconds" in body
+
+
+async def test_ingestion_backlog_breakdown(async_test_client: httpx.AsyncClient):
+    response = await async_test_client.get("/ingestion/health/backlog-breakdown")
+    assert response.status_code == 200
+    body = response.json()
+    assert "groups" in body
+    assert "total_backlog_jobs" in body
+    assert body["groups"][0]["endpoint"] == "/ingest/transactions"
+
+
+async def test_ingestion_stalled_jobs(async_test_client: httpx.AsyncClient):
+    response = await async_test_client.get("/ingestion/health/stalled-jobs")
+    assert response.status_code == 200
+    body = response.json()
+    assert "jobs" in body
+    assert "threshold_seconds" in body
+    assert body["jobs"][0]["status"] == "accepted"
 
 
 async def test_ingestion_ops_control_mode_blocks_writes(

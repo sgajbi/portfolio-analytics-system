@@ -202,6 +202,126 @@ class IngestionSloStatusResponse(BaseModel):
     )
 
 
+class IngestionBacklogBreakdownItemResponse(BaseModel):
+    endpoint: str = Field(
+        description="Ingestion endpoint associated with this backlog group.",
+        examples=["/ingest/transactions"],
+    )
+    entity_type: str = Field(
+        description="Canonical entity type associated with this backlog group.",
+        examples=["transaction"],
+    )
+    total_jobs: int = Field(
+        ge=0,
+        description="Total jobs observed for this endpoint/entity group in lookback window.",
+        examples=[1250],
+    )
+    accepted_jobs: int = Field(
+        ge=0,
+        description="Accepted jobs for this endpoint/entity group.",
+        examples=[2],
+    )
+    queued_jobs: int = Field(
+        ge=0,
+        description="Queued jobs for this endpoint/entity group.",
+        examples=[5],
+    )
+    failed_jobs: int = Field(
+        ge=0,
+        description="Failed jobs for this endpoint/entity group.",
+        examples=[7],
+    )
+    backlog_jobs: int = Field(
+        ge=0,
+        description="Backlog count (accepted + queued) for this endpoint/entity group.",
+        examples=[7],
+    )
+    oldest_backlog_submitted_at: datetime | None = Field(
+        default=None,
+        description="Submitted timestamp of oldest non-terminal job in this group.",
+        examples=["2026-03-01T01:05:12.120Z"],
+    )
+    oldest_backlog_age_seconds: float = Field(
+        ge=0.0,
+        description="Age in seconds of oldest non-terminal job in this group.",
+        examples=[182.4],
+    )
+    failure_rate: Decimal = Field(
+        ge=Decimal("0"),
+        description="Failed jobs divided by total jobs for this group.",
+        examples=["0.0056"],
+    )
+
+
+class IngestionBacklogBreakdownResponse(BaseModel):
+    lookback_minutes: int = Field(
+        ge=1,
+        description="Lookback window in minutes used to build backlog breakdown.",
+        examples=[1440],
+    )
+    total_backlog_jobs: int = Field(
+        ge=0,
+        description="Total backlog jobs across all returned groups.",
+        examples=[17],
+    )
+    groups: list[IngestionBacklogBreakdownItemResponse] = Field(
+        description="Backlog and failure-rate breakdown grouped by endpoint and entity_type."
+    )
+
+
+class IngestionStalledJobResponse(BaseModel):
+    job_id: str = Field(
+        description="Ingestion job identifier.",
+        examples=["job_01J5S0J6D3BAVMK2E1V0WQ7MCC"],
+    )
+    endpoint: str = Field(
+        description="Ingestion endpoint where the stalled job originated.",
+        examples=["/ingest/transactions"],
+    )
+    entity_type: str = Field(
+        description="Canonical entity type for the stalled job.",
+        examples=["transaction"],
+    )
+    status: IngestionJobStatus = Field(
+        description="Current status of the stalled job.",
+        examples=["accepted"],
+    )
+    submitted_at: datetime = Field(
+        description="Timestamp when the stalled job was accepted.",
+        examples=["2026-03-01T00:52:01.012Z"],
+    )
+    queue_age_seconds: float = Field(
+        ge=0.0,
+        description="Current age in seconds since submission.",
+        examples=[723.1],
+    )
+    retry_count: int = Field(
+        ge=0,
+        description="Retry attempts recorded for this job.",
+        examples=[1],
+    )
+    suggested_action: str = Field(
+        description="Runbook-oriented suggested action for operations.",
+        examples=["Investigate consumer lag and retry this job once root cause is resolved."],
+    )
+
+
+class IngestionStalledJobListResponse(BaseModel):
+    threshold_seconds: int = Field(
+        ge=1,
+        description="Stalled-job threshold used to filter jobs.",
+        examples=[300],
+    )
+    total: int = Field(
+        ge=0,
+        description="Number of stalled jobs returned.",
+        examples=[3],
+    )
+    jobs: list[IngestionStalledJobResponse] = Field(
+        description="Jobs older than threshold in accepted or queued state."
+    )
+
+
 class IngestionRetryRequest(BaseModel):
     record_keys: list[str] = Field(
         default_factory=list,
