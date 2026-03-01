@@ -202,6 +202,271 @@ class Instrument(Base):
     )
 
 
+class PortfolioBenchmarkAssignment(Base):
+    __tablename__ = "portfolio_benchmark_assignments"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    portfolio_id = Column(String, ForeignKey("portfolios.portfolio_id"), nullable=False, index=True)
+    benchmark_id = Column(String, nullable=False, index=True)
+    effective_from = Column(Date, nullable=False, index=True)
+    effective_to = Column(Date, nullable=True, index=True)
+    assignment_source = Column(String, nullable=False)
+    assignment_status = Column(String, nullable=False, server_default="active", index=True)
+    policy_pack_id = Column(String, nullable=True)
+    source_system = Column(String, nullable=True)
+    assignment_recorded_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    assignment_version = Column(Integer, nullable=False, server_default="1")
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "portfolio_id",
+            "benchmark_id",
+            "effective_from",
+            "assignment_version",
+            name="_portfolio_benchmark_assignment_uc",
+        ),
+    )
+
+
+class BenchmarkDefinition(Base):
+    __tablename__ = "benchmark_definitions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    benchmark_id = Column(String, nullable=False, index=True)
+    benchmark_name = Column(String, nullable=False)
+    benchmark_type = Column(String, nullable=False)
+    benchmark_currency = Column(String(3), nullable=False)
+    return_convention = Column(String, nullable=False)
+    benchmark_status = Column(String, nullable=False, server_default="active", index=True)
+    benchmark_family = Column(String, nullable=True)
+    benchmark_provider = Column(String, nullable=True)
+    rebalance_frequency = Column(String, nullable=True)
+    classification_set_id = Column(String, nullable=True)
+    classification_labels = Column(JSON, nullable=True)
+    effective_from = Column(Date, nullable=False, index=True)
+    effective_to = Column(Date, nullable=True, index=True)
+    source_timestamp = Column(DateTime(timezone=True), nullable=True)
+    source_vendor = Column(String, nullable=True)
+    source_record_id = Column(String, nullable=True)
+    quality_status = Column(String, nullable=False, server_default="accepted", index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "benchmark_id",
+            "effective_from",
+            name="_benchmark_definition_effective_uc",
+        ),
+    )
+
+
+class IndexDefinition(Base):
+    __tablename__ = "index_definitions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    index_id = Column(String, nullable=False, index=True)
+    index_name = Column(String, nullable=False)
+    index_currency = Column(String(3), nullable=False)
+    index_type = Column(String, nullable=True)
+    index_status = Column(String, nullable=False, server_default="active", index=True)
+    index_provider = Column(String, nullable=True)
+    index_market = Column(String, nullable=True)
+    classification_set_id = Column(String, nullable=True)
+    classification_labels = Column(JSON, nullable=True)
+    effective_from = Column(Date, nullable=False, index=True)
+    effective_to = Column(Date, nullable=True, index=True)
+    source_timestamp = Column(DateTime(timezone=True), nullable=True)
+    source_vendor = Column(String, nullable=True)
+    source_record_id = Column(String, nullable=True)
+    quality_status = Column(String, nullable=False, server_default="accepted", index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint("index_id", "effective_from", name="_index_definition_effective_uc"),
+    )
+
+
+class BenchmarkCompositionSeries(Base):
+    __tablename__ = "benchmark_composition_series"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    benchmark_id = Column(String, nullable=False, index=True)
+    index_id = Column(String, nullable=False, index=True)
+    composition_effective_from = Column(Date, nullable=False, index=True)
+    composition_effective_to = Column(Date, nullable=True, index=True)
+    composition_weight = Column(Numeric(18, 10), nullable=False)
+    rebalance_event_id = Column(String, nullable=True, index=True)
+    source_timestamp = Column(DateTime(timezone=True), nullable=True)
+    source_vendor = Column(String, nullable=True)
+    source_record_id = Column(String, nullable=True)
+    quality_status = Column(String, nullable=False, server_default="accepted", index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "benchmark_id",
+            "index_id",
+            "composition_effective_from",
+            name="_benchmark_composition_effective_uc",
+        ),
+    )
+
+
+class IndexPriceSeries(Base):
+    __tablename__ = "index_price_series"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    series_id = Column(String, nullable=False, index=True)
+    index_id = Column(String, nullable=False, index=True)
+    series_date = Column(Date, nullable=False, index=True)
+    index_price = Column(Numeric(18, 10), nullable=False)
+    series_currency = Column(String(3), nullable=False)
+    value_convention = Column(String, nullable=False)
+    source_timestamp = Column(DateTime(timezone=True), nullable=True)
+    source_vendor = Column(String, nullable=True)
+    source_record_id = Column(String, nullable=True)
+    quality_status = Column(String, nullable=False, server_default="accepted", index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint("series_id", "index_id", "series_date", name="_index_price_series_uc"),
+    )
+
+
+class IndexReturnSeries(Base):
+    __tablename__ = "index_return_series"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    series_id = Column(String, nullable=False, index=True)
+    index_id = Column(String, nullable=False, index=True)
+    series_date = Column(Date, nullable=False, index=True)
+    index_return = Column(Numeric(18, 10), nullable=False)
+    return_period = Column(String, nullable=False)
+    return_convention = Column(String, nullable=False)
+    series_currency = Column(String(3), nullable=False)
+    source_timestamp = Column(DateTime(timezone=True), nullable=True)
+    source_vendor = Column(String, nullable=True)
+    source_record_id = Column(String, nullable=True)
+    quality_status = Column(String, nullable=False, server_default="accepted", index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint("series_id", "index_id", "series_date", name="_index_return_series_uc"),
+    )
+
+
+class BenchmarkReturnSeries(Base):
+    __tablename__ = "benchmark_return_series"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    series_id = Column(String, nullable=False, index=True)
+    benchmark_id = Column(String, nullable=False, index=True)
+    series_date = Column(Date, nullable=False, index=True)
+    benchmark_return = Column(Numeric(18, 10), nullable=False)
+    return_period = Column(String, nullable=False)
+    return_convention = Column(String, nullable=False)
+    series_currency = Column(String(3), nullable=False)
+    source_timestamp = Column(DateTime(timezone=True), nullable=True)
+    source_vendor = Column(String, nullable=True)
+    source_record_id = Column(String, nullable=True)
+    quality_status = Column(String, nullable=False, server_default="accepted", index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "series_id",
+            "benchmark_id",
+            "series_date",
+            name="_benchmark_return_series_uc",
+        ),
+    )
+
+
+class RiskFreeSeries(Base):
+    __tablename__ = "risk_free_series"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    series_id = Column(String, nullable=False, index=True)
+    risk_free_curve_id = Column(String, nullable=False, index=True)
+    series_date = Column(Date, nullable=False, index=True)
+    value = Column(Numeric(18, 10), nullable=False)
+    value_convention = Column(String, nullable=False)
+    day_count_convention = Column(String, nullable=True)
+    compounding_convention = Column(String, nullable=True)
+    series_currency = Column(String(3), nullable=False, index=True)
+    source_timestamp = Column(DateTime(timezone=True), nullable=True)
+    source_vendor = Column(String, nullable=True)
+    source_record_id = Column(String, nullable=True)
+    quality_status = Column(String, nullable=False, server_default="accepted", index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "series_id",
+            "risk_free_curve_id",
+            "series_date",
+            name="_risk_free_series_uc",
+        ),
+    )
+
+
+class ClassificationTaxonomy(Base):
+    __tablename__ = "classification_taxonomy"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    classification_set_id = Column(String, nullable=False, index=True)
+    taxonomy_scope = Column(String, nullable=False, index=True)
+    dimension_name = Column(String, nullable=False, index=True)
+    dimension_value = Column(String, nullable=False, index=True)
+    dimension_description = Column(String, nullable=True)
+    effective_from = Column(Date, nullable=False, index=True)
+    effective_to = Column(Date, nullable=True, index=True)
+    source_timestamp = Column(DateTime(timezone=True), nullable=True)
+    source_vendor = Column(String, nullable=True)
+    source_record_id = Column(String, nullable=True)
+    quality_status = Column(String, nullable=False, server_default="accepted", index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "classification_set_id",
+            "taxonomy_scope",
+            "dimension_name",
+            "dimension_value",
+            "effective_from",
+            name="_classification_taxonomy_effective_uc",
+        ),
+    )
+
+
 class Transaction(Base):
     __tablename__ = "transactions"
 

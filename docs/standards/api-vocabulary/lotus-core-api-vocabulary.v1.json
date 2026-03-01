@@ -13,7 +13,7 @@
       "openApiVersion": "3.1.0"
     }
   ],
-  "generatedAt": "2026-03-01T06:01:33.346752+00:00",
+  "generatedAt": "2026-03-01T10:32:54.339174+00:00",
   "attributeCatalog": [
     {
       "semanticId": "lotus.accepted_count",
@@ -158,6 +158,63 @@
       ]
     },
     {
+      "semanticId": "lotus.assignment_recorded_at",
+      "canonicalTerm": "assignment_recorded_at",
+      "preferredName": "assignment_recorded_at",
+      "description": "Timestamp when assignment record was captured in lotus-core.",
+      "example": "2026-02-27T10:30:00Z",
+      "type": "string",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "object",
+        "string"
+      ]
+    },
+    {
+      "semanticId": "lotus.assignment_source",
+      "canonicalTerm": "assignment_source",
+      "preferredName": "assignment_source",
+      "description": "Source channel that established the assignment.",
+      "example": "example_assignment_source",
+      "type": "string",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "string"
+      ]
+    },
+    {
+      "semanticId": "lotus.assignment_status",
+      "canonicalTerm": "assignment_status",
+      "preferredName": "assignment_status",
+      "description": "Assignment lifecycle status.",
+      "example": "ACTIVE",
+      "type": "string",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "string"
+      ]
+    },
+    {
+      "semanticId": "lotus.assignment_version",
+      "canonicalTerm": "assignment_version",
+      "preferredName": "assignment_version",
+      "description": "Monotonic assignment version for effective-date ties.",
+      "example": 1,
+      "type": "integer",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "integer"
+      ]
+    },
+    {
       "semanticId": "lotus.attempt_count",
       "canonicalTerm": "attempt_count",
       "preferredName": "attempt_count",
@@ -297,6 +354,187 @@
       ],
       "observedTypes": [
         "number"
+      ]
+    },
+    {
+      "semanticId": "lotus.benchmark_assignments",
+      "canonicalTerm": "benchmark_assignments",
+      "preferredName": "benchmark_assignments",
+      "description": "Portfolio benchmark assignment records.",
+      "example": [
+        "benchmark_assignments_item_example"
+      ],
+      "type": "array",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "array"
+      ]
+    },
+    {
+      "semanticId": "lotus.benchmark_compositions",
+      "canonicalTerm": "benchmark_compositions",
+      "preferredName": "benchmark_compositions",
+      "description": "Benchmark composition records.",
+      "example": [
+        "benchmark_compositions_item_example"
+      ],
+      "type": "array",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "array"
+      ]
+    },
+    {
+      "semanticId": "lotus.benchmark_currency",
+      "canonicalTerm": "benchmark_currency",
+      "preferredName": "benchmark_currency",
+      "description": "Benchmark base/reporting currency.",
+      "example": "USD",
+      "type": "string",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "object",
+        "string"
+      ]
+    },
+    {
+      "semanticId": "lotus.benchmark_definitions",
+      "canonicalTerm": "benchmark_definitions",
+      "preferredName": "benchmark_definitions",
+      "description": "Benchmark definition records.",
+      "example": [
+        "benchmark_definitions_item_example"
+      ],
+      "type": "array",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "array"
+      ]
+    },
+    {
+      "semanticId": "lotus.benchmark_family",
+      "canonicalTerm": "benchmark_family",
+      "preferredName": "benchmark_family",
+      "description": "Benchmark family grouping.",
+      "example": "benchmark_family_example",
+      "type": "object",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "object"
+      ]
+    },
+    {
+      "semanticId": "lotus.benchmark_id",
+      "canonicalTerm": "benchmark_id",
+      "preferredName": "benchmark_id",
+      "description": "Canonical benchmark identifier.",
+      "example": "BENCHMARK_001",
+      "type": "string",
+      "locations": [
+        "body",
+        "path"
+      ],
+      "observedTypes": [
+        "string"
+      ]
+    },
+    {
+      "semanticId": "lotus.benchmark_name",
+      "canonicalTerm": "benchmark_name",
+      "preferredName": "benchmark_name",
+      "description": "Display benchmark name.",
+      "example": "example_benchmark_name",
+      "type": "string",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "string"
+      ]
+    },
+    {
+      "semanticId": "lotus.benchmark_provider",
+      "canonicalTerm": "benchmark_provider",
+      "preferredName": "benchmark_provider",
+      "description": "Reference data provider for benchmark definition.",
+      "example": "benchmark_provider_example",
+      "type": "object",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "object"
+      ]
+    },
+    {
+      "semanticId": "lotus.benchmark_return",
+      "canonicalTerm": "benchmark_return",
+      "preferredName": "benchmark_return",
+      "description": "Vendor benchmark return value when requested.",
+      "example": "benchmark_return_example",
+      "type": "string",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "object",
+        "string"
+      ]
+    },
+    {
+      "semanticId": "lotus.benchmark_return_series",
+      "canonicalTerm": "benchmark_return_series",
+      "preferredName": "benchmark_return_series",
+      "description": "Benchmark return series records.",
+      "example": [
+        "benchmark_return_series_item_example"
+      ],
+      "type": "array",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "array"
+      ]
+    },
+    {
+      "semanticId": "lotus.benchmark_status",
+      "canonicalTerm": "benchmark_status",
+      "preferredName": "benchmark_status",
+      "description": "Benchmark lifecycle status.",
+      "example": "ACTIVE",
+      "type": "string",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "object",
+        "string"
+      ]
+    },
+    {
+      "semanticId": "lotus.benchmark_type",
+      "canonicalTerm": "benchmark_type",
+      "preferredName": "benchmark_type",
+      "description": "Benchmark composition type.",
+      "example": "single_index",
+      "type": "string",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "object",
+        "string"
       ]
     },
     {
@@ -533,6 +771,53 @@
       ]
     },
     {
+      "semanticId": "lotus.classification_labels",
+      "canonicalTerm": "classification_labels",
+      "preferredName": "classification_labels",
+      "description": "Canonical benchmark classification labels (asset_class, sector, region, style).",
+      "example": {
+        "key": "value"
+      },
+      "type": "object",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "object"
+      ]
+    },
+    {
+      "semanticId": "lotus.classification_set_id",
+      "canonicalTerm": "classification_set_id",
+      "preferredName": "classification_set_id",
+      "description": "Classification taxonomy set identifier applied to this benchmark.",
+      "example": "CLASSIFICATION_SET_001",
+      "type": "string",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "object",
+        "string"
+      ]
+    },
+    {
+      "semanticId": "lotus.classification_taxonomy",
+      "canonicalTerm": "classification_taxonomy",
+      "preferredName": "classification_taxonomy",
+      "description": "Classification taxonomy records.",
+      "example": [
+        "classification_taxonomy_item_example"
+      ],
+      "type": "array",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "array"
+      ]
+    },
+    {
       "semanticId": "lotus.client_id",
       "canonicalTerm": "client_id",
       "preferredName": "client_id",
@@ -596,6 +881,109 @@
       "preferredName": "completed_at",
       "description": "Timestamp when the job reached a terminal or queued state.",
       "example": "completed_at_example",
+      "type": "object",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "object"
+      ]
+    },
+    {
+      "semanticId": "lotus.component_series",
+      "canonicalTerm": "component_series",
+      "preferredName": "component_series",
+      "description": "Component-level benchmark market series records.",
+      "example": [
+        "component_series_item_example"
+      ],
+      "type": "array",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "array"
+      ]
+    },
+    {
+      "semanticId": "lotus.component_weight",
+      "canonicalTerm": "component_weight",
+      "preferredName": "component_weight",
+      "description": "Effective benchmark component weight for this point.",
+      "example": "component_weight_example",
+      "type": "object",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "object"
+      ]
+    },
+    {
+      "semanticId": "lotus.components",
+      "canonicalTerm": "components",
+      "preferredName": "components",
+      "description": "Effective benchmark component records for the requested as-of date.",
+      "example": [
+        "components_item_example"
+      ],
+      "type": "array",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "array"
+      ]
+    },
+    {
+      "semanticId": "lotus.composition_effective_from",
+      "canonicalTerm": "composition_effective_from",
+      "preferredName": "composition_effective_from",
+      "description": "Composition effective start date.",
+      "example": "2026-02-27",
+      "type": "string",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "string"
+      ]
+    },
+    {
+      "semanticId": "lotus.composition_effective_to",
+      "canonicalTerm": "composition_effective_to",
+      "preferredName": "composition_effective_to",
+      "description": "Composition effective end date.",
+      "example": "composition_effective_to_example",
+      "type": "object",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "object"
+      ]
+    },
+    {
+      "semanticId": "lotus.composition_weight",
+      "canonicalTerm": "composition_weight",
+      "preferredName": "composition_weight",
+      "description": "Component weight effective for the benchmark composition.",
+      "example": "example_composition_weight",
+      "type": "string",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "object",
+        "string"
+      ]
+    },
+    {
+      "semanticId": "lotus.compounding_convention",
+      "canonicalTerm": "compounding_convention",
+      "preferredName": "compounding_convention",
+      "description": "Compounding convention associated with rate series.",
+      "example": "compounding_convention_example",
       "type": "object",
       "locations": [
         "body"
@@ -757,7 +1145,8 @@
       "example": "USD",
       "type": "string",
       "locations": [
-        "body"
+        "body",
+        "query"
       ],
       "observedTypes": [
         "object",
@@ -795,6 +1184,20 @@
       ]
     },
     {
+      "semanticId": "lotus.day_count_convention",
+      "canonicalTerm": "day_count_convention",
+      "preferredName": "day_count_convention",
+      "description": "Day-count convention for annualized rate interpretation.",
+      "example": "day_count_convention_example",
+      "type": "object",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "object"
+      ]
+    },
+    {
       "semanticId": "lotus.delta_quantity",
       "canonicalTerm": "delta_quantity",
       "preferredName": "delta_quantity",
@@ -814,6 +1217,48 @@
       "preferredName": "description",
       "description": "Human-readable capability summary.",
       "example": "example_description",
+      "type": "string",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "string"
+      ]
+    },
+    {
+      "semanticId": "lotus.dimension_description",
+      "canonicalTerm": "dimension_description",
+      "preferredName": "dimension_description",
+      "description": "Human-readable dimension description.",
+      "example": "dimension_description_example",
+      "type": "object",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "object"
+      ]
+    },
+    {
+      "semanticId": "lotus.dimension_name",
+      "canonicalTerm": "dimension_name",
+      "preferredName": "dimension_name",
+      "description": "Classification dimension name.",
+      "example": "example_dimension_name",
+      "type": "string",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "string"
+      ]
+    },
+    {
+      "semanticId": "lotus.dimension_value",
+      "canonicalTerm": "dimension_value",
+      "preferredName": "dimension_value",
+      "description": "Classification dimension value.",
+      "example": "STANDARD",
       "type": "string",
       "locations": [
         "body"
@@ -921,6 +1366,34 @@
       ]
     },
     {
+      "semanticId": "lotus.effective_from",
+      "canonicalTerm": "effective_from",
+      "preferredName": "effective_from",
+      "description": "Assignment effective start date.",
+      "example": "2026-02-27",
+      "type": "string",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "string"
+      ]
+    },
+    {
+      "semanticId": "lotus.effective_to",
+      "canonicalTerm": "effective_to",
+      "preferredName": "effective_to",
+      "description": "Assignment effective end date, null when open-ended.",
+      "example": "effective_to_example",
+      "type": "object",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "object"
+      ]
+    },
+    {
       "semanticId": "lotus.enabled",
       "canonicalTerm": "enabled",
       "preferredName": "enabled",
@@ -940,12 +1413,14 @@
       "preferredName": "end_date",
       "description": "The end date for the date range filter (inclusive).",
       "example": "2026-02-27",
-      "type": "object",
+      "type": "string",
       "locations": [
+        "body",
         "query"
       ],
       "observedTypes": [
-        "object"
+        "object",
+        "string"
       ]
     },
     {
@@ -1083,6 +1558,34 @@
       ],
       "observedTypes": [
         "array"
+      ]
+    },
+    {
+      "semanticId": "lotus.expected_end_date",
+      "canonicalTerm": "expected_end_date",
+      "preferredName": "expected_end_date",
+      "description": "Expected end date from request window.",
+      "example": "2026-02-27",
+      "type": "string",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "string"
+      ]
+    },
+    {
+      "semanticId": "lotus.expected_start_date",
+      "canonicalTerm": "expected_start_date",
+      "preferredName": "expected_start_date",
+      "description": "Expected start date from request window.",
+      "example": "2026-02-27",
+      "type": "string",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "string"
       ]
     },
     {
@@ -1277,6 +1780,20 @@
       ]
     },
     {
+      "semanticId": "lotus.frequency",
+      "canonicalTerm": "frequency",
+      "preferredName": "frequency",
+      "description": "Requested output frequency label.",
+      "example": "example_frequency",
+      "type": "string",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "string"
+      ]
+    },
+    {
       "semanticId": "lotus.from_currency",
       "canonicalTerm": "from_currency",
       "preferredName": "from_currency",
@@ -1289,6 +1806,20 @@
       ],
       "observedTypes": [
         "string"
+      ]
+    },
+    {
+      "semanticId": "lotus.fx_rate",
+      "canonicalTerm": "fx_rate",
+      "preferredName": "fx_rate",
+      "description": "FX conversion rate used for target currency context when requested.",
+      "example": "fx_rate_example",
+      "type": "object",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "object"
       ]
     },
     {
@@ -1437,6 +1968,185 @@
       ],
       "observedTypes": [
         "boolean"
+      ]
+    },
+    {
+      "semanticId": "lotus.index_currency",
+      "canonicalTerm": "index_currency",
+      "preferredName": "index_currency",
+      "description": "Optional index currency filter.",
+      "example": "USD",
+      "type": "string",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "object",
+        "string"
+      ]
+    },
+    {
+      "semanticId": "lotus.index_id",
+      "canonicalTerm": "index_id",
+      "preferredName": "index_id",
+      "description": "Canonical index identifier used as a benchmark component.",
+      "example": "INDEX_001",
+      "type": "string",
+      "locations": [
+        "body",
+        "path"
+      ],
+      "observedTypes": [
+        "string"
+      ]
+    },
+    {
+      "semanticId": "lotus.index_market",
+      "canonicalTerm": "index_market",
+      "preferredName": "index_market",
+      "description": "Primary market or scope for index universe.",
+      "example": "index_market_example",
+      "type": "object",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "object"
+      ]
+    },
+    {
+      "semanticId": "lotus.index_name",
+      "canonicalTerm": "index_name",
+      "preferredName": "index_name",
+      "description": "Display index name.",
+      "example": "example_index_name",
+      "type": "string",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "string"
+      ]
+    },
+    {
+      "semanticId": "lotus.index_price",
+      "canonicalTerm": "index_price",
+      "preferredName": "index_price",
+      "description": "Index price value when requested.",
+      "example": "index_price_example",
+      "type": "string",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "object",
+        "string"
+      ]
+    },
+    {
+      "semanticId": "lotus.index_price_series",
+      "canonicalTerm": "index_price_series",
+      "preferredName": "index_price_series",
+      "description": "Index price series records.",
+      "example": [
+        "index_price_series_item_example"
+      ],
+      "type": "array",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "array"
+      ]
+    },
+    {
+      "semanticId": "lotus.index_provider",
+      "canonicalTerm": "index_provider",
+      "preferredName": "index_provider",
+      "description": "Index data provider.",
+      "example": "index_provider_example",
+      "type": "object",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "object"
+      ]
+    },
+    {
+      "semanticId": "lotus.index_return",
+      "canonicalTerm": "index_return",
+      "preferredName": "index_return",
+      "description": "Index return value when requested.",
+      "example": "index_return_example",
+      "type": "string",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "object",
+        "string"
+      ]
+    },
+    {
+      "semanticId": "lotus.index_return_series",
+      "canonicalTerm": "index_return_series",
+      "preferredName": "index_return_series",
+      "description": "Index return series records.",
+      "example": [
+        "index_return_series_item_example"
+      ],
+      "type": "array",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "array"
+      ]
+    },
+    {
+      "semanticId": "lotus.index_status",
+      "canonicalTerm": "index_status",
+      "preferredName": "index_status",
+      "description": "Optional index status filter.",
+      "example": "ACTIVE",
+      "type": "string",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "object",
+        "string"
+      ]
+    },
+    {
+      "semanticId": "lotus.index_type",
+      "canonicalTerm": "index_type",
+      "preferredName": "index_type",
+      "description": "Optional index type filter.",
+      "example": "index_type_example",
+      "type": "object",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "object"
+      ]
+    },
+    {
+      "semanticId": "lotus.indices",
+      "canonicalTerm": "indices",
+      "preferredName": "indices",
+      "description": "Index definition records.",
+      "example": [
+        "indices_item_example"
+      ],
+      "type": "array",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "array"
       ]
     },
     {
@@ -1859,6 +2569,22 @@
       ]
     },
     {
+      "semanticId": "lotus.lineage",
+      "canonicalTerm": "lineage",
+      "preferredName": "lineage",
+      "description": "Lineage metadata (contract_version, source_system, generated_by).",
+      "example": {
+        "key": "value"
+      },
+      "type": "object",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "object"
+      ]
+    },
+    {
       "semanticId": "lotus.linked_transaction_group_id",
       "canonicalTerm": "linked_transaction_group_id",
       "preferredName": "linked_transaction_group_id",
@@ -2018,6 +2744,36 @@
       ]
     },
     {
+      "semanticId": "lotus.missing_dates_count",
+      "canonicalTerm": "missing_dates_count",
+      "preferredName": "missing_dates_count",
+      "description": "Count of missing calendar dates within expected window.",
+      "example": 10,
+      "type": "integer",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "integer"
+      ]
+    },
+    {
+      "semanticId": "lotus.missing_dates_sample",
+      "canonicalTerm": "missing_dates_sample",
+      "preferredName": "missing_dates_sample",
+      "description": "Sample of missing dates in the expected window.",
+      "example": [
+        "2026-02-27"
+      ],
+      "type": "array",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "array"
+      ]
+    },
+    {
       "semanticId": "lotus.mode",
       "canonicalTerm": "mode",
       "preferredName": "mode",
@@ -2155,6 +2911,34 @@
       ],
       "observedTypes": [
         "string"
+      ]
+    },
+    {
+      "semanticId": "lotus.observed_end_date",
+      "canonicalTerm": "observed_end_date",
+      "preferredName": "observed_end_date",
+      "description": "Observed last date in data window.",
+      "example": "2026-02-27",
+      "type": "object",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "object"
+      ]
+    },
+    {
+      "semanticId": "lotus.observed_start_date",
+      "canonicalTerm": "observed_start_date",
+      "preferredName": "observed_start_date",
+      "description": "Observed first date in data window.",
+      "example": "2026-02-27",
+      "type": "object",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "object"
       ]
     },
     {
@@ -2369,6 +3153,50 @@
       ],
       "observedTypes": [
         "integer"
+      ]
+    },
+    {
+      "semanticId": "lotus.points",
+      "canonicalTerm": "points",
+      "preferredName": "points",
+      "description": "Time series points for the requested component index.",
+      "example": [
+        "points_item_example"
+      ],
+      "type": "array",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "array"
+      ]
+    },
+    {
+      "semanticId": "lotus.policy_context",
+      "canonicalTerm": "policy_context",
+      "preferredName": "policy_context",
+      "description": "Optional tenant/policy context for assignment governance.",
+      "example": "policy_context_example",
+      "type": "object",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "object"
+      ]
+    },
+    {
+      "semanticId": "lotus.policy_pack_id",
+      "canonicalTerm": "policy_pack_id",
+      "preferredName": "policy_pack_id",
+      "description": "Policy pack identifier associated with the assignment record.",
+      "example": "POLICY_PACK_001",
+      "type": "object",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "object"
       ]
     },
     {
@@ -2710,6 +3538,53 @@
       ]
     },
     {
+      "semanticId": "lotus.quality_status",
+      "canonicalTerm": "quality_status",
+      "preferredName": "quality_status",
+      "description": "Data quality status for the resolved definition record.",
+      "example": "ACTIVE",
+      "type": "string",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "object",
+        "string"
+      ]
+    },
+    {
+      "semanticId": "lotus.quality_status_distribution",
+      "canonicalTerm": "quality_status_distribution",
+      "preferredName": "quality_status_distribution",
+      "description": "Quality status distribution over observed points.",
+      "example": {
+        "key": "value"
+      },
+      "type": "object",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "object"
+      ]
+    },
+    {
+      "semanticId": "lotus.quality_status_summary",
+      "canonicalTerm": "quality_status_summary",
+      "preferredName": "quality_status_summary",
+      "description": "Aggregate quality status counts over all returned points.",
+      "example": {
+        "key": "value"
+      },
+      "type": "object",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "object"
+      ]
+    },
+    {
       "semanticId": "lotus.quantity",
       "canonicalTerm": "quantity",
       "preferredName": "quantity",
@@ -2874,6 +3749,34 @@
       "preferredName": "realized_gain_loss_local",
       "description": "Realized gain/loss in trade/local currency for this SELL.",
       "example": "realized_gain_loss_local_example",
+      "type": "object",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "object"
+      ]
+    },
+    {
+      "semanticId": "lotus.rebalance_event_id",
+      "canonicalTerm": "rebalance_event_id",
+      "preferredName": "rebalance_event_id",
+      "description": "Rebalance event identifier linking related composition changes.",
+      "example": "REBALANCE_EVENT_001",
+      "type": "object",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "object"
+      ]
+    },
+    {
+      "semanticId": "lotus.rebalance_frequency",
+      "canonicalTerm": "rebalance_frequency",
+      "preferredName": "rebalance_frequency",
+      "description": "Rebalance cadence for composite benchmark definitions.",
+      "example": "rebalance_frequency_example",
       "type": "object",
       "locations": [
         "body"
@@ -3169,6 +4072,20 @@
       ]
     },
     {
+      "semanticId": "lotus.resolved_window",
+      "canonicalTerm": "resolved_window",
+      "preferredName": "resolved_window",
+      "description": "Resolved window returned by query service.",
+      "example": "resolved_window_example",
+      "type": "string",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "IntegrationWindow"
+      ]
+    },
+    {
       "semanticId": "lotus.retry_count",
       "canonicalTerm": "retry_count",
       "preferredName": "retry_count",
@@ -3183,6 +4100,34 @@
       ]
     },
     {
+      "semanticId": "lotus.return_convention",
+      "canonicalTerm": "return_convention",
+      "preferredName": "return_convention",
+      "description": "Benchmark return convention label.",
+      "example": "price_return_index",
+      "type": "string",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "string"
+      ]
+    },
+    {
+      "semanticId": "lotus.return_period",
+      "canonicalTerm": "return_period",
+      "preferredName": "return_period",
+      "description": "Return period label.",
+      "example": "example_return_period",
+      "type": "string",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "string"
+      ]
+    },
+    {
       "semanticId": "lotus.risk_exposure",
       "canonicalTerm": "risk_exposure",
       "preferredName": "risk_exposure",
@@ -3194,6 +4139,36 @@
       ],
       "observedTypes": [
         "string"
+      ]
+    },
+    {
+      "semanticId": "lotus.risk_free_curve_id",
+      "canonicalTerm": "risk_free_curve_id",
+      "preferredName": "risk_free_curve_id",
+      "description": "Risk-free curve identifier.",
+      "example": "RISK_FREE_CURVE_001",
+      "type": "string",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "string"
+      ]
+    },
+    {
+      "semanticId": "lotus.risk_free_series",
+      "canonicalTerm": "risk_free_series",
+      "preferredName": "risk_free_series",
+      "description": "Risk-free series records.",
+      "example": [
+        "risk_free_series_item_example"
+      ],
+      "type": "array",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "array"
       ]
     },
     {
@@ -3306,6 +4281,78 @@
       ],
       "observedTypes": [
         "array"
+      ]
+    },
+    {
+      "semanticId": "lotus.series_currency",
+      "canonicalTerm": "series_currency",
+      "preferredName": "series_currency",
+      "description": "Series currency code.",
+      "example": "USD",
+      "type": "string",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "string"
+      ]
+    },
+    {
+      "semanticId": "lotus.series_date",
+      "canonicalTerm": "series_date",
+      "preferredName": "series_date",
+      "description": "Series point date.",
+      "example": "2026-02-27",
+      "type": "string",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "string"
+      ]
+    },
+    {
+      "semanticId": "lotus.series_fields",
+      "canonicalTerm": "series_fields",
+      "preferredName": "series_fields",
+      "description": "Requested series fields. Supported: index_price, index_return, benchmark_return, component_weight, fx_rate.",
+      "example": [
+        "example_series_fields_item"
+      ],
+      "type": "array",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "array"
+      ]
+    },
+    {
+      "semanticId": "lotus.series_id",
+      "canonicalTerm": "series_id",
+      "preferredName": "series_id",
+      "description": "Series identifier.",
+      "example": "SERIES_001",
+      "type": "string",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "string"
+      ]
+    },
+    {
+      "semanticId": "lotus.series_mode",
+      "canonicalTerm": "series_mode",
+      "preferredName": "series_mode",
+      "description": "Risk-free series mode requested by downstream consumer.",
+      "example": "annualized_rate_series",
+      "type": "string",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "string"
       ]
     },
     {
@@ -3455,6 +4502,20 @@
       ]
     },
     {
+      "semanticId": "lotus.source_record_id",
+      "canonicalTerm": "source_record_id",
+      "preferredName": "source_record_id",
+      "description": "Source vendor record identifier for deterministic replay.",
+      "example": "SOURCE_RECORD_001",
+      "type": "object",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "object"
+      ]
+    },
+    {
       "semanticId": "lotus.source_service",
       "canonicalTerm": "source_service",
       "preferredName": "source_service",
@@ -3483,6 +4544,20 @@
       ]
     },
     {
+      "semanticId": "lotus.source_timestamp",
+      "canonicalTerm": "source_timestamp",
+      "preferredName": "source_timestamp",
+      "description": "Source publication timestamp for resolved definition.",
+      "example": "2026-02-27T10:30:00Z",
+      "type": "object",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "object"
+      ]
+    },
+    {
       "semanticId": "lotus.source_transaction_id",
       "canonicalTerm": "source_transaction_id",
       "preferredName": "source_transaction_id",
@@ -3497,17 +4572,33 @@
       ]
     },
     {
+      "semanticId": "lotus.source_vendor",
+      "canonicalTerm": "source_vendor",
+      "preferredName": "source_vendor",
+      "description": "Source vendor identifier for definition lineage.",
+      "example": "source_vendor_example",
+      "type": "object",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "object"
+      ]
+    },
+    {
       "semanticId": "lotus.start_date",
       "canonicalTerm": "start_date",
       "preferredName": "start_date",
       "description": "The start date for the date range filter (inclusive).",
       "example": "2026-02-27",
-      "type": "object",
+      "type": "string",
       "locations": [
+        "body",
         "query"
       ],
       "observedTypes": [
-        "object"
+        "object",
+        "string"
       ]
     },
     {
@@ -3631,6 +4722,49 @@
       ]
     },
     {
+      "semanticId": "lotus.target_currency",
+      "canonicalTerm": "target_currency",
+      "preferredName": "target_currency",
+      "description": "Optional target currency for response context and fx enrichment.",
+      "example": "USD",
+      "type": "object",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "object"
+      ]
+    },
+    {
+      "semanticId": "lotus.taxonomy_scope",
+      "canonicalTerm": "taxonomy_scope",
+      "preferredName": "taxonomy_scope",
+      "description": "Optional taxonomy scope filter.",
+      "example": "taxonomy_scope_example",
+      "type": "string",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "object",
+        "string"
+      ]
+    },
+    {
+      "semanticId": "lotus.taxonomy_version",
+      "canonicalTerm": "taxonomy_version",
+      "preferredName": "taxonomy_version",
+      "description": "Taxonomy contract version exposed by query service.",
+      "example": "example_taxonomy_version",
+      "type": "string",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "string"
+      ]
+    },
+    {
       "semanticId": "lotus.tenant_id",
       "canonicalTerm": "tenant_id",
       "preferredName": "tenant_id",
@@ -3750,6 +4884,20 @@
       "canonicalTerm": "total_keys",
       "preferredName": "total_keys",
       "description": "Number of distinct idempotency keys returned.",
+      "example": 10,
+      "type": "integer",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "integer"
+      ]
+    },
+    {
+      "semanticId": "lotus.total_points",
+      "canonicalTerm": "total_points",
+      "preferredName": "total_points",
+      "description": "Total points available in observed window.",
       "example": 10,
       "type": "integer",
       "locations": [
@@ -4045,6 +5193,37 @@
       ]
     },
     {
+      "semanticId": "lotus.value",
+      "canonicalTerm": "value",
+      "preferredName": "value",
+      "description": "Risk-free series value.",
+      "example": {
+        "id": "OBJ_001"
+      },
+      "type": "string",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "object",
+        "string"
+      ]
+    },
+    {
+      "semanticId": "lotus.value_convention",
+      "canonicalTerm": "value_convention",
+      "preferredName": "value_convention",
+      "description": "Value convention label for price series.",
+      "example": "example_value_convention",
+      "type": "string",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "string"
+      ]
+    },
+    {
       "semanticId": "lotus.version",
       "canonicalTerm": "version",
       "preferredName": "version",
@@ -4114,6 +5293,20 @@
       ],
       "observedTypes": [
         "CoreSnapshotWeightBasis"
+      ]
+    },
+    {
+      "semanticId": "lotus.window",
+      "canonicalTerm": "window",
+      "preferredName": "window",
+      "description": "Date window for series extraction.",
+      "example": "window_example",
+      "type": "string",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "IntegrationWindow"
       ]
     },
     {
@@ -5017,6 +6210,126 @@
       "exposure": "consumer_visible",
       "canonicalTerm": "portfolio_id",
       "semanticId": "lotus.portfolio_id"
+    },
+    {
+      "name": "portfolio_id",
+      "kind": "request_option",
+      "location": "path",
+      "type": "string",
+      "required": true,
+      "default": "",
+      "allowedValues": [],
+      "description": "Unique portfolio identifier.",
+      "example": "PORTFOLIO_001",
+      "behaviorImpact": "Affects resolve_portfolio_benchmark_assignment_integration_portfolios__portfolio_id__benchmark_assignment_post request behavior.",
+      "exposure": "consumer_visible",
+      "canonicalTerm": "portfolio_id",
+      "semanticId": "lotus.portfolio_id"
+    },
+    {
+      "name": "benchmark_id",
+      "kind": "request_option",
+      "location": "path",
+      "type": "string",
+      "required": true,
+      "default": "",
+      "allowedValues": [],
+      "description": "Unique benchmark identifier.",
+      "example": "BENCHMARK_001",
+      "behaviorImpact": "Affects fetch_benchmark_definition_integration_benchmarks__benchmark_id__definition_post request behavior.",
+      "exposure": "consumer_visible",
+      "canonicalTerm": "benchmark_id",
+      "semanticId": "lotus.benchmark_id"
+    },
+    {
+      "name": "benchmark_id",
+      "kind": "request_option",
+      "location": "path",
+      "type": "string",
+      "required": true,
+      "default": "",
+      "allowedValues": [],
+      "description": "Unique benchmark identifier.",
+      "example": "BENCHMARK_001",
+      "behaviorImpact": "Affects fetch_benchmark_market_series_integration_benchmarks__benchmark_id__market_series_post request behavior.",
+      "exposure": "consumer_visible",
+      "canonicalTerm": "benchmark_id",
+      "semanticId": "lotus.benchmark_id"
+    },
+    {
+      "name": "index_id",
+      "kind": "request_option",
+      "location": "path",
+      "type": "string",
+      "required": true,
+      "default": "",
+      "allowedValues": [],
+      "description": "Unique index identifier.",
+      "example": "INDEX_001",
+      "behaviorImpact": "Affects fetch_index_price_series_integration_indices__index_id__price_series_post request behavior.",
+      "exposure": "consumer_visible",
+      "canonicalTerm": "index_id",
+      "semanticId": "lotus.index_id"
+    },
+    {
+      "name": "index_id",
+      "kind": "request_option",
+      "location": "path",
+      "type": "string",
+      "required": true,
+      "default": "",
+      "allowedValues": [],
+      "description": "Unique index identifier.",
+      "example": "INDEX_001",
+      "behaviorImpact": "Affects fetch_index_return_series_integration_indices__index_id__return_series_post request behavior.",
+      "exposure": "consumer_visible",
+      "canonicalTerm": "index_id",
+      "semanticId": "lotus.index_id"
+    },
+    {
+      "name": "benchmark_id",
+      "kind": "request_option",
+      "location": "path",
+      "type": "string",
+      "required": true,
+      "default": "",
+      "allowedValues": [],
+      "description": "Unique benchmark identifier.",
+      "example": "BENCHMARK_001",
+      "behaviorImpact": "Affects fetch_benchmark_return_series_integration_benchmarks__benchmark_id__return_series_post request behavior.",
+      "exposure": "consumer_visible",
+      "canonicalTerm": "benchmark_id",
+      "semanticId": "lotus.benchmark_id"
+    },
+    {
+      "name": "benchmark_id",
+      "kind": "request_option",
+      "location": "path",
+      "type": "string",
+      "required": true,
+      "default": "",
+      "allowedValues": [],
+      "description": "Unique benchmark identifier.",
+      "example": "BENCHMARK_001",
+      "behaviorImpact": "Affects get_benchmark_coverage_integration_benchmarks__benchmark_id__coverage_post request behavior.",
+      "exposure": "consumer_visible",
+      "canonicalTerm": "benchmark_id",
+      "semanticId": "lotus.benchmark_id"
+    },
+    {
+      "name": "currency",
+      "kind": "request_option",
+      "location": "query",
+      "type": "string",
+      "required": true,
+      "default": "",
+      "allowedValues": [],
+      "description": "Risk-free series currency.",
+      "example": "USD",
+      "behaviorImpact": "Affects get_risk_free_coverage_integration_reference_risk_free_series_coverage_post request behavior.",
+      "exposure": "consumer_visible",
+      "canonicalTerm": "currency",
+      "semanticId": "lotus.currency"
     },
     {
       "name": "consumer_system",
@@ -9447,6 +10760,2419 @@
             "type": "object",
             "semanticId": "lotus.ultimate_parent_issuer_name",
             "attributeRef": "lotus.ultimate_parent_issuer_name"
+          }
+        ]
+      }
+    },
+    {
+      "operationId": "resolve_portfolio_benchmark_assignment_integration_portfolios__portfolio_id__benchmark_assignment_post",
+      "method": "POST",
+      "path": "/integration/portfolios/{portfolio_id}/benchmark-assignment",
+      "domain": "integration_contracts",
+      "serviceGroup": "query",
+      "tags": [
+        "Integration Contracts"
+      ],
+      "summary": "Resolve effective portfolio benchmark assignment",
+      "description": "What: Resolve benchmark assignment for a portfolio as-of a point-in-time date.\nHow: Applies effective-dating and assignment version ordering to return deterministic match.\nWhen: Used by lotus-performance before benchmark analytics workflows.",
+      "naming": {
+        "boundedContext": "integration_contracts",
+        "canonicalTerms": [
+          "as_of_date",
+          "assignment_recorded_at",
+          "assignment_source",
+          "assignment_status",
+          "assignment_version",
+          "benchmark_id",
+          "contract_version",
+          "effective_from",
+          "effective_to",
+          "policy_context",
+          "policy_pack_id",
+          "portfolio_id",
+          "reporting_currency",
+          "source_system"
+        ]
+      },
+      "request": {
+        "fields": [
+          {
+            "name": "portfolio_id",
+            "location": "path",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.portfolio_id",
+            "attributeRef": "lotus.portfolio_id"
+          },
+          {
+            "name": "as_of_date",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.as_of_date",
+            "attributeRef": "lotus.as_of_date"
+          },
+          {
+            "name": "reporting_currency",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.reporting_currency",
+            "attributeRef": "lotus.reporting_currency"
+          },
+          {
+            "name": "policy_context",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.policy_context",
+            "attributeRef": "lotus.policy_context"
+          }
+        ]
+      },
+      "response": {
+        "httpStatus": 200,
+        "model": "BenchmarkAssignmentResponse",
+        "fields": [
+          {
+            "name": "portfolio_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.portfolio_id",
+            "attributeRef": "lotus.portfolio_id"
+          },
+          {
+            "name": "benchmark_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.benchmark_id",
+            "attributeRef": "lotus.benchmark_id"
+          },
+          {
+            "name": "as_of_date",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.as_of_date",
+            "attributeRef": "lotus.as_of_date"
+          },
+          {
+            "name": "effective_from",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.effective_from",
+            "attributeRef": "lotus.effective_from"
+          },
+          {
+            "name": "effective_to",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.effective_to",
+            "attributeRef": "lotus.effective_to"
+          },
+          {
+            "name": "assignment_source",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.assignment_source",
+            "attributeRef": "lotus.assignment_source"
+          },
+          {
+            "name": "assignment_status",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.assignment_status",
+            "attributeRef": "lotus.assignment_status"
+          },
+          {
+            "name": "policy_pack_id",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.policy_pack_id",
+            "attributeRef": "lotus.policy_pack_id"
+          },
+          {
+            "name": "source_system",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.source_system",
+            "attributeRef": "lotus.source_system"
+          },
+          {
+            "name": "assignment_recorded_at",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.assignment_recorded_at",
+            "attributeRef": "lotus.assignment_recorded_at"
+          },
+          {
+            "name": "assignment_version",
+            "location": "body",
+            "required": true,
+            "type": "integer",
+            "semanticId": "lotus.assignment_version",
+            "attributeRef": "lotus.assignment_version"
+          },
+          {
+            "name": "contract_version",
+            "location": "body",
+            "required": false,
+            "type": "string",
+            "semanticId": "lotus.contract_version",
+            "attributeRef": "lotus.contract_version"
+          }
+        ]
+      }
+    },
+    {
+      "operationId": "fetch_benchmark_definition_integration_benchmarks__benchmark_id__definition_post",
+      "method": "POST",
+      "path": "/integration/benchmarks/{benchmark_id}/definition",
+      "domain": "integration_contracts",
+      "serviceGroup": "query",
+      "tags": [
+        "Integration Contracts"
+      ],
+      "summary": "Fetch effective benchmark definition",
+      "description": "What: Return effective benchmark definition for an as-of date.\nHow: Resolves benchmark master fields and composition records with effective dating.\nWhen: Used by lotus-performance to construct benchmark input context.",
+      "naming": {
+        "boundedContext": "integration_contracts",
+        "canonicalTerms": [
+          "as_of_date",
+          "benchmark_currency",
+          "benchmark_family",
+          "benchmark_id",
+          "benchmark_name",
+          "benchmark_provider",
+          "benchmark_status",
+          "benchmark_type",
+          "classification_labels",
+          "classification_set_id",
+          "components",
+          "composition_effective_from",
+          "composition_effective_to",
+          "composition_weight",
+          "contract_version",
+          "effective_from",
+          "effective_to",
+          "index_id",
+          "quality_status",
+          "rebalance_event_id",
+          "rebalance_frequency",
+          "return_convention",
+          "source_record_id",
+          "source_timestamp",
+          "source_vendor"
+        ]
+      },
+      "request": {
+        "fields": [
+          {
+            "name": "benchmark_id",
+            "location": "path",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.benchmark_id",
+            "attributeRef": "lotus.benchmark_id"
+          },
+          {
+            "name": "as_of_date",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.as_of_date",
+            "attributeRef": "lotus.as_of_date"
+          }
+        ]
+      },
+      "response": {
+        "httpStatus": 200,
+        "model": "BenchmarkDefinitionResponse",
+        "fields": [
+          {
+            "name": "benchmark_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.benchmark_id",
+            "attributeRef": "lotus.benchmark_id"
+          },
+          {
+            "name": "benchmark_name",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.benchmark_name",
+            "attributeRef": "lotus.benchmark_name"
+          },
+          {
+            "name": "benchmark_type",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.benchmark_type",
+            "attributeRef": "lotus.benchmark_type"
+          },
+          {
+            "name": "benchmark_currency",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.benchmark_currency",
+            "attributeRef": "lotus.benchmark_currency"
+          },
+          {
+            "name": "return_convention",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.return_convention",
+            "attributeRef": "lotus.return_convention"
+          },
+          {
+            "name": "benchmark_status",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.benchmark_status",
+            "attributeRef": "lotus.benchmark_status"
+          },
+          {
+            "name": "benchmark_family",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.benchmark_family",
+            "attributeRef": "lotus.benchmark_family"
+          },
+          {
+            "name": "benchmark_provider",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.benchmark_provider",
+            "attributeRef": "lotus.benchmark_provider"
+          },
+          {
+            "name": "rebalance_frequency",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.rebalance_frequency",
+            "attributeRef": "lotus.rebalance_frequency"
+          },
+          {
+            "name": "classification_set_id",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.classification_set_id",
+            "attributeRef": "lotus.classification_set_id"
+          },
+          {
+            "name": "classification_labels",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.classification_labels",
+            "attributeRef": "lotus.classification_labels"
+          },
+          {
+            "name": "effective_from",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.effective_from",
+            "attributeRef": "lotus.effective_from"
+          },
+          {
+            "name": "effective_to",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.effective_to",
+            "attributeRef": "lotus.effective_to"
+          },
+          {
+            "name": "quality_status",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.quality_status",
+            "attributeRef": "lotus.quality_status"
+          },
+          {
+            "name": "source_timestamp",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.source_timestamp",
+            "attributeRef": "lotus.source_timestamp"
+          },
+          {
+            "name": "source_vendor",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.source_vendor",
+            "attributeRef": "lotus.source_vendor"
+          },
+          {
+            "name": "source_record_id",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.source_record_id",
+            "attributeRef": "lotus.source_record_id"
+          },
+          {
+            "name": "components",
+            "location": "body",
+            "required": false,
+            "type": "array",
+            "semanticId": "lotus.components",
+            "attributeRef": "lotus.components"
+          },
+          {
+            "name": "components[].index_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.index_id",
+            "attributeRef": "lotus.index_id"
+          },
+          {
+            "name": "components[].composition_weight",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.composition_weight",
+            "attributeRef": "lotus.composition_weight"
+          },
+          {
+            "name": "components[].composition_effective_from",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.composition_effective_from",
+            "attributeRef": "lotus.composition_effective_from"
+          },
+          {
+            "name": "components[].composition_effective_to",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.composition_effective_to",
+            "attributeRef": "lotus.composition_effective_to"
+          },
+          {
+            "name": "components[].rebalance_event_id",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.rebalance_event_id",
+            "attributeRef": "lotus.rebalance_event_id"
+          },
+          {
+            "name": "contract_version",
+            "location": "body",
+            "required": false,
+            "type": "string",
+            "semanticId": "lotus.contract_version",
+            "attributeRef": "lotus.contract_version"
+          }
+        ]
+      }
+    },
+    {
+      "operationId": "fetch_benchmark_catalog_integration_benchmarks_catalog_post",
+      "method": "POST",
+      "path": "/integration/benchmarks/catalog",
+      "domain": "integration_contracts",
+      "serviceGroup": "query",
+      "tags": [
+        "Integration Contracts"
+      ],
+      "summary": "Fetch benchmark master catalog",
+      "description": "What: Return benchmark master records effective on a requested date.\nHow: Applies optional filters and effective dating in query service.\nWhen: Used by downstream integration workflows to discover valid benchmark references.",
+      "naming": {
+        "boundedContext": "integration_contracts",
+        "canonicalTerms": [
+          "as_of_date",
+          "benchmark_currency",
+          "benchmark_family",
+          "benchmark_id",
+          "benchmark_name",
+          "benchmark_provider",
+          "benchmark_status",
+          "benchmark_type",
+          "classification_labels",
+          "classification_set_id",
+          "components",
+          "composition_effective_from",
+          "composition_effective_to",
+          "composition_weight",
+          "contract_version",
+          "effective_from",
+          "effective_to",
+          "index_id",
+          "quality_status",
+          "rebalance_event_id",
+          "rebalance_frequency",
+          "records",
+          "return_convention",
+          "source_record_id",
+          "source_timestamp",
+          "source_vendor"
+        ]
+      },
+      "request": {
+        "fields": [
+          {
+            "name": "as_of_date",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.as_of_date",
+            "attributeRef": "lotus.as_of_date"
+          },
+          {
+            "name": "benchmark_type",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.benchmark_type",
+            "attributeRef": "lotus.benchmark_type"
+          },
+          {
+            "name": "benchmark_currency",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.benchmark_currency",
+            "attributeRef": "lotus.benchmark_currency"
+          },
+          {
+            "name": "benchmark_status",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.benchmark_status",
+            "attributeRef": "lotus.benchmark_status"
+          }
+        ]
+      },
+      "response": {
+        "httpStatus": 200,
+        "model": "BenchmarkCatalogResponse",
+        "fields": [
+          {
+            "name": "as_of_date",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.as_of_date",
+            "attributeRef": "lotus.as_of_date"
+          },
+          {
+            "name": "records",
+            "location": "body",
+            "required": false,
+            "type": "array",
+            "semanticId": "lotus.records",
+            "attributeRef": "lotus.records"
+          },
+          {
+            "name": "records[].benchmark_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.benchmark_id",
+            "attributeRef": "lotus.benchmark_id"
+          },
+          {
+            "name": "records[].benchmark_name",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.benchmark_name",
+            "attributeRef": "lotus.benchmark_name"
+          },
+          {
+            "name": "records[].benchmark_type",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.benchmark_type",
+            "attributeRef": "lotus.benchmark_type"
+          },
+          {
+            "name": "records[].benchmark_currency",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.benchmark_currency",
+            "attributeRef": "lotus.benchmark_currency"
+          },
+          {
+            "name": "records[].return_convention",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.return_convention",
+            "attributeRef": "lotus.return_convention"
+          },
+          {
+            "name": "records[].benchmark_status",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.benchmark_status",
+            "attributeRef": "lotus.benchmark_status"
+          },
+          {
+            "name": "records[].benchmark_family",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.benchmark_family",
+            "attributeRef": "lotus.benchmark_family"
+          },
+          {
+            "name": "records[].benchmark_provider",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.benchmark_provider",
+            "attributeRef": "lotus.benchmark_provider"
+          },
+          {
+            "name": "records[].rebalance_frequency",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.rebalance_frequency",
+            "attributeRef": "lotus.rebalance_frequency"
+          },
+          {
+            "name": "records[].classification_set_id",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.classification_set_id",
+            "attributeRef": "lotus.classification_set_id"
+          },
+          {
+            "name": "records[].classification_labels",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.classification_labels",
+            "attributeRef": "lotus.classification_labels"
+          },
+          {
+            "name": "records[].effective_from",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.effective_from",
+            "attributeRef": "lotus.effective_from"
+          },
+          {
+            "name": "records[].effective_to",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.effective_to",
+            "attributeRef": "lotus.effective_to"
+          },
+          {
+            "name": "records[].quality_status",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.quality_status",
+            "attributeRef": "lotus.quality_status"
+          },
+          {
+            "name": "records[].source_timestamp",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.source_timestamp",
+            "attributeRef": "lotus.source_timestamp"
+          },
+          {
+            "name": "records[].source_vendor",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.source_vendor",
+            "attributeRef": "lotus.source_vendor"
+          },
+          {
+            "name": "records[].source_record_id",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.source_record_id",
+            "attributeRef": "lotus.source_record_id"
+          },
+          {
+            "name": "records[].components",
+            "location": "body",
+            "required": false,
+            "type": "array",
+            "semanticId": "lotus.components",
+            "attributeRef": "lotus.components"
+          },
+          {
+            "name": "records[].components[].index_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.index_id",
+            "attributeRef": "lotus.index_id"
+          },
+          {
+            "name": "records[].components[].composition_weight",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.composition_weight",
+            "attributeRef": "lotus.composition_weight"
+          },
+          {
+            "name": "records[].components[].composition_effective_from",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.composition_effective_from",
+            "attributeRef": "lotus.composition_effective_from"
+          },
+          {
+            "name": "records[].components[].composition_effective_to",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.composition_effective_to",
+            "attributeRef": "lotus.composition_effective_to"
+          },
+          {
+            "name": "records[].components[].rebalance_event_id",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.rebalance_event_id",
+            "attributeRef": "lotus.rebalance_event_id"
+          },
+          {
+            "name": "records[].contract_version",
+            "location": "body",
+            "required": false,
+            "type": "string",
+            "semanticId": "lotus.contract_version",
+            "attributeRef": "lotus.contract_version"
+          }
+        ]
+      }
+    },
+    {
+      "operationId": "fetch_index_catalog_integration_indices_catalog_post",
+      "method": "POST",
+      "path": "/integration/indices/catalog",
+      "domain": "integration_contracts",
+      "serviceGroup": "query",
+      "tags": [
+        "Integration Contracts"
+      ],
+      "summary": "Fetch index master catalog",
+      "description": "What: Return index master records effective on a requested date.\nHow: Applies optional filters and effective dating in query service.\nWhen: Used by lotus-performance and attribution pipelines to discover canonical index metadata.",
+      "naming": {
+        "boundedContext": "integration_contracts",
+        "canonicalTerms": [
+          "as_of_date",
+          "classification_labels",
+          "classification_set_id",
+          "effective_from",
+          "effective_to",
+          "index_currency",
+          "index_id",
+          "index_market",
+          "index_name",
+          "index_provider",
+          "index_status",
+          "index_type",
+          "quality_status",
+          "records",
+          "source_record_id",
+          "source_timestamp",
+          "source_vendor"
+        ]
+      },
+      "request": {
+        "fields": [
+          {
+            "name": "as_of_date",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.as_of_date",
+            "attributeRef": "lotus.as_of_date"
+          },
+          {
+            "name": "index_currency",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.index_currency",
+            "attributeRef": "lotus.index_currency"
+          },
+          {
+            "name": "index_type",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.index_type",
+            "attributeRef": "lotus.index_type"
+          },
+          {
+            "name": "index_status",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.index_status",
+            "attributeRef": "lotus.index_status"
+          }
+        ]
+      },
+      "response": {
+        "httpStatus": 200,
+        "model": "IndexCatalogResponse",
+        "fields": [
+          {
+            "name": "as_of_date",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.as_of_date",
+            "attributeRef": "lotus.as_of_date"
+          },
+          {
+            "name": "records",
+            "location": "body",
+            "required": false,
+            "type": "array",
+            "semanticId": "lotus.records",
+            "attributeRef": "lotus.records"
+          },
+          {
+            "name": "records[].index_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.index_id",
+            "attributeRef": "lotus.index_id"
+          },
+          {
+            "name": "records[].index_name",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.index_name",
+            "attributeRef": "lotus.index_name"
+          },
+          {
+            "name": "records[].index_currency",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.index_currency",
+            "attributeRef": "lotus.index_currency"
+          },
+          {
+            "name": "records[].index_type",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.index_type",
+            "attributeRef": "lotus.index_type"
+          },
+          {
+            "name": "records[].index_status",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.index_status",
+            "attributeRef": "lotus.index_status"
+          },
+          {
+            "name": "records[].index_provider",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.index_provider",
+            "attributeRef": "lotus.index_provider"
+          },
+          {
+            "name": "records[].index_market",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.index_market",
+            "attributeRef": "lotus.index_market"
+          },
+          {
+            "name": "records[].classification_set_id",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.classification_set_id",
+            "attributeRef": "lotus.classification_set_id"
+          },
+          {
+            "name": "records[].classification_labels",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.classification_labels",
+            "attributeRef": "lotus.classification_labels"
+          },
+          {
+            "name": "records[].effective_from",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.effective_from",
+            "attributeRef": "lotus.effective_from"
+          },
+          {
+            "name": "records[].effective_to",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.effective_to",
+            "attributeRef": "lotus.effective_to"
+          },
+          {
+            "name": "records[].quality_status",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.quality_status",
+            "attributeRef": "lotus.quality_status"
+          },
+          {
+            "name": "records[].source_timestamp",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.source_timestamp",
+            "attributeRef": "lotus.source_timestamp"
+          },
+          {
+            "name": "records[].source_vendor",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.source_vendor",
+            "attributeRef": "lotus.source_vendor"
+          },
+          {
+            "name": "records[].source_record_id",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.source_record_id",
+            "attributeRef": "lotus.source_record_id"
+          }
+        ]
+      }
+    },
+    {
+      "operationId": "fetch_benchmark_market_series_integration_benchmarks__benchmark_id__market_series_post",
+      "method": "POST",
+      "path": "/integration/benchmarks/{benchmark_id}/market-series",
+      "domain": "integration_contracts",
+      "serviceGroup": "query",
+      "tags": [
+        "Integration Contracts"
+      ],
+      "summary": "Fetch benchmark market series inputs",
+      "description": "What: Return benchmark market series inputs required by lotus-performance.\nHow: Resolves components and returns aligned raw series with quality and lineage metadata.\nWhen: Used for benchmark analytics and replay-safe portfolio attribution calculations.",
+      "naming": {
+        "boundedContext": "integration_contracts",
+        "canonicalTerms": [
+          "as_of_date",
+          "benchmark_id",
+          "benchmark_return",
+          "component_series",
+          "component_weight",
+          "end_date",
+          "frequency",
+          "fx_rate",
+          "index_id",
+          "index_price",
+          "index_return",
+          "lineage",
+          "points",
+          "quality_status",
+          "quality_status_summary",
+          "resolved_window",
+          "series_date",
+          "series_fields",
+          "start_date",
+          "target_currency",
+          "window"
+        ]
+      },
+      "request": {
+        "fields": [
+          {
+            "name": "benchmark_id",
+            "location": "path",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.benchmark_id",
+            "attributeRef": "lotus.benchmark_id"
+          },
+          {
+            "name": "as_of_date",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.as_of_date",
+            "attributeRef": "lotus.as_of_date"
+          },
+          {
+            "name": "window",
+            "location": "body",
+            "required": true,
+            "type": "IntegrationWindow",
+            "semanticId": "lotus.window",
+            "attributeRef": "lotus.window"
+          },
+          {
+            "name": "window.start_date",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.start_date",
+            "attributeRef": "lotus.start_date"
+          },
+          {
+            "name": "window.end_date",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.end_date",
+            "attributeRef": "lotus.end_date"
+          },
+          {
+            "name": "frequency",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.frequency",
+            "attributeRef": "lotus.frequency"
+          },
+          {
+            "name": "target_currency",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.target_currency",
+            "attributeRef": "lotus.target_currency"
+          },
+          {
+            "name": "series_fields",
+            "location": "body",
+            "required": true,
+            "type": "array",
+            "semanticId": "lotus.series_fields",
+            "attributeRef": "lotus.series_fields"
+          }
+        ]
+      },
+      "response": {
+        "httpStatus": 200,
+        "model": "BenchmarkMarketSeriesResponse",
+        "fields": [
+          {
+            "name": "benchmark_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.benchmark_id",
+            "attributeRef": "lotus.benchmark_id"
+          },
+          {
+            "name": "as_of_date",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.as_of_date",
+            "attributeRef": "lotus.as_of_date"
+          },
+          {
+            "name": "resolved_window",
+            "location": "body",
+            "required": true,
+            "type": "IntegrationWindow",
+            "semanticId": "lotus.resolved_window",
+            "attributeRef": "lotus.resolved_window"
+          },
+          {
+            "name": "resolved_window.start_date",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.start_date",
+            "attributeRef": "lotus.start_date"
+          },
+          {
+            "name": "resolved_window.end_date",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.end_date",
+            "attributeRef": "lotus.end_date"
+          },
+          {
+            "name": "frequency",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.frequency",
+            "attributeRef": "lotus.frequency"
+          },
+          {
+            "name": "component_series",
+            "location": "body",
+            "required": false,
+            "type": "array",
+            "semanticId": "lotus.component_series",
+            "attributeRef": "lotus.component_series"
+          },
+          {
+            "name": "component_series[].index_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.index_id",
+            "attributeRef": "lotus.index_id"
+          },
+          {
+            "name": "component_series[].points",
+            "location": "body",
+            "required": false,
+            "type": "array",
+            "semanticId": "lotus.points",
+            "attributeRef": "lotus.points"
+          },
+          {
+            "name": "component_series[].points[].series_date",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.series_date",
+            "attributeRef": "lotus.series_date"
+          },
+          {
+            "name": "component_series[].points[].index_price",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.index_price",
+            "attributeRef": "lotus.index_price"
+          },
+          {
+            "name": "component_series[].points[].index_return",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.index_return",
+            "attributeRef": "lotus.index_return"
+          },
+          {
+            "name": "component_series[].points[].benchmark_return",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.benchmark_return",
+            "attributeRef": "lotus.benchmark_return"
+          },
+          {
+            "name": "component_series[].points[].component_weight",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.component_weight",
+            "attributeRef": "lotus.component_weight"
+          },
+          {
+            "name": "component_series[].points[].fx_rate",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.fx_rate",
+            "attributeRef": "lotus.fx_rate"
+          },
+          {
+            "name": "component_series[].points[].quality_status",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.quality_status",
+            "attributeRef": "lotus.quality_status"
+          },
+          {
+            "name": "quality_status_summary",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.quality_status_summary",
+            "attributeRef": "lotus.quality_status_summary"
+          },
+          {
+            "name": "lineage",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.lineage",
+            "attributeRef": "lotus.lineage"
+          }
+        ]
+      }
+    },
+    {
+      "operationId": "fetch_index_price_series_integration_indices__index_id__price_series_post",
+      "method": "POST",
+      "path": "/integration/indices/{index_id}/price-series",
+      "domain": "integration_contracts",
+      "serviceGroup": "query",
+      "tags": [
+        "Integration Contracts"
+      ],
+      "summary": "Fetch raw index price series",
+      "description": "What: Return raw index price series for the requested index and window.\nHow: Reads canonical time series records with deterministic ordering.\nWhen: Used by downstream analytics pipelines requiring raw index price inputs.",
+      "naming": {
+        "boundedContext": "integration_contracts",
+        "canonicalTerms": [
+          "as_of_date",
+          "end_date",
+          "frequency",
+          "index_id",
+          "index_price",
+          "lineage",
+          "points",
+          "quality_status",
+          "resolved_window",
+          "series_currency",
+          "series_date",
+          "start_date",
+          "target_currency",
+          "value_convention",
+          "window"
+        ]
+      },
+      "request": {
+        "fields": [
+          {
+            "name": "index_id",
+            "location": "path",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.index_id",
+            "attributeRef": "lotus.index_id"
+          },
+          {
+            "name": "as_of_date",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.as_of_date",
+            "attributeRef": "lotus.as_of_date"
+          },
+          {
+            "name": "window",
+            "location": "body",
+            "required": true,
+            "type": "IntegrationWindow",
+            "semanticId": "lotus.window",
+            "attributeRef": "lotus.window"
+          },
+          {
+            "name": "window.start_date",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.start_date",
+            "attributeRef": "lotus.start_date"
+          },
+          {
+            "name": "window.end_date",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.end_date",
+            "attributeRef": "lotus.end_date"
+          },
+          {
+            "name": "frequency",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.frequency",
+            "attributeRef": "lotus.frequency"
+          },
+          {
+            "name": "target_currency",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.target_currency",
+            "attributeRef": "lotus.target_currency"
+          }
+        ]
+      },
+      "response": {
+        "httpStatus": 200,
+        "model": "IndexPriceSeriesResponse",
+        "fields": [
+          {
+            "name": "index_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.index_id",
+            "attributeRef": "lotus.index_id"
+          },
+          {
+            "name": "resolved_window",
+            "location": "body",
+            "required": true,
+            "type": "IntegrationWindow",
+            "semanticId": "lotus.resolved_window",
+            "attributeRef": "lotus.resolved_window"
+          },
+          {
+            "name": "resolved_window.start_date",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.start_date",
+            "attributeRef": "lotus.start_date"
+          },
+          {
+            "name": "resolved_window.end_date",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.end_date",
+            "attributeRef": "lotus.end_date"
+          },
+          {
+            "name": "frequency",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.frequency",
+            "attributeRef": "lotus.frequency"
+          },
+          {
+            "name": "points",
+            "location": "body",
+            "required": false,
+            "type": "array",
+            "semanticId": "lotus.points",
+            "attributeRef": "lotus.points"
+          },
+          {
+            "name": "points[].series_date",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.series_date",
+            "attributeRef": "lotus.series_date"
+          },
+          {
+            "name": "points[].index_price",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.index_price",
+            "attributeRef": "lotus.index_price"
+          },
+          {
+            "name": "points[].series_currency",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.series_currency",
+            "attributeRef": "lotus.series_currency"
+          },
+          {
+            "name": "points[].value_convention",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.value_convention",
+            "attributeRef": "lotus.value_convention"
+          },
+          {
+            "name": "points[].quality_status",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.quality_status",
+            "attributeRef": "lotus.quality_status"
+          },
+          {
+            "name": "lineage",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.lineage",
+            "attributeRef": "lotus.lineage"
+          }
+        ]
+      }
+    },
+    {
+      "operationId": "fetch_index_return_series_integration_indices__index_id__return_series_post",
+      "method": "POST",
+      "path": "/integration/indices/{index_id}/return-series",
+      "domain": "integration_contracts",
+      "serviceGroup": "query",
+      "tags": [
+        "Integration Contracts"
+      ],
+      "summary": "Fetch raw index return series",
+      "description": "What: Return raw vendor-provided index return series.\nHow: Reads canonical index return records with explicit convention fields.\nWhen: Used by lotus-performance for return-based benchmark processing.",
+      "naming": {
+        "boundedContext": "integration_contracts",
+        "canonicalTerms": [
+          "as_of_date",
+          "end_date",
+          "frequency",
+          "index_id",
+          "index_return",
+          "lineage",
+          "points",
+          "quality_status",
+          "resolved_window",
+          "return_convention",
+          "return_period",
+          "series_currency",
+          "series_date",
+          "start_date",
+          "target_currency",
+          "window"
+        ]
+      },
+      "request": {
+        "fields": [
+          {
+            "name": "index_id",
+            "location": "path",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.index_id",
+            "attributeRef": "lotus.index_id"
+          },
+          {
+            "name": "as_of_date",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.as_of_date",
+            "attributeRef": "lotus.as_of_date"
+          },
+          {
+            "name": "window",
+            "location": "body",
+            "required": true,
+            "type": "IntegrationWindow",
+            "semanticId": "lotus.window",
+            "attributeRef": "lotus.window"
+          },
+          {
+            "name": "window.start_date",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.start_date",
+            "attributeRef": "lotus.start_date"
+          },
+          {
+            "name": "window.end_date",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.end_date",
+            "attributeRef": "lotus.end_date"
+          },
+          {
+            "name": "frequency",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.frequency",
+            "attributeRef": "lotus.frequency"
+          },
+          {
+            "name": "target_currency",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.target_currency",
+            "attributeRef": "lotus.target_currency"
+          }
+        ]
+      },
+      "response": {
+        "httpStatus": 200,
+        "model": "IndexReturnSeriesResponse",
+        "fields": [
+          {
+            "name": "index_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.index_id",
+            "attributeRef": "lotus.index_id"
+          },
+          {
+            "name": "resolved_window",
+            "location": "body",
+            "required": true,
+            "type": "IntegrationWindow",
+            "semanticId": "lotus.resolved_window",
+            "attributeRef": "lotus.resolved_window"
+          },
+          {
+            "name": "resolved_window.start_date",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.start_date",
+            "attributeRef": "lotus.start_date"
+          },
+          {
+            "name": "resolved_window.end_date",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.end_date",
+            "attributeRef": "lotus.end_date"
+          },
+          {
+            "name": "frequency",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.frequency",
+            "attributeRef": "lotus.frequency"
+          },
+          {
+            "name": "points",
+            "location": "body",
+            "required": false,
+            "type": "array",
+            "semanticId": "lotus.points",
+            "attributeRef": "lotus.points"
+          },
+          {
+            "name": "points[].series_date",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.series_date",
+            "attributeRef": "lotus.series_date"
+          },
+          {
+            "name": "points[].index_return",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.index_return",
+            "attributeRef": "lotus.index_return"
+          },
+          {
+            "name": "points[].return_period",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.return_period",
+            "attributeRef": "lotus.return_period"
+          },
+          {
+            "name": "points[].return_convention",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.return_convention",
+            "attributeRef": "lotus.return_convention"
+          },
+          {
+            "name": "points[].series_currency",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.series_currency",
+            "attributeRef": "lotus.series_currency"
+          },
+          {
+            "name": "points[].quality_status",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.quality_status",
+            "attributeRef": "lotus.quality_status"
+          },
+          {
+            "name": "lineage",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.lineage",
+            "attributeRef": "lotus.lineage"
+          }
+        ]
+      }
+    },
+    {
+      "operationId": "fetch_benchmark_return_series_integration_benchmarks__benchmark_id__return_series_post",
+      "method": "POST",
+      "path": "/integration/benchmarks/{benchmark_id}/return-series",
+      "domain": "integration_contracts",
+      "serviceGroup": "query",
+      "tags": [
+        "Integration Contracts"
+      ],
+      "summary": "Fetch raw benchmark return series",
+      "description": "What: Return raw vendor-provided benchmark return series.\nHow: Reads canonical benchmark return records with explicit convention fields.\nWhen: Used by lotus-performance when provider benchmark return inputs are available.",
+      "naming": {
+        "boundedContext": "integration_contracts",
+        "canonicalTerms": [
+          "as_of_date",
+          "benchmark_id",
+          "benchmark_return",
+          "end_date",
+          "frequency",
+          "lineage",
+          "points",
+          "quality_status",
+          "resolved_window",
+          "return_convention",
+          "return_period",
+          "series_currency",
+          "series_date",
+          "start_date",
+          "window"
+        ]
+      },
+      "request": {
+        "fields": [
+          {
+            "name": "benchmark_id",
+            "location": "path",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.benchmark_id",
+            "attributeRef": "lotus.benchmark_id"
+          },
+          {
+            "name": "as_of_date",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.as_of_date",
+            "attributeRef": "lotus.as_of_date"
+          },
+          {
+            "name": "window",
+            "location": "body",
+            "required": true,
+            "type": "IntegrationWindow",
+            "semanticId": "lotus.window",
+            "attributeRef": "lotus.window"
+          },
+          {
+            "name": "window.start_date",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.start_date",
+            "attributeRef": "lotus.start_date"
+          },
+          {
+            "name": "window.end_date",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.end_date",
+            "attributeRef": "lotus.end_date"
+          },
+          {
+            "name": "frequency",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.frequency",
+            "attributeRef": "lotus.frequency"
+          }
+        ]
+      },
+      "response": {
+        "httpStatus": 200,
+        "model": "BenchmarkReturnSeriesResponse",
+        "fields": [
+          {
+            "name": "benchmark_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.benchmark_id",
+            "attributeRef": "lotus.benchmark_id"
+          },
+          {
+            "name": "resolved_window",
+            "location": "body",
+            "required": true,
+            "type": "IntegrationWindow",
+            "semanticId": "lotus.resolved_window",
+            "attributeRef": "lotus.resolved_window"
+          },
+          {
+            "name": "resolved_window.start_date",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.start_date",
+            "attributeRef": "lotus.start_date"
+          },
+          {
+            "name": "resolved_window.end_date",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.end_date",
+            "attributeRef": "lotus.end_date"
+          },
+          {
+            "name": "frequency",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.frequency",
+            "attributeRef": "lotus.frequency"
+          },
+          {
+            "name": "points",
+            "location": "body",
+            "required": false,
+            "type": "array",
+            "semanticId": "lotus.points",
+            "attributeRef": "lotus.points"
+          },
+          {
+            "name": "points[].series_date",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.series_date",
+            "attributeRef": "lotus.series_date"
+          },
+          {
+            "name": "points[].benchmark_return",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.benchmark_return",
+            "attributeRef": "lotus.benchmark_return"
+          },
+          {
+            "name": "points[].return_period",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.return_period",
+            "attributeRef": "lotus.return_period"
+          },
+          {
+            "name": "points[].return_convention",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.return_convention",
+            "attributeRef": "lotus.return_convention"
+          },
+          {
+            "name": "points[].series_currency",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.series_currency",
+            "attributeRef": "lotus.series_currency"
+          },
+          {
+            "name": "points[].quality_status",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.quality_status",
+            "attributeRef": "lotus.quality_status"
+          },
+          {
+            "name": "lineage",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.lineage",
+            "attributeRef": "lotus.lineage"
+          }
+        ]
+      }
+    },
+    {
+      "operationId": "fetch_risk_free_series_integration_reference_risk_free_series_post",
+      "method": "POST",
+      "path": "/integration/reference/risk-free-series",
+      "domain": "integration_contracts",
+      "serviceGroup": "query",
+      "tags": [
+        "Integration Contracts"
+      ],
+      "summary": "Fetch raw risk-free series",
+      "description": "What: Return raw risk-free reference series for requested currency and window.\nHow: Serves canonical risk-free records with convention metadata and lineage.\nWhen: Used by lotus-performance for excess return and risk-adjusted analytics inputs.",
+      "naming": {
+        "boundedContext": "integration_contracts",
+        "canonicalTerms": [
+          "as_of_date",
+          "compounding_convention",
+          "currency",
+          "day_count_convention",
+          "end_date",
+          "frequency",
+          "lineage",
+          "points",
+          "quality_status",
+          "resolved_window",
+          "series_currency",
+          "series_date",
+          "series_mode",
+          "start_date",
+          "value",
+          "value_convention",
+          "window"
+        ]
+      },
+      "request": {
+        "fields": [
+          {
+            "name": "as_of_date",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.as_of_date",
+            "attributeRef": "lotus.as_of_date"
+          },
+          {
+            "name": "window",
+            "location": "body",
+            "required": true,
+            "type": "IntegrationWindow",
+            "semanticId": "lotus.window",
+            "attributeRef": "lotus.window"
+          },
+          {
+            "name": "window.start_date",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.start_date",
+            "attributeRef": "lotus.start_date"
+          },
+          {
+            "name": "window.end_date",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.end_date",
+            "attributeRef": "lotus.end_date"
+          },
+          {
+            "name": "frequency",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.frequency",
+            "attributeRef": "lotus.frequency"
+          },
+          {
+            "name": "currency",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.currency",
+            "attributeRef": "lotus.currency"
+          },
+          {
+            "name": "series_mode",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.series_mode",
+            "attributeRef": "lotus.series_mode"
+          }
+        ]
+      },
+      "response": {
+        "httpStatus": 200,
+        "model": "RiskFreeSeriesResponse",
+        "fields": [
+          {
+            "name": "currency",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.currency",
+            "attributeRef": "lotus.currency"
+          },
+          {
+            "name": "series_mode",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.series_mode",
+            "attributeRef": "lotus.series_mode"
+          },
+          {
+            "name": "resolved_window",
+            "location": "body",
+            "required": true,
+            "type": "IntegrationWindow",
+            "semanticId": "lotus.resolved_window",
+            "attributeRef": "lotus.resolved_window"
+          },
+          {
+            "name": "resolved_window.start_date",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.start_date",
+            "attributeRef": "lotus.start_date"
+          },
+          {
+            "name": "resolved_window.end_date",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.end_date",
+            "attributeRef": "lotus.end_date"
+          },
+          {
+            "name": "frequency",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.frequency",
+            "attributeRef": "lotus.frequency"
+          },
+          {
+            "name": "points",
+            "location": "body",
+            "required": false,
+            "type": "array",
+            "semanticId": "lotus.points",
+            "attributeRef": "lotus.points"
+          },
+          {
+            "name": "points[].series_date",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.series_date",
+            "attributeRef": "lotus.series_date"
+          },
+          {
+            "name": "points[].value",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.value",
+            "attributeRef": "lotus.value"
+          },
+          {
+            "name": "points[].value_convention",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.value_convention",
+            "attributeRef": "lotus.value_convention"
+          },
+          {
+            "name": "points[].day_count_convention",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.day_count_convention",
+            "attributeRef": "lotus.day_count_convention"
+          },
+          {
+            "name": "points[].compounding_convention",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.compounding_convention",
+            "attributeRef": "lotus.compounding_convention"
+          },
+          {
+            "name": "points[].series_currency",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.series_currency",
+            "attributeRef": "lotus.series_currency"
+          },
+          {
+            "name": "points[].quality_status",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.quality_status",
+            "attributeRef": "lotus.quality_status"
+          },
+          {
+            "name": "lineage",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.lineage",
+            "attributeRef": "lotus.lineage"
+          }
+        ]
+      }
+    },
+    {
+      "operationId": "fetch_classification_taxonomy_integration_reference_classification_taxonomy_post",
+      "method": "POST",
+      "path": "/integration/reference/classification-taxonomy",
+      "domain": "integration_contracts",
+      "serviceGroup": "query",
+      "tags": [
+        "Integration Contracts"
+      ],
+      "summary": "Fetch canonical classification taxonomy",
+      "description": "What: Return effective classification taxonomy records.\nHow: Applies as-of effective dating and optional scope filtering.\nWhen: Used by lotus-performance attribution workflows to enforce shared domain labels.",
+      "naming": {
+        "boundedContext": "integration_contracts",
+        "canonicalTerms": [
+          "as_of_date",
+          "classification_set_id",
+          "dimension_description",
+          "dimension_name",
+          "dimension_value",
+          "effective_from",
+          "effective_to",
+          "quality_status",
+          "records",
+          "taxonomy_scope",
+          "taxonomy_version"
+        ]
+      },
+      "request": {
+        "fields": [
+          {
+            "name": "as_of_date",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.as_of_date",
+            "attributeRef": "lotus.as_of_date"
+          },
+          {
+            "name": "taxonomy_scope",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.taxonomy_scope",
+            "attributeRef": "lotus.taxonomy_scope"
+          }
+        ]
+      },
+      "response": {
+        "httpStatus": 200,
+        "model": "ClassificationTaxonomyResponse",
+        "fields": [
+          {
+            "name": "as_of_date",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.as_of_date",
+            "attributeRef": "lotus.as_of_date"
+          },
+          {
+            "name": "records",
+            "location": "body",
+            "required": false,
+            "type": "array",
+            "semanticId": "lotus.records",
+            "attributeRef": "lotus.records"
+          },
+          {
+            "name": "records[].classification_set_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.classification_set_id",
+            "attributeRef": "lotus.classification_set_id"
+          },
+          {
+            "name": "records[].taxonomy_scope",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.taxonomy_scope",
+            "attributeRef": "lotus.taxonomy_scope"
+          },
+          {
+            "name": "records[].dimension_name",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.dimension_name",
+            "attributeRef": "lotus.dimension_name"
+          },
+          {
+            "name": "records[].dimension_value",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.dimension_value",
+            "attributeRef": "lotus.dimension_value"
+          },
+          {
+            "name": "records[].dimension_description",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.dimension_description",
+            "attributeRef": "lotus.dimension_description"
+          },
+          {
+            "name": "records[].effective_from",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.effective_from",
+            "attributeRef": "lotus.effective_from"
+          },
+          {
+            "name": "records[].effective_to",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.effective_to",
+            "attributeRef": "lotus.effective_to"
+          },
+          {
+            "name": "records[].quality_status",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.quality_status",
+            "attributeRef": "lotus.quality_status"
+          },
+          {
+            "name": "taxonomy_version",
+            "location": "body",
+            "required": false,
+            "type": "string",
+            "semanticId": "lotus.taxonomy_version",
+            "attributeRef": "lotus.taxonomy_version"
+          }
+        ]
+      }
+    },
+    {
+      "operationId": "get_benchmark_coverage_integration_benchmarks__benchmark_id__coverage_post",
+      "method": "POST",
+      "path": "/integration/benchmarks/{benchmark_id}/coverage",
+      "domain": "integration_contracts",
+      "serviceGroup": "query",
+      "tags": [
+        "Integration Contracts"
+      ],
+      "summary": "Get benchmark reference coverage",
+      "description": "What: Return benchmark reference data coverage diagnostics for an expected window.\nHow: Compares expected window dates against observed data and summarizes quality distribution.\nWhen: Used by ops monitoring and pre-run validation before analytics processing.",
+      "naming": {
+        "boundedContext": "integration_contracts",
+        "canonicalTerms": [
+          "benchmark_id",
+          "end_date",
+          "expected_end_date",
+          "expected_start_date",
+          "missing_dates_count",
+          "missing_dates_sample",
+          "observed_end_date",
+          "observed_start_date",
+          "quality_status_distribution",
+          "start_date",
+          "total_points",
+          "window"
+        ]
+      },
+      "request": {
+        "fields": [
+          {
+            "name": "benchmark_id",
+            "location": "path",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.benchmark_id",
+            "attributeRef": "lotus.benchmark_id"
+          },
+          {
+            "name": "window",
+            "location": "body",
+            "required": true,
+            "type": "IntegrationWindow",
+            "semanticId": "lotus.window",
+            "attributeRef": "lotus.window"
+          },
+          {
+            "name": "window.start_date",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.start_date",
+            "attributeRef": "lotus.start_date"
+          },
+          {
+            "name": "window.end_date",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.end_date",
+            "attributeRef": "lotus.end_date"
+          }
+        ]
+      },
+      "response": {
+        "httpStatus": 200,
+        "model": "CoverageResponse",
+        "fields": [
+          {
+            "name": "observed_start_date",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.observed_start_date",
+            "attributeRef": "lotus.observed_start_date"
+          },
+          {
+            "name": "observed_end_date",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.observed_end_date",
+            "attributeRef": "lotus.observed_end_date"
+          },
+          {
+            "name": "expected_start_date",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.expected_start_date",
+            "attributeRef": "lotus.expected_start_date"
+          },
+          {
+            "name": "expected_end_date",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.expected_end_date",
+            "attributeRef": "lotus.expected_end_date"
+          },
+          {
+            "name": "total_points",
+            "location": "body",
+            "required": true,
+            "type": "integer",
+            "semanticId": "lotus.total_points",
+            "attributeRef": "lotus.total_points"
+          },
+          {
+            "name": "missing_dates_count",
+            "location": "body",
+            "required": true,
+            "type": "integer",
+            "semanticId": "lotus.missing_dates_count",
+            "attributeRef": "lotus.missing_dates_count"
+          },
+          {
+            "name": "missing_dates_sample",
+            "location": "body",
+            "required": false,
+            "type": "array",
+            "semanticId": "lotus.missing_dates_sample",
+            "attributeRef": "lotus.missing_dates_sample"
+          },
+          {
+            "name": "quality_status_distribution",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.quality_status_distribution",
+            "attributeRef": "lotus.quality_status_distribution"
+          }
+        ]
+      }
+    },
+    {
+      "operationId": "get_risk_free_coverage_integration_reference_risk_free_series_coverage_post",
+      "method": "POST",
+      "path": "/integration/reference/risk-free-series/coverage",
+      "domain": "integration_contracts",
+      "serviceGroup": "query",
+      "tags": [
+        "Integration Contracts"
+      ],
+      "summary": "Get risk-free reference coverage",
+      "description": "What: Return risk-free series coverage diagnostics for an expected window.\nHow: Compares expected window dates against observed data and summarizes quality distribution.\nWhen: Used by ops monitoring and analytics readiness checks.",
+      "naming": {
+        "boundedContext": "integration_contracts",
+        "canonicalTerms": [
+          "currency",
+          "end_date",
+          "expected_end_date",
+          "expected_start_date",
+          "missing_dates_count",
+          "missing_dates_sample",
+          "observed_end_date",
+          "observed_start_date",
+          "quality_status_distribution",
+          "start_date",
+          "total_points",
+          "window"
+        ]
+      },
+      "request": {
+        "fields": [
+          {
+            "name": "currency",
+            "location": "query",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.currency",
+            "attributeRef": "lotus.currency"
+          },
+          {
+            "name": "window",
+            "location": "body",
+            "required": true,
+            "type": "IntegrationWindow",
+            "semanticId": "lotus.window",
+            "attributeRef": "lotus.window"
+          },
+          {
+            "name": "window.start_date",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.start_date",
+            "attributeRef": "lotus.start_date"
+          },
+          {
+            "name": "window.end_date",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.end_date",
+            "attributeRef": "lotus.end_date"
+          }
+        ]
+      },
+      "response": {
+        "httpStatus": 200,
+        "model": "CoverageResponse",
+        "fields": [
+          {
+            "name": "observed_start_date",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.observed_start_date",
+            "attributeRef": "lotus.observed_start_date"
+          },
+          {
+            "name": "observed_end_date",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.observed_end_date",
+            "attributeRef": "lotus.observed_end_date"
+          },
+          {
+            "name": "expected_start_date",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.expected_start_date",
+            "attributeRef": "lotus.expected_start_date"
+          },
+          {
+            "name": "expected_end_date",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.expected_end_date",
+            "attributeRef": "lotus.expected_end_date"
+          },
+          {
+            "name": "total_points",
+            "location": "body",
+            "required": true,
+            "type": "integer",
+            "semanticId": "lotus.total_points",
+            "attributeRef": "lotus.total_points"
+          },
+          {
+            "name": "missing_dates_count",
+            "location": "body",
+            "required": true,
+            "type": "integer",
+            "semanticId": "lotus.missing_dates_count",
+            "attributeRef": "lotus.missing_dates_count"
+          },
+          {
+            "name": "missing_dates_sample",
+            "location": "body",
+            "required": false,
+            "type": "array",
+            "semanticId": "lotus.missing_dates_sample",
+            "attributeRef": "lotus.missing_dates_sample"
+          },
+          {
+            "name": "quality_status_distribution",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.quality_status_distribution",
+            "attributeRef": "lotus.quality_status_distribution"
           }
         ]
       }
@@ -15913,6 +19639,1941 @@
             "type": "boolean",
             "semanticId": "lotus.collision_detected",
             "attributeRef": "lotus.collision_detected"
+          }
+        ]
+      }
+    },
+    {
+      "operationId": "ingest_benchmark_assignments_ingest_benchmark_assignments_post",
+      "method": "POST",
+      "path": "/ingest/benchmark-assignments",
+      "domain": "reference_data",
+      "serviceGroup": "ingestion",
+      "tags": [
+        "Reference Data"
+      ],
+      "summary": "Ingest portfolio benchmark assignments",
+      "description": "What: Accept effective-dated benchmark assignment records for portfolios.\nHow: Validate canonical contract, enforce ingestion controls, and upsert durable records.\nWhen: Use for benchmark onboarding, assignment updates, and restatement correction cycles.",
+      "naming": {
+        "boundedContext": "reference_data",
+        "canonicalTerms": [
+          "accepted_count",
+          "assignment_recorded_at",
+          "assignment_source",
+          "assignment_status",
+          "assignment_version",
+          "benchmark_assignments",
+          "benchmark_id",
+          "correlation_id",
+          "effective_from",
+          "effective_to",
+          "entity_type",
+          "idempotency_key",
+          "job_id",
+          "message",
+          "policy_pack_id",
+          "portfolio_id",
+          "request_id",
+          "source_system",
+          "trace_id"
+        ]
+      },
+      "request": {
+        "fields": [
+          {
+            "name": "benchmark_assignments",
+            "location": "body",
+            "required": true,
+            "type": "array",
+            "semanticId": "lotus.benchmark_assignments",
+            "attributeRef": "lotus.benchmark_assignments"
+          },
+          {
+            "name": "benchmark_assignments[].portfolio_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.portfolio_id",
+            "attributeRef": "lotus.portfolio_id"
+          },
+          {
+            "name": "benchmark_assignments[].benchmark_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.benchmark_id",
+            "attributeRef": "lotus.benchmark_id"
+          },
+          {
+            "name": "benchmark_assignments[].effective_from",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.effective_from",
+            "attributeRef": "lotus.effective_from"
+          },
+          {
+            "name": "benchmark_assignments[].effective_to",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.effective_to",
+            "attributeRef": "lotus.effective_to"
+          },
+          {
+            "name": "benchmark_assignments[].assignment_source",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.assignment_source",
+            "attributeRef": "lotus.assignment_source"
+          },
+          {
+            "name": "benchmark_assignments[].assignment_status",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.assignment_status",
+            "attributeRef": "lotus.assignment_status"
+          },
+          {
+            "name": "benchmark_assignments[].policy_pack_id",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.policy_pack_id",
+            "attributeRef": "lotus.policy_pack_id"
+          },
+          {
+            "name": "benchmark_assignments[].source_system",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.source_system",
+            "attributeRef": "lotus.source_system"
+          },
+          {
+            "name": "benchmark_assignments[].assignment_recorded_at",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.assignment_recorded_at",
+            "attributeRef": "lotus.assignment_recorded_at"
+          },
+          {
+            "name": "benchmark_assignments[].assignment_version",
+            "location": "body",
+            "required": false,
+            "type": "integer",
+            "semanticId": "lotus.assignment_version",
+            "attributeRef": "lotus.assignment_version"
+          }
+        ]
+      },
+      "response": {
+        "httpStatus": 202,
+        "model": "BatchIngestionAcceptedResponse",
+        "fields": [
+          {
+            "name": "message",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.message",
+            "attributeRef": "lotus.message"
+          },
+          {
+            "name": "entity_type",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.entity_type",
+            "attributeRef": "lotus.entity_type"
+          },
+          {
+            "name": "accepted_count",
+            "location": "body",
+            "required": true,
+            "type": "integer",
+            "semanticId": "lotus.accepted_count",
+            "attributeRef": "lotus.accepted_count"
+          },
+          {
+            "name": "correlation_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.correlation_id",
+            "attributeRef": "lotus.correlation_id"
+          },
+          {
+            "name": "request_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.request_id",
+            "attributeRef": "lotus.request_id"
+          },
+          {
+            "name": "trace_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.trace_id",
+            "attributeRef": "lotus.trace_id"
+          },
+          {
+            "name": "idempotency_key",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.idempotency_key",
+            "attributeRef": "lotus.idempotency_key"
+          },
+          {
+            "name": "job_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.job_id",
+            "attributeRef": "lotus.job_id"
+          }
+        ]
+      }
+    },
+    {
+      "operationId": "ingest_benchmark_definitions_ingest_benchmark_definitions_post",
+      "method": "POST",
+      "path": "/ingest/benchmark-definitions",
+      "domain": "reference_data",
+      "serviceGroup": "ingestion",
+      "tags": [
+        "Reference Data"
+      ],
+      "summary": "Ingest benchmark definitions",
+      "description": "What: Accept benchmark master definition records.\nHow: Validate canonical contract and upsert effective-dated benchmark metadata.\nWhen: Use for benchmark master onboarding and lifecycle updates.",
+      "naming": {
+        "boundedContext": "reference_data",
+        "canonicalTerms": [
+          "accepted_count",
+          "benchmark_currency",
+          "benchmark_definitions",
+          "benchmark_family",
+          "benchmark_id",
+          "benchmark_name",
+          "benchmark_provider",
+          "benchmark_status",
+          "benchmark_type",
+          "classification_labels",
+          "classification_set_id",
+          "correlation_id",
+          "effective_from",
+          "effective_to",
+          "entity_type",
+          "idempotency_key",
+          "job_id",
+          "message",
+          "quality_status",
+          "rebalance_frequency",
+          "request_id",
+          "return_convention",
+          "source_record_id",
+          "source_timestamp",
+          "source_vendor",
+          "trace_id"
+        ]
+      },
+      "request": {
+        "fields": [
+          {
+            "name": "benchmark_definitions",
+            "location": "body",
+            "required": true,
+            "type": "array",
+            "semanticId": "lotus.benchmark_definitions",
+            "attributeRef": "lotus.benchmark_definitions"
+          },
+          {
+            "name": "benchmark_definitions[].benchmark_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.benchmark_id",
+            "attributeRef": "lotus.benchmark_id"
+          },
+          {
+            "name": "benchmark_definitions[].benchmark_name",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.benchmark_name",
+            "attributeRef": "lotus.benchmark_name"
+          },
+          {
+            "name": "benchmark_definitions[].benchmark_type",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.benchmark_type",
+            "attributeRef": "lotus.benchmark_type"
+          },
+          {
+            "name": "benchmark_definitions[].benchmark_currency",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.benchmark_currency",
+            "attributeRef": "lotus.benchmark_currency"
+          },
+          {
+            "name": "benchmark_definitions[].return_convention",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.return_convention",
+            "attributeRef": "lotus.return_convention"
+          },
+          {
+            "name": "benchmark_definitions[].benchmark_status",
+            "location": "body",
+            "required": false,
+            "type": "string",
+            "semanticId": "lotus.benchmark_status",
+            "attributeRef": "lotus.benchmark_status"
+          },
+          {
+            "name": "benchmark_definitions[].benchmark_family",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.benchmark_family",
+            "attributeRef": "lotus.benchmark_family"
+          },
+          {
+            "name": "benchmark_definitions[].benchmark_provider",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.benchmark_provider",
+            "attributeRef": "lotus.benchmark_provider"
+          },
+          {
+            "name": "benchmark_definitions[].rebalance_frequency",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.rebalance_frequency",
+            "attributeRef": "lotus.rebalance_frequency"
+          },
+          {
+            "name": "benchmark_definitions[].classification_set_id",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.classification_set_id",
+            "attributeRef": "lotus.classification_set_id"
+          },
+          {
+            "name": "benchmark_definitions[].classification_labels",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.classification_labels",
+            "attributeRef": "lotus.classification_labels"
+          },
+          {
+            "name": "benchmark_definitions[].effective_from",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.effective_from",
+            "attributeRef": "lotus.effective_from"
+          },
+          {
+            "name": "benchmark_definitions[].effective_to",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.effective_to",
+            "attributeRef": "lotus.effective_to"
+          },
+          {
+            "name": "benchmark_definitions[].source_timestamp",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.source_timestamp",
+            "attributeRef": "lotus.source_timestamp"
+          },
+          {
+            "name": "benchmark_definitions[].source_vendor",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.source_vendor",
+            "attributeRef": "lotus.source_vendor"
+          },
+          {
+            "name": "benchmark_definitions[].source_record_id",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.source_record_id",
+            "attributeRef": "lotus.source_record_id"
+          },
+          {
+            "name": "benchmark_definitions[].quality_status",
+            "location": "body",
+            "required": false,
+            "type": "string",
+            "semanticId": "lotus.quality_status",
+            "attributeRef": "lotus.quality_status"
+          }
+        ]
+      },
+      "response": {
+        "httpStatus": 202,
+        "model": "BatchIngestionAcceptedResponse",
+        "fields": [
+          {
+            "name": "message",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.message",
+            "attributeRef": "lotus.message"
+          },
+          {
+            "name": "entity_type",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.entity_type",
+            "attributeRef": "lotus.entity_type"
+          },
+          {
+            "name": "accepted_count",
+            "location": "body",
+            "required": true,
+            "type": "integer",
+            "semanticId": "lotus.accepted_count",
+            "attributeRef": "lotus.accepted_count"
+          },
+          {
+            "name": "correlation_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.correlation_id",
+            "attributeRef": "lotus.correlation_id"
+          },
+          {
+            "name": "request_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.request_id",
+            "attributeRef": "lotus.request_id"
+          },
+          {
+            "name": "trace_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.trace_id",
+            "attributeRef": "lotus.trace_id"
+          },
+          {
+            "name": "idempotency_key",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.idempotency_key",
+            "attributeRef": "lotus.idempotency_key"
+          },
+          {
+            "name": "job_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.job_id",
+            "attributeRef": "lotus.job_id"
+          }
+        ]
+      }
+    },
+    {
+      "operationId": "ingest_benchmark_compositions_ingest_benchmark_compositions_post",
+      "method": "POST",
+      "path": "/ingest/benchmark-compositions",
+      "domain": "reference_data",
+      "serviceGroup": "ingestion",
+      "tags": [
+        "Reference Data"
+      ],
+      "summary": "Ingest benchmark composition series",
+      "description": "What: Accept benchmark composition time-series records.\nHow: Validate composition weights and upsert effective-dated component memberships.\nWhen: Use for benchmark rebalance and composition history maintenance.",
+      "naming": {
+        "boundedContext": "reference_data",
+        "canonicalTerms": [
+          "accepted_count",
+          "benchmark_compositions",
+          "benchmark_id",
+          "composition_effective_from",
+          "composition_effective_to",
+          "composition_weight",
+          "correlation_id",
+          "entity_type",
+          "idempotency_key",
+          "index_id",
+          "job_id",
+          "message",
+          "quality_status",
+          "rebalance_event_id",
+          "request_id",
+          "source_record_id",
+          "source_timestamp",
+          "source_vendor",
+          "trace_id"
+        ]
+      },
+      "request": {
+        "fields": [
+          {
+            "name": "benchmark_compositions",
+            "location": "body",
+            "required": true,
+            "type": "array",
+            "semanticId": "lotus.benchmark_compositions",
+            "attributeRef": "lotus.benchmark_compositions"
+          },
+          {
+            "name": "benchmark_compositions[].benchmark_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.benchmark_id",
+            "attributeRef": "lotus.benchmark_id"
+          },
+          {
+            "name": "benchmark_compositions[].index_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.index_id",
+            "attributeRef": "lotus.index_id"
+          },
+          {
+            "name": "benchmark_compositions[].composition_effective_from",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.composition_effective_from",
+            "attributeRef": "lotus.composition_effective_from"
+          },
+          {
+            "name": "benchmark_compositions[].composition_effective_to",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.composition_effective_to",
+            "attributeRef": "lotus.composition_effective_to"
+          },
+          {
+            "name": "benchmark_compositions[].composition_weight",
+            "location": "body",
+            "required": true,
+            "type": "object",
+            "semanticId": "lotus.composition_weight",
+            "attributeRef": "lotus.composition_weight"
+          },
+          {
+            "name": "benchmark_compositions[].rebalance_event_id",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.rebalance_event_id",
+            "attributeRef": "lotus.rebalance_event_id"
+          },
+          {
+            "name": "benchmark_compositions[].source_timestamp",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.source_timestamp",
+            "attributeRef": "lotus.source_timestamp"
+          },
+          {
+            "name": "benchmark_compositions[].source_vendor",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.source_vendor",
+            "attributeRef": "lotus.source_vendor"
+          },
+          {
+            "name": "benchmark_compositions[].source_record_id",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.source_record_id",
+            "attributeRef": "lotus.source_record_id"
+          },
+          {
+            "name": "benchmark_compositions[].quality_status",
+            "location": "body",
+            "required": false,
+            "type": "string",
+            "semanticId": "lotus.quality_status",
+            "attributeRef": "lotus.quality_status"
+          }
+        ]
+      },
+      "response": {
+        "httpStatus": 202,
+        "model": "BatchIngestionAcceptedResponse",
+        "fields": [
+          {
+            "name": "message",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.message",
+            "attributeRef": "lotus.message"
+          },
+          {
+            "name": "entity_type",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.entity_type",
+            "attributeRef": "lotus.entity_type"
+          },
+          {
+            "name": "accepted_count",
+            "location": "body",
+            "required": true,
+            "type": "integer",
+            "semanticId": "lotus.accepted_count",
+            "attributeRef": "lotus.accepted_count"
+          },
+          {
+            "name": "correlation_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.correlation_id",
+            "attributeRef": "lotus.correlation_id"
+          },
+          {
+            "name": "request_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.request_id",
+            "attributeRef": "lotus.request_id"
+          },
+          {
+            "name": "trace_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.trace_id",
+            "attributeRef": "lotus.trace_id"
+          },
+          {
+            "name": "idempotency_key",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.idempotency_key",
+            "attributeRef": "lotus.idempotency_key"
+          },
+          {
+            "name": "job_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.job_id",
+            "attributeRef": "lotus.job_id"
+          }
+        ]
+      }
+    },
+    {
+      "operationId": "ingest_indices_ingest_indices_post",
+      "method": "POST",
+      "path": "/ingest/indices",
+      "domain": "reference_data",
+      "serviceGroup": "ingestion",
+      "tags": [
+        "Reference Data"
+      ],
+      "summary": "Ingest index definitions",
+      "description": "What: Accept index master definition records.\nHow: Validate canonical contract and upsert effective-dated index metadata.\nWhen: Use for index onboarding and attribution metadata lifecycle updates.",
+      "naming": {
+        "boundedContext": "reference_data",
+        "canonicalTerms": [
+          "accepted_count",
+          "classification_labels",
+          "classification_set_id",
+          "correlation_id",
+          "effective_from",
+          "effective_to",
+          "entity_type",
+          "idempotency_key",
+          "index_currency",
+          "index_id",
+          "index_market",
+          "index_name",
+          "index_provider",
+          "index_status",
+          "index_type",
+          "indices",
+          "job_id",
+          "message",
+          "quality_status",
+          "request_id",
+          "source_record_id",
+          "source_timestamp",
+          "source_vendor",
+          "trace_id"
+        ]
+      },
+      "request": {
+        "fields": [
+          {
+            "name": "indices",
+            "location": "body",
+            "required": true,
+            "type": "array",
+            "semanticId": "lotus.indices",
+            "attributeRef": "lotus.indices"
+          },
+          {
+            "name": "indices[].index_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.index_id",
+            "attributeRef": "lotus.index_id"
+          },
+          {
+            "name": "indices[].index_name",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.index_name",
+            "attributeRef": "lotus.index_name"
+          },
+          {
+            "name": "indices[].index_currency",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.index_currency",
+            "attributeRef": "lotus.index_currency"
+          },
+          {
+            "name": "indices[].index_type",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.index_type",
+            "attributeRef": "lotus.index_type"
+          },
+          {
+            "name": "indices[].index_status",
+            "location": "body",
+            "required": false,
+            "type": "string",
+            "semanticId": "lotus.index_status",
+            "attributeRef": "lotus.index_status"
+          },
+          {
+            "name": "indices[].index_provider",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.index_provider",
+            "attributeRef": "lotus.index_provider"
+          },
+          {
+            "name": "indices[].index_market",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.index_market",
+            "attributeRef": "lotus.index_market"
+          },
+          {
+            "name": "indices[].classification_set_id",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.classification_set_id",
+            "attributeRef": "lotus.classification_set_id"
+          },
+          {
+            "name": "indices[].classification_labels",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.classification_labels",
+            "attributeRef": "lotus.classification_labels"
+          },
+          {
+            "name": "indices[].effective_from",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.effective_from",
+            "attributeRef": "lotus.effective_from"
+          },
+          {
+            "name": "indices[].effective_to",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.effective_to",
+            "attributeRef": "lotus.effective_to"
+          },
+          {
+            "name": "indices[].source_timestamp",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.source_timestamp",
+            "attributeRef": "lotus.source_timestamp"
+          },
+          {
+            "name": "indices[].source_vendor",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.source_vendor",
+            "attributeRef": "lotus.source_vendor"
+          },
+          {
+            "name": "indices[].source_record_id",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.source_record_id",
+            "attributeRef": "lotus.source_record_id"
+          },
+          {
+            "name": "indices[].quality_status",
+            "location": "body",
+            "required": false,
+            "type": "string",
+            "semanticId": "lotus.quality_status",
+            "attributeRef": "lotus.quality_status"
+          }
+        ]
+      },
+      "response": {
+        "httpStatus": 202,
+        "model": "BatchIngestionAcceptedResponse",
+        "fields": [
+          {
+            "name": "message",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.message",
+            "attributeRef": "lotus.message"
+          },
+          {
+            "name": "entity_type",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.entity_type",
+            "attributeRef": "lotus.entity_type"
+          },
+          {
+            "name": "accepted_count",
+            "location": "body",
+            "required": true,
+            "type": "integer",
+            "semanticId": "lotus.accepted_count",
+            "attributeRef": "lotus.accepted_count"
+          },
+          {
+            "name": "correlation_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.correlation_id",
+            "attributeRef": "lotus.correlation_id"
+          },
+          {
+            "name": "request_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.request_id",
+            "attributeRef": "lotus.request_id"
+          },
+          {
+            "name": "trace_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.trace_id",
+            "attributeRef": "lotus.trace_id"
+          },
+          {
+            "name": "idempotency_key",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.idempotency_key",
+            "attributeRef": "lotus.idempotency_key"
+          },
+          {
+            "name": "job_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.job_id",
+            "attributeRef": "lotus.job_id"
+          }
+        ]
+      }
+    },
+    {
+      "operationId": "ingest_index_price_series_ingest_index_price_series_post",
+      "method": "POST",
+      "path": "/ingest/index-price-series",
+      "domain": "reference_data",
+      "serviceGroup": "ingestion",
+      "tags": [
+        "Reference Data"
+      ],
+      "summary": "Ingest index price series",
+      "description": "What: Accept raw index price series records.\nHow: Validate canonical contract and upsert time-series observations.\nWhen: Use for daily market close processing and historical backfills.",
+      "naming": {
+        "boundedContext": "reference_data",
+        "canonicalTerms": [
+          "accepted_count",
+          "correlation_id",
+          "entity_type",
+          "idempotency_key",
+          "index_id",
+          "index_price",
+          "index_price_series",
+          "job_id",
+          "message",
+          "quality_status",
+          "request_id",
+          "series_currency",
+          "series_date",
+          "series_id",
+          "source_record_id",
+          "source_timestamp",
+          "source_vendor",
+          "trace_id",
+          "value_convention"
+        ]
+      },
+      "request": {
+        "fields": [
+          {
+            "name": "index_price_series",
+            "location": "body",
+            "required": true,
+            "type": "array",
+            "semanticId": "lotus.index_price_series",
+            "attributeRef": "lotus.index_price_series"
+          },
+          {
+            "name": "index_price_series[].series_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.series_id",
+            "attributeRef": "lotus.series_id"
+          },
+          {
+            "name": "index_price_series[].index_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.index_id",
+            "attributeRef": "lotus.index_id"
+          },
+          {
+            "name": "index_price_series[].series_date",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.series_date",
+            "attributeRef": "lotus.series_date"
+          },
+          {
+            "name": "index_price_series[].index_price",
+            "location": "body",
+            "required": true,
+            "type": "object",
+            "semanticId": "lotus.index_price",
+            "attributeRef": "lotus.index_price"
+          },
+          {
+            "name": "index_price_series[].series_currency",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.series_currency",
+            "attributeRef": "lotus.series_currency"
+          },
+          {
+            "name": "index_price_series[].value_convention",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.value_convention",
+            "attributeRef": "lotus.value_convention"
+          },
+          {
+            "name": "index_price_series[].source_timestamp",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.source_timestamp",
+            "attributeRef": "lotus.source_timestamp"
+          },
+          {
+            "name": "index_price_series[].source_vendor",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.source_vendor",
+            "attributeRef": "lotus.source_vendor"
+          },
+          {
+            "name": "index_price_series[].source_record_id",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.source_record_id",
+            "attributeRef": "lotus.source_record_id"
+          },
+          {
+            "name": "index_price_series[].quality_status",
+            "location": "body",
+            "required": false,
+            "type": "string",
+            "semanticId": "lotus.quality_status",
+            "attributeRef": "lotus.quality_status"
+          }
+        ]
+      },
+      "response": {
+        "httpStatus": 202,
+        "model": "BatchIngestionAcceptedResponse",
+        "fields": [
+          {
+            "name": "message",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.message",
+            "attributeRef": "lotus.message"
+          },
+          {
+            "name": "entity_type",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.entity_type",
+            "attributeRef": "lotus.entity_type"
+          },
+          {
+            "name": "accepted_count",
+            "location": "body",
+            "required": true,
+            "type": "integer",
+            "semanticId": "lotus.accepted_count",
+            "attributeRef": "lotus.accepted_count"
+          },
+          {
+            "name": "correlation_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.correlation_id",
+            "attributeRef": "lotus.correlation_id"
+          },
+          {
+            "name": "request_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.request_id",
+            "attributeRef": "lotus.request_id"
+          },
+          {
+            "name": "trace_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.trace_id",
+            "attributeRef": "lotus.trace_id"
+          },
+          {
+            "name": "idempotency_key",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.idempotency_key",
+            "attributeRef": "lotus.idempotency_key"
+          },
+          {
+            "name": "job_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.job_id",
+            "attributeRef": "lotus.job_id"
+          }
+        ]
+      }
+    },
+    {
+      "operationId": "ingest_index_return_series_ingest_index_return_series_post",
+      "method": "POST",
+      "path": "/ingest/index-return-series",
+      "domain": "reference_data",
+      "serviceGroup": "ingestion",
+      "tags": [
+        "Reference Data"
+      ],
+      "summary": "Ingest index return series",
+      "description": "What: Accept raw vendor-provided index return series records.\nHow: Validate return conventions and upsert deterministic time-series rows.\nWhen: Use when upstream publishes return series directly.",
+      "naming": {
+        "boundedContext": "reference_data",
+        "canonicalTerms": [
+          "accepted_count",
+          "correlation_id",
+          "entity_type",
+          "idempotency_key",
+          "index_id",
+          "index_return",
+          "index_return_series",
+          "job_id",
+          "message",
+          "quality_status",
+          "request_id",
+          "return_convention",
+          "return_period",
+          "series_currency",
+          "series_date",
+          "series_id",
+          "source_record_id",
+          "source_timestamp",
+          "source_vendor",
+          "trace_id"
+        ]
+      },
+      "request": {
+        "fields": [
+          {
+            "name": "index_return_series",
+            "location": "body",
+            "required": true,
+            "type": "array",
+            "semanticId": "lotus.index_return_series",
+            "attributeRef": "lotus.index_return_series"
+          },
+          {
+            "name": "index_return_series[].series_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.series_id",
+            "attributeRef": "lotus.series_id"
+          },
+          {
+            "name": "index_return_series[].index_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.index_id",
+            "attributeRef": "lotus.index_id"
+          },
+          {
+            "name": "index_return_series[].series_date",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.series_date",
+            "attributeRef": "lotus.series_date"
+          },
+          {
+            "name": "index_return_series[].index_return",
+            "location": "body",
+            "required": true,
+            "type": "object",
+            "semanticId": "lotus.index_return",
+            "attributeRef": "lotus.index_return"
+          },
+          {
+            "name": "index_return_series[].return_period",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.return_period",
+            "attributeRef": "lotus.return_period"
+          },
+          {
+            "name": "index_return_series[].return_convention",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.return_convention",
+            "attributeRef": "lotus.return_convention"
+          },
+          {
+            "name": "index_return_series[].series_currency",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.series_currency",
+            "attributeRef": "lotus.series_currency"
+          },
+          {
+            "name": "index_return_series[].source_timestamp",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.source_timestamp",
+            "attributeRef": "lotus.source_timestamp"
+          },
+          {
+            "name": "index_return_series[].source_vendor",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.source_vendor",
+            "attributeRef": "lotus.source_vendor"
+          },
+          {
+            "name": "index_return_series[].source_record_id",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.source_record_id",
+            "attributeRef": "lotus.source_record_id"
+          },
+          {
+            "name": "index_return_series[].quality_status",
+            "location": "body",
+            "required": false,
+            "type": "string",
+            "semanticId": "lotus.quality_status",
+            "attributeRef": "lotus.quality_status"
+          }
+        ]
+      },
+      "response": {
+        "httpStatus": 202,
+        "model": "BatchIngestionAcceptedResponse",
+        "fields": [
+          {
+            "name": "message",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.message",
+            "attributeRef": "lotus.message"
+          },
+          {
+            "name": "entity_type",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.entity_type",
+            "attributeRef": "lotus.entity_type"
+          },
+          {
+            "name": "accepted_count",
+            "location": "body",
+            "required": true,
+            "type": "integer",
+            "semanticId": "lotus.accepted_count",
+            "attributeRef": "lotus.accepted_count"
+          },
+          {
+            "name": "correlation_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.correlation_id",
+            "attributeRef": "lotus.correlation_id"
+          },
+          {
+            "name": "request_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.request_id",
+            "attributeRef": "lotus.request_id"
+          },
+          {
+            "name": "trace_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.trace_id",
+            "attributeRef": "lotus.trace_id"
+          },
+          {
+            "name": "idempotency_key",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.idempotency_key",
+            "attributeRef": "lotus.idempotency_key"
+          },
+          {
+            "name": "job_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.job_id",
+            "attributeRef": "lotus.job_id"
+          }
+        ]
+      }
+    },
+    {
+      "operationId": "ingest_benchmark_return_series_ingest_benchmark_return_series_post",
+      "method": "POST",
+      "path": "/ingest/benchmark-return-series",
+      "domain": "reference_data",
+      "serviceGroup": "ingestion",
+      "tags": [
+        "Reference Data"
+      ],
+      "summary": "Ingest benchmark return series",
+      "description": "What: Accept raw vendor-provided benchmark return series records.\nHow: Validate return conventions and upsert deterministic time-series rows.\nWhen: Use when benchmark return series is provided by upstream vendor.",
+      "naming": {
+        "boundedContext": "reference_data",
+        "canonicalTerms": [
+          "accepted_count",
+          "benchmark_id",
+          "benchmark_return",
+          "benchmark_return_series",
+          "correlation_id",
+          "entity_type",
+          "idempotency_key",
+          "job_id",
+          "message",
+          "quality_status",
+          "request_id",
+          "return_convention",
+          "return_period",
+          "series_currency",
+          "series_date",
+          "series_id",
+          "source_record_id",
+          "source_timestamp",
+          "source_vendor",
+          "trace_id"
+        ]
+      },
+      "request": {
+        "fields": [
+          {
+            "name": "benchmark_return_series",
+            "location": "body",
+            "required": true,
+            "type": "array",
+            "semanticId": "lotus.benchmark_return_series",
+            "attributeRef": "lotus.benchmark_return_series"
+          },
+          {
+            "name": "benchmark_return_series[].series_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.series_id",
+            "attributeRef": "lotus.series_id"
+          },
+          {
+            "name": "benchmark_return_series[].benchmark_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.benchmark_id",
+            "attributeRef": "lotus.benchmark_id"
+          },
+          {
+            "name": "benchmark_return_series[].series_date",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.series_date",
+            "attributeRef": "lotus.series_date"
+          },
+          {
+            "name": "benchmark_return_series[].benchmark_return",
+            "location": "body",
+            "required": true,
+            "type": "object",
+            "semanticId": "lotus.benchmark_return",
+            "attributeRef": "lotus.benchmark_return"
+          },
+          {
+            "name": "benchmark_return_series[].return_period",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.return_period",
+            "attributeRef": "lotus.return_period"
+          },
+          {
+            "name": "benchmark_return_series[].return_convention",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.return_convention",
+            "attributeRef": "lotus.return_convention"
+          },
+          {
+            "name": "benchmark_return_series[].series_currency",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.series_currency",
+            "attributeRef": "lotus.series_currency"
+          },
+          {
+            "name": "benchmark_return_series[].source_timestamp",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.source_timestamp",
+            "attributeRef": "lotus.source_timestamp"
+          },
+          {
+            "name": "benchmark_return_series[].source_vendor",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.source_vendor",
+            "attributeRef": "lotus.source_vendor"
+          },
+          {
+            "name": "benchmark_return_series[].source_record_id",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.source_record_id",
+            "attributeRef": "lotus.source_record_id"
+          },
+          {
+            "name": "benchmark_return_series[].quality_status",
+            "location": "body",
+            "required": false,
+            "type": "string",
+            "semanticId": "lotus.quality_status",
+            "attributeRef": "lotus.quality_status"
+          }
+        ]
+      },
+      "response": {
+        "httpStatus": 202,
+        "model": "BatchIngestionAcceptedResponse",
+        "fields": [
+          {
+            "name": "message",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.message",
+            "attributeRef": "lotus.message"
+          },
+          {
+            "name": "entity_type",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.entity_type",
+            "attributeRef": "lotus.entity_type"
+          },
+          {
+            "name": "accepted_count",
+            "location": "body",
+            "required": true,
+            "type": "integer",
+            "semanticId": "lotus.accepted_count",
+            "attributeRef": "lotus.accepted_count"
+          },
+          {
+            "name": "correlation_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.correlation_id",
+            "attributeRef": "lotus.correlation_id"
+          },
+          {
+            "name": "request_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.request_id",
+            "attributeRef": "lotus.request_id"
+          },
+          {
+            "name": "trace_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.trace_id",
+            "attributeRef": "lotus.trace_id"
+          },
+          {
+            "name": "idempotency_key",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.idempotency_key",
+            "attributeRef": "lotus.idempotency_key"
+          },
+          {
+            "name": "job_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.job_id",
+            "attributeRef": "lotus.job_id"
+          }
+        ]
+      }
+    },
+    {
+      "operationId": "ingest_risk_free_series_ingest_risk_free_series_post",
+      "method": "POST",
+      "path": "/ingest/risk-free-series",
+      "domain": "reference_data",
+      "serviceGroup": "ingestion",
+      "tags": [
+        "Reference Data"
+      ],
+      "summary": "Ingest risk-free series",
+      "description": "What: Accept risk-free reference series records.\nHow: Validate convention fields and upsert deterministic time-series rows.\nWhen: Use for benchmark-relative analytics and risk-adjusted metric inputs.",
+      "naming": {
+        "boundedContext": "reference_data",
+        "canonicalTerms": [
+          "accepted_count",
+          "compounding_convention",
+          "correlation_id",
+          "day_count_convention",
+          "entity_type",
+          "idempotency_key",
+          "job_id",
+          "message",
+          "quality_status",
+          "request_id",
+          "risk_free_curve_id",
+          "risk_free_series",
+          "series_currency",
+          "series_date",
+          "series_id",
+          "source_record_id",
+          "source_timestamp",
+          "source_vendor",
+          "trace_id",
+          "value",
+          "value_convention"
+        ]
+      },
+      "request": {
+        "fields": [
+          {
+            "name": "risk_free_series",
+            "location": "body",
+            "required": true,
+            "type": "array",
+            "semanticId": "lotus.risk_free_series",
+            "attributeRef": "lotus.risk_free_series"
+          },
+          {
+            "name": "risk_free_series[].series_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.series_id",
+            "attributeRef": "lotus.series_id"
+          },
+          {
+            "name": "risk_free_series[].risk_free_curve_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.risk_free_curve_id",
+            "attributeRef": "lotus.risk_free_curve_id"
+          },
+          {
+            "name": "risk_free_series[].series_date",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.series_date",
+            "attributeRef": "lotus.series_date"
+          },
+          {
+            "name": "risk_free_series[].value",
+            "location": "body",
+            "required": true,
+            "type": "object",
+            "semanticId": "lotus.value",
+            "attributeRef": "lotus.value"
+          },
+          {
+            "name": "risk_free_series[].value_convention",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.value_convention",
+            "attributeRef": "lotus.value_convention"
+          },
+          {
+            "name": "risk_free_series[].day_count_convention",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.day_count_convention",
+            "attributeRef": "lotus.day_count_convention"
+          },
+          {
+            "name": "risk_free_series[].compounding_convention",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.compounding_convention",
+            "attributeRef": "lotus.compounding_convention"
+          },
+          {
+            "name": "risk_free_series[].series_currency",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.series_currency",
+            "attributeRef": "lotus.series_currency"
+          },
+          {
+            "name": "risk_free_series[].source_timestamp",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.source_timestamp",
+            "attributeRef": "lotus.source_timestamp"
+          },
+          {
+            "name": "risk_free_series[].source_vendor",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.source_vendor",
+            "attributeRef": "lotus.source_vendor"
+          },
+          {
+            "name": "risk_free_series[].source_record_id",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.source_record_id",
+            "attributeRef": "lotus.source_record_id"
+          },
+          {
+            "name": "risk_free_series[].quality_status",
+            "location": "body",
+            "required": false,
+            "type": "string",
+            "semanticId": "lotus.quality_status",
+            "attributeRef": "lotus.quality_status"
+          }
+        ]
+      },
+      "response": {
+        "httpStatus": 202,
+        "model": "BatchIngestionAcceptedResponse",
+        "fields": [
+          {
+            "name": "message",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.message",
+            "attributeRef": "lotus.message"
+          },
+          {
+            "name": "entity_type",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.entity_type",
+            "attributeRef": "lotus.entity_type"
+          },
+          {
+            "name": "accepted_count",
+            "location": "body",
+            "required": true,
+            "type": "integer",
+            "semanticId": "lotus.accepted_count",
+            "attributeRef": "lotus.accepted_count"
+          },
+          {
+            "name": "correlation_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.correlation_id",
+            "attributeRef": "lotus.correlation_id"
+          },
+          {
+            "name": "request_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.request_id",
+            "attributeRef": "lotus.request_id"
+          },
+          {
+            "name": "trace_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.trace_id",
+            "attributeRef": "lotus.trace_id"
+          },
+          {
+            "name": "idempotency_key",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.idempotency_key",
+            "attributeRef": "lotus.idempotency_key"
+          },
+          {
+            "name": "job_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.job_id",
+            "attributeRef": "lotus.job_id"
+          }
+        ]
+      }
+    },
+    {
+      "operationId": "ingest_classification_taxonomy_ingest_reference_classification_taxonomy_post",
+      "method": "POST",
+      "path": "/ingest/reference/classification-taxonomy",
+      "domain": "reference_data",
+      "serviceGroup": "ingestion",
+      "tags": [
+        "Reference Data"
+      ],
+      "summary": "Ingest classification taxonomy",
+      "description": "What: Accept classification taxonomy records used for attribution alignment.\nHow: Validate canonical dimensions and upsert effective-dated taxonomy entries.\nWhen: Use when platform taxonomy labels are introduced or updated.",
+      "naming": {
+        "boundedContext": "reference_data",
+        "canonicalTerms": [
+          "accepted_count",
+          "classification_set_id",
+          "classification_taxonomy",
+          "correlation_id",
+          "dimension_description",
+          "dimension_name",
+          "dimension_value",
+          "effective_from",
+          "effective_to",
+          "entity_type",
+          "idempotency_key",
+          "job_id",
+          "message",
+          "quality_status",
+          "request_id",
+          "source_record_id",
+          "source_timestamp",
+          "source_vendor",
+          "taxonomy_scope",
+          "trace_id"
+        ]
+      },
+      "request": {
+        "fields": [
+          {
+            "name": "classification_taxonomy",
+            "location": "body",
+            "required": true,
+            "type": "array",
+            "semanticId": "lotus.classification_taxonomy",
+            "attributeRef": "lotus.classification_taxonomy"
+          },
+          {
+            "name": "classification_taxonomy[].classification_set_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.classification_set_id",
+            "attributeRef": "lotus.classification_set_id"
+          },
+          {
+            "name": "classification_taxonomy[].taxonomy_scope",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.taxonomy_scope",
+            "attributeRef": "lotus.taxonomy_scope"
+          },
+          {
+            "name": "classification_taxonomy[].dimension_name",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.dimension_name",
+            "attributeRef": "lotus.dimension_name"
+          },
+          {
+            "name": "classification_taxonomy[].dimension_value",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.dimension_value",
+            "attributeRef": "lotus.dimension_value"
+          },
+          {
+            "name": "classification_taxonomy[].dimension_description",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.dimension_description",
+            "attributeRef": "lotus.dimension_description"
+          },
+          {
+            "name": "classification_taxonomy[].effective_from",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.effective_from",
+            "attributeRef": "lotus.effective_from"
+          },
+          {
+            "name": "classification_taxonomy[].effective_to",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.effective_to",
+            "attributeRef": "lotus.effective_to"
+          },
+          {
+            "name": "classification_taxonomy[].source_timestamp",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.source_timestamp",
+            "attributeRef": "lotus.source_timestamp"
+          },
+          {
+            "name": "classification_taxonomy[].source_vendor",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.source_vendor",
+            "attributeRef": "lotus.source_vendor"
+          },
+          {
+            "name": "classification_taxonomy[].source_record_id",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.source_record_id",
+            "attributeRef": "lotus.source_record_id"
+          },
+          {
+            "name": "classification_taxonomy[].quality_status",
+            "location": "body",
+            "required": false,
+            "type": "string",
+            "semanticId": "lotus.quality_status",
+            "attributeRef": "lotus.quality_status"
+          }
+        ]
+      },
+      "response": {
+        "httpStatus": 202,
+        "model": "BatchIngestionAcceptedResponse",
+        "fields": [
+          {
+            "name": "message",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.message",
+            "attributeRef": "lotus.message"
+          },
+          {
+            "name": "entity_type",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.entity_type",
+            "attributeRef": "lotus.entity_type"
+          },
+          {
+            "name": "accepted_count",
+            "location": "body",
+            "required": true,
+            "type": "integer",
+            "semanticId": "lotus.accepted_count",
+            "attributeRef": "lotus.accepted_count"
+          },
+          {
+            "name": "correlation_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.correlation_id",
+            "attributeRef": "lotus.correlation_id"
+          },
+          {
+            "name": "request_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.request_id",
+            "attributeRef": "lotus.request_id"
+          },
+          {
+            "name": "trace_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.trace_id",
+            "attributeRef": "lotus.trace_id"
+          },
+          {
+            "name": "idempotency_key",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.idempotency_key",
+            "attributeRef": "lotus.idempotency_key"
+          },
+          {
+            "name": "job_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.job_id",
+            "attributeRef": "lotus.job_id"
           }
         ]
       }

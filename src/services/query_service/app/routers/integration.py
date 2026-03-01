@@ -11,6 +11,29 @@ from ..dtos.integration_dto import (
     InstrumentEnrichmentBulkRequest,
     InstrumentEnrichmentBulkResponse,
 )
+from ..dtos.reference_integration_dto import (
+    BenchmarkAssignmentRequest,
+    BenchmarkAssignmentResponse,
+    BenchmarkCatalogRequest,
+    BenchmarkCatalogResponse,
+    BenchmarkDefinitionRequest,
+    BenchmarkDefinitionResponse,
+    BenchmarkMarketSeriesRequest,
+    BenchmarkMarketSeriesResponse,
+    BenchmarkReturnSeriesRequest,
+    BenchmarkReturnSeriesResponse,
+    ClassificationTaxonomyRequest,
+    ClassificationTaxonomyResponse,
+    CoverageRequest,
+    CoverageResponse,
+    IndexCatalogRequest,
+    IndexCatalogResponse,
+    IndexSeriesRequest,
+    IndexPriceSeriesResponse,
+    IndexReturnSeriesResponse,
+    RiskFreeSeriesRequest,
+    RiskFreeSeriesResponse,
+)
 from ..services.core_snapshot_service import (
     CoreSnapshotBadRequestError,
     CoreSnapshotConflictError,
@@ -123,4 +146,259 @@ async def get_instrument_enrichment_bulk(
         return InstrumentEnrichmentBulkResponse(records=records)
     except CoreSnapshotBadRequestError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+
+
+@router.post(
+    "/portfolios/{portfolio_id}/benchmark-assignment",
+    response_model=BenchmarkAssignmentResponse,
+    responses={
+        status.HTTP_404_NOT_FOUND: {"description": "No effective benchmark assignment found."},
+    },
+    summary="Resolve effective portfolio benchmark assignment",
+    description=(
+        "What: Resolve benchmark assignment for a portfolio as-of a point-in-time date.\n"
+        "How: Applies effective-dating and assignment version ordering to return deterministic match.\n"
+        "When: Used by lotus-performance before benchmark analytics workflows."
+    ),
+)
+async def resolve_portfolio_benchmark_assignment(
+    portfolio_id: str,
+    request: BenchmarkAssignmentRequest,
+    integration_service: IntegrationService = Depends(get_integration_service),
+) -> BenchmarkAssignmentResponse:
+    response = await integration_service.resolve_benchmark_assignment(
+        portfolio_id=portfolio_id,
+        as_of_date=request.as_of_date,
+    )
+    if response is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No effective benchmark assignment found for portfolio and as_of_date.",
+        )
+    return response
+
+
+@router.post(
+    "/benchmarks/{benchmark_id}/definition",
+    response_model=BenchmarkDefinitionResponse,
+    responses={status.HTTP_404_NOT_FOUND: {"description": "No effective benchmark definition found."}},
+    summary="Fetch effective benchmark definition",
+    description=(
+        "What: Return effective benchmark definition for an as-of date.\n"
+        "How: Resolves benchmark master fields and composition records with effective dating.\n"
+        "When: Used by lotus-performance to construct benchmark input context."
+    ),
+)
+async def fetch_benchmark_definition(
+    benchmark_id: str,
+    request: BenchmarkDefinitionRequest,
+    integration_service: IntegrationService = Depends(get_integration_service),
+) -> BenchmarkDefinitionResponse:
+    response = await integration_service.get_benchmark_definition(benchmark_id, request.as_of_date)
+    if response is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No effective benchmark definition found for benchmark_id and as_of_date.",
+        )
+    return response
+
+
+@router.post(
+    "/benchmarks/catalog",
+    response_model=BenchmarkCatalogResponse,
+    summary="Fetch benchmark master catalog",
+    description=(
+        "What: Return benchmark master records effective on a requested date.\n"
+        "How: Applies optional filters and effective dating in query service.\n"
+        "When: Used by downstream integration workflows to discover valid benchmark references."
+    ),
+)
+async def fetch_benchmark_catalog(
+    request: BenchmarkCatalogRequest,
+    integration_service: IntegrationService = Depends(get_integration_service),
+) -> BenchmarkCatalogResponse:
+    return await integration_service.list_benchmark_catalog(
+        as_of_date=request.as_of_date,
+        benchmark_type=request.benchmark_type,
+        benchmark_currency=request.benchmark_currency,
+        benchmark_status=request.benchmark_status,
+    )
+
+
+@router.post(
+    "/indices/catalog",
+    response_model=IndexCatalogResponse,
+    summary="Fetch index master catalog",
+    description=(
+        "What: Return index master records effective on a requested date.\n"
+        "How: Applies optional filters and effective dating in query service.\n"
+        "When: Used by lotus-performance and attribution pipelines to discover canonical index metadata."
+    ),
+)
+async def fetch_index_catalog(
+    request: IndexCatalogRequest,
+    integration_service: IntegrationService = Depends(get_integration_service),
+) -> IndexCatalogResponse:
+    return await integration_service.list_index_catalog(
+        as_of_date=request.as_of_date,
+        index_currency=request.index_currency,
+        index_type=request.index_type,
+        index_status=request.index_status,
+    )
+
+
+@router.post(
+    "/benchmarks/{benchmark_id}/market-series",
+    response_model=BenchmarkMarketSeriesResponse,
+    summary="Fetch benchmark market series inputs",
+    description=(
+        "What: Return benchmark market series inputs required by lotus-performance.\n"
+        "How: Resolves components and returns aligned raw series with quality and lineage metadata.\n"
+        "When: Used for benchmark analytics and replay-safe portfolio attribution calculations."
+    ),
+)
+async def fetch_benchmark_market_series(
+    benchmark_id: str,
+    request: BenchmarkMarketSeriesRequest,
+    integration_service: IntegrationService = Depends(get_integration_service),
+) -> BenchmarkMarketSeriesResponse:
+    return await integration_service.get_benchmark_market_series(benchmark_id=benchmark_id, request=request)
+
+
+@router.post(
+    "/indices/{index_id}/price-series",
+    response_model=IndexPriceSeriesResponse,
+    summary="Fetch raw index price series",
+    description=(
+        "What: Return raw index price series for the requested index and window.\n"
+        "How: Reads canonical time series records with deterministic ordering.\n"
+        "When: Used by downstream analytics pipelines requiring raw index price inputs."
+    ),
+)
+async def fetch_index_price_series(
+    index_id: str,
+    request: IndexSeriesRequest,
+    integration_service: IntegrationService = Depends(get_integration_service),
+) -> IndexPriceSeriesResponse:
+    return await integration_service.get_index_price_series(index_id=index_id, request=request)
+
+
+@router.post(
+    "/indices/{index_id}/return-series",
+    response_model=IndexReturnSeriesResponse,
+    summary="Fetch raw index return series",
+    description=(
+        "What: Return raw vendor-provided index return series.\n"
+        "How: Reads canonical index return records with explicit convention fields.\n"
+        "When: Used by lotus-performance for return-based benchmark processing."
+    ),
+)
+async def fetch_index_return_series(
+    index_id: str,
+    request: IndexSeriesRequest,
+    integration_service: IntegrationService = Depends(get_integration_service),
+) -> IndexReturnSeriesResponse:
+    return await integration_service.get_index_return_series(index_id=index_id, request=request)
+
+
+@router.post(
+    "/benchmarks/{benchmark_id}/return-series",
+    response_model=BenchmarkReturnSeriesResponse,
+    summary="Fetch raw benchmark return series",
+    description=(
+        "What: Return raw vendor-provided benchmark return series.\n"
+        "How: Reads canonical benchmark return records with explicit convention fields.\n"
+        "When: Used by lotus-performance when provider benchmark return inputs are available."
+    ),
+)
+async def fetch_benchmark_return_series(
+    benchmark_id: str,
+    request: BenchmarkReturnSeriesRequest,
+    integration_service: IntegrationService = Depends(get_integration_service),
+) -> BenchmarkReturnSeriesResponse:
+    return await integration_service.get_benchmark_return_series(
+        benchmark_id=benchmark_id,
+        request=request,
+    )
+
+
+@router.post(
+    "/reference/risk-free-series",
+    response_model=RiskFreeSeriesResponse,
+    summary="Fetch raw risk-free series",
+    description=(
+        "What: Return raw risk-free reference series for requested currency and window.\n"
+        "How: Serves canonical risk-free records with convention metadata and lineage.\n"
+        "When: Used by lotus-performance for excess return and risk-adjusted analytics inputs."
+    ),
+)
+async def fetch_risk_free_series(
+    request: RiskFreeSeriesRequest,
+    integration_service: IntegrationService = Depends(get_integration_service),
+) -> RiskFreeSeriesResponse:
+    return await integration_service.get_risk_free_series(request=request)
+
+
+@router.post(
+    "/reference/classification-taxonomy",
+    response_model=ClassificationTaxonomyResponse,
+    summary="Fetch canonical classification taxonomy",
+    description=(
+        "What: Return effective classification taxonomy records.\n"
+        "How: Applies as-of effective dating and optional scope filtering.\n"
+        "When: Used by lotus-performance attribution workflows to enforce shared domain labels."
+    ),
+)
+async def fetch_classification_taxonomy(
+    request: ClassificationTaxonomyRequest,
+    integration_service: IntegrationService = Depends(get_integration_service),
+) -> ClassificationTaxonomyResponse:
+    return await integration_service.get_classification_taxonomy(
+        as_of_date=request.as_of_date,
+        taxonomy_scope=request.taxonomy_scope,
+    )
+
+
+@router.post(
+    "/benchmarks/{benchmark_id}/coverage",
+    response_model=CoverageResponse,
+    summary="Get benchmark reference coverage",
+    description=(
+        "What: Return benchmark reference data coverage diagnostics for an expected window.\n"
+        "How: Compares expected window dates against observed data and summarizes quality distribution.\n"
+        "When: Used by ops monitoring and pre-run validation before analytics processing."
+    ),
+)
+async def get_benchmark_coverage(
+    benchmark_id: str,
+    request: CoverageRequest,
+    integration_service: IntegrationService = Depends(get_integration_service),
+) -> CoverageResponse:
+    return await integration_service.get_benchmark_coverage(
+        benchmark_id=benchmark_id,
+        start_date=request.window.start_date,
+        end_date=request.window.end_date,
+    )
+
+
+@router.post(
+    "/reference/risk-free-series/coverage",
+    response_model=CoverageResponse,
+    summary="Get risk-free reference coverage",
+    description=(
+        "What: Return risk-free series coverage diagnostics for an expected window.\n"
+        "How: Compares expected window dates against observed data and summarizes quality distribution.\n"
+        "When: Used by ops monitoring and analytics readiness checks."
+    ),
+)
+async def get_risk_free_coverage(
+    currency: str = Query(..., description="Risk-free series currency.", examples=["USD"]),
+    request: CoverageRequest = ...,
+    integration_service: IntegrationService = Depends(get_integration_service),
+) -> CoverageResponse:
+    return await integration_service.get_risk_free_coverage(
+        currency=currency,
+        start_date=request.window.start_date,
+        end_date=request.window.end_date,
+    )
 
