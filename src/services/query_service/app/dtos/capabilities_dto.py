@@ -23,16 +23,54 @@ class WorkflowCapability(BaseModel):
 
 
 class IntegrationCapabilitiesResponse(BaseModel):
-    contract_version: str = Field(...)
-    source_service: str = Field(...)
-    consumer_system: ConsumerSystem = Field(...)
-    tenant_id: str = Field(...)
-    generated_at: datetime = Field(...)
-    as_of_date: date = Field(...)
-    policy_version: str = Field(...)
-    supported_input_modes: list[str] = Field(...)
-    features: list[FeatureCapability]
-    workflows: list[WorkflowCapability]
+    contract_version: str = Field(
+        ...,
+        description="Version of the capabilities response contract.",
+        examples=["v1"],
+    )
+    source_service: str = Field(
+        ...,
+        description="Service emitting capability metadata.",
+        examples=["lotus-core"],
+    )
+    consumer_system: ConsumerSystem = Field(
+        ...,
+        description="Canonical consumer system receiving capabilities.",
+        examples=["lotus-performance"],
+    )
+    tenant_id: str = Field(
+        ...,
+        description="Tenant identifier used for capability policy resolution.",
+        examples=["tenant_sg_pb"],
+    )
+    generated_at: datetime = Field(
+        ...,
+        description="UTC timestamp when capability payload was generated.",
+        examples=["2026-03-01T12:00:00Z"],
+    )
+    as_of_date: date = Field(
+        ...,
+        description="Business date at which capability policy is effective.",
+        examples=["2026-03-01"],
+    )
+    policy_version: str = Field(
+        ...,
+        description="Resolved policy version for tenant capability controls.",
+        examples=["tenant-default-v1"],
+    )
+    supported_input_modes: list[str] = Field(
+        ...,
+        description="Supported integration input modes for the consumer context.",
+        examples=[["lotus_core_ref", "inline_bundle", "file_upload"]],
+    )
+    features: list[FeatureCapability] = Field(
+        ...,
+        description="Feature-level capability flags and ownership metadata.",
+    )
+    workflows: list[WorkflowCapability] = Field(
+        ...,
+        description="Workflow-level capability flags derived from feature dependencies.",
+    )
 
     model_config = {
         "json_schema_extra": {
@@ -66,4 +104,3 @@ class IntegrationCapabilitiesResponse(BaseModel):
             }
         },
     }
-

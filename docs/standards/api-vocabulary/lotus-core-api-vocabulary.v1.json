@@ -13,7 +13,7 @@
       "openApiVersion": "3.1.0"
     }
   ],
-  "generatedAt": "2026-03-01T10:32:54.339174+00:00",
+  "generatedAt": "2026-03-01T11:47:14.666402+00:00",
   "attributeCatalog": [
     {
       "semanticId": "lotus.accepted_count",
@@ -103,7 +103,7 @@
       "semanticId": "lotus.allowed_sections",
       "canonicalTerm": "allowed_sections",
       "preferredName": "allowed_sections",
-      "description": "effective integration policy response field: allowed sections.",
+      "description": "Section allow-list resolved for this consumer and tenant.",
       "example": [
         "example_allowed_sections_item"
       ],
@@ -1027,7 +1027,7 @@
       "semanticId": "lotus.contract_version",
       "canonicalTerm": "contract_version",
       "preferredName": "contract_version",
-      "description": "effective integration policy response field: contract version.",
+      "description": "Version of the integration policy response contract.",
       "example": "v1",
       "type": "string",
       "locations": [
@@ -1739,7 +1739,7 @@
       "semanticId": "lotus.features",
       "canonicalTerm": "features",
       "preferredName": "features",
-      "description": "integration capabilities response field: features.",
+      "description": "Feature-level capability flags and ownership metadata.",
       "example": [
         "features_item_example"
       ],
@@ -1842,7 +1842,7 @@
       "semanticId": "lotus.generated_at",
       "canonicalTerm": "generated_at",
       "preferredName": "generated_at",
-      "description": "Timestamp for generated at.",
+      "description": "UTC timestamp when the policy response was generated.",
       "example": "2026-02-27T10:30:00Z",
       "type": "string",
       "locations": [
@@ -2691,7 +2691,7 @@
       "semanticId": "lotus.matched_rule_id",
       "canonicalTerm": "matched_rule_id",
       "preferredName": "matched_rule_id",
-      "description": "Unique matched rule identifier.",
+      "description": "Deterministic identifier of the matched policy rule.",
       "example": "MATCHED_RULE_001",
       "type": "string",
       "locations": [
@@ -3203,7 +3203,7 @@
       "semanticId": "lotus.policy_provenance",
       "canonicalTerm": "policy_provenance",
       "preferredName": "policy_provenance",
-      "description": "effective integration policy response field: policy provenance.",
+      "description": "Policy lineage metadata showing how the effective policy was resolved.",
       "example": "policy_provenance_example",
       "type": "string",
       "locations": [
@@ -3217,7 +3217,7 @@
       "semanticId": "lotus.policy_source",
       "canonicalTerm": "policy_source",
       "preferredName": "policy_source",
-      "description": "policy provenance metadata field: policy source.",
+      "description": "Policy source level used for resolution.",
       "example": "example_policy_source",
       "type": "string",
       "locations": [
@@ -3231,7 +3231,7 @@
       "semanticId": "lotus.policy_version",
       "canonicalTerm": "policy_version",
       "preferredName": "policy_version",
-      "description": "policy provenance metadata field: policy version.",
+      "description": "Version label for the resolved integration policy.",
       "example": "tenant-default-v1",
       "type": "string",
       "locations": [
@@ -4519,7 +4519,7 @@
       "semanticId": "lotus.source_service",
       "canonicalTerm": "source_service",
       "preferredName": "source_service",
-      "description": "effective integration policy response field: source service.",
+      "description": "Service producing the policy response.",
       "example": "lotus-core",
       "type": "string",
       "locations": [
@@ -4635,7 +4635,7 @@
       "semanticId": "lotus.strict_mode",
       "canonicalTerm": "strict_mode",
       "preferredName": "strict_mode",
-      "description": "policy provenance metadata field: strict mode.",
+      "description": "Whether strict section gating is enforced for this policy context.",
       "example": true,
       "type": "boolean",
       "locations": [
@@ -4709,7 +4709,7 @@
       "semanticId": "lotus.supported_input_modes",
       "canonicalTerm": "supported_input_modes",
       "preferredName": "supported_input_modes",
-      "description": "integration capabilities response field: supported input modes.",
+      "description": "Supported integration input modes for the consumer context.",
       "example": [
         "example_supported_input_modes_item"
       ],
@@ -5241,7 +5241,7 @@
       "semanticId": "lotus.warnings",
       "canonicalTerm": "warnings",
       "preferredName": "warnings",
-      "description": "effective integration policy response field: warnings.",
+      "description": "Non-fatal policy diagnostics relevant to consumer behavior.",
       "example": [
         "example_warnings_item"
       ],
@@ -5327,7 +5327,7 @@
       "semanticId": "lotus.workflows",
       "canonicalTerm": "workflows",
       "preferredName": "workflows",
-      "description": "integration capabilities response field: workflows.",
+      "description": "Workflow-level capability flags derived from feature dependencies.",
       "example": [
         "workflows_item_example"
       ],
@@ -13181,15 +13181,15 @@
       "operationId": "get_integration_capabilities_integration_capabilities_get",
       "method": "GET",
       "path": "/integration/capabilities",
-      "domain": "integration",
+      "domain": "integration_contracts",
       "serviceGroup": "query",
       "tags": [
-        "Integration"
+        "Integration Contracts"
       ],
       "summary": "Get lotus-core Integration Capabilities",
-      "description": "Returns backend-governed lotus-core capability and workflow flags for a consumer system and tenant context. Intended for lotus-gateway/UI and lotus-manage feature control.",
+      "description": "What: Return policy-resolved integration capabilities for a consumer and tenant context.\nHow: Applies environment and tenant-policy overrides, then derives workflow states from canonical feature dependencies.\nWhen: Used by downstream services and UI clients to enable only supported lotus-core integration paths.",
       "naming": {
-        "boundedContext": "integration",
+        "boundedContext": "integration_contracts",
         "canonicalTerms": [
           "as_of_date",
           "consumer_system",

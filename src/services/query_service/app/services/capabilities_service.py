@@ -98,7 +98,9 @@ class CapabilitiesService:
                 mode for mode in supported_input_modes if mode != "inline_bundle"
             ]
         if not feature_states["lotus_core.ingestion.bulk_upload_adapter"]:
-            supported_input_modes = [mode for mode in supported_input_modes if mode != "file_upload"]
+            supported_input_modes = [
+                mode for mode in supported_input_modes if mode != "file_upload"
+            ]
 
         tenant_policy = self._load_tenant_overrides().get(tenant_id)
         if tenant_policy:
@@ -178,7 +180,7 @@ class CapabilitiesService:
                         for key in _WORKFLOW_DEPENDENCIES["advisor_workbench_overview"]
                     ),
                 ),
-                required_features=["lotus_core.support.overview_api"],
+                required_features=list(_WORKFLOW_DEPENDENCIES["advisor_workbench_overview"]),
             ),
             WorkflowCapability(
                 workflow_key="portfolio_bulk_onboarding",
@@ -189,7 +191,7 @@ class CapabilitiesService:
                         for key in _WORKFLOW_DEPENDENCIES["portfolio_bulk_onboarding"]
                     ),
                 ),
-                required_features=["lotus_core.ingestion.bulk_upload"],
+                required_features=list(_WORKFLOW_DEPENDENCIES["portfolio_bulk_onboarding"]),
             ),
             WorkflowCapability(
                 workflow_key="portfolio_what_if_simulation",
@@ -200,7 +202,7 @@ class CapabilitiesService:
                         for key in _WORKFLOW_DEPENDENCIES["portfolio_what_if_simulation"]
                     ),
                 ),
-                required_features=["lotus_core.simulation.what_if"],
+                required_features=list(_WORKFLOW_DEPENDENCIES["portfolio_what_if_simulation"]),
             ),
         ]
 
