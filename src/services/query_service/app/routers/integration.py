@@ -88,9 +88,7 @@ async def get_effective_integration_policy(
         status.HTTP_400_BAD_REQUEST: {
             "description": "Invalid request payload or invalid section/mode combination."
         },
-        status.HTTP_404_NOT_FOUND: {
-            "description": "Portfolio or simulation session not found."
-        },
+        status.HTTP_404_NOT_FOUND: {"description": "Portfolio or simulation session not found."},
         status.HTTP_409_CONFLICT: {
             "description": "Simulation expected version mismatch or portfolio/session conflict."
         },
@@ -126,9 +124,7 @@ async def create_core_snapshot(
     "/instruments/enrichment-bulk",
     response_model=InstrumentEnrichmentBulkResponse,
     responses={
-        status.HTTP_400_BAD_REQUEST: {
-            "description": "Invalid request payload."
-        },
+        status.HTTP_400_BAD_REQUEST: {"description": "Invalid request payload."},
     },
     summary="Resolve issuer enrichment for security identifiers",
     description=(
@@ -169,9 +165,9 @@ async def resolve_portfolio_benchmark_assignment(
     response = cast(
         BenchmarkAssignmentResponse | None,
         await integration_service.resolve_benchmark_assignment(
-        portfolio_id=portfolio_id,
-        as_of_date=request.as_of_date,
-    ),
+            portfolio_id=portfolio_id,
+            as_of_date=request.as_of_date,
+        ),
     )
     if response is None:
         raise HTTPException(
@@ -184,7 +180,9 @@ async def resolve_portfolio_benchmark_assignment(
 @router.post(
     "/benchmarks/{benchmark_id}/definition",
     response_model=BenchmarkDefinitionResponse,
-    responses={status.HTTP_404_NOT_FOUND: {"description": "No effective benchmark definition found."}},
+    responses={
+        status.HTTP_404_NOT_FOUND: {"description": "No effective benchmark definition found."}
+    },
     summary="Fetch effective benchmark definition",
     description=(
         "What: Return effective benchmark definition for an as-of date.\n"
@@ -439,4 +437,3 @@ async def get_risk_free_coverage(
             end_date=request.window.end_date,
         ),
     )
-

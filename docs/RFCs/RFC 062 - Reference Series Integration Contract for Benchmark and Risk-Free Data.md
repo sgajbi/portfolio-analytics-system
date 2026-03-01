@@ -1,7 +1,7 @@
 # RFC 062 - Benchmark and Risk-Free Reference Data Contract for Downstream Analytics
 
 ## Status
-Proposed (Refined for Implementation Approval)
+Implemented (lotus-core query + ingestion contracts live)
 
 ## Date
 2026-03-01
@@ -343,8 +343,8 @@ All ingestion endpoints must:
 ## 9. Operational APIs (Required)
 
 ### 9.1 Reference Data Coverage APIs
-1. `GET /integration/benchmarks/{benchmark_id}/coverage`
-2. `GET /integration/reference/risk-free-series/coverage`
+1. `POST /integration/benchmarks/{benchmark_id}/coverage`
+2. `POST /integration/reference/risk-free-series/coverage`
 
 Coverage response must include:
 - observed date range
@@ -418,6 +418,13 @@ Deterministic codes:
 ### Slice 0 - Gap Baseline and Canonical Vocabulary
 - map existing capabilities vs RFC
 - define canonical semantic attributes and conventions
+
+## 17. Implementation Completion Notes
+1. RFC-62 query contracts are implemented under query service `/integration/*`.
+2. RFC-62 ingestion contracts are implemented under ingestion service `/ingest/*`.
+3. OpenAPI metadata and DTO schema descriptions/examples are aligned to RFC-0067 governance.
+4. lotus-core API vocabulary inventory has been regenerated and synced to lotus-platform.
+5. Coverage and quality gates are enforced in CI using meaningful unit/integration tests aligned to test-pyramid principles.
 
 ### Slice 1 - Ingestion Contracts and Persistence Foundations
 - benchmark assignment/definition/series/risk-free ingestion endpoints
