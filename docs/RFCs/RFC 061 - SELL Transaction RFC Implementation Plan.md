@@ -329,8 +329,8 @@ Risk 4: Coupling between cost, position, and cash modules can cause regressions.
 |---|---|---|---|---|---|---|---|
 | 0 | Baseline characterization | DONE | lotus-core engineering | pending | local green | `SELL-SLICE-0-GAP-ASSESSMENT.md` + `test_sell_slice0_characterization.py` | Baseline lock established and gap matrix captured. |
 | 1 | Canonical contract + validation | DONE | lotus-core engineering | pending | local green | `SELL-SLICE-1-VALIDATION-REASON-CODES.md` + `test_sell_validation.py` | Deterministic SELL reason-code foundation implemented in transaction domain. |
-| 2 | Persistence + linkage + policy metadata | TODO | lotus-core engineering | pending | pending | `SELL-SLICE-2-PERSISTENCE-METADATA.md` | Disposal linkage and policy traceability. |
-| 3 | Calculations + invariants | TODO | lotus-core engineering | pending | pending | `SELL-SLICE-3-CALCULATION-INVARIANTS.md` | Realized P&L decomposition and invariant enforcement. |
+| 2 | Persistence + linkage + policy metadata | DONE | lotus-core engineering | pending | local green | `SELL-SLICE-2-PERSISTENCE-METADATA.md` + `test_sell_linkage.py` | Deterministic SELL linkage/policy metadata enrichment integrated pre-persistence. |
+| 3 | Calculations + invariants | DONE | lotus-core engineering | pending | local green | `SELL-SLICE-3-CALCULATION-INVARIANTS.md` + `test_cost_calculator.py` | SELL proceeds/consumption/sign invariants enforced in cost engine with deterministic errors. |
 | 4 | Lot disposal + oversell + cash linkage | TODO | lotus-core engineering | pending | pending | `SELL-SLICE-4-DISPOSAL-CASH-LINKAGE.md` | Deterministic disposal and reconciliation behavior. |
 | 5 | Query + observability | TODO | lotus-core engineering | pending | pending | `SELL-SLICE-5-QUERY-OBSERVABILITY.md` | Audit-ready API visibility and diagnostics. |
 | 6 | Final conformance gate | TODO | lotus-core engineering | pending | pending | `SELL-SLICE-6-CONFORMANCE-REPORT.md` | Full section-level conformance evidence. |
