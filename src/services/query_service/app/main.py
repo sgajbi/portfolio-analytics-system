@@ -24,6 +24,7 @@ from .enterprise_readiness import (
     validate_enterprise_runtime_config,
 )
 from .routers import (
+    analytics_inputs,
     buy_state,
     capabilities,
     fx_rates,
@@ -189,6 +190,7 @@ app.include_router(prices.router)
 app.include_router(fx_rates.router)
 app.include_router(operations.router)
 app.include_router(integration.router)
+app.include_router(analytics_inputs.router)
 app.include_router(capabilities.router)
 app.include_router(lookups.router)
 app.include_router(simulation.router)

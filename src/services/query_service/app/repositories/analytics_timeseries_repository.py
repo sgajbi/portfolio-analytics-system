@@ -1,0 +1,179 @@
+from __future__ import annotations
+
+from datetime import date
+from decimal import Decimal
+from typing import Any
+
+from portfolio_common.database_models import (
+    FxRate,
+    Instrument,
+    Portfolio,
+    PortfolioTimeseries,
+    PositionTimeseries,
+)
+from sqlalchemy import and_, func, or_, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+
+class AnalyticsTimeseriesRepository:
+    def __init__(self, db: AsyncSession):
+        self.db = db
+
+    async def get_portfolio(self, portfolio_id: str) -> Portfolio | None:
+        stmt = select(Portfolio).where(Portfolio.portfolio_id == portfolio_id)
+        result = await self.db.execute(stmt)
+        return result.scalars().first()
+
+    async def get_latest_portfolio_timeseries_date(self, portfolio_id: str) -> date | None:
+        stmt = select(func.max(PortfolioTimeseries.date)).where(
+            PortfolioTimeseries.portfolio_id == portfolio_id
+        )
+        result = await self.db.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def list_portfolio_timeseries_rows(
+        self,
+        *,
+        portfolio_id: str,
+        start_date: date,
+        end_date: date,
+        page_size: int,
+        cursor_date: date | None,
+    ) -> list[Any]:
+        ranked = (
+            select(
+                PortfolioTimeseries.date.label("valuation_date"),
+                PortfolioTimeseries.bod_market_value.label("bod_market_value"),
+                PortfolioTimeseries.eod_market_value.label("eod_market_value"),
+                PortfolioTimeseries.bod_cashflow.label("bod_cashflow"),
+                PortfolioTimeseries.eod_cashflow.label("eod_cashflow"),
+                PortfolioTimeseries.fees.label("fees"),
+                PortfolioTimeseries.epoch.label("epoch"),
+                func.row_number()
+                .over(
+                    partition_by=PortfolioTimeseries.date,
+                    order_by=(PortfolioTimeseries.epoch.desc(),),
+                )
+                .label("rn"),
+            )
+            .where(
+                PortfolioTimeseries.portfolio_id == portfolio_id,
+                PortfolioTimeseries.date >= start_date,
+                PortfolioTimeseries.date <= end_date,
+            )
+            .subquery()
+        )
+
+        stmt = select(ranked).where(ranked.c.rn == 1)
+        if cursor_date is not None:
+            stmt = stmt.where(ranked.c.valuation_date > cursor_date)
+        stmt = stmt.order_by(ranked.c.valuation_date.asc()).limit(page_size + 1)
+
+        result = await self.db.execute(stmt)
+        return result.all()
+
+    async def list_position_timeseries_rows(
+        self,
+        *,
+        portfolio_id: str,
+        start_date: date,
+        end_date: date,
+        page_size: int,
+        cursor_date: date | None,
+        cursor_security_id: str | None,
+        security_ids: list[str],
+        position_ids: list[str],
+        dimension_filters: dict[str, set[str]],
+    ) -> list[Any]:
+        ranked = (
+            select(
+                PositionTimeseries.security_id.label("security_id"),
+                PositionTimeseries.date.label("valuation_date"),
+                PositionTimeseries.bod_market_value.label("bod_market_value"),
+                PositionTimeseries.eod_market_value.label("eod_market_value"),
+                PositionTimeseries.bod_cashflow_position.label("bod_cashflow_position"),
+                PositionTimeseries.eod_cashflow_position.label("eod_cashflow_position"),
+                PositionTimeseries.bod_cashflow_portfolio.label("bod_cashflow_portfolio"),
+                PositionTimeseries.eod_cashflow_portfolio.label("eod_cashflow_portfolio"),
+                PositionTimeseries.fees.label("fees"),
+                PositionTimeseries.quantity.label("quantity"),
+                PositionTimeseries.epoch.label("epoch"),
+                Instrument.asset_class.label("asset_class"),
+                Instrument.sector.label("sector"),
+                Instrument.country_of_risk.label("country"),
+                Instrument.currency.label("position_currency"),
+                func.row_number()
+                .over(
+                    partition_by=(PositionTimeseries.security_id, PositionTimeseries.date),
+                    order_by=(PositionTimeseries.epoch.desc(),),
+                )
+                .label("rn"),
+            )
+            .join(Instrument, Instrument.security_id == PositionTimeseries.security_id)
+            .where(
+                PositionTimeseries.portfolio_id == portfolio_id,
+                PositionTimeseries.date >= start_date,
+                PositionTimeseries.date <= end_date,
+            )
+            .subquery()
+        )
+
+        stmt = select(ranked).where(ranked.c.rn == 1)
+
+        if cursor_date is not None and cursor_security_id is not None:
+            stmt = stmt.where(
+                or_(
+                    ranked.c.valuation_date > cursor_date,
+                    and_(
+                        ranked.c.valuation_date == cursor_date,
+                        ranked.c.security_id > cursor_security_id,
+                    ),
+                )
+            )
+
+        if security_ids:
+            stmt = stmt.where(ranked.c.security_id.in_(security_ids))
+
+        if position_ids:
+            security_from_position_ids = [
+                pid.split(":", 1)[1]
+                for pid in position_ids
+                if ":" in pid and pid.split(":", 1)[0] == portfolio_id
+            ]
+            if security_from_position_ids:
+                stmt = stmt.where(ranked.c.security_id.in_(security_from_position_ids))
+
+        if "asset_class" in dimension_filters:
+            stmt = stmt.where(ranked.c.asset_class.in_(dimension_filters["asset_class"]))
+        if "sector" in dimension_filters:
+            stmt = stmt.where(ranked.c.sector.in_(dimension_filters["sector"]))
+        if "country" in dimension_filters:
+            stmt = stmt.where(ranked.c.country.in_(dimension_filters["country"]))
+
+        stmt = stmt.order_by(ranked.c.valuation_date.asc(), ranked.c.security_id.asc()).limit(
+            page_size + 1
+        )
+        result = await self.db.execute(stmt)
+        return result.all()
+
+    async def get_fx_rates_map(
+        self,
+        *,
+        from_currency: str,
+        to_currency: str,
+        start_date: date,
+        end_date: date,
+    ) -> dict[date, Decimal]:
+        stmt = (
+            select(FxRate.rate_date, FxRate.rate)
+            .where(
+                FxRate.from_currency == from_currency,
+                FxRate.to_currency == to_currency,
+                FxRate.rate_date >= start_date,
+                FxRate.rate_date <= end_date,
+            )
+            .order_by(FxRate.rate_date.asc())
+        )
+        result = await self.db.execute(stmt)
+        rows = result.all()
+        return {row.rate_date: Decimal(row.rate) for row in rows}
