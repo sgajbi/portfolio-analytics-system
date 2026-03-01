@@ -1,5 +1,6 @@
 # services/query-service/app/dtos/transaction_dto.py
 from datetime import datetime
+from decimal import Decimal
 from typing import List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -21,32 +22,32 @@ class TransactionRecord(BaseModel):
     transaction_type: str = Field(..., description="Transaction type.", examples=["BUY"])
     instrument_id: str = Field(..., description="Instrument identifier.", examples=["AAPL"])
     security_id: str = Field(..., description="Security identifier.", examples=["US0378331005"])
-    quantity: float = Field(..., description="Signed transaction quantity.", examples=[100.0])
-    price: float = Field(..., description="Execution price per unit.", examples=[185.42])
-    gross_transaction_amount: float = Field(
+    quantity: Decimal = Field(..., description="Signed transaction quantity.", examples=[100.0])
+    price: Decimal = Field(..., description="Execution price per unit.", examples=[185.42])
+    gross_transaction_amount: Decimal = Field(
         ..., description="Gross transaction amount before fees.", examples=[18542.0]
     )
     currency: str = Field(..., description="Book currency code.", examples=["USD"])
 
-    net_cost: Optional[float] = Field(
+    net_cost: Optional[Decimal] = Field(
         None,
         description="Net cost impact in base currency. SELL disposal values are negative.",
         examples=[-3750.0],
     )
-    realized_gain_loss: Optional[float] = Field(
+    realized_gain_loss: Optional[Decimal] = Field(
         None, description="Realized gain/loss in base currency.", examples=[500.0]
     )
 
-    net_cost_local: Optional[float] = Field(
+    net_cost_local: Optional[Decimal] = Field(
         None,
         description="Net cost impact in local/trade currency. SELL disposal values are negative.",
         examples=[-3750.0],
     )
-    realized_gain_loss_local: Optional[float] = Field(
+    realized_gain_loss_local: Optional[Decimal] = Field(
         None, description="Realized gain/loss in local/trade currency.", examples=[500.0]
     )
 
-    transaction_fx_rate: Optional[float] = Field(
+    transaction_fx_rate: Optional[Decimal] = Field(
         None,
         description="FX rate from local/trade currency to portfolio base currency.",
         examples=[1.08],
