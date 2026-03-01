@@ -169,13 +169,3 @@ class PortfolioValuationRequiredEvent(BaseModel):
     epoch: int
     correlation_id: Optional[str] = None
 
-class PerformanceCalculatedEvent(BaseModel):
-    """
-    Event published after daily performance metrics (Net and Gross)
-    have been calculated and persisted for a given portfolio and date.
-    """
-    model_config = ConfigDict(from_attributes=True)
-
-    portfolio_id: str
-    date: date
-
