@@ -148,7 +148,7 @@ jobs:
 
   docker-build:
     name: Validate Docker Build
-    needs: [quality, coverage-gate]
+    needs: [quality]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
