@@ -177,6 +177,25 @@ def test_get_effective_policy_no_allowed_restriction_passthrough(
     assert "NO_ALLOWED_SECTION_RESTRICTION" in response.warnings
 
 
+def test_get_effective_policy_uses_configured_allowed_sections_when_unrequested(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = make_service()
+    monkeypatch.setenv(
+        "LOTUS_CORE_INTEGRATION_SNAPSHOT_POLICY_JSON",
+        '{"consumers":{"lotus-manage":["HOLDINGS","ALLOCATION"]}}',
+    )
+
+    response = service.get_effective_policy(
+        consumer_system="lotus-manage",
+        tenant_id="default",
+        include_sections=None,
+    )
+
+    assert response.consumer_system == "lotus-manage"
+    assert response.allowed_sections == ["HOLDINGS", "ALLOCATION"]
+
+
 @pytest.mark.asyncio
 async def test_reference_contract_methods() -> None:
     service = make_service()
@@ -423,4 +442,98 @@ async def test_reference_contract_methods() -> None:
 
     taxonomy = await service.get_classification_taxonomy(as_of_date=date(2026, 1, 1))
     assert taxonomy.records[0].dimension_name == "sector"
+
+
+@pytest.mark.asyncio
+async def test_reference_contract_none_and_fx_branches(monkeypatch: pytest.MonkeyPatch) -> None:
+    service = make_service()
+    service._reference_repository = SimpleNamespace(  # type: ignore[assignment]
+        resolve_benchmark_assignment=AsyncMock(return_value=None),
+        get_benchmark_definition=AsyncMock(side_effect=[None, SimpleNamespace(benchmark_currency="EUR")]),
+        list_benchmark_components=AsyncMock(return_value=[]),
+        list_benchmark_definitions=AsyncMock(
+            return_value=[
+                SimpleNamespace(
+                    benchmark_id="B1",
+                    benchmark_name="Benchmark 1",
+                    benchmark_type="single_index",
+                    benchmark_currency="EUR",
+                    return_convention="total_return_index",
+                    benchmark_status="active",
+                    benchmark_family=None,
+                    benchmark_provider=None,
+                    rebalance_frequency=None,
+                    classification_set_id=None,
+                    classification_labels={},
+                    effective_from=date(2026, 1, 1),
+                    effective_to=None,
+                    quality_status="accepted",
+                    source_timestamp=None,
+                    source_vendor=None,
+                    source_record_id=None,
+                )
+            ]
+        ),
+        list_index_definitions=AsyncMock(return_value=[]),
+        list_index_price_points=AsyncMock(return_value=[]),
+        list_index_return_points=AsyncMock(return_value=[]),
+        list_benchmark_return_points=AsyncMock(return_value=[]),
+        get_fx_rates=AsyncMock(return_value={}),
+        list_index_price_series=AsyncMock(return_value=[]),
+        list_index_return_series=AsyncMock(return_value=[]),
+        list_risk_free_series=AsyncMock(return_value=[]),
+        get_benchmark_coverage=AsyncMock(
+            return_value={
+                "total_points": 0,
+                "observed_start_date": None,
+                "observed_end_date": None,
+                "quality_status_counts": {},
+            }
+        ),
+        get_risk_free_coverage=AsyncMock(
+            return_value={
+                "total_points": 0,
+                "observed_start_date": None,
+                "observed_end_date": None,
+                "quality_status_counts": {},
+            }
+        ),
+        list_taxonomy=AsyncMock(return_value=[]),
+    )
+
+    assert await service.resolve_benchmark_assignment("P1", date(2026, 1, 1)) is None
+    assert await service.get_benchmark_definition("B1", date(2026, 1, 1)) is None
+
+    benchmark_catalog = await service.list_benchmark_catalog(
+        date(2026, 1, 1), "single_index", "EUR", "active"
+    )
+    assert benchmark_catalog.records
+
+    await service.get_benchmark_market_series(
+        benchmark_id="B1",
+        request=SimpleNamespace(
+            as_of_date=date(2026, 1, 1),
+            window=SimpleNamespace(start_date=date(2026, 1, 1), end_date=date(2026, 1, 2)),
+            frequency="daily",
+            target_currency="USD",
+            series_fields=["index_price"],
+        ),
+    )
+    service._reference_repository.get_fx_rates.assert_awaited_once()
+
+    monkeypatch.setenv(
+        "LOTUS_CORE_INTEGRATION_SNAPSHOT_POLICY_JSON",
+        '{"tenants":{"tenant-z":{"strict_mode":false,"default_sections":["OVERVIEW"]}}}',
+    )
+    ctx = service._resolve_policy_context("tenant-z", "lotus-manage")
+    assert ctx.policy_source == "tenant"
+    assert ctx.matched_rule_id == "tenant.tenant-z.default_sections"
+
+    monkeypatch.delenv("LOTUS_CORE_INTEGRATION_SNAPSHOT_POLICY_JSON", raising=False)
+    effective = service.get_effective_policy(
+        consumer_system="lotus-manage",
+        tenant_id="default",
+        include_sections=None,
+    )
+    assert effective.allowed_sections == []
 

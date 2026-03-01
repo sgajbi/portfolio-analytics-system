@@ -149,9 +149,6 @@ class IntegrationService:
                     matched_rule_id = f"tenant.{tenant_id}.consumers.{tenant_match_key}"
                 else:
                     matched_rule_id = f"tenant.{tenant_id}.default_sections"
-            elif isinstance(tenant_policy_raw.get("default_sections"), list):
-                policy_source = "tenant"
-                matched_rule_id = f"tenant.{tenant_id}.default_sections"
             if "strict_mode" in tenant_policy_raw and matched_rule_id == "default":
                 policy_source = "tenant"
                 matched_rule_id = f"tenant.{tenant_id}.strict_mode"

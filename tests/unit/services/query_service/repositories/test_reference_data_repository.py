@@ -136,6 +136,8 @@ async def test_reference_data_repository_methods_cover_query_contracts() -> None
     assert await repo.list_benchmark_components("B1", date(2026, 1, 1))
     assert await repo.list_index_price_points(["IDX_1"], date(2026, 1, 1), date(2026, 1, 2))
     assert await repo.list_index_return_points(["IDX_1"], date(2026, 1, 1), date(2026, 1, 2))
+    assert await repo.list_index_price_points([], date(2026, 1, 1), date(2026, 1, 2)) == []
+    assert await repo.list_index_return_points([], date(2026, 1, 1), date(2026, 1, 2)) == []
     assert await repo.list_benchmark_return_points("B1", date(2026, 1, 1), date(2026, 1, 2))
     assert await repo.list_index_price_series("IDX_1", date(2026, 1, 1), date(2026, 1, 2))
     assert await repo.list_index_return_series("IDX_1", date(2026, 1, 1), date(2026, 1, 2))
