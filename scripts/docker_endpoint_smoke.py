@@ -267,6 +267,7 @@ def main() -> int:
     results: list[CheckResult] = []
     ingest = args.ingestion_base_url
     query = args.query_base_url
+    ops_headers = {"X-Lotus-Ops-Token": "lotus-core-ops-local"}
 
     _call(results, name="ing live", method="GET", url=f"{ingest}/health/live", expected={200})
     _call(results, name="ing ready", method="GET", url=f"{ingest}/health/ready", expected={200})
@@ -277,6 +278,7 @@ def main() -> int:
         method="PUT",
         url=f"{ingest}/ingestion/ops/control",
         expected={200},
+        headers=ops_headers,
         json={"mode": "normal", "updated_by": "deterministic_smoke"},
     )
 
@@ -501,6 +503,7 @@ def main() -> int:
         method="GET",
         url=f"{ingest}/ingestion/jobs?limit=10",
         expected={200},
+        headers=ops_headers,
     )
     job_id: str | None = None
     if jobs_response is not None and jobs_response.status_code == 200:
@@ -515,6 +518,7 @@ def main() -> int:
             method="GET",
             url=f"{ingest}/ingestion/jobs/{job_id}",
             expected={200},
+            headers=ops_headers,
         )
         _call(
             results,
@@ -522,6 +526,15 @@ def main() -> int:
             method="GET",
             url=f"{ingest}/ingestion/jobs/{job_id}/failures",
             expected={200},
+            headers=ops_headers,
+        )
+        _call(
+            results,
+            name="job record status",
+            method="GET",
+            url=f"{ingest}/ingestion/jobs/{job_id}/records",
+            expected={200},
+            headers=ops_headers,
         )
         _call(
             results,
@@ -529,6 +542,7 @@ def main() -> int:
             method="POST",
             url=f"{ingest}/ingestion/jobs/{job_id}/retry",
             expected={200},
+            headers=ops_headers,
             json={"dry_run": True, "record_keys": []},
         )
     else:
@@ -550,6 +564,7 @@ def main() -> int:
         method="GET",
         url=f"{ingest}/ingestion/health/summary",
         expected={200},
+        headers=ops_headers,
     )
     _call(
         results,
@@ -557,6 +572,7 @@ def main() -> int:
         method="GET",
         url=f"{ingest}/ingestion/health/lag",
         expected={200},
+        headers=ops_headers,
     )
     _call(
         results,
@@ -564,6 +580,23 @@ def main() -> int:
         method="GET",
         url=f"{ingest}/ingestion/health/slo",
         expected={200},
+        headers=ops_headers,
+    )
+    _call(
+        results,
+        name="health consumer lag",
+        method="GET",
+        url=f"{ingest}/ingestion/health/consumer-lag",
+        expected={200},
+        headers=ops_headers,
+    )
+    _call(
+        results,
+        name="health error budget",
+        method="GET",
+        url=f"{ingest}/ingestion/health/error-budget",
+        expected={200},
+        headers=ops_headers,
     )
     _call(
         results,
@@ -571,6 +604,15 @@ def main() -> int:
         method="GET",
         url=f"{ingest}/ingestion/dlq/consumer-events?limit=10",
         expected={200},
+        headers=ops_headers,
+    )
+    _call(
+        results,
+        name="idempotency diagnostics",
+        method="GET",
+        url=f"{ingest}/ingestion/idempotency/diagnostics?limit=10",
+        expected={200},
+        headers=ops_headers,
     )
     _call(
         results,

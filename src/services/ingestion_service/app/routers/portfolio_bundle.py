@@ -4,6 +4,7 @@ from app.ack_response import build_batch_ack
 from app.adapter_mode import require_portfolio_bundle_adapter_enabled
 from app.DTOs.ingestion_ack_dto import BatchIngestionAcceptedResponse
 from app.DTOs.portfolio_bundle_dto import PortfolioBundleIngestionRequest
+from app.ops_controls import enforce_ingestion_write_rate_limit
 from app.request_metadata import (
     IdempotencyKeyHeader,
     create_ingestion_job_id,
@@ -64,6 +65,16 @@ async def ingest_portfolio_bundle(
         + len(request.market_prices)
         + len(request.fx_rates)
     )
+    try:
+        enforce_ingestion_write_rate_limit(
+            endpoint="/ingest/portfolio-bundle",
+            record_count=accepted_count,
+        )
+    except PermissionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail={"code": "INGESTION_RATE_LIMIT_EXCEEDED", "message": str(exc)},
+        ) from exc
     job_id = create_ingestion_job_id()
     correlation_id, request_id, trace_id = get_request_lineage()
     job_result = await ingestion_job_service.create_or_get_job(

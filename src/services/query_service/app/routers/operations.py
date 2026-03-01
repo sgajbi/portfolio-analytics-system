@@ -30,8 +30,9 @@ def get_operations_service(
     responses={status.HTTP_404_NOT_FOUND: {"description": "Portfolio not found."}},
     summary="Get operational support overview for a portfolio",
     description=(
-        "Returns support-oriented operational state for a portfolio, including "
-        "reprocessing/valuation queue indicators and latest data availability markers."
+        "What: Return support-oriented operational state for one portfolio.\n"
+        "How: Aggregate reprocessing, valuation, and latest-data availability markers for the key.\n"
+        "When: Use during incidents to quickly assess whether portfolio processing is healthy."
     ),
 )
 async def get_support_overview(
@@ -55,8 +56,9 @@ async def get_support_overview(
     responses={status.HTTP_404_NOT_FOUND: {"description": "Portfolio not found."}},
     summary="List valuation jobs for support workflows",
     description=(
-        "Returns valuation jobs for a portfolio with pagination and optional status filtering. "
-        "Designed for operations/support dashboards."
+        "What: List valuation jobs for a portfolio with support filters.\n"
+        "How: Query valuation job records with pagination and optional status filtering.\n"
+        "When: Use to triage stuck valuation workloads and verify drain progress."
     ),
 )
 async def get_valuation_jobs(
@@ -88,8 +90,9 @@ async def get_valuation_jobs(
     responses={status.HTTP_404_NOT_FOUND: {"description": "Portfolio not found."}},
     summary="List aggregation jobs for support workflows",
     description=(
-        "Returns aggregation jobs for a portfolio with pagination and optional status filtering. "
-        "Designed for operations/support dashboards."
+        "What: List portfolio aggregation jobs for support workflows.\n"
+        "How: Query aggregation job records with pagination and optional status filtering.\n"
+        "When: Use when portfolio rollups are stale or downstream timeseries appears delayed."
     ),
 )
 async def get_aggregation_jobs(
@@ -121,8 +124,9 @@ async def get_aggregation_jobs(
     responses={status.HTTP_404_NOT_FOUND: {"description": "Portfolio/security lineage not found."}},
     summary="Get lineage state for a portfolio-security key",
     description=(
-        "Returns lineage-relevant state (epoch, watermark, latest artifacts) "
-        "for a specific portfolio-security key."
+        "What: Return lineage state for one portfolio-security key.\n"
+        "How: Read epoch, watermark, and latest artifact pointers from lineage state services.\n"
+        "When: Use during replay/reprocessing investigations for deterministic state validation."
     ),
 )
 async def get_lineage(
@@ -150,8 +154,9 @@ async def get_lineage(
     responses={status.HTTP_404_NOT_FOUND: {"description": "Portfolio not found."}},
     summary="List lineage keys for a portfolio",
     description=(
-        "Returns current lineage keys (portfolio-security state rows) for a portfolio with "
-        "pagination and optional status/security filtering."
+        "What: List lineage keys for a portfolio.\n"
+        "How: Query portfolio-security lineage rows with status/security filters and pagination.\n"
+        "When: Use to scope impacted keys before running replay, backfill, or targeted recovery."
     ),
 )
 async def get_lineage_keys(
@@ -182,4 +187,3 @@ async def get_lineage_keys(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected server error occurred while listing lineage keys.",
         )
-

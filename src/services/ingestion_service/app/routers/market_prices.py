@@ -4,6 +4,7 @@ import logging
 from app.ack_response import build_batch_ack
 from app.DTOs.ingestion_ack_dto import BatchIngestionAcceptedResponse
 from app.DTOs.market_price_dto import MarketPriceIngestionRequest
+from app.ops_controls import enforce_ingestion_write_rate_limit
 from app.request_metadata import (
     IdempotencyKeyHeader,
     create_ingestion_job_id,
@@ -48,6 +49,15 @@ async def ingest_market_prices(
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail={"code": "INGESTION_MODE_BLOCKS_WRITES", "message": str(exc)},
+        ) from exc
+    try:
+        enforce_ingestion_write_rate_limit(
+            endpoint="/ingest/market-prices", record_count=len(request.market_prices)
+        )
+    except PermissionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail={"code": "INGESTION_RATE_LIMIT_EXCEEDED", "message": str(exc)},
         ) from exc
     num_prices = len(request.market_prices)
     job_id = create_ingestion_job_id()
