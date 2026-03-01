@@ -61,6 +61,12 @@ class IntegrationService:
         self._reference_repository = ReferenceDataRepository(db)
 
     @staticmethod
+    def _as_decimal(value: Any) -> Decimal:
+        if isinstance(value, Decimal):
+            return value
+        return Decimal(str(value))
+
+    @staticmethod
     def _canonical_consumer_system(value: str | None) -> str:
         raw = (value or "UNKNOWN").strip()
         if not raw:
@@ -251,7 +257,7 @@ class IntegrationService:
             components=[
                 {
                     "index_id": component.index_id,
-                    "composition_weight": Decimal(component.composition_weight),
+                    "composition_weight": self._as_decimal(component.composition_weight),
                     "composition_effective_from": component.composition_effective_from,
                     "composition_effective_to": component.composition_effective_to,
                     "rebalance_event_id": component.rebalance_event_id,
@@ -273,11 +279,15 @@ class IntegrationService:
             benchmark_currency=benchmark_currency,
             benchmark_status=benchmark_status,
         )
+        components_by_benchmark = (
+            await self._reference_repository.list_benchmark_components_for_benchmarks(
+                benchmark_ids=[row.benchmark_id for row in rows],
+                as_of_date=as_of_date,
+            )
+        )
         records: list[BenchmarkDefinitionResponse] = []
         for row in rows:
-            components = await self._reference_repository.list_benchmark_components(
-                row.benchmark_id, as_of_date
-            )
+            components = components_by_benchmark.get(row.benchmark_id, [])
             records.append(
                 BenchmarkDefinitionResponse(
                     benchmark_id=row.benchmark_id,
@@ -300,7 +310,7 @@ class IntegrationService:
                     components=[
                         {
                             "index_id": component.index_id,
-                            "composition_weight": Decimal(component.composition_weight),
+                            "composition_weight": self._as_decimal(component.composition_weight),
                             "composition_effective_from": component.composition_effective_from,
                             "composition_effective_to": component.composition_effective_to,
                             "rebalance_event_id": component.rebalance_event_id,
@@ -390,7 +400,9 @@ class IntegrationService:
         prices_by_index_date = {(row.index_id, row.series_date): row for row in index_prices}
         returns_by_index_date = {(row.index_id, row.series_date): row for row in index_returns}
         benchmark_return_by_date = {row.series_date: row for row in benchmark_returns}
-        component_weight = {row.index_id: Decimal(row.composition_weight) for row in components}
+        component_weight = {
+            row.index_id: self._as_decimal(row.composition_weight) for row in components
+        }
 
         all_dates = sorted(
             {
@@ -418,10 +430,10 @@ class IntegrationService:
                 points.append(
                     SeriesPoint(
                         series_date=current_date,
-                        index_price=Decimal(price_row.index_price) if price_row else None,
-                        index_return=Decimal(return_row.index_return) if return_row else None,
+                        index_price=self._as_decimal(price_row.index_price) if price_row else None,
+                        index_return=self._as_decimal(return_row.index_return) if return_row else None,
                         benchmark_return=(
-                            Decimal(benchmark_return_row.benchmark_return)
+                            self._as_decimal(benchmark_return_row.benchmark_return)
                             if benchmark_return_row
                             else None
                         ),
@@ -467,7 +479,7 @@ class IntegrationService:
             points=[
                 IndexPriceSeriesPoint(
                     series_date=row.series_date,
-                    index_price=Decimal(row.index_price),
+                    index_price=self._as_decimal(row.index_price),
                     series_currency=row.series_currency,
                     value_convention=row.value_convention,
                     quality_status=row.quality_status,
@@ -499,7 +511,7 @@ class IntegrationService:
             points=[
                 IndexReturnSeriesPoint(
                     series_date=row.series_date,
-                    index_return=Decimal(row.index_return),
+                    index_return=self._as_decimal(row.index_return),
                     return_period=row.return_period,
                     return_convention=row.return_convention,
                     series_currency=row.series_currency,
@@ -532,7 +544,7 @@ class IntegrationService:
             points=[
                 {
                     "series_date": row.series_date,
-                    "benchmark_return": Decimal(row.benchmark_return),
+                    "benchmark_return": self._as_decimal(row.benchmark_return),
                     "return_period": row.return_period,
                     "return_convention": row.return_convention,
                     "series_currency": row.series_currency,
@@ -564,7 +576,7 @@ class IntegrationService:
             points=[
                 RiskFreeSeriesPoint(
                     series_date=row.series_date,
-                    value=Decimal(row.value),
+                    value=self._as_decimal(row.value),
                     value_convention=row.value_convention,
                     day_count_convention=row.day_count_convention,
                     compounding_convention=row.compounding_convention,

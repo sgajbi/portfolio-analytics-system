@@ -246,6 +246,19 @@ async def test_reference_contract_methods() -> None:
                 )
             ]
         ),
+        list_benchmark_components_for_benchmarks=AsyncMock(
+            return_value={
+                "B1": [
+                    SimpleNamespace(
+                        index_id="IDX1",
+                        composition_weight=Decimal("0.5"),
+                        composition_effective_from=date(2026, 1, 1),
+                        composition_effective_to=None,
+                        rebalance_event_id="r1",
+                    )
+                ]
+            }
+        ),
         list_benchmark_definitions=AsyncMock(return_value=[]),
         list_index_definitions=AsyncMock(
             return_value=[
@@ -451,6 +464,7 @@ async def test_reference_contract_none_and_fx_branches(monkeypatch: pytest.Monke
         resolve_benchmark_assignment=AsyncMock(return_value=None),
         get_benchmark_definition=AsyncMock(side_effect=[None, SimpleNamespace(benchmark_currency="EUR")]),
         list_benchmark_components=AsyncMock(return_value=[]),
+        list_benchmark_components_for_benchmarks=AsyncMock(return_value={}),
         list_benchmark_definitions=AsyncMock(
             return_value=[
                 SimpleNamespace(

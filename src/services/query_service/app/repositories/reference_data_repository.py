@@ -136,6 +136,35 @@ class ReferenceDataRepository:
         result = await self._db.execute(stmt)
         return list(result.scalars().all())
 
+    async def list_benchmark_components_for_benchmarks(
+        self,
+        benchmark_ids: list[str],
+        as_of_date: date,
+    ) -> dict[str, list[BenchmarkCompositionSeries]]:
+        if not benchmark_ids:
+            return {}
+
+        stmt = (
+            select(BenchmarkCompositionSeries)
+            .where(
+                BenchmarkCompositionSeries.benchmark_id.in_(benchmark_ids),
+                _effective_filter(
+                    BenchmarkCompositionSeries.composition_effective_from,
+                    BenchmarkCompositionSeries.composition_effective_to,
+                    as_of_date,
+                ),
+            )
+            .order_by(
+                BenchmarkCompositionSeries.benchmark_id.asc(),
+                BenchmarkCompositionSeries.index_id.asc(),
+            )
+        )
+        rows = list((await self._db.execute(stmt)).scalars().all())
+        grouped: dict[str, list[BenchmarkCompositionSeries]] = defaultdict(list)
+        for row in rows:
+            grouped[row.benchmark_id].append(row)
+        return dict(grouped)
+
     async def list_index_price_points(
         self,
         index_ids: list[str],

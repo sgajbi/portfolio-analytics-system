@@ -103,6 +103,16 @@ class PositionHistory(Base):
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )
 
+    __table_args__ = (
+        Index(
+            "ix_position_history_portfolio_security_epoch_date",
+            "portfolio_id",
+            "security_id",
+            "epoch",
+            "position_date",
+        ),
+    )
+
 
 class DailyPositionSnapshot(Base):
     __tablename__ = "daily_position_snapshots"
@@ -322,6 +332,12 @@ class BenchmarkCompositionSeries(Base):
             "composition_effective_from",
             name="_benchmark_composition_effective_uc",
         ),
+        Index(
+            "ix_benchmark_composition_series_benchmark_effective_window",
+            "benchmark_id",
+            "composition_effective_from",
+            "composition_effective_to",
+        ),
     )
 
 
@@ -346,6 +362,11 @@ class IndexPriceSeries(Base):
 
     __table_args__ = (
         UniqueConstraint("series_id", "index_id", "series_date", name="_index_price_series_uc"),
+        Index(
+            "ix_index_price_series_index_id_series_date",
+            "index_id",
+            "series_date",
+        ),
     )
 
 
@@ -371,6 +392,11 @@ class IndexReturnSeries(Base):
 
     __table_args__ = (
         UniqueConstraint("series_id", "index_id", "series_date", name="_index_return_series_uc"),
+        Index(
+            "ix_index_return_series_index_id_series_date",
+            "index_id",
+            "series_date",
+        ),
     )
 
 
@@ -400,6 +426,11 @@ class BenchmarkReturnSeries(Base):
             "benchmark_id",
             "series_date",
             name="_benchmark_return_series_uc",
+        ),
+        Index(
+            "ix_benchmark_return_series_benchmark_id_series_date",
+            "benchmark_id",
+            "series_date",
         ),
     )
 
@@ -431,6 +462,11 @@ class RiskFreeSeries(Base):
             "risk_free_curve_id",
             "series_date",
             name="_risk_free_series_uc",
+        ),
+        Index(
+            "ix_risk_free_series_currency_series_date",
+            "series_currency",
+            "series_date",
         ),
     )
 

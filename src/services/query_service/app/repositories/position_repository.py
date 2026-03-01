@@ -10,7 +10,7 @@ from portfolio_common.database_models import (
     PositionHistory,
     PositionState,
 )
-from sqlalchemy import and_, func, select, text
+from sqlalchemy import and_, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
@@ -63,6 +63,79 @@ class PositionRepository:
 
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
+
+    async def get_held_since_dates(
+        self,
+        portfolio_id: str,
+        security_epoch_pairs: list[tuple[str, int]],
+    ) -> dict[tuple[str, int], date]:
+        """
+        Bulk variant of get_held_since_date.
+        Returns held-since dates for (security_id, epoch) keys in one query to avoid N+1 round trips.
+        """
+        if not security_epoch_pairs:
+            return {}
+
+        by_epoch: dict[int, list[str]] = {}
+        for security_id, epoch in security_epoch_pairs:
+            by_epoch.setdefault(epoch, []).append(security_id)
+
+        key_filters = []
+        for epoch, security_ids in by_epoch.items():
+            key_filters.append(
+                and_(
+                    PositionHistory.epoch == epoch,
+                    PositionHistory.security_id.in_(security_ids),
+                )
+            )
+
+        if not key_filters:
+            return {}
+
+        last_zero_subq = (
+            select(
+                PositionHistory.security_id.label("security_id"),
+                PositionHistory.epoch.label("epoch"),
+                func.max(PositionHistory.position_date).label("last_zero_date"),
+            )
+            .where(
+                PositionHistory.portfolio_id == portfolio_id,
+                or_(*key_filters),
+                PositionHistory.quantity == 0,
+            )
+            .group_by(PositionHistory.security_id, PositionHistory.epoch)
+            .subquery()
+        )
+
+        held_since_stmt = (
+            select(
+                PositionHistory.security_id.label("security_id"),
+                PositionHistory.epoch.label("epoch"),
+                func.min(PositionHistory.position_date).label("held_since_date"),
+            )
+            .select_from(PositionHistory)
+            .outerjoin(
+                last_zero_subq,
+                and_(
+                    PositionHistory.security_id == last_zero_subq.c.security_id,
+                    PositionHistory.epoch == last_zero_subq.c.epoch,
+                ),
+            )
+            .where(
+                PositionHistory.portfolio_id == portfolio_id,
+                or_(*key_filters),
+                PositionHistory.position_date
+                > func.coalesce(last_zero_subq.c.last_zero_date, date.min),
+            )
+            .group_by(PositionHistory.security_id, PositionHistory.epoch)
+        )
+
+        rows = (await self.db.execute(held_since_stmt)).all()
+        return {
+            (str(row.security_id), int(row.epoch)): row.held_since_date
+            for row in rows
+            if row.held_since_date is not None
+        }
 
     async def get_position_history_by_security(
         self,

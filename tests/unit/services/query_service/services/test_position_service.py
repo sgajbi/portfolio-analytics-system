@@ -49,7 +49,7 @@ def mock_position_repo() -> AsyncMock:
     repo.get_latest_positions_by_portfolio.return_value = [
         (mock_snapshot, mock_instrument, mock_state)
     ]
-    repo.get_held_since_date.return_value = date(2024, 12, 31)
+    repo.get_held_since_dates.return_value = {("S1", 1): date(2024, 12, 31)}
     repo.get_latest_position_history_by_portfolio.return_value = []
     repo.get_latest_snapshot_valuation_map.return_value = {}
     # --- END FIX ---
@@ -135,7 +135,7 @@ async def test_get_latest_positions_falls_back_to_position_history(mock_position
         mock_position_repo.get_latest_position_history_by_portfolio.return_value = [
             (mock_history_obj, mock_instrument, mock_state)
         ]
-        mock_position_repo.get_held_since_date.return_value = date(2024, 1, 1)
+        mock_position_repo.get_held_since_dates.return_value = {("S2", 1): date(2024, 1, 1)}
         mock_position_repo.get_latest_snapshot_valuation_map.return_value = {
             "S2": {
                 "market_price": Decimal("101.5"),
@@ -215,7 +215,7 @@ async def test_get_latest_positions_fallback_without_snapshot_valuation_uses_cos
         mock_position_repo.get_latest_position_history_by_portfolio.return_value = [
             (mock_history_obj, mock_instrument, mock_state)
         ]
-        mock_position_repo.get_held_since_date.return_value = None
+        mock_position_repo.get_held_since_dates.return_value = {}
         mock_position_repo.get_latest_snapshot_valuation_map.return_value = {}
 
         service = PositionService(AsyncMock())
