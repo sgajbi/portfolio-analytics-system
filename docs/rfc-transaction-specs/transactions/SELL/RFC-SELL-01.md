@@ -6,17 +6,17 @@
 * **Title:** Canonical SELL Transaction Specification
 * **Version:** 1.0.0
 * **Status:** Draft
-* **Owner:** *TBD*
-* **Reviewers:** *TBD*
-* **Approvers:** *TBD*
-* **Last Updated:** *TBD*
-* **Effective Date:** *TBD*
+* **Owner:** lotus-core engineering
+* **Reviewers:** Platform Architecture, lotus-risk engineering
+* **Approvers:** lotus-core maintainers
+* **Last Updated:** 2026-03-01
+* **Effective Date:** 2026-03-01 (pending formal approval)
 
 ### 1.1 Change Log
 
 | Version | Date  | Author | Summary                              |
 | ------- | ----- | ------ | ------------------------------------ |
-| 1.0.0   | *TBD* | *TBD*  | Initial canonical SELL specification |
+| 1.0.0   | 2026-03-01 | lotus-core engineering  | Initial canonical SELL specification |
 
 ### 1.2 Purpose
 
