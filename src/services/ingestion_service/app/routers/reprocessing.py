@@ -3,6 +3,7 @@ import logging
 
 from app.ack_response import build_batch_ack
 from app.DTOs.ingestion_ack_dto import BatchIngestionAcceptedResponse
+from app.ops_controls import enforce_ingestion_write_rate_limit
 from app.request_metadata import (
     IdempotencyKeyHeader,
     create_ingestion_job_id,
@@ -53,6 +54,16 @@ async def reprocess_transactions(
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail={"code": "INGESTION_MODE_BLOCKS_WRITES", "message": str(exc)},
+        ) from exc
+    try:
+        enforce_ingestion_write_rate_limit(
+            endpoint="/reprocess/transactions",
+            record_count=len(request.transaction_ids),
+        )
+    except PermissionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail={"code": "INGESTION_RATE_LIMIT_EXCEEDED", "message": str(exc)},
         ) from exc
     correlation_id, request_id, trace_id = get_request_lineage()
     job_id = create_ingestion_job_id()

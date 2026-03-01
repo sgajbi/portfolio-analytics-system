@@ -3,6 +3,7 @@ import logging
 from app.ack_response import build_batch_ack, build_single_ack
 from app.DTOs.ingestion_ack_dto import BatchIngestionAcceptedResponse, IngestionAcceptedResponse
 from app.DTOs.transaction_dto import Transaction, TransactionIngestionRequest
+from app.ops_controls import enforce_ingestion_write_rate_limit
 from app.request_metadata import (
     IdempotencyKeyHeader,
     create_ingestion_job_id,
@@ -47,6 +48,13 @@ async def ingest_transaction(
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail={"code": "INGESTION_MODE_BLOCKS_WRITES", "message": str(exc)},
+        ) from exc
+    try:
+        enforce_ingestion_write_rate_limit(endpoint="/ingest/transaction", record_count=1)
+    except PermissionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail={"code": "INGESTION_RATE_LIMIT_EXCEEDED", "message": str(exc)},
         ) from exc
     logger.info(
         "Received single transaction.",
@@ -105,6 +113,15 @@ async def ingest_transactions(
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail={"code": "INGESTION_MODE_BLOCKS_WRITES", "message": str(exc)},
+        ) from exc
+    try:
+        enforce_ingestion_write_rate_limit(
+            endpoint="/ingest/transactions", record_count=len(request.transactions)
+        )
+    except PermissionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail={"code": "INGESTION_RATE_LIMIT_EXCEEDED", "message": str(exc)},
         ) from exc
     num_transactions = len(request.transactions)
     job_id = create_ingestion_job_id()

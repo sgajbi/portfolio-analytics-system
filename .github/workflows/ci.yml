@@ -157,6 +157,49 @@ jobs:
       - name: Build query-service image
         run: make docker-build
 
+  docker-smoke-contract:
+    name: Docker Smoke Contract
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'push' ||
+      (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'run-docker-smoke'))
+    needs: [quality, coverage-gate]
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install Tooling and Project Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          make install
+
+      - name: Run deterministic docker endpoint smoke
+        run: make test-docker-smoke
+
+      - name: Capture docker compose logs on failure
+        if: failure()
+        run: docker compose logs > docker-smoke-logs.txt
+
+      - name: Upload smoke artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-smoke-artifacts
+          path: |
+            output/task-runs/*.json
+            output/task-runs/*.md
+            docker-smoke-logs.txt
+          if-no-files-found: warn
+          retention-days: 14
+
   e2e-smoke:
     name: E2E Smoke
     if: >

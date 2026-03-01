@@ -2,6 +2,7 @@ import logging
 
 from app.adapter_mode import require_upload_adapter_enabled
 from app.DTOs.upload_dto import UploadCommitResponse, UploadEntityType, UploadPreviewResponse
+from app.ops_controls import enforce_ingestion_write_rate_limit
 from app.services.ingestion_job_service import IngestionJobService, get_ingestion_job_service
 from app.services.upload_ingestion_service import (
     UploadIngestionService,
@@ -96,6 +97,16 @@ async def commit_upload(
             detail={"code": "INGESTION_MODE_BLOCKS_WRITES", "message": str(exc)},
         ) from exc
     content = await file.read()
+    try:
+        enforce_ingestion_write_rate_limit(
+            endpoint="/ingest/uploads/commit",
+            record_count=max(1, content.count(b"\n")),
+        )
+    except PermissionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail={"code": "INGESTION_RATE_LIMIT_EXCEEDED", "message": str(exc)},
+        ) from exc
     response = await upload_service.commit_upload(
         entity_type=entity_type,
         filename=file.filename or "upload.csv",

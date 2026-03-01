@@ -225,9 +225,7 @@ async def async_test_client(mock_kafka_producer: MagicMock):
             total_jobs = len(self.jobs)
             failed_jobs = sum(1 for j in self.jobs.values() if j.status == "failed")
             failure_rate = (
-                Decimal(failed_jobs) / Decimal(total_jobs)
-                if total_jobs
-                else Decimal("0")
+                Decimal(failed_jobs) / Decimal(total_jobs) if total_jobs else Decimal("0")
             )
             return {
                 "lookback_minutes": lookback_minutes,
@@ -298,7 +296,111 @@ async def async_test_client(mock_kafka_producer: MagicMock):
             original_topic: str | None = None,
             consumer_group: str | None = None,
         ) -> list[dict]:
-            return []
+            return [
+                {
+                    "event_id": "cdlq_test_001",
+                    "original_topic": original_topic or "raw_transactions",
+                    "consumer_group": consumer_group or "persistence-service-group",
+                    "dlq_topic": "persistence_service.dlq",
+                    "original_key": "TXN-2026-000145",
+                    "error_reason": "ValidationError: portfolio_id is required",
+                    "correlation_id": "ING:test-correlation-id",
+                    "payload_excerpt": '{"transaction_id":"TXN-2026-000145"}',
+                    "observed_at": datetime.now(UTC),
+                }
+            ][:limit]
+
+        async def get_consumer_dlq_event(self, event_id: str):
+            if event_id != "cdlq_test_001":
+                return None
+            return SimpleNamespace(
+                event_id=event_id,
+                original_topic="raw_transactions",
+                consumer_group="persistence-service-group",
+                dlq_topic="persistence_service.dlq",
+                original_key="TXN-2026-000145",
+                error_reason="ValidationError: portfolio_id is required",
+                correlation_id="ING:test-correlation-id",
+                payload_excerpt='{"transaction_id":"TXN-2026-000145"}',
+                observed_at=datetime.now(UTC),
+            )
+
+        async def get_consumer_lag(
+            self,
+            *,
+            lookback_minutes: int = 60,
+            limit: int = 100,
+        ):
+            return {
+                "lookback_minutes": lookback_minutes,
+                "backlog_jobs": 1,
+                "total_groups": 1,
+                "groups": [
+                    {
+                        "consumer_group": "persistence-service-group",
+                        "original_topic": "raw_transactions",
+                        "dlq_events": 3,
+                        "last_observed_at": datetime.now(UTC),
+                        "lag_severity": "low",
+                    }
+                ][:limit],
+            }
+
+        async def get_job_record_status(self, job_id: str):
+            job = self.jobs.get(job_id)
+            if not job:
+                return None
+            return {
+                "job_id": job_id,
+                "entity_type": job.entity_type,
+                "accepted_count": job.accepted_count,
+                "failed_record_keys": ["TXN-2026-000145"],
+                "replayable_record_keys": ["TXN-2026-000145", "TXN-2026-000146"],
+            }
+
+        async def get_idempotency_diagnostics(
+            self,
+            *,
+            lookback_minutes: int = 1440,
+            limit: int = 200,
+        ):
+            return {
+                "lookback_minutes": lookback_minutes,
+                "total_keys": 1,
+                "collisions": 0,
+                "keys": [
+                    {
+                        "idempotency_key": "integration-ingestion-idempotency-001",
+                        "usage_count": 2,
+                        "endpoint_count": 1,
+                        "endpoints": ["/ingest/transactions"],
+                        "first_seen_at": datetime.now(UTC),
+                        "last_seen_at": datetime.now(UTC),
+                        "collision_detected": False,
+                    }
+                ][:limit],
+            }
+
+        async def get_error_budget_status(
+            self,
+            *,
+            lookback_minutes: int = 60,
+            failure_rate_threshold: Decimal = Decimal("0.03"),
+            backlog_growth_threshold: int = 5,
+        ):
+            return {
+                "lookback_minutes": lookback_minutes,
+                "previous_lookback_minutes": lookback_minutes,
+                "total_jobs": len(self.jobs),
+                "failed_jobs": 0,
+                "failure_rate": Decimal("0"),
+                "remaining_error_budget": failure_rate_threshold,
+                "backlog_jobs": 1,
+                "previous_backlog_jobs": 1,
+                "backlog_growth": 0,
+                "breach_failure_rate": False,
+                "breach_backlog_growth": False,
+            }
 
         async def get_ops_mode(self):
             return {
@@ -340,30 +442,28 @@ async def async_test_client(mock_kafka_producer: MagicMock):
 
     fake_job_service = FakeIngestionJobService()
     app.dependency_overrides[get_ingestion_job_service] = lambda: fake_job_service
-    app.dependency_overrides[transactions_router.get_ingestion_job_service] = (
-        lambda: fake_job_service
+    app.dependency_overrides[transactions_router.get_ingestion_job_service] = lambda: (
+        fake_job_service
     )
-    app.dependency_overrides[portfolios_router.get_ingestion_job_service] = (
-        lambda: fake_job_service
+    app.dependency_overrides[portfolios_router.get_ingestion_job_service] = lambda: fake_job_service
+    app.dependency_overrides[instruments_router.get_ingestion_job_service] = lambda: (
+        fake_job_service
     )
-    app.dependency_overrides[instruments_router.get_ingestion_job_service] = (
-        lambda: fake_job_service
-    )
-    app.dependency_overrides[market_prices_router.get_ingestion_job_service] = (
-        lambda: fake_job_service
+    app.dependency_overrides[market_prices_router.get_ingestion_job_service] = lambda: (
+        fake_job_service
     )
     app.dependency_overrides[fx_rates_router.get_ingestion_job_service] = lambda: fake_job_service
-    app.dependency_overrides[business_dates_router.get_ingestion_job_service] = (
-        lambda: fake_job_service
+    app.dependency_overrides[business_dates_router.get_ingestion_job_service] = lambda: (
+        fake_job_service
     )
-    app.dependency_overrides[portfolio_bundle_router.get_ingestion_job_service] = (
-        lambda: fake_job_service
+    app.dependency_overrides[portfolio_bundle_router.get_ingestion_job_service] = lambda: (
+        fake_job_service
     )
-    app.dependency_overrides[reprocessing_router.get_ingestion_job_service] = (
-        lambda: fake_job_service
+    app.dependency_overrides[reprocessing_router.get_ingestion_job_service] = lambda: (
+        fake_job_service
     )
-    app.dependency_overrides[ingestion_jobs_router.get_ingestion_job_service] = (
-        lambda: fake_job_service
+    app.dependency_overrides[ingestion_jobs_router.get_ingestion_job_service] = lambda: (
+        fake_job_service
     )
 
     app.dependency_overrides[get_kafka_producer] = override_get_kafka_producer
@@ -371,7 +471,11 @@ async def async_test_client(mock_kafka_producer: MagicMock):
     # --- THIS IS THE FIX ---
     # Use ASGITransport for in-process testing instead of making real network calls.
     transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+    async with httpx.AsyncClient(
+        transport=transport,
+        base_url="http://test",
+        headers={"X-Lotus-Ops-Token": "lotus-core-ops-local"},
+    ) as client:
         # --- END FIX ---
         yield client
 
@@ -689,6 +793,90 @@ async def test_ingestion_consumer_dlq_events_endpoint(async_test_client: httpx.A
     body = response.json()
     assert "events" in body
     assert "total" in body
+
+
+async def test_ingestion_consumer_lag_endpoint(async_test_client: httpx.AsyncClient):
+    response = await async_test_client.get("/ingestion/health/consumer-lag")
+    assert response.status_code == 200
+    body = response.json()
+    assert "groups" in body
+    assert "backlog_jobs" in body
+
+
+async def test_ingestion_error_budget_endpoint(async_test_client: httpx.AsyncClient):
+    response = await async_test_client.get("/ingestion/health/error-budget")
+    assert response.status_code == 200
+    body = response.json()
+    assert "failure_rate" in body
+    assert "remaining_error_budget" in body
+
+
+async def test_ingestion_idempotency_diagnostics_endpoint(async_test_client: httpx.AsyncClient):
+    response = await async_test_client.get("/ingestion/idempotency/diagnostics")
+    assert response.status_code == 200
+    body = response.json()
+    assert "keys" in body
+    assert "collisions" in body
+
+
+async def test_ingestion_job_records_endpoint(async_test_client: httpx.AsyncClient):
+    payload = {
+        "transactions": [
+            {
+                "transaction_id": "TX_RECORD_001",
+                "portfolio_id": "P1",
+                "instrument_id": "I1",
+                "security_id": "S1",
+                "transaction_date": "2025-08-12T10:00:00Z",
+                "transaction_type": "BUY",
+                "quantity": 1,
+                "price": 1,
+                "gross_transaction_amount": 1,
+                "trade_currency": "USD",
+                "currency": "USD",
+            }
+        ]
+    }
+    ingest_response = await async_test_client.post("/ingest/transactions", json=payload)
+    assert ingest_response.status_code == 202
+    job_id = ingest_response.json()["job_id"]
+    response = await async_test_client.get(f"/ingestion/jobs/{job_id}/records")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["job_id"] == job_id
+    assert "replayable_record_keys" in body
+
+
+async def test_replay_consumer_dlq_event_endpoint(async_test_client: httpx.AsyncClient):
+    payload = {
+        "transactions": [
+            {
+                "transaction_id": "TX_REPLAY_001",
+                "portfolio_id": "P1",
+                "instrument_id": "I1",
+                "security_id": "S1",
+                "transaction_date": "2025-08-12T10:00:00Z",
+                "transaction_type": "BUY",
+                "quantity": 1,
+                "price": 1,
+                "gross_transaction_amount": 1,
+                "trade_currency": "USD",
+                "currency": "USD",
+            }
+        ]
+    }
+    await async_test_client.post(
+        "/ingest/transactions",
+        headers={"X-Correlation-Id": "ING:test-correlation-id"},
+        json=payload,
+    )
+    response = await async_test_client.post(
+        "/ingestion/dlq/consumer-events/cdlq_test_001/replay",
+        json={"dry_run": True},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["replay_status"] in {"dry_run", "not_replayable", "replayed"}
 
 
 async def test_ingest_instruments_endpoint(

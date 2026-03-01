@@ -436,3 +436,217 @@ class ConsumerDlqEventListResponse(BaseModel):
         description="Number of DLQ events returned.",
         examples=[25],
     )
+
+
+class IngestionConsumerLagGroupResponse(BaseModel):
+    consumer_group: str = Field(
+        description="Consumer group observed in dead-letter diagnostics.",
+        examples=["persistence-service-group"],
+    )
+    original_topic: str = Field(
+        description="Original topic associated with the lag signal.",
+        examples=["raw_transactions"],
+    )
+    dlq_events: int = Field(
+        ge=0,
+        description="Number of DLQ events for this consumer/topic in lookback window.",
+        examples=[8],
+    )
+    last_observed_at: datetime | None = Field(
+        default=None,
+        description="Most recent DLQ observation timestamp for this group/topic.",
+        examples=["2026-03-01T08:42:11.019Z"],
+    )
+    lag_severity: Literal["low", "medium", "high"] = Field(
+        description="Derived lag severity from DLQ pressure.",
+        examples=["medium"],
+    )
+
+
+class IngestionConsumerLagResponse(BaseModel):
+    lookback_minutes: int = Field(
+        ge=1,
+        description="Lookback window in minutes used to derive consumer lag signals.",
+        examples=[60],
+    )
+    backlog_jobs: int = Field(
+        ge=0,
+        description="Current non-terminal ingestion jobs (accepted + queued).",
+        examples=[11],
+    )
+    total_groups: int = Field(
+        ge=0,
+        description="Number of consumer/topic lag groups returned.",
+        examples=[3],
+    )
+    groups: list[IngestionConsumerLagGroupResponse] = Field(
+        description="Consumer lag group diagnostics sorted by highest pressure first."
+    )
+
+
+class ConsumerDlqReplayRequest(BaseModel):
+    dry_run: bool = Field(
+        default=False,
+        description="When true, validate replayability and mapping without republishing.",
+        examples=[False],
+    )
+
+
+class ConsumerDlqReplayResponse(BaseModel):
+    event_id: str = Field(
+        description="Consumer DLQ event identifier being replayed.",
+        examples=["cdlq_01J5VK4Y4EPMTVF1B0HF4CAHB6"],
+    )
+    correlation_id: str | None = Field(
+        default=None,
+        description="Correlation id carried by the failed consumer event.",
+        examples=["ING:7f4a64b0-35f4-41bc-8f74-cb556f2ad9a3"],
+    )
+    job_id: str | None = Field(
+        default=None,
+        description="Correlated ingestion job replayed from durable payload.",
+        examples=["job_01J5S0J6D3BAVMK2E1V0WQ7MCC"],
+    )
+    replay_status: Literal["dry_run", "replayed", "not_replayable"] = Field(
+        description="Replay execution result.",
+        examples=["replayed"],
+    )
+    message: str = Field(
+        description="Human-readable replay outcome for runbook workflows.",
+        examples=["Replayed ingestion job from correlated consumer DLQ event."],
+    )
+
+
+class IngestionJobRecordStatusResponse(BaseModel):
+    job_id: str = Field(
+        description="Ingestion job identifier.",
+        examples=["job_01J5S0J6D3BAVMK2E1V0WQ7MCC"],
+    )
+    entity_type: str = Field(
+        description="Canonical entity type of the ingestion payload.",
+        examples=["transaction"],
+    )
+    accepted_count: int = Field(
+        ge=0,
+        description="Number of records accepted by the original ingestion request.",
+        examples=[200],
+    )
+    failed_record_keys: list[str] = Field(
+        default_factory=list,
+        description="Record keys failed across publish/retry lifecycle.",
+        examples=[["TXN-2026-000145", "TXN-2026-000146"]],
+    )
+    replayable_record_keys: list[str] = Field(
+        default_factory=list,
+        description="Record keys available for deterministic partial replay operations.",
+        examples=[["TXN-2026-000145", "TXN-2026-000146", "TXN-2026-000147"]],
+    )
+
+
+class IngestionIdempotencyDiagnosticItemResponse(BaseModel):
+    idempotency_key: str = Field(
+        description="Client-supplied idempotency key.",
+        examples=["ingestion-transactions-batch-20260301-001"],
+    )
+    usage_count: int = Field(
+        ge=1,
+        description="Number of ingestion jobs observed with this idempotency key.",
+        examples=[3],
+    )
+    endpoint_count: int = Field(
+        ge=1,
+        description="Number of distinct ingestion endpoints using this key.",
+        examples=[1],
+    )
+    endpoints: list[str] = Field(
+        description="Distinct ingestion endpoints observed for this idempotency key.",
+        examples=[["/ingest/transactions"]],
+    )
+    first_seen_at: datetime = Field(
+        description="First observed timestamp for this idempotency key.",
+        examples=["2026-03-01T07:10:11.211Z"],
+    )
+    last_seen_at: datetime = Field(
+        description="Most recent observed timestamp for this idempotency key.",
+        examples=["2026-03-01T07:11:01.127Z"],
+    )
+    collision_detected: bool = Field(
+        description="True when same key is reused across multiple endpoints.",
+        examples=[False],
+    )
+
+
+class IngestionIdempotencyDiagnosticsResponse(BaseModel):
+    lookback_minutes: int = Field(
+        ge=1,
+        description="Lookback window used for diagnostics.",
+        examples=[1440],
+    )
+    total_keys: int = Field(
+        ge=0,
+        description="Number of distinct idempotency keys returned.",
+        examples=[14],
+    )
+    collisions: int = Field(
+        ge=0,
+        description="Number of keys reused across multiple endpoints.",
+        examples=[1],
+    )
+    keys: list[IngestionIdempotencyDiagnosticItemResponse] = Field(
+        description="Key-level diagnostics sorted by highest usage count."
+    )
+
+
+class IngestionErrorBudgetStatusResponse(BaseModel):
+    lookback_minutes: int = Field(
+        ge=1,
+        description="Current lookback window in minutes.",
+        examples=[60],
+    )
+    previous_lookback_minutes: int = Field(
+        ge=1,
+        description="Previous lookback window in minutes used for trend comparison.",
+        examples=[60],
+    )
+    total_jobs: int = Field(
+        ge=0,
+        description="Number of jobs in current lookback window.",
+        examples=[320],
+    )
+    failed_jobs: int = Field(
+        ge=0,
+        description="Number of failed jobs in current lookback window.",
+        examples=[7],
+    )
+    failure_rate: Decimal = Field(
+        ge=Decimal("0"),
+        description="Failed jobs divided by total jobs in current lookback window.",
+        examples=["0.0219"],
+    )
+    remaining_error_budget: Decimal = Field(
+        ge=Decimal("0"),
+        description="Remaining budget to threshold (max(0, threshold - failure_rate)).",
+        examples=["0.0081"],
+    )
+    backlog_jobs: int = Field(
+        ge=0,
+        description="Current non-terminal backlog jobs.",
+        examples=[12],
+    )
+    previous_backlog_jobs: int = Field(
+        ge=0,
+        description="Backlog jobs in previous lookback window.",
+        examples=[9],
+    )
+    backlog_growth: int = Field(
+        description="Backlog growth compared with previous window.",
+        examples=[3],
+    )
+    breach_failure_rate: bool = Field(
+        description="Whether failure rate exceeds threshold.",
+        examples=[False],
+    )
+    breach_backlog_growth: bool = Field(
+        description="Whether backlog growth exceeds threshold.",
+        examples=[False],
+    )

@@ -5,11 +5,17 @@ from typing import Any
 from app.DTOs.business_date_dto import BusinessDateIngestionRequest
 from app.DTOs.fx_rate_dto import FxRateIngestionRequest
 from app.DTOs.ingestion_job_dto import (
+    ConsumerDlqReplayRequest,
+    ConsumerDlqReplayResponse,
     ConsumerDlqEventListResponse,
     IngestionBacklogBreakdownResponse,
+    IngestionConsumerLagResponse,
+    IngestionErrorBudgetStatusResponse,
     IngestionHealthSummaryResponse,
+    IngestionIdempotencyDiagnosticsResponse,
     IngestionJobFailureListResponse,
     IngestionJobListResponse,
+    IngestionJobRecordStatusResponse,
     IngestionJobResponse,
     IngestionOpsModeResponse,
     IngestionOpsModeUpdateRequest,
@@ -24,13 +30,14 @@ from app.DTOs.portfolio_dto import PortfolioIngestionRequest
 from app.DTOs.reprocessing_dto import ReprocessingRequest
 from app.DTOs.transaction_dto import TransactionIngestionRequest
 from app.request_metadata import get_request_lineage
+from app.ops_controls import require_ops_token
 from app.routers.reprocessing import REPROCESSING_REQUESTED_TOPIC
 from app.services.ingestion_job_service import IngestionJobService, get_ingestion_job_service
 from app.services.ingestion_service import IngestionService, get_ingestion_service
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from portfolio_common.kafka_utils import KafkaProducer, get_kafka_producer
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_ops_token)])
 
 
 def _filter_payload_by_record_keys(
@@ -227,6 +234,34 @@ async def list_ingestion_job_failures(
     return IngestionJobFailureListResponse(failures=failures, total=len(failures))
 
 
+@router.get(
+    "/ingestion/jobs/{job_id}/records",
+    response_model=IngestionJobRecordStatusResponse,
+    status_code=status.HTTP_200_OK,
+    tags=["Ingestion Operations"],
+    summary="Get ingestion job record-level status",
+    description=(
+        "What: Return record-level replayability and failed keys for an ingestion job.\n"
+        "How: Derive replayable keys from stored payload and merge with failure history.\n"
+        "When: Use before partial retry operations or to build precise remediation batches."
+    ),
+)
+async def get_ingestion_job_records(
+    job_id: str,
+    ingestion_job_service: IngestionJobService = Depends(get_ingestion_job_service),
+):
+    record_status = await ingestion_job_service.get_job_record_status(job_id)
+    if record_status is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "code": "INGESTION_JOB_NOT_FOUND",
+                "message": f"Ingestion job '{job_id}' was not found.",
+            },
+        )
+    return record_status
+
+
 @router.post(
     "/ingestion/jobs/{job_id}/retry",
     response_model=IngestionJobResponse,
@@ -366,6 +401,29 @@ async def get_ingestion_health_lag(
 
 
 @router.get(
+    "/ingestion/health/consumer-lag",
+    response_model=IngestionConsumerLagResponse,
+    status_code=status.HTTP_200_OK,
+    tags=["Ingestion Operations"],
+    summary="Get consumer lag diagnostics",
+    description=(
+        "What: Return consumer lag diagnostics derived from DLQ pressure and backlog signals.\n"
+        "How: Aggregate consumer dead-letter events by consumer group and original topic.\n"
+        "When: Use to triage downstream consumer lag before replaying ingestion jobs."
+    ),
+)
+async def get_ingestion_consumer_lag(
+    lookback_minutes: int = Query(default=60, ge=5, le=1440),
+    limit: int = Query(default=100, ge=1, le=500),
+    ingestion_job_service: IngestionJobService = Depends(get_ingestion_job_service),
+):
+    return await ingestion_job_service.get_consumer_lag(
+        lookback_minutes=lookback_minutes,
+        limit=limit,
+    )
+
+
+@router.get(
     "/ingestion/health/slo",
     response_model=IngestionSloStatusResponse,
     status_code=status.HTTP_200_OK,
@@ -389,6 +447,31 @@ async def get_ingestion_slo_status(
         failure_rate_threshold=failure_rate_threshold,
         queue_latency_threshold_seconds=queue_latency_threshold_seconds,
         backlog_age_threshold_seconds=backlog_age_threshold_seconds,
+    )
+
+
+@router.get(
+    "/ingestion/health/error-budget",
+    response_model=IngestionErrorBudgetStatusResponse,
+    status_code=status.HTTP_200_OK,
+    tags=["Ingestion Operations"],
+    summary="Get ingestion error-budget and backlog-growth status",
+    description=(
+        "What: Return current error-budget consumption and backlog growth trend.\n"
+        "How: Compare failure/backlog metrics across current and previous lookback windows.\n"
+        "When: Use for SRE-style burn-rate alerts and release-go/no-go operational checks."
+    ),
+)
+async def get_ingestion_error_budget_status(
+    lookback_minutes: int = Query(default=60, ge=5, le=1440),
+    failure_rate_threshold: Decimal = Query(default=Decimal("0.03"), ge=0, le=1),
+    backlog_growth_threshold: int = Query(default=5, ge=0, le=10000),
+    ingestion_job_service: IngestionJobService = Depends(get_ingestion_job_service),
+):
+    return await ingestion_job_service.get_error_budget_status(
+        lookback_minutes=lookback_minutes,
+        failure_rate_threshold=failure_rate_threshold,
+        backlog_growth_threshold=backlog_growth_threshold,
     )
 
 
@@ -462,6 +545,105 @@ async def list_consumer_dlq_events(
     return ConsumerDlqEventListResponse(events=events, total=len(events))
 
 
+@router.post(
+    "/ingestion/dlq/consumer-events/{event_id}/replay",
+    response_model=ConsumerDlqReplayResponse,
+    status_code=status.HTTP_200_OK,
+    tags=["Ingestion Operations"],
+    summary="Replay ingestion payload for correlated consumer DLQ event",
+    description=(
+        "What: Replay canonical ingestion payload correlated to a consumer DLQ event.\n"
+        "How: Resolve DLQ event -> correlation_id -> ingestion job with durable payload, then republish.\n"
+        "When: Use after fixing downstream consumer defects to recover rejected events safely."
+    ),
+)
+async def replay_consumer_dlq_event(
+    event_id: str,
+    replay_request: ConsumerDlqReplayRequest = Body(default_factory=ConsumerDlqReplayRequest),
+    ingestion_job_service: IngestionJobService = Depends(get_ingestion_job_service),
+    ingestion_service: IngestionService = Depends(get_ingestion_service),
+    kafka_producer: KafkaProducer = Depends(get_kafka_producer),
+):
+    event = await ingestion_job_service.get_consumer_dlq_event(event_id)
+    if event is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "code": "INGESTION_CONSUMER_DLQ_EVENT_NOT_FOUND",
+                "message": f"Consumer DLQ event '{event_id}' was not found.",
+            },
+        )
+    if not event.correlation_id:
+        return ConsumerDlqReplayResponse(
+            event_id=event_id,
+            correlation_id=None,
+            job_id=None,
+            replay_status="not_replayable",
+            message="DLQ event has no correlation id and cannot be mapped to ingestion payload.",
+        )
+
+    jobs, _ = await ingestion_job_service.list_jobs(limit=500)
+
+    def _job_field(job: Any, field: str) -> Any:
+        if isinstance(job, dict):
+            return job.get(field)
+        return getattr(job, field, None)
+
+    replay_job = next(
+        (
+            job
+            for job in jobs
+            if _job_field(job, "correlation_id") == event.correlation_id
+            and _job_field(job, "status") in {"failed", "queued", "accepted"}
+        ),
+        None,
+    )
+    if replay_job is None:
+        return ConsumerDlqReplayResponse(
+            event_id=event_id,
+            correlation_id=event.correlation_id,
+            job_id=None,
+            replay_status="not_replayable",
+            message="No correlated ingestion job found for consumer DLQ event.",
+        )
+
+    replay_job_id = str(_job_field(replay_job, "job_id"))
+    context = await ingestion_job_service.get_job_replay_context(replay_job_id)
+    if context is None or context.request_payload is None:
+        return ConsumerDlqReplayResponse(
+            event_id=event_id,
+            correlation_id=event.correlation_id,
+            job_id=replay_job_id,
+            replay_status="not_replayable",
+            message="Correlated ingestion job does not have durable replay payload.",
+        )
+    await ingestion_job_service.assert_retry_allowed(context.submitted_at)
+    if replay_request.dry_run:
+        return ConsumerDlqReplayResponse(
+            event_id=event_id,
+            correlation_id=event.correlation_id,
+            job_id=replay_job_id,
+            replay_status="dry_run",
+            message="Dry-run successful. Correlated ingestion job is replayable.",
+        )
+    await _replay_job_payload(
+        endpoint=context.endpoint,
+        payload=context.request_payload,
+        idempotency_key=context.idempotency_key,
+        ingestion_service=ingestion_service,
+        kafka_producer=kafka_producer,
+    )
+    await ingestion_job_service.mark_retried(replay_job_id)
+    await ingestion_job_service.mark_queued(replay_job_id)
+    return ConsumerDlqReplayResponse(
+        event_id=event_id,
+        correlation_id=event.correlation_id,
+        job_id=replay_job_id,
+        replay_status="replayed",
+        message="Replayed ingestion job from correlated consumer DLQ event.",
+    )
+
+
 @router.get(
     "/ingestion/ops/control",
     response_model=IngestionOpsModeResponse,
@@ -513,4 +695,27 @@ async def update_ingestion_ops_control(
         replay_window_start=update_request.replay_window_start,
         replay_window_end=update_request.replay_window_end,
         updated_by=update_request.updated_by,
+    )
+
+
+@router.get(
+    "/ingestion/idempotency/diagnostics",
+    response_model=IngestionIdempotencyDiagnosticsResponse,
+    status_code=status.HTTP_200_OK,
+    tags=["Ingestion Operations"],
+    summary="Get idempotency key diagnostics",
+    description=(
+        "What: Return operational diagnostics for ingestion idempotency key reuse and collisions.\n"
+        "How: Aggregate ingestion jobs by idempotency key and detect multi-endpoint collisions.\n"
+        "When: Use to detect client integration anti-patterns before they create replay ambiguity."
+    ),
+)
+async def get_ingestion_idempotency_diagnostics(
+    lookback_minutes: int = Query(default=1440, ge=5, le=10080),
+    limit: int = Query(default=200, ge=1, le=500),
+    ingestion_job_service: IngestionJobService = Depends(get_ingestion_job_service),
+):
+    return await ingestion_job_service.get_idempotency_diagnostics(
+        lookback_minutes=lookback_minutes,
+        limit=limit,
     )

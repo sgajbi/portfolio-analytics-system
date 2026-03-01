@@ -10,8 +10,14 @@ from app.DTOs.ingestion_job_dto import (
     IngestionBacklogBreakdownItemResponse,
     IngestionBacklogBreakdownResponse,
     ConsumerDlqEventResponse,
+    IngestionConsumerLagGroupResponse,
+    IngestionConsumerLagResponse,
+    IngestionErrorBudgetStatusResponse,
     IngestionHealthSummaryResponse,
+    IngestionIdempotencyDiagnosticItemResponse,
+    IngestionIdempotencyDiagnosticsResponse,
     IngestionJobFailureResponse,
+    IngestionJobRecordStatusResponse,
     IngestionJobResponse,
     IngestionJobStatus,
     IngestionOpsModeResponse,
@@ -373,9 +379,7 @@ class IngestionJobService:
             INGESTION_BACKLOG_AGE_SECONDS.set(backlog_age_seconds)
 
             failure_rate = (
-                Decimal(failed_jobs) / Decimal(total_jobs)
-                if total_jobs
-                else Decimal("0")
+                Decimal(failed_jobs) / Decimal(total_jobs) if total_jobs else Decimal("0")
             )
             return IngestionSloStatusResponse(
                 lookback_minutes=lookback_minutes,
@@ -455,9 +459,7 @@ class IngestionJobService:
                 total_jobs = int(state["total"])
                 failed_jobs = int(state["failed"])
                 failure_rate = (
-                    Decimal(failed_jobs) / Decimal(total_jobs)
-                    if total_jobs
-                    else Decimal("0")
+                    Decimal(failed_jobs) / Decimal(total_jobs) if total_jobs else Decimal("0")
                 )
                 rows.append(
                     IngestionBacklogBreakdownItemResponse(
@@ -560,12 +562,269 @@ class IngestionJobService:
             if consumer_group:
                 stmt = stmt.where(DBConsumerDlqEvent.consumer_group == consumer_group)
             rows = (
-                await db.scalars(
-                    stmt.order_by(desc(DBConsumerDlqEvent.observed_at)).limit(limit)
-                )
+                await db.scalars(stmt.order_by(desc(DBConsumerDlqEvent.observed_at)).limit(limit))
             ).all()
             return [_to_dlq_event_response(row) for row in rows]
         return []
+
+    async def get_consumer_dlq_event(self, event_id: str) -> ConsumerDlqEventResponse | None:
+        async for db in get_async_db_session():
+            row = await db.scalar(
+                select(DBConsumerDlqEvent).where(DBConsumerDlqEvent.event_id == event_id).limit(1)
+            )
+            return _to_dlq_event_response(row) if row else None
+        return None
+
+    async def get_consumer_lag(
+        self,
+        *,
+        lookback_minutes: int = 60,
+        limit: int = 100,
+    ) -> IngestionConsumerLagResponse:
+        async for db in get_async_db_session():
+            since = datetime.now(UTC) - timedelta(minutes=lookback_minutes)
+            rows = (
+                await db.scalars(
+                    select(DBConsumerDlqEvent).where(DBConsumerDlqEvent.observed_at >= since)
+                )
+            ).all()
+
+            grouped: dict[tuple[str, str], list[DBConsumerDlqEvent]] = {}
+            for row in rows:
+                key = (row.consumer_group, row.original_topic)
+                grouped.setdefault(key, []).append(row)
+
+            groups: list[IngestionConsumerLagGroupResponse] = []
+            for (consumer_group, original_topic), events in grouped.items():
+                events = sorted(events, key=lambda item: item.observed_at, reverse=True)
+                dlq_events = len(events)
+                if dlq_events >= 20:
+                    severity = "high"
+                elif dlq_events >= 5:
+                    severity = "medium"
+                else:
+                    severity = "low"
+                groups.append(
+                    IngestionConsumerLagGroupResponse(
+                        consumer_group=consumer_group,
+                        original_topic=original_topic,
+                        dlq_events=dlq_events,
+                        last_observed_at=events[0].observed_at if events else None,
+                        lag_severity=severity,  # type: ignore[arg-type]
+                    )
+                )
+
+            groups = sorted(
+                groups,
+                key=lambda item: (
+                    item.dlq_events,
+                    item.last_observed_at or datetime.min.replace(tzinfo=UTC),
+                ),
+                reverse=True,
+            )[:limit]
+            backlog = await self.get_health_summary()
+            return IngestionConsumerLagResponse(
+                lookback_minutes=lookback_minutes,
+                backlog_jobs=backlog.backlog_jobs,
+                total_groups=len(groups),
+                groups=groups,
+            )
+
+        return IngestionConsumerLagResponse(
+            lookback_minutes=lookback_minutes,
+            backlog_jobs=0,
+            total_groups=0,
+            groups=[],
+        )
+
+    async def get_job_record_status(self, job_id: str) -> IngestionJobRecordStatusResponse | None:
+        async for db in get_async_db_session():
+            row = await db.scalar(
+                select(DBIngestionJob).where(DBIngestionJob.job_id == job_id).limit(1)
+            )
+            if row is None:
+                return None
+            failures = (
+                await db.scalars(
+                    select(DBIngestionJobFailure)
+                    .where(DBIngestionJobFailure.job_id == job_id)
+                    .order_by(desc(DBIngestionJobFailure.failed_at))
+                )
+            ).all()
+
+            failed_keys: set[str] = set()
+            for failure in failures:
+                for item in list(failure.failed_record_keys or []):
+                    if isinstance(item, str):
+                        failed_keys.add(item)
+
+            payload = row.request_payload if isinstance(row.request_payload, dict) else {}
+            replayable_keys: list[str] = []
+            if row.endpoint == "/ingest/transactions":
+                replayable_keys = [
+                    str(item.get("transaction_id"))
+                    for item in payload.get("transactions", [])
+                    if item.get("transaction_id")
+                ]
+            elif row.endpoint == "/ingest/portfolios":
+                replayable_keys = [
+                    str(item.get("portfolio_id"))
+                    for item in payload.get("portfolios", [])
+                    if item.get("portfolio_id")
+                ]
+            elif row.endpoint == "/ingest/instruments":
+                replayable_keys = [
+                    str(item.get("security_id"))
+                    for item in payload.get("instruments", [])
+                    if item.get("security_id")
+                ]
+            elif row.endpoint == "/ingest/business-dates":
+                replayable_keys = [
+                    str(item.get("business_date"))
+                    for item in payload.get("business_dates", [])
+                    if item.get("business_date")
+                ]
+
+            return IngestionJobRecordStatusResponse(
+                job_id=row.job_id,
+                entity_type=row.entity_type,
+                accepted_count=row.accepted_count,
+                failed_record_keys=sorted(failed_keys),
+                replayable_record_keys=replayable_keys,
+            )
+        return None
+
+    async def get_idempotency_diagnostics(
+        self,
+        *,
+        lookback_minutes: int = 1440,
+        limit: int = 200,
+    ) -> IngestionIdempotencyDiagnosticsResponse:
+        async for db in get_async_db_session():
+            since = datetime.now(UTC) - timedelta(minutes=lookback_minutes)
+            rows = (
+                await db.scalars(
+                    select(DBIngestionJob)
+                    .where(
+                        and_(
+                            DBIngestionJob.submitted_at >= since,
+                            DBIngestionJob.idempotency_key.is_not(None),
+                        )
+                    )
+                    .order_by(desc(DBIngestionJob.submitted_at))
+                )
+            ).all()
+
+            grouped: dict[str, list[DBIngestionJob]] = {}
+            for row in rows:
+                if row.idempotency_key is None:
+                    continue
+                grouped.setdefault(row.idempotency_key, []).append(row)
+
+            items: list[IngestionIdempotencyDiagnosticItemResponse] = []
+            collisions = 0
+            for key, jobs in grouped.items():
+                endpoints = sorted({job.endpoint for job in jobs})
+                collision_detected = len(endpoints) > 1
+                if collision_detected:
+                    collisions += 1
+                first_seen_at = min(job.submitted_at for job in jobs)
+                last_seen_at = max(job.submitted_at for job in jobs)
+                items.append(
+                    IngestionIdempotencyDiagnosticItemResponse(
+                        idempotency_key=key,
+                        usage_count=len(jobs),
+                        endpoint_count=len(endpoints),
+                        endpoints=endpoints,
+                        first_seen_at=first_seen_at,
+                        last_seen_at=last_seen_at,
+                        collision_detected=collision_detected,
+                    )
+                )
+
+            items = sorted(items, key=lambda item: item.usage_count, reverse=True)[:limit]
+            return IngestionIdempotencyDiagnosticsResponse(
+                lookback_minutes=lookback_minutes,
+                total_keys=len(items),
+                collisions=collisions,
+                keys=items,
+            )
+        return IngestionIdempotencyDiagnosticsResponse(
+            lookback_minutes=lookback_minutes,
+            total_keys=0,
+            collisions=0,
+            keys=[],
+        )
+
+    async def get_error_budget_status(
+        self,
+        *,
+        lookback_minutes: int = 60,
+        failure_rate_threshold: Decimal = Decimal("0.03"),
+        backlog_growth_threshold: int = 5,
+    ) -> IngestionErrorBudgetStatusResponse:
+        async for db in get_async_db_session():
+            now_utc = datetime.now(UTC)
+            current_since = now_utc - timedelta(minutes=lookback_minutes)
+            previous_since = now_utc - timedelta(minutes=lookback_minutes * 2)
+
+            current_jobs = (
+                await db.scalars(
+                    select(DBIngestionJob).where(DBIngestionJob.submitted_at >= current_since)
+                )
+            ).all()
+            previous_jobs = (
+                await db.scalars(
+                    select(DBIngestionJob).where(
+                        and_(
+                            DBIngestionJob.submitted_at >= previous_since,
+                            DBIngestionJob.submitted_at < current_since,
+                        )
+                    )
+                )
+            ).all()
+
+            total_jobs = len(current_jobs)
+            failed_jobs = len([job for job in current_jobs if job.status == "failed"])
+            failure_rate = (
+                Decimal(failed_jobs) / Decimal(total_jobs) if total_jobs else Decimal("0")
+            )
+            remaining_budget = max(Decimal("0"), failure_rate_threshold - failure_rate)
+
+            backlog_jobs = len(
+                [job for job in current_jobs if job.status in {"accepted", "queued"}]
+            )
+            previous_backlog_jobs = len(
+                [job for job in previous_jobs if job.status in {"accepted", "queued"}]
+            )
+            backlog_growth = backlog_jobs - previous_backlog_jobs
+
+            return IngestionErrorBudgetStatusResponse(
+                lookback_minutes=lookback_minutes,
+                previous_lookback_minutes=lookback_minutes,
+                total_jobs=total_jobs,
+                failed_jobs=failed_jobs,
+                failure_rate=failure_rate,
+                remaining_error_budget=remaining_budget,
+                backlog_jobs=backlog_jobs,
+                previous_backlog_jobs=previous_backlog_jobs,
+                backlog_growth=backlog_growth,
+                breach_failure_rate=failure_rate > failure_rate_threshold,
+                breach_backlog_growth=backlog_growth > backlog_growth_threshold,
+            )
+        return IngestionErrorBudgetStatusResponse(
+            lookback_minutes=lookback_minutes,
+            previous_lookback_minutes=lookback_minutes,
+            total_jobs=0,
+            failed_jobs=0,
+            failure_rate=Decimal("0"),
+            remaining_error_budget=failure_rate_threshold,
+            backlog_jobs=0,
+            previous_backlog_jobs=0,
+            backlog_growth=0,
+            breach_failure_rate=False,
+            breach_backlog_growth=False,
+        )
 
     async def get_ops_mode(self) -> IngestionOpsModeResponse:
         async for db in get_async_db_session():
