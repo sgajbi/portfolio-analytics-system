@@ -28,7 +28,11 @@ router = APIRouter()
     response_model=BatchIngestionAcceptedResponse,
     tags=["Market Prices"],
     summary="Ingest market prices",
-    description="Accepts canonical market prices and publishes them for asynchronous processing.",
+    description=(
+        "What: Accept canonical market price observations for securities.\n"
+        "How: Validate payload, enforce ingestion guardrails, and publish asynchronous events for valuation processing.\n"
+        "When: Use for daily close pricing loads or intraday approved market data updates."
+    ),
 )
 async def ingest_market_prices(
     request: MarketPriceIngestionRequest,
@@ -96,4 +100,3 @@ async def ingest_market_prices(
         accepted_count=num_prices,
         idempotency_key=idempotency_key,
     )
-

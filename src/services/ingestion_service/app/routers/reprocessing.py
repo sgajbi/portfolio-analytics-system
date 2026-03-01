@@ -29,8 +29,9 @@ REPROCESSING_REQUESTED_TOPIC = "transactions_reprocessing_requested"
     tags=["Reprocessing"],
     summary="Request transaction reprocessing",
     description=(
-        "Accepts transaction identifiers and publishes reprocessing requests "
-        "for asynchronous handling."
+        "What: Accept transaction identifiers that require deterministic historical recalculation.\n"
+        "How: Validate request, persist ingestion job metadata, and publish reprocessing command events.\n"
+        "When: Use for operational correction workflows after retroactive data changes."
     ),
 )
 async def reprocess_transactions(
@@ -110,4 +111,3 @@ async def reprocess_transactions(
         accepted_count=num_to_reprocess,
         idempotency_key=idempotency_key,
     )
-

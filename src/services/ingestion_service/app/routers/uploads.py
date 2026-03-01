@@ -28,8 +28,9 @@ router = APIRouter()
     tags=["Bulk Uploads"],
     summary="Preview and validate bulk upload data",
     description=(
-        "Validates CSV/XLSX rows against lotus-core ingestion contracts without publishing events. "
-        "Returns row-level errors and normalized sample rows for UI correction workflows."
+        "What: Validate CSV/XLSX ingestion payloads without publishing records.\n"
+        "How: Parse file rows, apply entity-specific schema checks, and return row-level validation feedback.\n"
+        "When: Use before commit to catch data-quality issues in bulk adapter uploads."
     ),
 )
 async def preview_upload(
@@ -74,9 +75,9 @@ async def preview_upload(
     tags=["Bulk Uploads"],
     summary="Commit validated bulk upload data",
     description=(
-        "Validates CSV/XLSX rows and publishes valid records to "
-        "existing lotus-core ingestion topics. "
-        "By default rejects partial uploads; set allowPartial=true to publish valid rows only."
+        "What: Commit CSV/XLSX data into canonical ingestion topics.\n"
+        "How: Validate rows, enforce mode controls, and publish valid records (optionally partial when allowPartial=true).\n"
+        "When: Use after preview passes for adapter-mode bulk ingestion."
     ),
 )
 async def commit_upload(
@@ -111,4 +112,3 @@ async def commit_upload(
         },
     )
     return response
-

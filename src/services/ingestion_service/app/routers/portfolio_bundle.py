@@ -34,9 +34,10 @@ router = APIRouter()
     tags=["Portfolio Bundle"],
     summary="Ingest a complete portfolio bundle",
     description=(
-        "Accepts a mixed payload (portfolio, instruments, transactions, market prices, FX rates, "
-        "business dates) for UI/manual/file-based onboarding and publishes to "
-        "existing lotus-core topics."
+        "What: Accept a mixed onboarding bundle containing portfolio, instrument, transaction, "
+        "market-price, FX-rate, and business-date records.\n"
+        "How: Validate adapter payload and fan out records into existing canonical ingestion topics.\n"
+        "When: Use for adapter-mode onboarding (UI/manual/file workflows), not primary upstream integration."
     ),
 )
 async def ingest_portfolio_bundle(
@@ -119,4 +120,3 @@ async def ingest_portfolio_bundle(
         accepted_count=accepted_count,
         idempotency_key=idempotency_key,
     )
-

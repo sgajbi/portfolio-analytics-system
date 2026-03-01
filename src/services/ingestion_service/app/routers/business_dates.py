@@ -28,7 +28,11 @@ router = APIRouter()
     response_model=BatchIngestionAcceptedResponse,
     tags=["Business Dates"],
     summary="Ingest business dates",
-    description="Accepts canonical business dates and publishes them for asynchronous processing.",
+    description=(
+        "What: Accept canonical business calendar dates used by valuation and processing lifecycles.\n"
+        "How: Validate date records, apply ingestion controls, and publish asynchronous persistence events.\n"
+        "When: Use for calendar setup, holiday updates, and date-correction operations."
+    ),
 )
 async def ingest_business_dates(
     request: BusinessDateIngestionRequest,
@@ -96,4 +100,3 @@ async def ingest_business_dates(
         accepted_count=num_dates,
         idempotency_key=idempotency_key,
     )
-

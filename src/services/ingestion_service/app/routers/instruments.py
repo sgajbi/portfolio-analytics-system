@@ -28,7 +28,11 @@ router = APIRouter()
     response_model=BatchIngestionAcceptedResponse,
     tags=["Instruments"],
     summary="Ingest instruments",
-    description="Accepts canonical instruments and publishes them for asynchronous processing.",
+    description=(
+        "What: Accept canonical instrument/security reference records.\n"
+        "How: Validate schema, enforce ingestion mode/idempotency controls, and publish to asynchronous persistence pipeline.\n"
+        "When: Use for security master onboarding and reference data corrections."
+    ),
 )
 async def ingest_instruments(
     request: InstrumentIngestionRequest,
@@ -96,4 +100,3 @@ async def ingest_instruments(
         accepted_count=num_instruments,
         idempotency_key=idempotency_key,
     )
-

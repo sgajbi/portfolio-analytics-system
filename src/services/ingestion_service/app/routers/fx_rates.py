@@ -28,7 +28,11 @@ router = APIRouter()
     response_model=BatchIngestionAcceptedResponse,
     tags=["FX Rates"],
     summary="Ingest FX rates",
-    description="Accepts canonical FX rates and publishes them for asynchronous processing.",
+    description=(
+        "What: Accept canonical foreign-exchange rate observations.\n"
+        "How: Validate FX rate contract, enforce ingestion controls, and publish asynchronous events for downstream valuation.\n"
+        "When: Use for scheduled FX reference updates and approved manual corrections."
+    ),
 )
 async def ingest_fx_rates(
     request: FxRateIngestionRequest,
@@ -94,4 +98,3 @@ async def ingest_fx_rates(
         accepted_count=num_rates,
         idempotency_key=idempotency_key,
     )
-
