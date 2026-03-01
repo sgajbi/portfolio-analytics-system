@@ -57,3 +57,23 @@ async def test_get_sell_cash_linkage_joins_cashflow(
     assert "LEFT OUTER JOIN cashflows" in compiled
     assert "transactions.transaction_id = 'TXN-SELL-1'" in compiled
     assert "transactions.transaction_type = 'SELL'" in compiled
+
+
+async def test_portfolio_exists_true(repository: SellStateRepository, mock_db_session: AsyncMock):
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = "PORT-1"
+    mock_db_session.execute = AsyncMock(return_value=mock_result)
+
+    exists = await repository.portfolio_exists("PORT-1")
+
+    assert exists is True
+
+
+async def test_portfolio_exists_false(repository: SellStateRepository, mock_db_session: AsyncMock):
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = None
+    mock_db_session.execute = AsyncMock(return_value=mock_result)
+
+    exists = await repository.portfolio_exists("PORT-404")
+
+    assert exists is False
