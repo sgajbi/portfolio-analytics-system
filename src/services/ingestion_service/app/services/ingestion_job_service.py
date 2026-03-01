@@ -10,6 +10,7 @@ from app.DTOs.ingestion_job_dto import (
     IngestionBacklogBreakdownItemResponse,
     IngestionBacklogBreakdownResponse,
     ConsumerDlqEventResponse,
+    IngestionReplayAuditResponse,
     IngestionConsumerLagGroupResponse,
     IngestionConsumerLagResponse,
     IngestionErrorBudgetStatusResponse,
@@ -37,6 +38,9 @@ from portfolio_common.monitoring import (
     INGESTION_JOBS_FAILED_TOTAL,
     INGESTION_JOBS_RETRIED_TOTAL,
     INGESTION_MODE_STATE,
+    INGESTION_REPLAY_AUDIT_TOTAL,
+    INGESTION_REPLAY_DUPLICATE_BLOCKED_TOTAL,
+    INGESTION_REPLAY_FAILURE_TOTAL,
 )
 from sqlalchemy import and_, desc, func, select
 
@@ -99,6 +103,24 @@ def _to_dlq_event_response(event: DBConsumerDlqEvent) -> ConsumerDlqEventRespons
         correlation_id=event.correlation_id,
         payload_excerpt=event.payload_excerpt,
         observed_at=event.observed_at,
+    )
+
+
+def _to_replay_audit_response(row: DBConsumerDlqReplayAudit) -> IngestionReplayAuditResponse:
+    return IngestionReplayAuditResponse(
+        replay_id=row.replay_id,
+        recovery_path=row.recovery_path,  # type: ignore[arg-type]
+        event_id=row.event_id,
+        replay_fingerprint=row.replay_fingerprint,
+        correlation_id=row.correlation_id,
+        job_id=row.job_id,
+        endpoint=row.endpoint,
+        replay_status=row.replay_status,  # type: ignore[arg-type]
+        dry_run=bool(row.dry_run),
+        replay_reason=row.replay_reason,
+        requested_by=row.requested_by,
+        requested_at=row.requested_at,
+        completed_at=row.completed_at,
     )
 
 
@@ -579,18 +601,19 @@ class IngestionJobService:
     async def find_successful_replay_audit_by_fingerprint(
         self,
         replay_fingerprint: str,
+        recovery_path: str | None = None,
     ) -> dict[str, str] | None:
         async for db in get_async_db_session():
-            row = await db.scalar(
-                select(DBConsumerDlqReplayAudit)
-                .where(
-                    and_(
-                        DBConsumerDlqReplayAudit.replay_fingerprint == replay_fingerprint,
-                        DBConsumerDlqReplayAudit.replay_status == "replayed",
-                    )
+            stmt = select(DBConsumerDlqReplayAudit).where(
+                and_(
+                    DBConsumerDlqReplayAudit.replay_fingerprint == replay_fingerprint,
+                    DBConsumerDlqReplayAudit.replay_status == "replayed",
                 )
-                .order_by(desc(DBConsumerDlqReplayAudit.requested_at))
-                .limit(1)
+            )
+            if recovery_path is not None:
+                stmt = stmt.where(DBConsumerDlqReplayAudit.recovery_path == recovery_path)
+            row = await db.scalar(
+                stmt.order_by(desc(DBConsumerDlqReplayAudit.requested_at)).limit(1)
             )
             if row is None:
                 return None
@@ -600,6 +623,7 @@ class IngestionJobService:
     async def record_consumer_dlq_replay_audit(
         self,
         *,
+        recovery_path: str,
         event_id: str,
         replay_fingerprint: str,
         correlation_id: str | None,
@@ -616,6 +640,7 @@ class IngestionJobService:
                 db.add(
                     DBConsumerDlqReplayAudit(
                         replay_id=replay_id,
+                        recovery_path=recovery_path,
                         event_id=event_id,
                         replay_fingerprint=replay_fingerprint,
                         correlation_id=correlation_id,
@@ -628,8 +653,54 @@ class IngestionJobService:
                         completed_at=datetime.now(UTC),
                     )
                 )
+            INGESTION_REPLAY_AUDIT_TOTAL.labels(
+                recovery_path=recovery_path, replay_status=replay_status
+            ).inc()
+            if replay_status == "duplicate_blocked":
+                INGESTION_REPLAY_DUPLICATE_BLOCKED_TOTAL.labels(recovery_path=recovery_path).inc()
+            if replay_status in {"not_replayable", "failed"}:
+                INGESTION_REPLAY_FAILURE_TOTAL.labels(
+                    recovery_path=recovery_path, replay_status=replay_status
+                ).inc()
             return replay_id
         raise RuntimeError("Unable to record consumer DLQ replay audit.")
+
+    async def get_replay_audit(self, replay_id: str) -> IngestionReplayAuditResponse | None:
+        async for db in get_async_db_session():
+            row = await db.scalar(
+                select(DBConsumerDlqReplayAudit)
+                .where(DBConsumerDlqReplayAudit.replay_id == replay_id)
+                .limit(1)
+            )
+            return _to_replay_audit_response(row) if row else None
+        return None
+
+    async def list_replay_audits(
+        self,
+        *,
+        limit: int = 100,
+        recovery_path: str | None = None,
+        replay_status: str | None = None,
+        replay_fingerprint: str | None = None,
+        job_id: str | None = None,
+    ) -> list[IngestionReplayAuditResponse]:
+        async for db in get_async_db_session():
+            stmt = select(DBConsumerDlqReplayAudit)
+            if recovery_path:
+                stmt = stmt.where(DBConsumerDlqReplayAudit.recovery_path == recovery_path)
+            if replay_status:
+                stmt = stmt.where(DBConsumerDlqReplayAudit.replay_status == replay_status)
+            if replay_fingerprint:
+                stmt = stmt.where(DBConsumerDlqReplayAudit.replay_fingerprint == replay_fingerprint)
+            if job_id:
+                stmt = stmt.where(DBConsumerDlqReplayAudit.job_id == job_id)
+            rows = (
+                await db.scalars(
+                    stmt.order_by(desc(DBConsumerDlqReplayAudit.requested_at)).limit(limit)
+                )
+            ).all()
+            return [_to_replay_audit_response(row) for row in rows]
+        return []
 
     async def get_consumer_lag(
         self,

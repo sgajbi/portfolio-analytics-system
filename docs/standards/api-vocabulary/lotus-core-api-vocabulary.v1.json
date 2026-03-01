@@ -13,7 +13,7 @@
       "openApiVersion": "3.1.0"
     }
   ],
-  "generatedAt": "2026-03-01T02:28:27.332756+00:00",
+  "generatedAt": "2026-03-01T02:52:19.610059+00:00",
   "attributeCatalog": [
     {
       "semanticId": "lotus.accepted_count",
@@ -169,6 +169,22 @@
       ],
       "observedTypes": [
         "object"
+      ]
+    },
+    {
+      "semanticId": "lotus.audits",
+      "canonicalTerm": "audits",
+      "preferredName": "audits",
+      "description": "Replay audit rows matching requested filters.",
+      "example": [
+        "audits_item_example"
+      ],
+      "type": "array",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "array"
       ]
     },
     {
@@ -915,6 +931,7 @@
         "body"
       ],
       "observedTypes": [
+        "object",
         "string"
       ]
     },
@@ -1592,7 +1609,8 @@
       "type": "string",
       "locations": [
         "body",
-        "path"
+        "path",
+        "query"
       ],
       "observedTypes": [
         "object",
@@ -2829,6 +2847,24 @@
       ]
     },
     {
+      "semanticId": "lotus.recovery_path",
+      "canonicalTerm": "recovery_path",
+      "preferredName": "recovery_path",
+      "description": "Canonical recovery path value used in request parameter.",
+      "example": {
+        "id": "OBJ_001"
+      },
+      "type": "string",
+      "locations": [
+        "body",
+        "query"
+      ],
+      "observedTypes": [
+        "object",
+        "string"
+      ]
+    },
+    {
       "semanticId": "lotus.remaining_error_budget",
       "canonicalTerm": "remaining_error_budget",
       "preferredName": "remaining_error_budget",
@@ -2876,12 +2912,43 @@
       "preferredName": "replay_fingerprint",
       "description": "Deterministic fingerprint for this replay mapping and payload.",
       "example": "replay_fingerprint_example",
-      "type": "object",
+      "type": "string",
+      "locations": [
+        "body",
+        "query"
+      ],
+      "observedTypes": [
+        "object",
+        "string"
+      ]
+    },
+    {
+      "semanticId": "lotus.replay_id",
+      "canonicalTerm": "replay_id",
+      "preferredName": "replay_id",
+      "description": "Replay audit identifier.",
+      "example": "REPLAY_001",
+      "type": "string",
+      "locations": [
+        "body",
+        "path"
+      ],
+      "observedTypes": [
+        "string"
+      ]
+    },
+    {
+      "semanticId": "lotus.replay_reason",
+      "canonicalTerm": "replay_reason",
+      "preferredName": "replay_reason",
+      "description": "Human-readable reason or outcome note for this replay event.",
+      "example": "example_replay_reason",
+      "type": "string",
       "locations": [
         "body"
       ],
       "observedTypes": [
-        "object"
+        "string"
       ]
     },
     {
@@ -2892,9 +2959,11 @@
       "example": "dry_run",
       "type": "string",
       "locations": [
-        "body"
+        "body",
+        "query"
       ],
       "observedTypes": [
+        "object",
         "string"
       ]
     },
@@ -2985,6 +3054,34 @@
       ],
       "observedTypes": [
         "string"
+      ]
+    },
+    {
+      "semanticId": "lotus.requested_at",
+      "canonicalTerm": "requested_at",
+      "preferredName": "requested_at",
+      "description": "Timestamp when replay request was recorded.",
+      "example": "2026-02-27T10:30:00Z",
+      "type": "string",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "string"
+      ]
+    },
+    {
+      "semanticId": "lotus.requested_by",
+      "canonicalTerm": "requested_by",
+      "preferredName": "requested_by",
+      "description": "Ops principal who initiated replay.",
+      "example": "requested_by_example",
+      "type": "object",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "object"
       ]
     },
     {
@@ -5860,6 +5957,126 @@
       "description": "Operations token for privileged ingestion runbook APIs (health controls, retry, DLQ triage, idempotency diagnostics).",
       "example": "STANDARD",
       "behaviorImpact": "Affects replay_consumer_dlq_event_ingestion_dlq_consumer_events__event_id__replay_post request behavior.",
+      "exposure": "consumer_visible",
+      "canonicalTerm": "x_lotus_ops_token",
+      "semanticId": "lotus.x_lotus_ops_token"
+    },
+    {
+      "name": "limit",
+      "kind": "request_option",
+      "location": "query",
+      "type": "integer",
+      "required": false,
+      "default": 100,
+      "allowedValues": [],
+      "description": "Canonical limit value used in request parameter.",
+      "example": 10,
+      "behaviorImpact": "Affects list_ingestion_replay_audits_ingestion_audit_replays_get request behavior.",
+      "exposure": "consumer_visible",
+      "canonicalTerm": "limit",
+      "semanticId": "lotus.limit"
+    },
+    {
+      "name": "recovery_path",
+      "kind": "request_option",
+      "location": "query",
+      "type": "object",
+      "required": false,
+      "default": "",
+      "allowedValues": [],
+      "description": "Canonical recovery path value used in request parameter.",
+      "example": "STANDARD",
+      "behaviorImpact": "Affects list_ingestion_replay_audits_ingestion_audit_replays_get request behavior.",
+      "exposure": "consumer_visible",
+      "canonicalTerm": "recovery_path",
+      "semanticId": "lotus.recovery_path"
+    },
+    {
+      "name": "replay_status",
+      "kind": "request_option",
+      "location": "query",
+      "type": "object",
+      "required": false,
+      "default": "",
+      "allowedValues": [],
+      "description": "Status for replay status.",
+      "example": "ACTIVE",
+      "behaviorImpact": "Affects list_ingestion_replay_audits_ingestion_audit_replays_get request behavior.",
+      "exposure": "consumer_visible",
+      "canonicalTerm": "replay_status",
+      "semanticId": "lotus.replay_status"
+    },
+    {
+      "name": "replay_fingerprint",
+      "kind": "request_option",
+      "location": "query",
+      "type": "object",
+      "required": false,
+      "default": "",
+      "allowedValues": [],
+      "description": "Canonical replay fingerprint value used in request parameter.",
+      "example": "STANDARD",
+      "behaviorImpact": "Affects list_ingestion_replay_audits_ingestion_audit_replays_get request behavior.",
+      "exposure": "consumer_visible",
+      "canonicalTerm": "replay_fingerprint",
+      "semanticId": "lotus.replay_fingerprint"
+    },
+    {
+      "name": "job_id",
+      "kind": "request_option",
+      "location": "query",
+      "type": "object",
+      "required": false,
+      "default": "",
+      "allowedValues": [],
+      "description": "Unique job identifier.",
+      "example": "JOB_001",
+      "behaviorImpact": "Affects list_ingestion_replay_audits_ingestion_audit_replays_get request behavior.",
+      "exposure": "consumer_visible",
+      "canonicalTerm": "job_id",
+      "semanticId": "lotus.job_id"
+    },
+    {
+      "name": "X-Lotus-Ops-Token",
+      "kind": "request_option",
+      "location": "header",
+      "type": "object",
+      "required": false,
+      "default": "",
+      "allowedValues": [],
+      "description": "Operations token for privileged ingestion runbook APIs (health controls, retry, DLQ triage, idempotency diagnostics).",
+      "example": "STANDARD",
+      "behaviorImpact": "Affects list_ingestion_replay_audits_ingestion_audit_replays_get request behavior.",
+      "exposure": "consumer_visible",
+      "canonicalTerm": "x_lotus_ops_token",
+      "semanticId": "lotus.x_lotus_ops_token"
+    },
+    {
+      "name": "replay_id",
+      "kind": "request_option",
+      "location": "path",
+      "type": "string",
+      "required": true,
+      "default": "",
+      "allowedValues": [],
+      "description": "Unique replay identifier.",
+      "example": "REPLAY_001",
+      "behaviorImpact": "Affects get_ingestion_replay_audit_ingestion_audit_replays__replay_id__get request behavior.",
+      "exposure": "consumer_visible",
+      "canonicalTerm": "replay_id",
+      "semanticId": "lotus.replay_id"
+    },
+    {
+      "name": "X-Lotus-Ops-Token",
+      "kind": "request_option",
+      "location": "header",
+      "type": "object",
+      "required": false,
+      "default": "",
+      "allowedValues": [],
+      "description": "Operations token for privileged ingestion runbook APIs (health controls, retry, DLQ triage, idempotency diagnostics).",
+      "example": "STANDARD",
+      "behaviorImpact": "Affects get_ingestion_replay_audit_ingestion_audit_replays__replay_id__get request behavior.",
       "exposure": "consumer_visible",
       "canonicalTerm": "x_lotus_ops_token",
       "semanticId": "lotus.x_lotus_ops_token"
@@ -15124,6 +15341,379 @@
             "type": "string",
             "semanticId": "lotus.message",
             "attributeRef": "lotus.message"
+          }
+        ]
+      }
+    },
+    {
+      "operationId": "list_ingestion_replay_audits_ingestion_audit_replays_get",
+      "method": "GET",
+      "path": "/ingestion/audit/replays",
+      "domain": "ingestion_operations",
+      "serviceGroup": "ingestion",
+      "tags": [
+        "Ingestion Operations"
+      ],
+      "summary": "List ingestion replay audit records",
+      "description": "What: Return replay audit records across ingestion recovery paths.\nHow: Query durable replay audit rows with filters for recovery path, status, fingerprint, and job.\nWhen: Use for incident forensics and replay governance review.",
+      "naming": {
+        "boundedContext": "ingestion_operations",
+        "canonicalTerms": [
+          "audits",
+          "completed_at",
+          "correlation_id",
+          "dry_run",
+          "endpoint",
+          "event_id",
+          "job_id",
+          "limit",
+          "recovery_path",
+          "replay_fingerprint",
+          "replay_id",
+          "replay_reason",
+          "replay_status",
+          "requested_at",
+          "requested_by",
+          "total",
+          "x_lotus_ops_token"
+        ]
+      },
+      "request": {
+        "fields": [
+          {
+            "name": "limit",
+            "location": "query",
+            "required": false,
+            "type": "integer",
+            "semanticId": "lotus.limit",
+            "attributeRef": "lotus.limit"
+          },
+          {
+            "name": "recovery_path",
+            "location": "query",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.recovery_path",
+            "attributeRef": "lotus.recovery_path"
+          },
+          {
+            "name": "replay_status",
+            "location": "query",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.replay_status",
+            "attributeRef": "lotus.replay_status"
+          },
+          {
+            "name": "replay_fingerprint",
+            "location": "query",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.replay_fingerprint",
+            "attributeRef": "lotus.replay_fingerprint"
+          },
+          {
+            "name": "job_id",
+            "location": "query",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.job_id",
+            "attributeRef": "lotus.job_id"
+          },
+          {
+            "name": "X-Lotus-Ops-Token",
+            "location": "header",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.x_lotus_ops_token",
+            "attributeRef": "lotus.x_lotus_ops_token"
+          }
+        ]
+      },
+      "response": {
+        "httpStatus": 200,
+        "model": "IngestionReplayAuditListResponse",
+        "fields": [
+          {
+            "name": "audits",
+            "location": "body",
+            "required": true,
+            "type": "array",
+            "semanticId": "lotus.audits",
+            "attributeRef": "lotus.audits"
+          },
+          {
+            "name": "audits[].replay_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.replay_id",
+            "attributeRef": "lotus.replay_id"
+          },
+          {
+            "name": "audits[].recovery_path",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.recovery_path",
+            "attributeRef": "lotus.recovery_path"
+          },
+          {
+            "name": "audits[].event_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.event_id",
+            "attributeRef": "lotus.event_id"
+          },
+          {
+            "name": "audits[].replay_fingerprint",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.replay_fingerprint",
+            "attributeRef": "lotus.replay_fingerprint"
+          },
+          {
+            "name": "audits[].correlation_id",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.correlation_id",
+            "attributeRef": "lotus.correlation_id"
+          },
+          {
+            "name": "audits[].job_id",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.job_id",
+            "attributeRef": "lotus.job_id"
+          },
+          {
+            "name": "audits[].endpoint",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.endpoint",
+            "attributeRef": "lotus.endpoint"
+          },
+          {
+            "name": "audits[].replay_status",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.replay_status",
+            "attributeRef": "lotus.replay_status"
+          },
+          {
+            "name": "audits[].dry_run",
+            "location": "body",
+            "required": true,
+            "type": "boolean",
+            "semanticId": "lotus.dry_run",
+            "attributeRef": "lotus.dry_run"
+          },
+          {
+            "name": "audits[].replay_reason",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.replay_reason",
+            "attributeRef": "lotus.replay_reason"
+          },
+          {
+            "name": "audits[].requested_by",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.requested_by",
+            "attributeRef": "lotus.requested_by"
+          },
+          {
+            "name": "audits[].requested_at",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.requested_at",
+            "attributeRef": "lotus.requested_at"
+          },
+          {
+            "name": "audits[].completed_at",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.completed_at",
+            "attributeRef": "lotus.completed_at"
+          },
+          {
+            "name": "total",
+            "location": "body",
+            "required": true,
+            "type": "integer",
+            "semanticId": "lotus.total",
+            "attributeRef": "lotus.total"
+          }
+        ]
+      }
+    },
+    {
+      "operationId": "get_ingestion_replay_audit_ingestion_audit_replays__replay_id__get",
+      "method": "GET",
+      "path": "/ingestion/audit/replays/{replay_id}",
+      "domain": "ingestion_operations",
+      "serviceGroup": "ingestion",
+      "tags": [
+        "Ingestion Operations"
+      ],
+      "summary": "Get one ingestion replay audit record",
+      "description": "What: Return one replay audit row by replay_id.\nHow: Read durable replay audit event from canonical operations store.\nWhen: Use to inspect a specific replay action referenced in incident timelines.",
+      "naming": {
+        "boundedContext": "ingestion_operations",
+        "canonicalTerms": [
+          "completed_at",
+          "correlation_id",
+          "dry_run",
+          "endpoint",
+          "event_id",
+          "job_id",
+          "recovery_path",
+          "replay_fingerprint",
+          "replay_id",
+          "replay_reason",
+          "replay_status",
+          "requested_at",
+          "requested_by",
+          "x_lotus_ops_token"
+        ]
+      },
+      "request": {
+        "fields": [
+          {
+            "name": "replay_id",
+            "location": "path",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.replay_id",
+            "attributeRef": "lotus.replay_id"
+          },
+          {
+            "name": "X-Lotus-Ops-Token",
+            "location": "header",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.x_lotus_ops_token",
+            "attributeRef": "lotus.x_lotus_ops_token"
+          }
+        ]
+      },
+      "response": {
+        "httpStatus": 200,
+        "model": "IngestionReplayAuditResponse",
+        "fields": [
+          {
+            "name": "replay_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.replay_id",
+            "attributeRef": "lotus.replay_id"
+          },
+          {
+            "name": "recovery_path",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.recovery_path",
+            "attributeRef": "lotus.recovery_path"
+          },
+          {
+            "name": "event_id",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.event_id",
+            "attributeRef": "lotus.event_id"
+          },
+          {
+            "name": "replay_fingerprint",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.replay_fingerprint",
+            "attributeRef": "lotus.replay_fingerprint"
+          },
+          {
+            "name": "correlation_id",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.correlation_id",
+            "attributeRef": "lotus.correlation_id"
+          },
+          {
+            "name": "job_id",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.job_id",
+            "attributeRef": "lotus.job_id"
+          },
+          {
+            "name": "endpoint",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.endpoint",
+            "attributeRef": "lotus.endpoint"
+          },
+          {
+            "name": "replay_status",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.replay_status",
+            "attributeRef": "lotus.replay_status"
+          },
+          {
+            "name": "dry_run",
+            "location": "body",
+            "required": true,
+            "type": "boolean",
+            "semanticId": "lotus.dry_run",
+            "attributeRef": "lotus.dry_run"
+          },
+          {
+            "name": "replay_reason",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.replay_reason",
+            "attributeRef": "lotus.replay_reason"
+          },
+          {
+            "name": "requested_by",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.requested_by",
+            "attributeRef": "lotus.requested_by"
+          },
+          {
+            "name": "requested_at",
+            "location": "body",
+            "required": true,
+            "type": "string",
+            "semanticId": "lotus.requested_at",
+            "attributeRef": "lotus.requested_at"
+          },
+          {
+            "name": "completed_at",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.completed_at",
+            "attributeRef": "lotus.completed_at"
           }
         ]
       }

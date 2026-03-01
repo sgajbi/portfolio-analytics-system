@@ -535,6 +535,7 @@ class ConsumerDlqReplayAudit(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     replay_id = Column(String, unique=True, index=True, nullable=False)
+    recovery_path = Column(String, nullable=False, server_default="consumer_dlq_replay", index=True)
     event_id = Column(String, index=True, nullable=False)
     replay_fingerprint = Column(String, index=True, nullable=False)
     correlation_id = Column(String, nullable=True)
