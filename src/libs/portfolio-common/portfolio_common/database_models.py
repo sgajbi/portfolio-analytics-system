@@ -12,7 +12,6 @@ from sqlalchemy import (
     Boolean,
     JSON,
     Index,
-    PrimaryKeyConstraint,
     Text,
 )
 from sqlalchemy.orm import relationship
@@ -529,6 +528,24 @@ class ConsumerDlqEvent(Base):
     correlation_id = Column(String, nullable=True)
     payload_excerpt = Column(Text, nullable=True)
     observed_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class ConsumerDlqReplayAudit(Base):
+    __tablename__ = "consumer_dlq_replay_audit"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    replay_id = Column(String, unique=True, index=True, nullable=False)
+    event_id = Column(String, index=True, nullable=False)
+    replay_fingerprint = Column(String, index=True, nullable=False)
+    correlation_id = Column(String, nullable=True)
+    job_id = Column(String, nullable=True, index=True)
+    endpoint = Column(String, nullable=True)
+    replay_status = Column(String, nullable=False, index=True)
+    dry_run = Column(Boolean, nullable=False, server_default="f")
+    replay_reason = Column(Text, nullable=False)
+    requested_by = Column(String, nullable=True)
+    requested_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
 
 
 class PositionState(Base):

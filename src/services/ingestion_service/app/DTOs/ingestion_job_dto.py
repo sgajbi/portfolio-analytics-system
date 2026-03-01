@@ -507,9 +507,24 @@ class ConsumerDlqReplayResponse(BaseModel):
         description="Correlated ingestion job replayed from durable payload.",
         examples=["job_01J5S0J6D3BAVMK2E1V0WQ7MCC"],
     )
-    replay_status: Literal["dry_run", "replayed", "not_replayable"] = Field(
+    replay_status: Literal[
+        "dry_run",
+        "replayed",
+        "not_replayable",
+        "duplicate_blocked",
+    ] = Field(
         description="Replay execution result.",
         examples=["replayed"],
+    )
+    replay_audit_id: str | None = Field(
+        default=None,
+        description="Durable replay audit identifier for this replay attempt.",
+        examples=["replay_01J5WK1G7S3HBQ7Q3M0E3TMT0P"],
+    )
+    replay_fingerprint: str | None = Field(
+        default=None,
+        description="Deterministic fingerprint for this replay mapping and payload.",
+        examples=["c5b0faeb7de60bc111f109624e58d0ad6206634be5fef4d4455cdac629df4f3f"],
     )
     message: str = Field(
         description="Human-readable replay outcome for runbook workflows.",

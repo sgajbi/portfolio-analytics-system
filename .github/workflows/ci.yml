@@ -162,7 +162,7 @@ jobs:
     if: >
       github.event_name == 'workflow_dispatch' ||
       github.event_name == 'push' ||
-      (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'run-docker-smoke'))
+      github.event_name == 'pull_request'
     needs: [quality, coverage-gate]
     runs-on: ubuntu-latest
     timeout-minutes: 45

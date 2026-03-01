@@ -13,7 +13,7 @@
       "openApiVersion": "3.1.0"
     }
   ],
-  "generatedAt": "2026-03-01T02:11:43.652261+00:00",
+  "generatedAt": "2026-03-01T02:28:27.332756+00:00",
   "attributeCatalog": [
     {
       "semanticId": "lotus.accepted_count",
@@ -2854,6 +2854,34 @@
       ],
       "observedTypes": [
         "string"
+      ]
+    },
+    {
+      "semanticId": "lotus.replay_audit_id",
+      "canonicalTerm": "replay_audit_id",
+      "preferredName": "replay_audit_id",
+      "description": "Durable replay audit identifier for this replay attempt.",
+      "example": "REPLAY_AUDIT_001",
+      "type": "object",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "object"
+      ]
+    },
+    {
+      "semanticId": "lotus.replay_fingerprint",
+      "canonicalTerm": "replay_fingerprint",
+      "preferredName": "replay_fingerprint",
+      "description": "Deterministic fingerprint for this replay mapping and payload.",
+      "example": "replay_fingerprint_example",
+      "type": "object",
+      "locations": [
+        "body"
+      ],
+      "observedTypes": [
+        "object"
       ]
     },
     {
@@ -15003,6 +15031,8 @@
           "event_id",
           "job_id",
           "message",
+          "replay_audit_id",
+          "replay_fingerprint",
           "replay_status",
           "x_lotus_ops_token"
         ]
@@ -15070,6 +15100,22 @@
             "type": "string",
             "semanticId": "lotus.replay_status",
             "attributeRef": "lotus.replay_status"
+          },
+          {
+            "name": "replay_audit_id",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.replay_audit_id",
+            "attributeRef": "lotus.replay_audit_id"
+          },
+          {
+            "name": "replay_fingerprint",
+            "location": "body",
+            "required": false,
+            "type": "object",
+            "semanticId": "lotus.replay_fingerprint",
+            "attributeRef": "lotus.replay_fingerprint"
           },
           {
             "name": "message",

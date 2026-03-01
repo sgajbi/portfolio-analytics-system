@@ -1,5 +1,7 @@
 from datetime import datetime
 from decimal import Decimal
+import hashlib
+import json
 from typing import Any
 
 from app.DTOs.business_date_dto import BusinessDateIngestionRequest
@@ -141,6 +143,27 @@ async def _replay_job_payload(
         kafka_producer.flush(timeout=5)
         return
     raise ValueError(f"Retry not supported for endpoint '{endpoint}'.")
+
+
+def _deterministic_replay_fingerprint(
+    *,
+    event_id: str,
+    correlation_id: str | None,
+    job_id: str | None,
+    endpoint: str | None,
+    payload: dict[str, Any] | None,
+    idempotency_key: str | None,
+) -> str:
+    basis = {
+        "event_id": event_id,
+        "correlation_id": correlation_id,
+        "job_id": job_id,
+        "endpoint": endpoint,
+        "idempotency_key": idempotency_key,
+        "payload": payload or {},
+    }
+    canonical = json.dumps(basis, sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 @router.get(
@@ -560,6 +583,7 @@ async def list_consumer_dlq_events(
 async def replay_consumer_dlq_event(
     event_id: str,
     replay_request: ConsumerDlqReplayRequest = Body(default_factory=ConsumerDlqReplayRequest),
+    ops_actor: str = Depends(require_ops_token),
     ingestion_job_service: IngestionJobService = Depends(get_ingestion_job_service),
     ingestion_service: IngestionService = Depends(get_ingestion_service),
     kafka_producer: KafkaProducer = Depends(get_kafka_producer),
@@ -574,11 +598,32 @@ async def replay_consumer_dlq_event(
             },
         )
     if not event.correlation_id:
+        replay_fingerprint = _deterministic_replay_fingerprint(
+            event_id=event_id,
+            correlation_id=None,
+            job_id=None,
+            endpoint=None,
+            payload=None,
+            idempotency_key=None,
+        )
+        replay_audit_id = await ingestion_job_service.record_consumer_dlq_replay_audit(
+            event_id=event_id,
+            replay_fingerprint=replay_fingerprint,
+            correlation_id=None,
+            job_id=None,
+            endpoint=None,
+            replay_status="not_replayable",
+            dry_run=replay_request.dry_run,
+            replay_reason="DLQ event has no correlation id and cannot be mapped to ingestion payload.",
+            requested_by=ops_actor,
+        )
         return ConsumerDlqReplayResponse(
             event_id=event_id,
             correlation_id=None,
             job_id=None,
             replay_status="not_replayable",
+            replay_audit_id=replay_audit_id,
+            replay_fingerprint=replay_fingerprint,
             message="DLQ event has no correlation id and cannot be mapped to ingestion payload.",
         )
 
@@ -599,31 +644,115 @@ async def replay_consumer_dlq_event(
         None,
     )
     if replay_job is None:
+        replay_fingerprint = _deterministic_replay_fingerprint(
+            event_id=event_id,
+            correlation_id=event.correlation_id,
+            job_id=None,
+            endpoint=None,
+            payload=None,
+            idempotency_key=None,
+        )
+        replay_audit_id = await ingestion_job_service.record_consumer_dlq_replay_audit(
+            event_id=event_id,
+            replay_fingerprint=replay_fingerprint,
+            correlation_id=event.correlation_id,
+            job_id=None,
+            endpoint=None,
+            replay_status="not_replayable",
+            dry_run=replay_request.dry_run,
+            replay_reason="No correlated ingestion job found for consumer DLQ event.",
+            requested_by=ops_actor,
+        )
         return ConsumerDlqReplayResponse(
             event_id=event_id,
             correlation_id=event.correlation_id,
             job_id=None,
             replay_status="not_replayable",
+            replay_audit_id=replay_audit_id,
+            replay_fingerprint=replay_fingerprint,
             message="No correlated ingestion job found for consumer DLQ event.",
         )
 
     replay_job_id = str(_job_field(replay_job, "job_id"))
     context = await ingestion_job_service.get_job_replay_context(replay_job_id)
+    replay_fingerprint = _deterministic_replay_fingerprint(
+        event_id=event_id,
+        correlation_id=event.correlation_id,
+        job_id=replay_job_id,
+        endpoint=context.endpoint if context else None,
+        payload=context.request_payload if context else None,
+        idempotency_key=context.idempotency_key if context else None,
+    )
     if context is None or context.request_payload is None:
+        replay_audit_id = await ingestion_job_service.record_consumer_dlq_replay_audit(
+            event_id=event_id,
+            replay_fingerprint=replay_fingerprint,
+            correlation_id=event.correlation_id,
+            job_id=replay_job_id,
+            endpoint=context.endpoint if context else None,
+            replay_status="not_replayable",
+            dry_run=replay_request.dry_run,
+            replay_reason="Correlated ingestion job does not have durable replay payload.",
+            requested_by=ops_actor,
+        )
         return ConsumerDlqReplayResponse(
             event_id=event_id,
             correlation_id=event.correlation_id,
             job_id=replay_job_id,
             replay_status="not_replayable",
+            replay_audit_id=replay_audit_id,
+            replay_fingerprint=replay_fingerprint,
             message="Correlated ingestion job does not have durable replay payload.",
+        )
+    existing_success = await ingestion_job_service.find_successful_replay_audit_by_fingerprint(
+        replay_fingerprint
+    )
+    if existing_success and not replay_request.dry_run:
+        replay_audit_id = await ingestion_job_service.record_consumer_dlq_replay_audit(
+            event_id=event_id,
+            replay_fingerprint=replay_fingerprint,
+            correlation_id=event.correlation_id,
+            job_id=replay_job_id,
+            endpoint=context.endpoint,
+            replay_status="duplicate_blocked",
+            dry_run=False,
+            replay_reason=(
+                "Replay blocked because this deterministic replay fingerprint was already replayed "
+                f"successfully (replay_id={existing_success['replay_id']})."
+            ),
+            requested_by=ops_actor,
+        )
+        return ConsumerDlqReplayResponse(
+            event_id=event_id,
+            correlation_id=event.correlation_id,
+            job_id=replay_job_id,
+            replay_status="duplicate_blocked",
+            replay_audit_id=replay_audit_id,
+            replay_fingerprint=replay_fingerprint,
+            message=(
+                "Replay blocked because an equivalent deterministic replay already succeeded."
+            ),
         )
     await ingestion_job_service.assert_retry_allowed(context.submitted_at)
     if replay_request.dry_run:
+        replay_audit_id = await ingestion_job_service.record_consumer_dlq_replay_audit(
+            event_id=event_id,
+            replay_fingerprint=replay_fingerprint,
+            correlation_id=event.correlation_id,
+            job_id=replay_job_id,
+            endpoint=context.endpoint,
+            replay_status="dry_run",
+            dry_run=True,
+            replay_reason="Dry-run successful. Correlated ingestion job is replayable.",
+            requested_by=ops_actor,
+        )
         return ConsumerDlqReplayResponse(
             event_id=event_id,
             correlation_id=event.correlation_id,
             job_id=replay_job_id,
             replay_status="dry_run",
+            replay_audit_id=replay_audit_id,
+            replay_fingerprint=replay_fingerprint,
             message="Dry-run successful. Correlated ingestion job is replayable.",
         )
     await _replay_job_payload(
@@ -635,11 +764,24 @@ async def replay_consumer_dlq_event(
     )
     await ingestion_job_service.mark_retried(replay_job_id)
     await ingestion_job_service.mark_queued(replay_job_id)
+    replay_audit_id = await ingestion_job_service.record_consumer_dlq_replay_audit(
+        event_id=event_id,
+        replay_fingerprint=replay_fingerprint,
+        correlation_id=event.correlation_id,
+        job_id=replay_job_id,
+        endpoint=context.endpoint,
+        replay_status="replayed",
+        dry_run=False,
+        replay_reason="Replayed ingestion job from correlated consumer DLQ event.",
+        requested_by=ops_actor,
+    )
     return ConsumerDlqReplayResponse(
         event_id=event_id,
         correlation_id=event.correlation_id,
         job_id=replay_job_id,
         replay_status="replayed",
+        replay_audit_id=replay_audit_id,
+        replay_fingerprint=replay_fingerprint,
         message="Replayed ingestion job from correlated consumer DLQ event.",
     )
 

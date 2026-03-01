@@ -70,6 +70,7 @@ async def async_test_client(mock_kafka_producer: MagicMock):
             self.jobs: dict[str, IngestionJobResponse] = {}
             self.job_payloads: dict[str, dict] = {}
             self.failures: dict[str, list[dict]] = {}
+            self.replay_audit: dict[str, dict] = {}
             self.mode = "normal"
             self.replay_window_start = None
             self.replay_window_end = None
@@ -401,6 +402,45 @@ async def async_test_client(mock_kafka_producer: MagicMock):
                 "breach_failure_rate": False,
                 "breach_backlog_growth": False,
             }
+
+        async def find_successful_replay_audit_by_fingerprint(
+            self,
+            replay_fingerprint: str,
+        ) -> dict[str, str] | None:
+            row = self.replay_audit.get(replay_fingerprint)
+            if row and row.get("replay_status") == "replayed":
+                return {
+                    "replay_id": row["replay_id"],
+                    "replay_status": row["replay_status"],
+                }
+            return None
+
+        async def record_consumer_dlq_replay_audit(
+            self,
+            *,
+            event_id: str,
+            replay_fingerprint: str,
+            correlation_id: str | None,
+            job_id: str | None,
+            endpoint: str | None,
+            replay_status: str,
+            dry_run: bool,
+            replay_reason: str,
+            requested_by: str | None,
+        ) -> str:
+            replay_id = f"replay_test_{len(self.replay_audit) + 1}"
+            self.replay_audit[replay_fingerprint] = {
+                "replay_id": replay_id,
+                "event_id": event_id,
+                "correlation_id": correlation_id,
+                "job_id": job_id,
+                "endpoint": endpoint,
+                "replay_status": replay_status,
+                "dry_run": dry_run,
+                "replay_reason": replay_reason,
+                "requested_by": requested_by,
+            }
+            return replay_id
 
         async def get_ops_mode(self):
             return {
@@ -877,6 +917,47 @@ async def test_replay_consumer_dlq_event_endpoint(async_test_client: httpx.Async
     assert response.status_code == 200
     body = response.json()
     assert body["replay_status"] in {"dry_run", "not_replayable", "replayed"}
+    assert body.get("replay_audit_id")
+    assert body.get("replay_fingerprint")
+
+
+async def test_replay_consumer_dlq_event_blocks_duplicate_replay(
+    async_test_client: httpx.AsyncClient,
+):
+    payload = {
+        "transactions": [
+            {
+                "transaction_id": "TX_REPLAY_DUP_001",
+                "portfolio_id": "P1",
+                "instrument_id": "I1",
+                "security_id": "S1",
+                "transaction_date": "2025-08-12T10:00:00Z",
+                "transaction_type": "BUY",
+                "quantity": 1,
+                "price": 1,
+                "gross_transaction_amount": 1,
+                "trade_currency": "USD",
+                "currency": "USD",
+            }
+        ]
+    }
+    await async_test_client.post(
+        "/ingest/transactions",
+        headers={"X-Correlation-Id": "ING:test-correlation-id"},
+        json=payload,
+    )
+    first = await async_test_client.post(
+        "/ingestion/dlq/consumer-events/cdlq_test_001/replay",
+        json={"dry_run": False},
+    )
+    assert first.status_code == 200
+    second = await async_test_client.post(
+        "/ingestion/dlq/consumer-events/cdlq_test_001/replay",
+        json={"dry_run": False},
+    )
+    assert second.status_code == 200
+    body = second.json()
+    assert body["replay_status"] == "duplicate_blocked"
 
 
 async def test_ingest_instruments_endpoint(
