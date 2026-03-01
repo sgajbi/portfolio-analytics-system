@@ -12,6 +12,7 @@ from app.routers import (
     market_prices,
     portfolio_bundle,
     portfolios,
+    reference_data,
     reprocessing,
     transactions,
     uploads,
@@ -204,3 +205,4 @@ app.include_router(reprocessing.router)
 app.include_router(portfolio_bundle.router)
 app.include_router(uploads.router)
 app.include_router(ingestion_jobs.router)
+app.include_router(reference_data.router)

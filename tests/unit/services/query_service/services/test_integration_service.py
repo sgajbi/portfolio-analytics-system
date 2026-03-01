@@ -1,4 +1,7 @@
 import pytest
+from datetime import date
+from decimal import Decimal
+from types import SimpleNamespace
 from sqlalchemy.ext.asyncio import AsyncSession
 from unittest.mock import AsyncMock
 
@@ -172,4 +175,365 @@ def test_get_effective_policy_no_allowed_restriction_passthrough(
     assert response.consumer_system == "custom-client"
     assert response.allowed_sections == ["OVERVIEW", "ALLOCATION"]
     assert "NO_ALLOWED_SECTION_RESTRICTION" in response.warnings
+
+
+def test_get_effective_policy_uses_configured_allowed_sections_when_unrequested(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = make_service()
+    monkeypatch.setenv(
+        "LOTUS_CORE_INTEGRATION_SNAPSHOT_POLICY_JSON",
+        '{"consumers":{"lotus-manage":["HOLDINGS","ALLOCATION"]}}',
+    )
+
+    response = service.get_effective_policy(
+        consumer_system="lotus-manage",
+        tenant_id="default",
+        include_sections=None,
+    )
+
+    assert response.consumer_system == "lotus-manage"
+    assert response.allowed_sections == ["HOLDINGS", "ALLOCATION"]
+
+
+@pytest.mark.asyncio
+async def test_reference_contract_methods() -> None:
+    service = make_service()
+    service._reference_repository = SimpleNamespace(  # type: ignore[assignment]
+        resolve_benchmark_assignment=AsyncMock(
+            return_value=SimpleNamespace(
+                portfolio_id="P1",
+                benchmark_id="B1",
+                effective_from=date(2026, 1, 1),
+                effective_to=None,
+                assignment_source="policy",
+                assignment_status="active",
+                policy_pack_id="pack",
+                source_system="lotus-manage",
+                assignment_recorded_at=date(2026, 1, 1),
+                assignment_version=1,
+            )
+        ),
+        get_benchmark_definition=AsyncMock(
+            return_value=SimpleNamespace(
+                benchmark_id="B1",
+                benchmark_name="Benchmark 1",
+                benchmark_type="composite",
+                benchmark_currency="USD",
+                return_convention="total_return_index",
+                benchmark_status="active",
+                benchmark_family="family",
+                benchmark_provider="provider",
+                rebalance_frequency="monthly",
+                classification_set_id="set1",
+                classification_labels={"asset_class": "equity"},
+                effective_from=date(2026, 1, 1),
+                effective_to=None,
+                quality_status="accepted",
+                source_timestamp=None,
+                source_vendor="vendor",
+                source_record_id="src1",
+            )
+        ),
+        list_benchmark_components=AsyncMock(
+            return_value=[
+                SimpleNamespace(
+                    index_id="IDX1",
+                    composition_weight=Decimal("0.5"),
+                    composition_effective_from=date(2026, 1, 1),
+                    composition_effective_to=None,
+                    rebalance_event_id="r1",
+                )
+            ]
+        ),
+        list_benchmark_definitions=AsyncMock(return_value=[]),
+        list_index_definitions=AsyncMock(
+            return_value=[
+                SimpleNamespace(
+                    index_id="IDX1",
+                    index_name="Index 1",
+                    index_currency="USD",
+                    index_type="equity",
+                    index_status="active",
+                    index_provider="provider",
+                    index_market="global",
+                    classification_set_id="set1",
+                    classification_labels={"sector": "technology"},
+                    effective_from=date(2026, 1, 1),
+                    effective_to=None,
+                    quality_status="accepted",
+                    source_timestamp=None,
+                    source_vendor="vendor",
+                    source_record_id="idx-src",
+                )
+            ]
+        ),
+        list_index_price_points=AsyncMock(
+            return_value=[
+                SimpleNamespace(
+                    index_id="IDX1",
+                    series_date=date(2026, 1, 1),
+                    index_price=Decimal("100"),
+                    quality_status="accepted",
+                )
+            ]
+        ),
+        list_index_return_points=AsyncMock(
+            return_value=[
+                SimpleNamespace(
+                    index_id="IDX1",
+                    series_date=date(2026, 1, 1),
+                    index_return=Decimal("0.01"),
+                    quality_status="accepted",
+                )
+            ]
+        ),
+        list_benchmark_return_points=AsyncMock(
+            return_value=[
+                SimpleNamespace(
+                    series_date=date(2026, 1, 1),
+                    benchmark_return=Decimal("0.008"),
+                    return_period="1d",
+                    return_convention="total_return_index",
+                    series_currency="USD",
+                    quality_status="accepted",
+                )
+            ]
+        ),
+        get_fx_rates=AsyncMock(return_value={date(2026, 1, 1): Decimal("1.1")}),
+        list_index_price_series=AsyncMock(
+            return_value=[
+                SimpleNamespace(
+                    series_date=date(2026, 1, 1),
+                    index_price=Decimal("100"),
+                    series_currency="USD",
+                    value_convention="close_price",
+                    quality_status="accepted",
+                )
+            ]
+        ),
+        list_index_return_series=AsyncMock(
+            return_value=[
+                SimpleNamespace(
+                    series_date=date(2026, 1, 1),
+                    index_return=Decimal("0.01"),
+                    return_period="1d",
+                    return_convention="total_return_index",
+                    series_currency="USD",
+                    quality_status="accepted",
+                )
+            ]
+        ),
+        list_risk_free_series=AsyncMock(
+            return_value=[
+                SimpleNamespace(
+                    series_date=date(2026, 1, 1),
+                    value=Decimal("0.03"),
+                    value_convention="annualized_rate",
+                    day_count_convention="act_360",
+                    compounding_convention="simple",
+                    series_currency="USD",
+                    quality_status="accepted",
+                )
+            ]
+        ),
+        get_benchmark_coverage=AsyncMock(
+            return_value={
+                "total_points": 10,
+                "observed_start_date": date(2026, 1, 1),
+                "observed_end_date": date(2026, 1, 3),
+                "quality_status_counts": {"accepted": 10},
+            }
+        ),
+        get_risk_free_coverage=AsyncMock(
+            return_value={
+                "total_points": 10,
+                "observed_start_date": date(2026, 1, 1),
+                "observed_end_date": date(2026, 1, 3),
+                "quality_status_counts": {"accepted": 10},
+            }
+        ),
+        list_taxonomy=AsyncMock(
+            return_value=[
+                SimpleNamespace(
+                    classification_set_id="set1",
+                    taxonomy_scope="index",
+                    dimension_name="sector",
+                    dimension_value="technology",
+                    dimension_description="desc",
+                    effective_from=date(2026, 1, 1),
+                    effective_to=None,
+                    quality_status="accepted",
+                )
+            ]
+        ),
+    )
+
+    assignment = await service.resolve_benchmark_assignment("P1", date(2026, 1, 1))
+    assert assignment is not None
+    assert assignment.benchmark_id == "B1"
+
+    definition = await service.get_benchmark_definition("B1", date(2026, 1, 1))
+    assert definition is not None
+    assert definition.benchmark_id == "B1"
+
+    benchmark_catalog = await service.list_benchmark_catalog(
+        date(2026, 1, 1), None, None, None
+    )
+    assert benchmark_catalog.records == []
+
+    index_catalog = await service.list_index_catalog(date(2026, 1, 1), None, None, None)
+    assert index_catalog.records[0].index_id == "IDX1"
+
+    market_series = await service.get_benchmark_market_series(
+        benchmark_id="B1",
+        request=SimpleNamespace(
+            as_of_date=date(2026, 1, 1),
+            window=SimpleNamespace(start_date=date(2026, 1, 1), end_date=date(2026, 1, 2)),
+            frequency="daily",
+            target_currency="USD",
+            series_fields=["index_price", "index_return", "benchmark_return", "component_weight"],
+        ),
+    )
+    assert market_series.component_series
+
+    index_price = await service.get_index_price_series(
+        index_id="IDX1",
+        request=SimpleNamespace(
+            window=SimpleNamespace(start_date=date(2026, 1, 1), end_date=date(2026, 1, 2)),
+            frequency="daily",
+        ),
+    )
+    assert index_price.points
+
+    index_return = await service.get_index_return_series(
+        index_id="IDX1",
+        request=SimpleNamespace(
+            window=SimpleNamespace(start_date=date(2026, 1, 1), end_date=date(2026, 1, 2)),
+            frequency="daily",
+        ),
+    )
+    assert index_return.points
+
+    benchmark_return = await service.get_benchmark_return_series(
+        benchmark_id="B1",
+        request=SimpleNamespace(
+            window=SimpleNamespace(start_date=date(2026, 1, 1), end_date=date(2026, 1, 2)),
+            frequency="daily",
+        ),
+    )
+    assert benchmark_return.points
+
+    risk_free = await service.get_risk_free_series(
+        request=SimpleNamespace(
+            currency="USD",
+            series_mode="annualized_rate_series",
+            window=SimpleNamespace(start_date=date(2026, 1, 1), end_date=date(2026, 1, 2)),
+            frequency="daily",
+        ),
+    )
+    assert risk_free.points
+
+    coverage = await service.get_benchmark_coverage("B1", date(2026, 1, 1), date(2026, 1, 3))
+    assert coverage.total_points == 10
+
+    rf_coverage = await service.get_risk_free_coverage("USD", date(2026, 1, 1), date(2026, 1, 3))
+    assert rf_coverage.total_points == 10
+
+    taxonomy = await service.get_classification_taxonomy(as_of_date=date(2026, 1, 1))
+    assert taxonomy.records[0].dimension_name == "sector"
+
+
+@pytest.mark.asyncio
+async def test_reference_contract_none_and_fx_branches(monkeypatch: pytest.MonkeyPatch) -> None:
+    service = make_service()
+    service._reference_repository = SimpleNamespace(  # type: ignore[assignment]
+        resolve_benchmark_assignment=AsyncMock(return_value=None),
+        get_benchmark_definition=AsyncMock(side_effect=[None, SimpleNamespace(benchmark_currency="EUR")]),
+        list_benchmark_components=AsyncMock(return_value=[]),
+        list_benchmark_definitions=AsyncMock(
+            return_value=[
+                SimpleNamespace(
+                    benchmark_id="B1",
+                    benchmark_name="Benchmark 1",
+                    benchmark_type="single_index",
+                    benchmark_currency="EUR",
+                    return_convention="total_return_index",
+                    benchmark_status="active",
+                    benchmark_family=None,
+                    benchmark_provider=None,
+                    rebalance_frequency=None,
+                    classification_set_id=None,
+                    classification_labels={},
+                    effective_from=date(2026, 1, 1),
+                    effective_to=None,
+                    quality_status="accepted",
+                    source_timestamp=None,
+                    source_vendor=None,
+                    source_record_id=None,
+                )
+            ]
+        ),
+        list_index_definitions=AsyncMock(return_value=[]),
+        list_index_price_points=AsyncMock(return_value=[]),
+        list_index_return_points=AsyncMock(return_value=[]),
+        list_benchmark_return_points=AsyncMock(return_value=[]),
+        get_fx_rates=AsyncMock(return_value={}),
+        list_index_price_series=AsyncMock(return_value=[]),
+        list_index_return_series=AsyncMock(return_value=[]),
+        list_risk_free_series=AsyncMock(return_value=[]),
+        get_benchmark_coverage=AsyncMock(
+            return_value={
+                "total_points": 0,
+                "observed_start_date": None,
+                "observed_end_date": None,
+                "quality_status_counts": {},
+            }
+        ),
+        get_risk_free_coverage=AsyncMock(
+            return_value={
+                "total_points": 0,
+                "observed_start_date": None,
+                "observed_end_date": None,
+                "quality_status_counts": {},
+            }
+        ),
+        list_taxonomy=AsyncMock(return_value=[]),
+    )
+
+    assert await service.resolve_benchmark_assignment("P1", date(2026, 1, 1)) is None
+    assert await service.get_benchmark_definition("B1", date(2026, 1, 1)) is None
+
+    benchmark_catalog = await service.list_benchmark_catalog(
+        date(2026, 1, 1), "single_index", "EUR", "active"
+    )
+    assert benchmark_catalog.records
+
+    await service.get_benchmark_market_series(
+        benchmark_id="B1",
+        request=SimpleNamespace(
+            as_of_date=date(2026, 1, 1),
+            window=SimpleNamespace(start_date=date(2026, 1, 1), end_date=date(2026, 1, 2)),
+            frequency="daily",
+            target_currency="USD",
+            series_fields=["index_price"],
+        ),
+    )
+    service._reference_repository.get_fx_rates.assert_awaited_once()
+
+    monkeypatch.setenv(
+        "LOTUS_CORE_INTEGRATION_SNAPSHOT_POLICY_JSON",
+        '{"tenants":{"tenant-z":{"strict_mode":false,"default_sections":["OVERVIEW"]}}}',
+    )
+    ctx = service._resolve_policy_context("tenant-z", "lotus-manage")
+    assert ctx.policy_source == "tenant"
+    assert ctx.matched_rule_id == "tenant.tenant-z.default_sections"
+
+    monkeypatch.delenv("LOTUS_CORE_INTEGRATION_SNAPSHOT_POLICY_JSON", raising=False)
+    effective = service.get_effective_policy(
+        consumer_system="lotus-manage",
+        tenant_id="default",
+        include_sections=None,
+    )
+    assert effective.allowed_sections == []
 

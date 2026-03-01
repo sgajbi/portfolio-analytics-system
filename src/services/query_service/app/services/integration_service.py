@@ -2,12 +2,39 @@ import json
 import logging
 import os
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
+from decimal import Decimal
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..dtos.integration_dto import EffectiveIntegrationPolicyResponse, PolicyProvenanceMetadata
+from ..dtos.reference_integration_dto import (
+    BenchmarkAssignmentResponse,
+    BenchmarkCatalogResponse,
+    BenchmarkDefinitionResponse,
+    BenchmarkMarketSeriesRequest,
+    BenchmarkMarketSeriesResponse,
+    BenchmarkReturnSeriesResponse,
+    BenchmarkReturnSeriesRequest,
+    ClassificationTaxonomyEntry,
+    ClassificationTaxonomyResponse,
+    ComponentSeriesResponse,
+    CoverageResponse,
+    IndexCatalogResponse,
+    IndexDefinitionResponse,
+    IndexPriceSeriesPoint,
+    IndexPriceSeriesResponse,
+    IndexReturnSeriesPoint,
+    IndexReturnSeriesResponse,
+    IndexSeriesRequest,
+    IntegrationWindow,
+    RiskFreeSeriesPoint,
+    RiskFreeSeriesRequest,
+    RiskFreeSeriesResponse,
+    SeriesPoint,
+)
+from ..repositories.reference_data_repository import ReferenceDataRepository
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +58,7 @@ class PolicyContext:
 class IntegrationService:
     def __init__(self, db: AsyncSession):
         self.db = db
+        self._reference_repository = ReferenceDataRepository(db)
 
     @staticmethod
     def _canonical_consumer_system(value: str | None) -> str:
@@ -121,9 +149,6 @@ class IntegrationService:
                     matched_rule_id = f"tenant.{tenant_id}.consumers.{tenant_match_key}"
                 else:
                     matched_rule_id = f"tenant.{tenant_id}.default_sections"
-            elif isinstance(tenant_policy_raw.get("default_sections"), list):
-                policy_source = "tenant"
-                matched_rule_id = f"tenant.{tenant_id}.default_sections"
             if "strict_mode" in tenant_policy_raw and matched_rule_id == "default":
                 policy_source = "tenant"
                 matched_rule_id = f"tenant.{tenant_id}.strict_mode"
@@ -176,4 +201,466 @@ class IntegrationService:
             ),
             allowed_sections=allowed_sections,
             warnings=policy_context.warnings,
+        )
+
+    async def resolve_benchmark_assignment(
+        self, portfolio_id: str, as_of_date: date
+    ) -> BenchmarkAssignmentResponse | None:
+        row = await self._reference_repository.resolve_benchmark_assignment(portfolio_id, as_of_date)
+        if row is None:
+            return None
+        return BenchmarkAssignmentResponse(
+            portfolio_id=row.portfolio_id,
+            benchmark_id=row.benchmark_id,
+            as_of_date=as_of_date,
+            effective_from=row.effective_from,
+            effective_to=row.effective_to,
+            assignment_source=row.assignment_source,
+            assignment_status=row.assignment_status,
+            policy_pack_id=row.policy_pack_id,
+            source_system=row.source_system,
+            assignment_recorded_at=row.assignment_recorded_at,
+            assignment_version=int(row.assignment_version),
+        )
+
+    async def get_benchmark_definition(
+        self, benchmark_id: str, as_of_date: date
+    ) -> BenchmarkDefinitionResponse | None:
+        row = await self._reference_repository.get_benchmark_definition(benchmark_id, as_of_date)
+        if row is None:
+            return None
+        components = await self._reference_repository.list_benchmark_components(benchmark_id, as_of_date)
+        return BenchmarkDefinitionResponse(
+            benchmark_id=row.benchmark_id,
+            benchmark_name=row.benchmark_name,
+            benchmark_type=row.benchmark_type,
+            benchmark_currency=row.benchmark_currency,
+            return_convention=row.return_convention,
+            benchmark_status=row.benchmark_status,
+            benchmark_family=row.benchmark_family,
+            benchmark_provider=row.benchmark_provider,
+            rebalance_frequency=row.rebalance_frequency,
+            classification_set_id=row.classification_set_id,
+            classification_labels=dict(row.classification_labels or {}),
+            effective_from=row.effective_from,
+            effective_to=row.effective_to,
+            quality_status=row.quality_status,
+            source_timestamp=row.source_timestamp,
+            source_vendor=row.source_vendor,
+            source_record_id=row.source_record_id,
+            components=[
+                {
+                    "index_id": component.index_id,
+                    "composition_weight": Decimal(component.composition_weight),
+                    "composition_effective_from": component.composition_effective_from,
+                    "composition_effective_to": component.composition_effective_to,
+                    "rebalance_event_id": component.rebalance_event_id,
+                }
+                for component in components
+            ],
+        )
+
+    async def list_benchmark_catalog(
+        self,
+        as_of_date: date,
+        benchmark_type: str | None,
+        benchmark_currency: str | None,
+        benchmark_status: str | None,
+    ) -> BenchmarkCatalogResponse:
+        rows = await self._reference_repository.list_benchmark_definitions(
+            as_of_date=as_of_date,
+            benchmark_type=benchmark_type,
+            benchmark_currency=benchmark_currency,
+            benchmark_status=benchmark_status,
+        )
+        records: list[BenchmarkDefinitionResponse] = []
+        for row in rows:
+            components = await self._reference_repository.list_benchmark_components(
+                row.benchmark_id, as_of_date
+            )
+            records.append(
+                BenchmarkDefinitionResponse(
+                    benchmark_id=row.benchmark_id,
+                    benchmark_name=row.benchmark_name,
+                    benchmark_type=row.benchmark_type,
+                    benchmark_currency=row.benchmark_currency,
+                    return_convention=row.return_convention,
+                    benchmark_status=row.benchmark_status,
+                    benchmark_family=row.benchmark_family,
+                    benchmark_provider=row.benchmark_provider,
+                    rebalance_frequency=row.rebalance_frequency,
+                    classification_set_id=row.classification_set_id,
+                    classification_labels=dict(row.classification_labels or {}),
+                    effective_from=row.effective_from,
+                    effective_to=row.effective_to,
+                    quality_status=row.quality_status,
+                    source_timestamp=row.source_timestamp,
+                    source_vendor=row.source_vendor,
+                    source_record_id=row.source_record_id,
+                    components=[
+                        {
+                            "index_id": component.index_id,
+                            "composition_weight": Decimal(component.composition_weight),
+                            "composition_effective_from": component.composition_effective_from,
+                            "composition_effective_to": component.composition_effective_to,
+                            "rebalance_event_id": component.rebalance_event_id,
+                        }
+                        for component in components
+                    ],
+                )
+            )
+        return BenchmarkCatalogResponse(as_of_date=as_of_date, records=records)
+
+    async def list_index_catalog(
+        self,
+        as_of_date: date,
+        index_currency: str | None,
+        index_type: str | None,
+        index_status: str | None,
+    ) -> IndexCatalogResponse:
+        rows = await self._reference_repository.list_index_definitions(
+            as_of_date=as_of_date,
+            index_currency=index_currency,
+            index_type=index_type,
+            index_status=index_status,
+        )
+        return IndexCatalogResponse(
+            as_of_date=as_of_date,
+            records=[
+                IndexDefinitionResponse(
+                    index_id=row.index_id,
+                    index_name=row.index_name,
+                    index_currency=row.index_currency,
+                    index_type=row.index_type,
+                    index_status=row.index_status,
+                    index_provider=row.index_provider,
+                    index_market=row.index_market,
+                    classification_set_id=row.classification_set_id,
+                    classification_labels=dict(row.classification_labels or {}),
+                    effective_from=row.effective_from,
+                    effective_to=row.effective_to,
+                    quality_status=row.quality_status,
+                    source_timestamp=row.source_timestamp,
+                    source_vendor=row.source_vendor,
+                    source_record_id=row.source_record_id,
+                )
+                for row in rows
+            ],
+        )
+
+    async def get_benchmark_market_series(
+        self,
+        benchmark_id: str,
+        request: BenchmarkMarketSeriesRequest,
+    ) -> BenchmarkMarketSeriesResponse:
+        components = await self._reference_repository.list_benchmark_components(
+            benchmark_id, request.as_of_date
+        )
+        index_ids = [component.index_id for component in components]
+        index_prices = await self._reference_repository.list_index_price_points(
+            index_ids=index_ids,
+            start_date=request.window.start_date,
+            end_date=request.window.end_date,
+        )
+        index_returns = await self._reference_repository.list_index_return_points(
+            index_ids=index_ids,
+            start_date=request.window.start_date,
+            end_date=request.window.end_date,
+        )
+        benchmark_returns = await self._reference_repository.list_benchmark_return_points(
+            benchmark_id=benchmark_id,
+            start_date=request.window.start_date,
+            end_date=request.window.end_date,
+        )
+
+        fx_rates: dict[date, Decimal] = {}
+        if request.target_currency:
+            definition = await self._reference_repository.get_benchmark_definition(
+                benchmark_id, request.as_of_date
+            )
+            from_currency = definition.benchmark_currency if definition else request.target_currency
+            if from_currency != request.target_currency:
+                fx_rates = await self._reference_repository.get_fx_rates(
+                    from_currency=from_currency,
+                    to_currency=request.target_currency,
+                    start_date=request.window.start_date,
+                    end_date=request.window.end_date,
+                )
+
+        prices_by_index_date = {(row.index_id, row.series_date): row for row in index_prices}
+        returns_by_index_date = {(row.index_id, row.series_date): row for row in index_returns}
+        benchmark_return_by_date = {row.series_date: row for row in benchmark_returns}
+        component_weight = {row.index_id: Decimal(row.composition_weight) for row in components}
+
+        all_dates = sorted(
+            {
+                row.series_date
+                for row in index_prices + index_returns + benchmark_returns
+            }
+        )
+        quality_status_summary: dict[str, int] = {}
+        component_series: list[ComponentSeriesResponse] = []
+        for index_id in sorted(index_ids):
+            points: list[SeriesPoint] = []
+            for current_date in all_dates:
+                price_row = prices_by_index_date.get((index_id, current_date))
+                return_row = returns_by_index_date.get((index_id, current_date))
+                benchmark_return_row = benchmark_return_by_date.get(current_date)
+                quality_status = (
+                    (price_row and price_row.quality_status)
+                    or (return_row and return_row.quality_status)
+                    or (benchmark_return_row and benchmark_return_row.quality_status)
+                )
+                if quality_status:
+                    quality_status_summary[quality_status] = (
+                        quality_status_summary.get(quality_status, 0) + 1
+                    )
+                points.append(
+                    SeriesPoint(
+                        series_date=current_date,
+                        index_price=Decimal(price_row.index_price) if price_row else None,
+                        index_return=Decimal(return_row.index_return) if return_row else None,
+                        benchmark_return=(
+                            Decimal(benchmark_return_row.benchmark_return)
+                            if benchmark_return_row
+                            else None
+                        ),
+                        component_weight=component_weight.get(index_id),
+                        fx_rate=fx_rates.get(current_date),
+                        quality_status=quality_status,
+                    )
+                )
+            component_series.append(ComponentSeriesResponse(index_id=index_id, points=points))
+
+        return BenchmarkMarketSeriesResponse(
+            benchmark_id=benchmark_id,
+            as_of_date=request.as_of_date,
+            resolved_window=IntegrationWindow(
+                start_date=request.window.start_date,
+                end_date=request.window.end_date,
+            ),
+            frequency=request.frequency,
+            component_series=component_series,
+            quality_status_summary=quality_status_summary,
+            lineage={
+                "contract_version": "rfc_062_v1",
+                "source_system": "lotus-core-query-service",
+                "generated_by": "integration.market_series",
+            },
+        )
+
+    async def get_index_price_series(
+        self, index_id: str, request: IndexSeriesRequest
+    ) -> IndexPriceSeriesResponse:
+        rows = await self._reference_repository.list_index_price_series(
+            index_id=index_id,
+            start_date=request.window.start_date,
+            end_date=request.window.end_date,
+        )
+        return IndexPriceSeriesResponse(
+            index_id=index_id,
+            resolved_window=IntegrationWindow(
+                start_date=request.window.start_date,
+                end_date=request.window.end_date,
+            ),
+            frequency=request.frequency,
+            points=[
+                IndexPriceSeriesPoint(
+                    series_date=row.series_date,
+                    index_price=Decimal(row.index_price),
+                    series_currency=row.series_currency,
+                    value_convention=row.value_convention,
+                    quality_status=row.quality_status,
+                )
+                for row in rows
+            ],
+            lineage={
+                "contract_version": "rfc_062_v1",
+                "source_system": "lotus-core-query-service",
+                "generated_by": "integration.index_price_series",
+            },
+        )
+
+    async def get_index_return_series(
+        self, index_id: str, request: IndexSeriesRequest
+    ) -> IndexReturnSeriesResponse:
+        rows = await self._reference_repository.list_index_return_series(
+            index_id=index_id,
+            start_date=request.window.start_date,
+            end_date=request.window.end_date,
+        )
+        return IndexReturnSeriesResponse(
+            index_id=index_id,
+            resolved_window=IntegrationWindow(
+                start_date=request.window.start_date,
+                end_date=request.window.end_date,
+            ),
+            frequency=request.frequency,
+            points=[
+                IndexReturnSeriesPoint(
+                    series_date=row.series_date,
+                    index_return=Decimal(row.index_return),
+                    return_period=row.return_period,
+                    return_convention=row.return_convention,
+                    series_currency=row.series_currency,
+                    quality_status=row.quality_status,
+                )
+                for row in rows
+            ],
+            lineage={
+                "contract_version": "rfc_062_v1",
+                "source_system": "lotus-core-query-service",
+                "generated_by": "integration.index_return_series",
+            },
+        )
+
+    async def get_benchmark_return_series(
+        self, benchmark_id: str, request: BenchmarkReturnSeriesRequest
+    ) -> BenchmarkReturnSeriesResponse:
+        rows = await self._reference_repository.list_benchmark_return_points(
+            benchmark_id=benchmark_id,
+            start_date=request.window.start_date,
+            end_date=request.window.end_date,
+        )
+        return BenchmarkReturnSeriesResponse(
+            benchmark_id=benchmark_id,
+            resolved_window=IntegrationWindow(
+                start_date=request.window.start_date,
+                end_date=request.window.end_date,
+            ),
+            frequency=request.frequency,
+            points=[
+                {
+                    "series_date": row.series_date,
+                    "benchmark_return": Decimal(row.benchmark_return),
+                    "return_period": row.return_period,
+                    "return_convention": row.return_convention,
+                    "series_currency": row.series_currency,
+                    "quality_status": row.quality_status,
+                }
+                for row in rows
+            ],
+            lineage={
+                "contract_version": "rfc_062_v1",
+                "source_system": "lotus-core-query-service",
+                "generated_by": "integration.benchmark_return_series",
+            },
+        )
+
+    async def get_risk_free_series(self, request: RiskFreeSeriesRequest) -> RiskFreeSeriesResponse:
+        rows = await self._reference_repository.list_risk_free_series(
+            currency=request.currency,
+            start_date=request.window.start_date,
+            end_date=request.window.end_date,
+        )
+        return RiskFreeSeriesResponse(
+            currency=request.currency.upper(),
+            series_mode=request.series_mode,
+            resolved_window=IntegrationWindow(
+                start_date=request.window.start_date,
+                end_date=request.window.end_date,
+            ),
+            frequency=request.frequency,
+            points=[
+                RiskFreeSeriesPoint(
+                    series_date=row.series_date,
+                    value=Decimal(row.value),
+                    value_convention=row.value_convention,
+                    day_count_convention=row.day_count_convention,
+                    compounding_convention=row.compounding_convention,
+                    series_currency=row.series_currency,
+                    quality_status=row.quality_status,
+                )
+                for row in rows
+            ],
+            lineage={
+                "contract_version": "rfc_062_v1",
+                "source_system": "lotus-core-query-service",
+                "generated_by": "integration.risk_free_series",
+            },
+        )
+
+    async def get_benchmark_coverage(
+        self,
+        benchmark_id: str,
+        start_date: date,
+        end_date: date,
+    ) -> CoverageResponse:
+        coverage = await self._reference_repository.get_benchmark_coverage(
+            benchmark_id=benchmark_id,
+            start_date=start_date,
+            end_date=end_date,
+        )
+        return self._to_coverage_response(coverage, start_date, end_date)
+
+    async def get_risk_free_coverage(
+        self,
+        currency: str,
+        start_date: date,
+        end_date: date,
+    ) -> CoverageResponse:
+        coverage = await self._reference_repository.get_risk_free_coverage(
+            currency=currency,
+            start_date=start_date,
+            end_date=end_date,
+        )
+        return self._to_coverage_response(coverage, start_date, end_date)
+
+    async def get_classification_taxonomy(
+        self,
+        as_of_date: date,
+        taxonomy_scope: str | None = None,
+    ) -> ClassificationTaxonomyResponse:
+        rows = await self._reference_repository.list_taxonomy(
+            as_of_date=as_of_date,
+            taxonomy_scope=taxonomy_scope,
+        )
+        return ClassificationTaxonomyResponse(
+            as_of_date=as_of_date,
+            records=[
+                ClassificationTaxonomyEntry(
+                    classification_set_id=row.classification_set_id,
+                    taxonomy_scope=row.taxonomy_scope,
+                    dimension_name=row.dimension_name,
+                    dimension_value=row.dimension_value,
+                    dimension_description=row.dimension_description,
+                    effective_from=row.effective_from,
+                    effective_to=row.effective_to,
+                    quality_status=row.quality_status,
+                )
+                for row in rows
+            ],
+        )
+
+    @staticmethod
+    def _to_coverage_response(
+        coverage: dict[str, Any],
+        start_date: date,
+        end_date: date,
+    ) -> CoverageResponse:
+        expected_dates: set[date] = set()
+        cursor = start_date
+        while cursor <= end_date:
+            expected_dates.add(cursor)
+            cursor = cursor + timedelta(days=1)
+
+        observed_start = coverage.get("observed_start_date")
+        observed_end = coverage.get("observed_end_date")
+        observed_dates = set()
+        if observed_start and observed_end:
+            observed_cursor = observed_start
+            while observed_cursor <= observed_end:
+                observed_dates.add(observed_cursor)
+                observed_cursor = observed_cursor + timedelta(days=1)
+
+        missing_dates = sorted(expected_dates - observed_dates)
+        return CoverageResponse(
+            observed_start_date=observed_start,
+            observed_end_date=observed_end,
+            expected_start_date=start_date,
+            expected_end_date=end_date,
+            total_points=int(coverage.get("total_points", 0)),
+            missing_dates_count=len(missing_dates),
+            missing_dates_sample=missing_dates[:10],
+            quality_status_distribution=dict(coverage.get("quality_status_counts", {})),
         )
