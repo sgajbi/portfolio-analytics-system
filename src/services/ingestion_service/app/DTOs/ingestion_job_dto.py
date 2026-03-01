@@ -532,6 +532,79 @@ class ConsumerDlqReplayResponse(BaseModel):
     )
 
 
+class IngestionReplayAuditResponse(BaseModel):
+    replay_id: str = Field(
+        description="Replay audit identifier.",
+        examples=["replay_01J5WK1G7S3HBQ7Q3M0E3TMT0P"],
+    )
+    recovery_path: Literal["consumer_dlq_replay", "ingestion_job_retry"] = Field(
+        description="Recovery path that generated this replay audit event.",
+        examples=["consumer_dlq_replay"],
+    )
+    event_id: str = Field(
+        description="Reference event identifier for replay mapping.",
+        examples=["cdlq_01J5VK4Y4EPMTVF1B0HF4CAHB6"],
+    )
+    replay_fingerprint: str = Field(
+        description="Deterministic fingerprint for replay mapping and payload.",
+        examples=["c5b0faeb7de60bc111f109624e58d0ad6206634be5fef4d4455cdac629df4f3f"],
+    )
+    correlation_id: str | None = Field(
+        default=None,
+        description="Correlation id used for replay mapping.",
+        examples=["ING:7f4a64b0-35f4-41bc-8f74-cb556f2ad9a3"],
+    )
+    job_id: str | None = Field(
+        default=None,
+        description="Associated ingestion job id, when available.",
+        examples=["job_01J5S0J6D3BAVMK2E1V0WQ7MCC"],
+    )
+    endpoint: str | None = Field(
+        default=None,
+        description="Ingestion endpoint used for replay publish.",
+        examples=["/ingest/transactions"],
+    )
+    replay_status: Literal[
+        "dry_run", "replayed", "not_replayable", "duplicate_blocked", "failed"
+    ] = Field(
+        description="Replay outcome status.",
+        examples=["replayed"],
+    )
+    dry_run: bool = Field(
+        description="Whether replay request was executed in dry-run mode.",
+        examples=[False],
+    )
+    replay_reason: str = Field(
+        description="Human-readable reason or outcome note for this replay event.",
+        examples=["Replayed ingestion job from correlated consumer DLQ event."],
+    )
+    requested_by: str | None = Field(
+        default=None,
+        description="Ops principal who initiated replay.",
+        examples=["ops-token"],
+    )
+    requested_at: datetime = Field(
+        description="Timestamp when replay request was recorded.",
+        examples=["2026-03-01T10:12:01.019Z"],
+    )
+    completed_at: datetime | None = Field(
+        default=None,
+        description="Timestamp when replay flow completed.",
+        examples=["2026-03-01T10:12:02.039Z"],
+    )
+
+
+class IngestionReplayAuditListResponse(BaseModel):
+    audits: list[IngestionReplayAuditResponse] = Field(
+        description="Replay audit rows matching requested filters."
+    )
+    total: int = Field(
+        ge=0,
+        description="Number of replay audit rows returned.",
+        examples=[12],
+    )
+
+
 class IngestionJobRecordStatusResponse(BaseModel):
     job_id: str = Field(
         description="Ingestion job identifier.",

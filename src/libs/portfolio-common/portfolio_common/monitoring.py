@@ -15,6 +15,7 @@ DB_OPERATION_LATENCY_SECONDS = Histogram(
     buckets=(0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10),
 )
 
+
 def db_timer(operation: str):
     """
     Backwards/ergonomic helper. Times a DB operation using a generic repository label.
@@ -23,6 +24,7 @@ def db_timer(operation: str):
             ...
     """
     return DB_OPERATION_LATENCY_SECONDS.labels(repository="db", method=operation).time()
+
 
 # --------------------------------------------------------------------------------------
 # Kafka (generic) metrics – available for any service to use
@@ -58,21 +60,27 @@ KAFKA_PUBLISH_LATENCY_SECONDS = Histogram(
     buckets=(0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10),
 )
 
+
 def observe_kafka_published(topic: str, count: int = 1) -> None:
     KAFKA_MESSAGES_PUBLISHED_TOTAL.labels(topic).inc(count)
+
 
 def observe_kafka_publish_error(topic: str, error: str, count: int = 1) -> None:
     KAFKA_PUBLISH_ERRORS_TOTAL.labels(topic, error).inc(count)
 
+
 def observe_kafka_consumed(topic: str, group_id: str, count: int = 1) -> None:
     KAFKA_MESSAGES_CONSUMED_TOTAL.labels(topic, group_id).inc(count)
+
 
 def observe_kafka_consume_error(topic: str, error: str, count: int = 1) -> None:
     KAFKA_CONSUME_ERRORS_TOTAL.labels(topic, error).inc(count)
 
+
 def kafka_publish_timer(topic: str):
     """Context manager that observes Kafka publish latency for a topic."""
     return KAFKA_PUBLISH_LATENCY_SECONDS.labels(topic).time()
+
 
 # --------------------------------------------------------------------------------------
 # Outbox Dispatcher Metrics
@@ -106,28 +114,34 @@ _OUTBOX_BATCH_SECONDS = Histogram(
     buckets=(0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0),
 )
 
+
 def observe_outbox_published(aggregate_type: str, topic: str, count: int = 1) -> None:
     _OUTBOX_PUBLISHED.labels(aggregate_type, topic).inc(count)
+
 
 def observe_outbox_failed(aggregate_type: str, topic: str, count: int = 1) -> None:
     _OUTBOX_FAILED.labels(aggregate_type, topic).inc(count)
 
+
 def observe_outbox_retried(aggregate_type: str, topic: str, count: int = 1) -> None:
     _OUTBOX_RETRIED.labels(aggregate_type, topic).inc(count)
+
 
 def set_outbox_pending(total_pending: int) -> None:
     _OUTBOX_PENDING.set(total_pending)
 
+
 def outbox_batch_timer():
     """Context manager that observes outbox batch duration."""
     return _OUTBOX_BATCH_SECONDS.time()
+
 
 # --------------------------------------------------------------------------------------
 # Reprocessing & Epoch Metrics
 # --------------------------------------------------------------------------------------
 INSTRUMENT_REPROCESSING_TRIGGERS_PENDING = Gauge(
     "instrument_reprocessing_triggers_pending",
-    "Total number of pending instrument reprocessing triggers awaiting fan-out."
+    "Total number of pending instrument reprocessing triggers awaiting fan-out.",
 )
 
 EPOCH_MISMATCH_DROPPED_TOTAL = Counter(
@@ -138,19 +152,19 @@ EPOCH_MISMATCH_DROPPED_TOTAL = Counter(
 
 REPROCESSING_ACTIVE_KEYS_TOTAL = Gauge(
     "reprocessing_active_keys_total",
-    "Total number of (portfolio, security) keys currently in a REPROCESSING state."
+    "Total number of (portfolio, security) keys currently in a REPROCESSING state.",
 )
 
 SNAPSHOT_LAG_SECONDS = Histogram(
     "snapshot_lag_seconds",
     "The lag between the latest business date and a key's watermark, in seconds.",
-    buckets=(3600, 86400, 172800, 604800, 2592000) # 1hr, 1d, 2d, 1wk, 30d
+    buckets=(3600, 86400, 172800, 604800, 2592000),  # 1hr, 1d, 2d, 1wk, 30d
 )
 
 SCHEDULER_GAP_DAYS = Histogram(
     "scheduler_gap_days",
     "The gap in days between the latest business date and a key's watermark.",
-    buckets=(1, 2, 5, 10, 30, 90, 365)
+    buckets=(1, 2, 5, 10, 30, 90, 365),
 )
 
 REPROCESSING_EPOCH_BUMPED_TOTAL = Counter(
@@ -186,7 +200,7 @@ VALUATION_JOBS_FAILED_TOTAL = Counter(
 CASHFLOWS_CREATED_TOTAL = Counter(
     "cashflows_created_total",
     "Total number of cashflows created, by classification and timing.",
-    ["classification", "timing"]
+    ["classification", "timing"],
 )
 
 BUY_LIFECYCLE_STAGE_TOTAL = Counter(
@@ -223,6 +237,24 @@ INGESTION_MODE_STATE = Gauge(
     "Current ingestion operations mode: normal=0, paused=1, drain=2.",
 )
 
+INGESTION_REPLAY_AUDIT_TOTAL = Counter(
+    "ingestion_replay_audit_total",
+    "Replay audit events recorded for ingestion recovery paths.",
+    ["recovery_path", "replay_status"],
+)
+
+INGESTION_REPLAY_DUPLICATE_BLOCKED_TOTAL = Counter(
+    "ingestion_replay_duplicate_blocked_total",
+    "Replay attempts blocked due to duplicate deterministic fingerprint.",
+    ["recovery_path"],
+)
+
+INGESTION_REPLAY_FAILURE_TOTAL = Counter(
+    "ingestion_replay_failure_total",
+    "Replay attempts that failed or were not replayable.",
+    ["recovery_path", "replay_status"],
+)
+
 # --------------------------------------------------------------------------------------
 # Optional generic HTTP metrics (use across services if helpful)
 # --------------------------------------------------------------------------------------
@@ -239,14 +271,16 @@ HTTP_REQUEST_LATENCY_SECONDS = Histogram(
     buckets=(0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10),
 )
 
+
 def http_request_timer(service: str, method: str, path: str):
     """Context manager for timing an HTTP request handler."""
     return HTTP_REQUEST_LATENCY_SECONDS.labels(service, method, path).time()
 
+
 UNCLASSIFIED_ALLOCATION_MARKET_VALUE = Gauge(
     "unclassified_allocation_market_value_total",
     "Total market value of positions in the 'Unclassified' allocation bucket.",
-    ["portfolio_id", "dimension"]
+    ["portfolio_id", "dimension"],
 )
 
 REVIEW_GENERATION_DURATION_SECONDS = Histogram(

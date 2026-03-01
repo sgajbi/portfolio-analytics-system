@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import base64
+import hashlib
+import hmac
+import json
 import os
 from collections import defaultdict, deque
 from dataclasses import dataclass
@@ -18,6 +22,11 @@ def _as_bool(value: str | None, default: bool) -> bool:
 
 OPS_TOKEN_REQUIRED = _as_bool(os.getenv("LOTUS_CORE_INGEST_OPS_TOKEN_REQUIRED"), True)
 OPS_TOKEN_VALUE = os.getenv("LOTUS_CORE_INGEST_OPS_TOKEN", "lotus-core-ops-local")
+OPS_AUTH_MODE = os.getenv("LOTUS_CORE_INGEST_OPS_AUTH_MODE", "token_or_jwt")
+OPS_JWT_HS256_SECRET = os.getenv("LOTUS_CORE_INGEST_OPS_JWT_HS256_SECRET", "")
+OPS_JWT_ISSUER = os.getenv("LOTUS_CORE_INGEST_OPS_JWT_ISSUER", "")
+OPS_JWT_AUDIENCE = os.getenv("LOTUS_CORE_INGEST_OPS_JWT_AUDIENCE", "")
+OPS_JWT_CLOCK_SKEW_SECONDS = int(os.getenv("LOTUS_CORE_INGEST_OPS_JWT_CLOCK_SKEW_SECONDS", "60"))
 
 RATE_LIMIT_ENABLED = _as_bool(os.getenv("LOTUS_CORE_INGEST_RATE_LIMIT_ENABLED"), True)
 RATE_LIMIT_WINDOW_SECONDS = int(os.getenv("LOTUS_CORE_INGEST_RATE_LIMIT_WINDOW_SECONDS", "60"))
@@ -83,6 +92,134 @@ async def require_ops_token(
     request: Request,
     ops_token: OpsTokenHeader = None,
 ) -> str:
+    def _validate_hs256_jwt(token: str) -> str | None:
+        if not OPS_JWT_HS256_SECRET:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail={
+                    "code": "INGESTION_OPS_JWT_SECRET_MISSING",
+                    "message": "JWT auth is enabled but LOTUS_CORE_INGEST_OPS_JWT_HS256_SECRET is missing.",
+                },
+            )
+        parts = token.split(".")
+        if len(parts) != 3:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail={"code": "INGESTION_OPS_JWT_MALFORMED", "message": "Malformed JWT."},
+            )
+        header_b64, payload_b64, signature_b64 = parts
+        signed = f"{header_b64}.{payload_b64}".encode("utf-8")
+        expected = hmac.new(OPS_JWT_HS256_SECRET.encode("utf-8"), signed, hashlib.sha256).digest()
+        expected_b64 = base64.urlsafe_b64encode(expected).decode("utf-8").rstrip("=")
+        if not hmac.compare_digest(expected_b64, signature_b64):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "code": "INGESTION_OPS_JWT_INVALID_SIGNATURE",
+                    "message": "Invalid JWT signature.",
+                },
+            )
+
+        def _decode_segment(segment: str) -> dict:
+            padding = "=" * (-len(segment) % 4)
+            raw = base64.urlsafe_b64decode((segment + padding).encode("utf-8"))
+            return json.loads(raw.decode("utf-8"))
+
+        header = _decode_segment(header_b64)
+        payload = _decode_segment(payload_b64)
+        if header.get("alg") != "HS256":
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail={
+                    "code": "INGESTION_OPS_JWT_UNSUPPORTED_ALG",
+                    "message": "Only HS256 JWT is supported.",
+                },
+            )
+        now_epoch = int(datetime.now(UTC).timestamp())
+        exp = payload.get("exp")
+        if isinstance(exp, int) and now_epoch > exp + OPS_JWT_CLOCK_SKEW_SECONDS:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail={"code": "INGESTION_OPS_JWT_EXPIRED", "message": "JWT token is expired."},
+            )
+        nbf = payload.get("nbf")
+        if isinstance(nbf, int) and now_epoch + OPS_JWT_CLOCK_SKEW_SECONDS < nbf:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail={
+                    "code": "INGESTION_OPS_JWT_NOT_YET_VALID",
+                    "message": "JWT token is not yet valid.",
+                },
+            )
+        if OPS_JWT_ISSUER and payload.get("iss") != OPS_JWT_ISSUER:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "code": "INGESTION_OPS_JWT_ISSUER_INVALID",
+                    "message": "JWT issuer does not match configured issuer.",
+                },
+            )
+        if OPS_JWT_AUDIENCE:
+            aud = payload.get("aud")
+            if isinstance(aud, str):
+                valid_aud = aud == OPS_JWT_AUDIENCE
+            elif isinstance(aud, list):
+                valid_aud = OPS_JWT_AUDIENCE in aud
+            else:
+                valid_aud = False
+            if not valid_aud:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail={
+                        "code": "INGESTION_OPS_JWT_AUDIENCE_INVALID",
+                        "message": "JWT audience does not match configured audience.",
+                    },
+                )
+        principal = payload.get("sub") or payload.get("client_id") or payload.get("azp")
+        return str(principal) if principal else None
+
+    auth_header = request.headers.get("Authorization", "")
+    bearer_token = auth_header[7:].strip() if auth_header.startswith("Bearer ") else ""
+
+    if OPS_AUTH_MODE == "jwt_only":
+        if not bearer_token:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail={
+                    "code": "INGESTION_OPS_JWT_REQUIRED",
+                    "message": "Missing bearer JWT token.",
+                },
+            )
+        principal = _validate_hs256_jwt(bearer_token)
+        return principal or "ops-jwt"
+
+    if OPS_AUTH_MODE == "token_only":
+        if not OPS_TOKEN_REQUIRED:
+            return "ops-token-not-required"
+        if not ops_token:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail={
+                    "code": "INGESTION_OPS_TOKEN_REQUIRED",
+                    "message": (
+                        "Missing X-Lotus-Ops-Token header for privileged ingestion operations API."
+                    ),
+                },
+            )
+        if ops_token != OPS_TOKEN_VALUE:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "code": "INGESTION_OPS_TOKEN_INVALID",
+                    "message": "Invalid X-Lotus-Ops-Token.",
+                },
+            )
+        return request.headers.get("X-Principal", "ops-token")
+
+    # Default mode: token_or_jwt
+    if bearer_token:
+        principal = _validate_hs256_jwt(bearer_token)
+        return principal or "ops-jwt"
     if not OPS_TOKEN_REQUIRED:
         return "ops-token-not-required"
     if not ops_token:

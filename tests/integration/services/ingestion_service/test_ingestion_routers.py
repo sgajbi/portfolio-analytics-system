@@ -1,7 +1,11 @@
 # tests/integration/services/ingestion-service/test_ingestion_routers.py
 from datetime import UTC, datetime
 from decimal import Decimal
+import base64
+import hashlib
+import hmac
 from io import BytesIO
+import json
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -13,6 +17,11 @@ from portfolio_common.kafka_utils import KafkaProducer, get_kafka_producer
 
 from src.services.ingestion_service.app.DTOs.ingestion_job_dto import IngestionJobResponse
 from src.services.ingestion_service.app.main import app
+from src.services.ingestion_service.app import ops_controls
+try:
+    from app import ops_controls as app_ops_controls
+except ModuleNotFoundError:  # pragma: no cover - only needed in certain test path setups.
+    app_ops_controls = ops_controls
 from src.services.ingestion_service.app.routers import (
     business_dates as business_dates_router,
 )
@@ -406,9 +415,14 @@ async def async_test_client(mock_kafka_producer: MagicMock):
         async def find_successful_replay_audit_by_fingerprint(
             self,
             replay_fingerprint: str,
+            recovery_path: str | None = None,
         ) -> dict[str, str] | None:
             row = self.replay_audit.get(replay_fingerprint)
-            if row and row.get("replay_status") == "replayed":
+            if (
+                row
+                and row.get("replay_status") == "replayed"
+                and (recovery_path is None or row.get("recovery_path") == recovery_path)
+            ):
                 return {
                     "replay_id": row["replay_id"],
                     "replay_status": row["replay_status"],
@@ -418,6 +432,7 @@ async def async_test_client(mock_kafka_producer: MagicMock):
         async def record_consumer_dlq_replay_audit(
             self,
             *,
+            recovery_path: str,
             event_id: str,
             replay_fingerprint: str,
             correlation_id: str | None,
@@ -431,7 +446,9 @@ async def async_test_client(mock_kafka_producer: MagicMock):
             replay_id = f"replay_test_{len(self.replay_audit) + 1}"
             self.replay_audit[replay_fingerprint] = {
                 "replay_id": replay_id,
+                "recovery_path": recovery_path,
                 "event_id": event_id,
+                "replay_fingerprint": replay_fingerprint,
                 "correlation_id": correlation_id,
                 "job_id": job_id,
                 "endpoint": endpoint,
@@ -439,8 +456,39 @@ async def async_test_client(mock_kafka_producer: MagicMock):
                 "dry_run": dry_run,
                 "replay_reason": replay_reason,
                 "requested_by": requested_by,
+                "requested_at": datetime.now(UTC),
+                "completed_at": datetime.now(UTC),
             }
             return replay_id
+
+        async def list_replay_audits(
+            self,
+            *,
+            limit: int = 100,
+            recovery_path: str | None = None,
+            replay_status: str | None = None,
+            replay_fingerprint: str | None = None,
+            job_id: str | None = None,
+        ) -> list[dict]:
+            rows = list(self.replay_audit.values())
+            filtered = [
+                row
+                for row in rows
+                if (recovery_path is None or row.get("recovery_path") == recovery_path)
+                and (replay_status is None or row.get("replay_status") == replay_status)
+                and (
+                    replay_fingerprint is None
+                    or row.get("replay_fingerprint") == replay_fingerprint
+                )
+                and (job_id is None or row.get("job_id") == job_id)
+            ]
+            return filtered[:limit]
+
+        async def get_replay_audit(self, replay_id: str):
+            for row in self.replay_audit.values():
+                if row.get("replay_id") == replay_id:
+                    return row
+            return None
 
         async def get_ops_mode(self):
             return {
@@ -757,6 +805,42 @@ async def test_ingestion_job_partial_retry_dry_run(
     assert dry_run.status_code == 200
 
 
+async def test_ingestion_job_retry_blocks_duplicate_fingerprint(
+    async_test_client: httpx.AsyncClient,
+):
+    payload = {
+        "transactions": [
+            {
+                "transaction_id": "TX_RETRY_DUP_001",
+                "portfolio_id": "P1",
+                "instrument_id": "I1",
+                "security_id": "S1",
+                "transaction_date": "2025-08-12T10:00:00Z",
+                "transaction_type": "BUY",
+                "quantity": 1,
+                "price": 1,
+                "gross_transaction_amount": 1,
+                "trade_currency": "USD",
+                "currency": "USD",
+            }
+        ]
+    }
+    ingest_response = await async_test_client.post("/ingest/transactions", json=payload)
+    assert ingest_response.status_code == 202
+    job_id = ingest_response.json()["job_id"]
+    first = await async_test_client.post(
+        f"/ingestion/jobs/{job_id}/retry",
+        json={"dry_run": False},
+    )
+    assert first.status_code == 200
+    second = await async_test_client.post(
+        f"/ingestion/jobs/{job_id}/retry",
+        json={"dry_run": False},
+    )
+    assert second.status_code == 409
+    assert second.json()["detail"]["code"] == "INGESTION_RETRY_DUPLICATE_BLOCKED"
+
+
 async def test_ingestion_health_summary(async_test_client: httpx.AsyncClient):
     response = await async_test_client.get("/ingestion/health/summary")
     assert response.status_code == 200
@@ -958,6 +1042,82 @@ async def test_replay_consumer_dlq_event_blocks_duplicate_replay(
     assert second.status_code == 200
     body = second.json()
     assert body["replay_status"] == "duplicate_blocked"
+
+
+async def test_ingestion_replay_audit_list_and_get(async_test_client: httpx.AsyncClient):
+    payload = {
+        "transactions": [
+            {
+                "transaction_id": "TX_REPLAY_AUDIT_001",
+                "portfolio_id": "P1",
+                "instrument_id": "I1",
+                "security_id": "S1",
+                "transaction_date": "2025-08-12T10:00:00Z",
+                "transaction_type": "BUY",
+                "quantity": 1,
+                "price": 1,
+                "gross_transaction_amount": 1,
+                "trade_currency": "USD",
+                "currency": "USD",
+            }
+        ]
+    }
+    await async_test_client.post(
+        "/ingest/transactions",
+        headers={"X-Correlation-Id": "ING:test-correlation-id"},
+        json=payload,
+    )
+    replay_response = await async_test_client.post(
+        "/ingestion/dlq/consumer-events/cdlq_test_001/replay",
+        json={"dry_run": True},
+    )
+    assert replay_response.status_code == 200
+    replay_id = replay_response.json()["replay_audit_id"]
+
+    list_response = await async_test_client.get(
+        "/ingestion/audit/replays",
+        params={"recovery_path": "consumer_dlq_replay"},
+    )
+    assert list_response.status_code == 200
+    audits = list_response.json()["audits"]
+    assert any(item["replay_id"] == replay_id for item in audits)
+
+    get_response = await async_test_client.get(f"/ingestion/audit/replays/{replay_id}")
+    assert get_response.status_code == 200
+    assert get_response.json()["replay_id"] == replay_id
+
+
+def _build_hs256_jwt(secret: str, payload: dict) -> str:
+    header = {"alg": "HS256", "typ": "JWT"}
+
+    def _b64(value: dict) -> str:
+        raw = json.dumps(value, separators=(",", ":"), sort_keys=True).encode("utf-8")
+        return base64.urlsafe_b64encode(raw).decode("utf-8").rstrip("=")
+
+    header_b64 = _b64(header)
+    payload_b64 = _b64(payload)
+    signed = f"{header_b64}.{payload_b64}".encode("utf-8")
+    signature = hmac.new(secret.encode("utf-8"), signed, hashlib.sha256).digest()
+    signature_b64 = base64.urlsafe_b64encode(signature).decode("utf-8").rstrip("=")
+    return f"{header_b64}.{payload_b64}.{signature_b64}"
+
+
+async def test_ingestion_ops_supports_bearer_jwt(async_test_client: httpx.AsyncClient, monkeypatch):
+    now_epoch = int(datetime.now(UTC).timestamp())
+    secret = "test-hs256-secret"
+    for module in {ops_controls, app_ops_controls}:
+        monkeypatch.setattr(module, "OPS_AUTH_MODE", "token_or_jwt")
+        monkeypatch.setattr(module, "OPS_JWT_HS256_SECRET", secret)
+        monkeypatch.setattr(module, "OPS_JWT_ISSUER", "")
+        monkeypatch.setattr(module, "OPS_JWT_AUDIENCE", "")
+    payload = {"sub": "ops-jwt-user", "exp": now_epoch + 600}
+    token = _build_hs256_jwt(secret, payload)
+
+    response = await async_test_client.get(
+        "/ingestion/health/summary",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 200
 
 
 async def test_ingest_instruments_endpoint(

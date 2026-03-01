@@ -21,6 +21,8 @@ from app.DTOs.ingestion_job_dto import (
     IngestionJobResponse,
     IngestionOpsModeResponse,
     IngestionOpsModeUpdateRequest,
+    IngestionReplayAuditListResponse,
+    IngestionReplayAuditResponse,
     IngestionRetryRequest,
     IngestionSloStatusResponse,
     IngestionStalledJobListResponse,
@@ -300,6 +302,7 @@ async def get_ingestion_job_records(
 async def retry_ingestion_job(
     job_id: str,
     retry_request: IngestionRetryRequest = Body(default_factory=IngestionRetryRequest),
+    ops_actor: str = Depends(require_ops_token),
     ingestion_job_service: IngestionJobService = Depends(get_ingestion_job_service),
     ingestion_service: IngestionService = Depends(get_ingestion_service),
     kafka_producer: KafkaProducer = Depends(get_kafka_producer),
@@ -345,6 +348,26 @@ async def retry_ingestion_job(
         ) from exc
 
     if retry_request.dry_run:
+        replay_fingerprint = _deterministic_replay_fingerprint(
+            event_id=f"job:{job_id}",
+            correlation_id=None,
+            job_id=job_id,
+            endpoint=context.endpoint,
+            payload=replay_payload,
+            idempotency_key=context.idempotency_key,
+        )
+        await ingestion_job_service.record_consumer_dlq_replay_audit(
+            recovery_path="ingestion_job_retry",
+            event_id=f"job:{job_id}",
+            replay_fingerprint=replay_fingerprint,
+            correlation_id=None,
+            job_id=job_id,
+            endpoint=context.endpoint,
+            replay_status="dry_run",
+            dry_run=True,
+            replay_reason="Dry-run successful. Ingestion job retry is replayable.",
+            requested_by=ops_actor,
+        )
         job = await ingestion_job_service.get_job(job_id)
         if job is None:
             raise HTTPException(
@@ -356,6 +379,43 @@ async def retry_ingestion_job(
             )
         return job
 
+    replay_fingerprint = _deterministic_replay_fingerprint(
+        event_id=f"job:{job_id}",
+        correlation_id=None,
+        job_id=job_id,
+        endpoint=context.endpoint,
+        payload=replay_payload,
+        idempotency_key=context.idempotency_key,
+    )
+    existing_success = await ingestion_job_service.find_successful_replay_audit_by_fingerprint(
+        replay_fingerprint=replay_fingerprint,
+        recovery_path="ingestion_job_retry",
+    )
+    if existing_success:
+        await ingestion_job_service.record_consumer_dlq_replay_audit(
+            recovery_path="ingestion_job_retry",
+            event_id=f"job:{job_id}",
+            replay_fingerprint=replay_fingerprint,
+            correlation_id=None,
+            job_id=job_id,
+            endpoint=context.endpoint,
+            replay_status="duplicate_blocked",
+            dry_run=False,
+            replay_reason=(
+                "Retry blocked because this deterministic retry fingerprint was already replayed "
+                f"successfully (replay_id={existing_success['replay_id']})."
+            ),
+            requested_by=ops_actor,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "INGESTION_RETRY_DUPLICATE_BLOCKED",
+                "message": "Retry blocked because an equivalent deterministic replay already succeeded.",
+                "replay_fingerprint": replay_fingerprint,
+            },
+        )
+
     try:
         await _replay_job_payload(
             endpoint=context.endpoint,
@@ -366,7 +426,31 @@ async def retry_ingestion_job(
         )
         await ingestion_job_service.mark_retried(job_id)
         await ingestion_job_service.mark_queued(job_id)
+        await ingestion_job_service.record_consumer_dlq_replay_audit(
+            recovery_path="ingestion_job_retry",
+            event_id=f"job:{job_id}",
+            replay_fingerprint=replay_fingerprint,
+            correlation_id=None,
+            job_id=job_id,
+            endpoint=context.endpoint,
+            replay_status="replayed",
+            dry_run=False,
+            replay_reason="Ingestion job retry replay succeeded.",
+            requested_by=ops_actor,
+        )
     except Exception as exc:
+        await ingestion_job_service.record_consumer_dlq_replay_audit(
+            recovery_path="ingestion_job_retry",
+            event_id=f"job:{job_id}",
+            replay_fingerprint=replay_fingerprint,
+            correlation_id=None,
+            job_id=job_id,
+            endpoint=context.endpoint,
+            replay_status="failed",
+            dry_run=False,
+            replay_reason=str(exc),
+            requested_by=ops_actor,
+        )
         await ingestion_job_service.mark_failed(
             job_id,
             str(exc),
@@ -607,6 +691,7 @@ async def replay_consumer_dlq_event(
             idempotency_key=None,
         )
         replay_audit_id = await ingestion_job_service.record_consumer_dlq_replay_audit(
+            recovery_path="consumer_dlq_replay",
             event_id=event_id,
             replay_fingerprint=replay_fingerprint,
             correlation_id=None,
@@ -653,6 +738,7 @@ async def replay_consumer_dlq_event(
             idempotency_key=None,
         )
         replay_audit_id = await ingestion_job_service.record_consumer_dlq_replay_audit(
+            recovery_path="consumer_dlq_replay",
             event_id=event_id,
             replay_fingerprint=replay_fingerprint,
             correlation_id=event.correlation_id,
@@ -685,6 +771,7 @@ async def replay_consumer_dlq_event(
     )
     if context is None or context.request_payload is None:
         replay_audit_id = await ingestion_job_service.record_consumer_dlq_replay_audit(
+            recovery_path="consumer_dlq_replay",
             event_id=event_id,
             replay_fingerprint=replay_fingerprint,
             correlation_id=event.correlation_id,
@@ -705,10 +792,12 @@ async def replay_consumer_dlq_event(
             message="Correlated ingestion job does not have durable replay payload.",
         )
     existing_success = await ingestion_job_service.find_successful_replay_audit_by_fingerprint(
-        replay_fingerprint
+        replay_fingerprint,
+        recovery_path="consumer_dlq_replay",
     )
     if existing_success and not replay_request.dry_run:
         replay_audit_id = await ingestion_job_service.record_consumer_dlq_replay_audit(
+            recovery_path="consumer_dlq_replay",
             event_id=event_id,
             replay_fingerprint=replay_fingerprint,
             correlation_id=event.correlation_id,
@@ -736,6 +825,7 @@ async def replay_consumer_dlq_event(
     await ingestion_job_service.assert_retry_allowed(context.submitted_at)
     if replay_request.dry_run:
         replay_audit_id = await ingestion_job_service.record_consumer_dlq_replay_audit(
+            recovery_path="consumer_dlq_replay",
             event_id=event_id,
             replay_fingerprint=replay_fingerprint,
             correlation_id=event.correlation_id,
@@ -755,26 +845,49 @@ async def replay_consumer_dlq_event(
             replay_fingerprint=replay_fingerprint,
             message="Dry-run successful. Correlated ingestion job is replayable.",
         )
-    await _replay_job_payload(
-        endpoint=context.endpoint,
-        payload=context.request_payload,
-        idempotency_key=context.idempotency_key,
-        ingestion_service=ingestion_service,
-        kafka_producer=kafka_producer,
-    )
-    await ingestion_job_service.mark_retried(replay_job_id)
-    await ingestion_job_service.mark_queued(replay_job_id)
-    replay_audit_id = await ingestion_job_service.record_consumer_dlq_replay_audit(
-        event_id=event_id,
-        replay_fingerprint=replay_fingerprint,
-        correlation_id=event.correlation_id,
-        job_id=replay_job_id,
-        endpoint=context.endpoint,
-        replay_status="replayed",
-        dry_run=False,
-        replay_reason="Replayed ingestion job from correlated consumer DLQ event.",
-        requested_by=ops_actor,
-    )
+    try:
+        await _replay_job_payload(
+            endpoint=context.endpoint,
+            payload=context.request_payload,
+            idempotency_key=context.idempotency_key,
+            ingestion_service=ingestion_service,
+            kafka_producer=kafka_producer,
+        )
+        await ingestion_job_service.mark_retried(replay_job_id)
+        await ingestion_job_service.mark_queued(replay_job_id)
+        replay_audit_id = await ingestion_job_service.record_consumer_dlq_replay_audit(
+            recovery_path="consumer_dlq_replay",
+            event_id=event_id,
+            replay_fingerprint=replay_fingerprint,
+            correlation_id=event.correlation_id,
+            job_id=replay_job_id,
+            endpoint=context.endpoint,
+            replay_status="replayed",
+            dry_run=False,
+            replay_reason="Replayed ingestion job from correlated consumer DLQ event.",
+            requested_by=ops_actor,
+        )
+    except Exception as exc:
+        replay_audit_id = await ingestion_job_service.record_consumer_dlq_replay_audit(
+            recovery_path="consumer_dlq_replay",
+            event_id=event_id,
+            replay_fingerprint=replay_fingerprint,
+            correlation_id=event.correlation_id,
+            job_id=replay_job_id,
+            endpoint=context.endpoint,
+            replay_status="failed",
+            dry_run=False,
+            replay_reason=str(exc),
+            requested_by=ops_actor,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "code": "INGESTION_DLQ_REPLAY_FAILED",
+                "message": str(exc),
+                "replay_audit_id": replay_audit_id,
+            },
+        ) from exc
     return ConsumerDlqReplayResponse(
         event_id=event_id,
         correlation_id=event.correlation_id,
@@ -784,6 +897,64 @@ async def replay_consumer_dlq_event(
         replay_fingerprint=replay_fingerprint,
         message="Replayed ingestion job from correlated consumer DLQ event.",
     )
+
+
+@router.get(
+    "/ingestion/audit/replays",
+    response_model=IngestionReplayAuditListResponse,
+    status_code=status.HTTP_200_OK,
+    tags=["Ingestion Operations"],
+    summary="List ingestion replay audit records",
+    description=(
+        "What: Return replay audit records across ingestion recovery paths.\n"
+        "How: Query durable replay audit rows with filters for recovery path, status, fingerprint, and job.\n"
+        "When: Use for incident forensics and replay governance review."
+    ),
+)
+async def list_ingestion_replay_audits(
+    limit: int = Query(default=100, ge=1, le=500),
+    recovery_path: str | None = Query(default=None),
+    replay_status: str | None = Query(default=None),
+    replay_fingerprint: str | None = Query(default=None),
+    job_id: str | None = Query(default=None),
+    ingestion_job_service: IngestionJobService = Depends(get_ingestion_job_service),
+):
+    audits = await ingestion_job_service.list_replay_audits(
+        limit=limit,
+        recovery_path=recovery_path,
+        replay_status=replay_status,
+        replay_fingerprint=replay_fingerprint,
+        job_id=job_id,
+    )
+    return IngestionReplayAuditListResponse(audits=audits, total=len(audits))
+
+
+@router.get(
+    "/ingestion/audit/replays/{replay_id}",
+    response_model=IngestionReplayAuditResponse,
+    status_code=status.HTTP_200_OK,
+    tags=["Ingestion Operations"],
+    summary="Get one ingestion replay audit record",
+    description=(
+        "What: Return one replay audit row by replay_id.\n"
+        "How: Read durable replay audit event from canonical operations store.\n"
+        "When: Use to inspect a specific replay action referenced in incident timelines."
+    ),
+)
+async def get_ingestion_replay_audit(
+    replay_id: str,
+    ingestion_job_service: IngestionJobService = Depends(get_ingestion_job_service),
+):
+    audit = await ingestion_job_service.get_replay_audit(replay_id)
+    if audit is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "code": "INGESTION_REPLAY_AUDIT_NOT_FOUND",
+                "message": f"Replay audit '{replay_id}' was not found.",
+            },
+        )
+    return audit
 
 
 @router.get(
