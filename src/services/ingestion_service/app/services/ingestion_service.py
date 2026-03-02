@@ -48,7 +48,7 @@ class IngestionService:
         """Publishes a list of business dates to the raw business dates topic."""
         headers = self._get_headers(idempotency_key)
         for business_date in business_dates:
-            key = business_date.business_date.isoformat()
+            key = f"{business_date.calendar_code}|{business_date.business_date.isoformat()}"
             payload = business_date.model_dump()
             try:
                 self._kafka_producer.publish_message(

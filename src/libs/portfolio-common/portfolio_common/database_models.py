@@ -22,7 +22,11 @@ from .db_base import Base
 class BusinessDate(Base):
     __tablename__ = "business_dates"
 
+    calendar_code = Column(String, primary_key=True, nullable=False, default="GLOBAL", server_default="GLOBAL")
     date = Column(Date, primary_key=True, nullable=False)
+    market_code = Column(String, nullable=True)
+    source_system = Column(String, nullable=True)
+    source_batch_id = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 

@@ -1,7 +1,7 @@
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from portfolio_common.db import get_async_db_session
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -31,12 +31,14 @@ def get_operations_service(
     summary="Get operational support overview for a portfolio",
     description=(
         "What: Return support-oriented operational state for one portfolio.\n"
-        "How: Aggregate reprocessing, valuation, and latest-data availability markers for the key.\n"
+        "How: Aggregate reprocessing, valuation, and latest-data availability markers "
+        "for the key.\n"
         "When: Use during incidents to quickly assess whether portfolio processing is healthy."
     ),
 )
 async def get_support_overview(
-    portfolio_id: str, service: OperationsService = Depends(get_operations_service)
+    portfolio_id: str = Path(..., description="Portfolio identifier."),
+    service: OperationsService = Depends(get_operations_service),
 ):
     try:
         return await service.get_support_overview(portfolio_id)
@@ -62,7 +64,7 @@ async def get_support_overview(
     ),
 )
 async def get_valuation_jobs(
-    portfolio_id: str,
+    portfolio_id: str = Path(..., description="Portfolio identifier."),
     status_filter: Optional[str] = Query(
         None, description="Optional job status filter (e.g., PENDING, PROCESSING)."
     ),
@@ -96,7 +98,7 @@ async def get_valuation_jobs(
     ),
 )
 async def get_aggregation_jobs(
-    portfolio_id: str,
+    portfolio_id: str = Path(..., description="Portfolio identifier."),
     status_filter: Optional[str] = Query(
         None, description="Optional job status filter (e.g., PENDING, PROCESSING)."
     ),
@@ -130,8 +132,8 @@ async def get_aggregation_jobs(
     ),
 )
 async def get_lineage(
-    portfolio_id: str,
-    security_id: str,
+    portfolio_id: str = Path(..., description="Portfolio identifier."),
+    security_id: str = Path(..., description="Security identifier."),
     service: OperationsService = Depends(get_operations_service),
 ):
     try:
@@ -160,7 +162,7 @@ async def get_lineage(
     ),
 )
 async def get_lineage_keys(
-    portfolio_id: str,
+    portfolio_id: str = Path(..., description="Portfolio identifier."),
     reprocessing_status: Optional[str] = Query(
         None, description="Optional status filter for lineage keys (e.g., CURRENT, REPROCESSING)."
     ),

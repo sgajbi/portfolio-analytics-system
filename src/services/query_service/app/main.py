@@ -27,6 +27,7 @@ from .routers import (
     analytics_inputs,
     buy_state,
     capabilities,
+    cashflow_projection,
     fx_rates,
     instruments,
     integration,
@@ -185,6 +186,7 @@ app.include_router(positions.router)
 app.include_router(buy_state.router)
 app.include_router(sell_state.router)
 app.include_router(transactions.router)
+app.include_router(cashflow_projection.router)
 app.include_router(instruments.router)
 app.include_router(prices.router)
 app.include_router(fx_rates.router)

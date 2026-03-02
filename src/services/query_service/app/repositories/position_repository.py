@@ -3,7 +3,9 @@ import logging
 from datetime import date
 from typing import Any, List, Optional
 
+from portfolio_common.config import DEFAULT_BUSINESS_CALENDAR_CODE
 from portfolio_common.database_models import (
+    BusinessDate,
     DailyPositionSnapshot,
     Instrument,
     Portfolio,
@@ -28,6 +30,13 @@ class PositionRepository:
     async def portfolio_exists(self, portfolio_id: str) -> bool:
         stmt = select(Portfolio.portfolio_id).where(Portfolio.portfolio_id == portfolio_id).limit(1)
         return (await self.db.execute(stmt)).scalar_one_or_none() is not None
+
+    async def get_latest_business_date(self) -> Optional[date]:
+        """Returns latest default-calendar business date for booked-state reads."""
+        stmt = select(func.max(BusinessDate.date)).where(
+            BusinessDate.calendar_code == DEFAULT_BUSINESS_CALENDAR_CODE
+        )
+        return (await self.db.execute(stmt)).scalar_one_or_none()
 
     async def get_held_since_date(
         self, portfolio_id: str, security_id: str, epoch: int
@@ -71,7 +80,8 @@ class PositionRepository:
     ) -> dict[tuple[str, int], date]:
         """
         Bulk variant of get_held_since_date.
-        Returns held-since dates for (security_id, epoch) keys in one query to avoid N+1 round trips.
+        Returns held-since dates for (security_id, epoch) keys in one
+        query to avoid N+1 round trips.
         """
         if not security_epoch_pairs:
             return {}

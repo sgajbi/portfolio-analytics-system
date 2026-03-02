@@ -49,8 +49,13 @@ def mock_position_repo() -> AsyncMock:
     repo.get_latest_positions_by_portfolio.return_value = [
         (mock_snapshot, mock_instrument, mock_state)
     ]
+    repo.get_latest_business_date.return_value = date(2025, 1, 1)
+    repo.get_latest_positions_by_portfolio_as_of_date.return_value = [
+        (mock_snapshot, mock_instrument, mock_state)
+    ]
     repo.get_held_since_dates.return_value = {("S1", 1): date(2024, 12, 31)}
     repo.get_latest_position_history_by_portfolio.return_value = []
+    repo.get_latest_position_history_by_portfolio_as_of_date.return_value = []
     repo.get_latest_snapshot_valuation_map.return_value = {}
     # --- END FIX ---
     return repo
@@ -95,7 +100,10 @@ async def test_get_latest_positions(mock_position_repo: AsyncMock):
         response = await service.get_portfolio_positions(portfolio_id="P1")
 
         # ASSERT
-        mock_position_repo.get_latest_positions_by_portfolio.assert_awaited_once_with("P1")
+        mock_position_repo.get_latest_business_date.assert_awaited_once()
+        mock_position_repo.get_latest_positions_by_portfolio_as_of_date.assert_awaited_once_with(
+            "P1", date(2025, 1, 1)
+        )
         assert len(response.positions) == 1
         assert response.positions[0].security_id == "S1"
         assert response.positions[0].instrument_name == "Test Instrument"
@@ -114,7 +122,7 @@ async def test_get_latest_positions_falls_back_to_position_history(mock_position
         "src.services.query_service.app.services.position_service.PositionRepository",
         return_value=mock_position_repo,
     ):
-        mock_position_repo.get_latest_positions_by_portfolio.return_value = []
+        mock_position_repo.get_latest_positions_by_portfolio_as_of_date.return_value = []
         mock_history_obj = PositionHistory(
             security_id="S2",
             quantity=Decimal("55"),
@@ -132,7 +140,7 @@ async def test_get_latest_positions_falls_back_to_position_history(mock_position
             country_of_risk="US",
         )
         mock_state = PositionState(status="CURRENT", epoch=1)
-        mock_position_repo.get_latest_position_history_by_portfolio.return_value = [
+        mock_position_repo.get_latest_position_history_by_portfolio_as_of_date.return_value = [
             (mock_history_obj, mock_instrument, mock_state)
         ]
         mock_position_repo.get_held_since_dates.return_value = {("S2", 1): date(2024, 1, 1)}
@@ -149,8 +157,12 @@ async def test_get_latest_positions_falls_back_to_position_history(mock_position
         service = PositionService(AsyncMock())
         response = await service.get_portfolio_positions(portfolio_id="P2")
 
-        mock_position_repo.get_latest_positions_by_portfolio.assert_awaited_once_with("P2")
-        mock_position_repo.get_latest_position_history_by_portfolio.assert_awaited_once_with("P2")
+        mock_position_repo.get_latest_positions_by_portfolio_as_of_date.assert_awaited_once_with(
+            "P2", date(2025, 1, 1)
+        )
+        mock_position_repo.get_latest_position_history_by_portfolio_as_of_date.assert_awaited_once_with(
+            "P2", date(2025, 1, 1)
+        )
         mock_position_repo.get_latest_snapshot_valuation_map.assert_awaited_once_with("P2")
         assert len(response.positions) == 1
         assert response.positions[0].security_id == "S2"
@@ -194,7 +206,7 @@ async def test_get_latest_positions_fallback_without_snapshot_valuation_uses_cos
         "src.services.query_service.app.services.position_service.PositionRepository",
         return_value=mock_position_repo,
     ):
-        mock_position_repo.get_latest_positions_by_portfolio.return_value = []
+        mock_position_repo.get_latest_positions_by_portfolio_as_of_date.return_value = []
         mock_history_obj = PositionHistory(
             security_id="S9",
             quantity=Decimal("10"),
@@ -212,7 +224,7 @@ async def test_get_latest_positions_fallback_without_snapshot_valuation_uses_cos
             country_of_risk="US",
         )
         mock_state = PositionState(status="CURRENT", epoch=1)
-        mock_position_repo.get_latest_position_history_by_portfolio.return_value = [
+        mock_position_repo.get_latest_position_history_by_portfolio_as_of_date.return_value = [
             (mock_history_obj, mock_instrument, mock_state)
         ]
         mock_position_repo.get_held_since_dates.return_value = {}
@@ -226,3 +238,35 @@ async def test_get_latest_positions_fallback_without_snapshot_valuation_uses_cos
         assert response.positions[0].valuation.market_value == 123.45
         assert response.positions[0].valuation.unrealized_gain_loss == 0
         assert response.positions[0].held_since_date == date(2025, 1, 3)
+
+
+async def test_get_latest_positions_include_projected_uses_unbounded_latest(
+    mock_position_repo: AsyncMock,
+):
+    with patch(
+        "src.services.query_service.app.services.position_service.PositionRepository",
+        return_value=mock_position_repo,
+    ):
+        service = PositionService(AsyncMock())
+
+        await service.get_portfolio_positions(portfolio_id="P1", include_projected=True)
+
+        mock_position_repo.get_latest_business_date.assert_not_awaited()
+        mock_position_repo.get_latest_positions_by_portfolio.assert_awaited_once_with("P1")
+
+
+async def test_get_latest_positions_defaults_to_today_when_business_date_absent(
+    mock_position_repo: AsyncMock,
+):
+    with patch(
+        "src.services.query_service.app.services.position_service.PositionRepository",
+        return_value=mock_position_repo,
+    ):
+        mock_position_repo.get_latest_business_date.return_value = None
+        service = PositionService(AsyncMock())
+
+        await service.get_portfolio_positions(portfolio_id="P1")
+
+        mock_position_repo.get_latest_positions_by_portfolio_as_of_date.assert_awaited_once_with(
+            "P1", date.today()
+        )

@@ -22,6 +22,10 @@ class BusinessDateRepository:
         """
         try:
             business_date_data = { "date": event.business_date }
+            business_date_data["calendar_code"] = event.calendar_code
+            business_date_data["market_code"] = event.market_code
+            business_date_data["source_system"] = event.source_system
+            business_date_data["source_batch_id"] = event.source_batch_id
             
             stmt = pg_insert(DBBusinessDate).values(
                 **business_date_data
@@ -29,7 +33,7 @@ class BusinessDateRepository:
 
             # If the date already exists, do nothing. This makes the operation idempotent.
             final_stmt = stmt.on_conflict_do_nothing(
-                index_elements=['date']
+                index_elements=['calendar_code', 'date']
             )
             
             await self.db.execute(final_stmt)

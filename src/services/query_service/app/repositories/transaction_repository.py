@@ -3,7 +3,8 @@ import logging
 from datetime import date
 from typing import List, Optional
 
-from portfolio_common.database_models import Portfolio, Transaction
+from portfolio_common.config import DEFAULT_BUSINESS_CALENDAR_CODE
+from portfolio_common.database_models import BusinessDate, Portfolio, Transaction
 from portfolio_common.utils import async_timed
 from sqlalchemy import asc, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -27,12 +28,19 @@ class TransactionRepository:
         stmt = select(Portfolio.portfolio_id).where(Portfolio.portfolio_id == portfolio_id).limit(1)
         return (await self.db.execute(stmt)).scalar_one_or_none() is not None
 
+    async def get_latest_business_date(self) -> Optional[date]:
+        stmt = select(func.max(BusinessDate.date)).where(
+            BusinessDate.calendar_code == DEFAULT_BUSINESS_CALENDAR_CODE
+        )
+        return (await self.db.execute(stmt)).scalar_one_or_none()
+
     def _get_base_query(
         self,
         portfolio_id: str,
         security_id: Optional[str] = None,
         start_date: Optional[date] = None,
         end_date: Optional[date] = None,
+        as_of_date: Optional[date] = None,
     ):
         """
         Constructs a base query with all the common filters.
@@ -50,6 +58,8 @@ class TransactionRepository:
             stmt = stmt.filter(func.date(Transaction.transaction_date) >= start_date)
         if end_date:
             stmt = stmt.filter(func.date(Transaction.transaction_date) <= end_date)
+        if as_of_date:
+            stmt = stmt.filter(func.date(Transaction.transaction_date) <= as_of_date)
         return stmt
 
     @async_timed(repository="TransactionRepository", method="get_transactions")
@@ -63,11 +73,18 @@ class TransactionRepository:
         security_id: Optional[str] = None,
         start_date: Optional[date] = None,
         end_date: Optional[date] = None,
+        as_of_date: Optional[date] = None,
     ) -> List[Transaction]:
         """
         Retrieves a paginated list of transactions with optional filters.
         """
-        stmt = self._get_base_query(portfolio_id, security_id, start_date, end_date)
+        stmt = self._get_base_query(
+            portfolio_id=portfolio_id,
+            security_id=security_id,
+            start_date=start_date,
+            end_date=end_date,
+            as_of_date=as_of_date,
+        )
 
         sort_field = "transaction_date"
         if sort_by and sort_by in ALLOWED_SORT_FIELDS:
@@ -95,6 +112,7 @@ class TransactionRepository:
         security_id: Optional[str] = None,
         start_date: Optional[date] = None,
         end_date: Optional[date] = None,
+        as_of_date: Optional[date] = None,
     ) -> int:
         """
         Returns the total count of transactions for the given filters.
@@ -106,6 +124,8 @@ class TransactionRepository:
             stmt = stmt.filter(func.date(Transaction.transaction_date) >= start_date)
         if end_date:
             stmt = stmt.filter(func.date(Transaction.transaction_date) <= end_date)
+        if as_of_date:
+            stmt = stmt.filter(func.date(Transaction.transaction_date) <= as_of_date)
 
         count = (await self.db.execute(stmt)).scalar() or 0
         return count

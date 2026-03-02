@@ -1,13 +1,14 @@
 # src/services/query_service/app/repositories/cashflow_repository.py
 import logging
 from datetime import date
-from typing import List, Tuple
 from decimal import Decimal
+from typing import List, Optional, Tuple
 
-from sqlalchemy import select, and_
-from sqlalchemy.ext.asyncio import AsyncSession
-from portfolio_common.database_models import Cashflow, PositionState
+from portfolio_common.config import DEFAULT_BUSINESS_CALENDAR_CODE
+from portfolio_common.database_models import BusinessDate, Cashflow, Portfolio, PositionState
 from portfolio_common.utils import async_timed
+from sqlalchemy import and_, func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +20,33 @@ class CashflowRepository:
 
     def __init__(self, db: AsyncSession):
         self.db = db
+
+    async def portfolio_exists(self, portfolio_id: str) -> bool:
+        stmt = select(Portfolio.portfolio_id).where(Portfolio.portfolio_id == portfolio_id).limit(1)
+        return (await self.db.execute(stmt)).scalar_one_or_none() is not None
+
+    async def get_latest_business_date(self) -> Optional[date]:
+        stmt = select(func.max(BusinessDate.date)).where(
+            BusinessDate.calendar_code == DEFAULT_BUSINESS_CALENDAR_CODE
+        )
+        return (await self.db.execute(stmt)).scalar_one_or_none()
+
+    @async_timed(repository="CashflowRepository", method="get_portfolio_cashflow_series")
+    async def get_portfolio_cashflow_series(
+        self, portfolio_id: str, start_date: date, end_date: date
+    ) -> List[Tuple[date, Decimal]]:
+        """Returns daily aggregated portfolio cashflows for projection windows."""
+        stmt = (
+            select(Cashflow.cashflow_date, func.sum(Cashflow.amount).label("net_amount"))
+            .where(
+                Cashflow.portfolio_id == portfolio_id,
+                Cashflow.cashflow_date.between(start_date, end_date),
+                Cashflow.is_portfolio_flow,
+            )
+            .group_by(Cashflow.cashflow_date)
+            .order_by(Cashflow.cashflow_date.asc())
+        )
+        return (await self.db.execute(stmt)).all()
 
     @async_timed(repository="CashflowRepository", method="get_external_flows")
     async def get_external_flows(

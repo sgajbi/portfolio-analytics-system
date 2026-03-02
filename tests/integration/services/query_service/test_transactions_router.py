@@ -4,9 +4,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 import pytest_asyncio
+from portfolio_common.db import get_async_db_session
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from portfolio_common.db import get_async_db_session
 from src.services.query_service.app.dtos.transaction_dto import (
     PaginatedTransactionResponse,
     TransactionRecord,
@@ -78,6 +78,8 @@ async def test_get_transactions_success_with_sorting_and_filters(async_test_clie
         security_id="SEC_1",
         start_date=datetime(2025, 8, 1, 0, 0).date(),
         end_date=datetime(2025, 8, 31, 0, 0).date(),
+        as_of_date=None,
+        include_projected=False,
         skip=5,
         limit=20,
         sort_by="transaction_date",
@@ -105,3 +107,25 @@ async def test_get_transactions_not_found_maps_to_404(async_test_client):
 
     assert response.status_code == 404
     assert "portfolio missing" in response.json()["detail"].lower()
+
+
+async def test_get_transactions_forwards_as_of_and_include_projected(async_test_client):
+    client, mock_service = async_test_client
+
+    response = await client.get(
+        "/portfolios/P1/transactions?as_of_date=2026-02-28&include_projected=true"
+    )
+
+    assert response.status_code == 200
+    mock_service.get_transactions.assert_awaited_once_with(
+        portfolio_id="P1",
+        security_id=None,
+        start_date=None,
+        end_date=None,
+        as_of_date=datetime(2026, 2, 28, 0, 0).date(),
+        include_projected=True,
+        skip=0,
+        limit=100,
+        sort_by=None,
+        sort_order="desc",
+    )

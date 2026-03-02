@@ -30,6 +30,8 @@ class TransactionService:
         security_id: Optional[str] = None,
         start_date: Optional[date] = None,
         end_date: Optional[date] = None,
+        as_of_date: Optional[date] = None,
+        include_projected: bool = False,
     ) -> PaginatedTransactionResponse:
         """
         Retrieves a paginated and filtered list of transactions for a portfolio.
@@ -39,11 +41,16 @@ class TransactionService:
         if not await self.repo.portfolio_exists(portfolio_id):
             raise ValueError(f"Portfolio with id {portfolio_id} not found")
 
+        effective_as_of_date = as_of_date
+        if effective_as_of_date is None and not include_projected:
+            effective_as_of_date = await self.repo.get_latest_business_date() or date.today()
+
         total_count = await self.repo.get_transactions_count(
             portfolio_id=portfolio_id,
             security_id=security_id,
             start_date=start_date,
             end_date=end_date,
+            as_of_date=effective_as_of_date,
         )
 
         db_results = await self.repo.get_transactions(
@@ -55,6 +62,7 @@ class TransactionService:
             security_id=security_id,
             start_date=start_date,
             end_date=end_date,
+            as_of_date=effective_as_of_date,
         )
 
         transactions = []

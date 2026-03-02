@@ -1615,3 +1615,41 @@ async def test_ingestion_endpoints_return_canonical_ack_contract(
     assert body["request_id"]
     assert body["trace_id"]
     assert "job_id" in body
+
+
+async def test_business_date_ingestion_rejects_future_dates(
+    async_test_client: httpx.AsyncClient,
+):
+    response = await async_test_client.post(
+        "/ingest/business-dates",
+        json={"business_dates": [{"business_date": "2999-01-01"}]},
+    )
+    assert response.status_code == 422
+    body = response.json()
+    assert body["detail"]["code"] == "BUSINESS_DATE_FUTURE_POLICY_VIOLATION"
+
+
+async def test_transaction_ingestion_allows_future_dated_trade(
+    async_test_client: httpx.AsyncClient,
+):
+    response = await async_test_client.post(
+        "/ingest/transactions",
+        json={
+            "transactions": [
+                {
+                    "transaction_id": "TXN_FUTURE_ALLOWED_001",
+                    "portfolio_id": "P1",
+                    "instrument_id": "I1",
+                    "security_id": "S1",
+                    "transaction_date": "2999-01-01T00:00:00Z",
+                    "transaction_type": "BUY",
+                    "quantity": 10,
+                    "price": 100,
+                    "gross_transaction_amount": 1000,
+                    "trade_currency": "USD",
+                    "currency": "USD",
+                }
+            ]
+        },
+    )
+    assert response.status_code == 202

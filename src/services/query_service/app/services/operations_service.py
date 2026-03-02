@@ -24,13 +24,15 @@ class OperationsService:
     async def get_support_overview(self, portfolio_id: str) -> SupportOverviewResponse:
         await self._ensure_portfolio_exists(portfolio_id)
         (
+            latest_business_date,
             current_epoch,
             active_reprocessing_keys,
             pending_valuation_jobs,
             pending_aggregation_jobs,
             latest_transaction_date,
-            latest_position_snapshot_date,
+            latest_position_snapshot_date_unbounded,
         ) = await asyncio.gather(
+            self.repo.get_latest_business_date(),
             self.repo.get_current_portfolio_epoch(portfolio_id),
             self.repo.get_active_reprocessing_keys_count(portfolio_id),
             self.repo.get_pending_valuation_jobs_count(portfolio_id),
@@ -39,14 +41,32 @@ class OperationsService:
             self.repo.get_latest_snapshot_date_for_current_epoch(portfolio_id),
         )
 
+        latest_booked_transaction_date = None
+        latest_booked_position_snapshot_date = None
+        if latest_business_date is not None:
+            (
+                latest_booked_transaction_date,
+                latest_booked_position_snapshot_date,
+            ) = await asyncio.gather(
+                self.repo.get_latest_transaction_date_as_of(
+                    portfolio_id, latest_business_date
+                ),
+                self.repo.get_latest_snapshot_date_for_current_epoch_as_of(
+                    portfolio_id, latest_business_date
+                ),
+            )
+
         return SupportOverviewResponse(
             portfolio_id=portfolio_id,
+            business_date=latest_business_date,
             current_epoch=current_epoch,
             active_reprocessing_keys=active_reprocessing_keys,
             pending_valuation_jobs=pending_valuation_jobs,
             pending_aggregation_jobs=pending_aggregation_jobs,
             latest_transaction_date=latest_transaction_date,
-            latest_position_snapshot_date=latest_position_snapshot_date,
+            latest_booked_transaction_date=latest_booked_transaction_date,
+            latest_position_snapshot_date=latest_position_snapshot_date_unbounded,
+            latest_booked_position_snapshot_date=latest_booked_position_snapshot_date,
         )
 
     async def get_lineage(self, portfolio_id: str, security_id: str) -> LineageResponse:
