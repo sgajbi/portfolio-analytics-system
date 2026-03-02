@@ -103,6 +103,32 @@ async def test_get_latest_transaction_date(
     assert "transactions.portfolio_id = 'P1'" in compiled
 
 
+async def test_get_latest_transaction_date_as_of(
+    repository: OperationsRepository, mock_db_session: AsyncMock
+):
+    mock_execute_scalar_one_or_none(mock_db_session, date(2025, 8, 15))
+
+    value = await repository.get_latest_transaction_date_as_of("P1", date(2025, 8, 20))
+
+    assert value == date(2025, 8, 15)
+    stmt = mock_db_session.execute.call_args[0][0]
+    compiled = str(stmt.compile(compile_kwargs={"literal_binds": True}))
+    assert "date(transactions.transaction_date) <= '2025-08-20'" in compiled
+
+
+async def test_get_latest_business_date(
+    repository: OperationsRepository, mock_db_session: AsyncMock
+):
+    mock_execute_scalar_one_or_none(mock_db_session, date(2026, 3, 1))
+
+    value = await repository.get_latest_business_date()
+
+    assert value == date(2026, 3, 1)
+    stmt = mock_db_session.execute.call_args[0][0]
+    compiled = str(stmt.compile(compile_kwargs={"literal_binds": True}))
+    assert "from business_dates" in compiled.lower()
+
+
 async def test_get_latest_snapshot_date_for_current_epoch(
     repository: OperationsRepository, mock_db_session: AsyncMock
 ):
@@ -116,6 +142,21 @@ async def test_get_latest_snapshot_date_for_current_epoch(
     assert "from daily_position_snapshots" in compiled.lower()
     assert "join position_state on" in compiled.lower()
     assert "daily_position_snapshots.epoch = position_state.epoch" in compiled
+
+
+async def test_get_latest_snapshot_date_for_current_epoch_as_of(
+    repository: OperationsRepository, mock_db_session: AsyncMock
+):
+    mock_execute_scalar_one_or_none(mock_db_session, date(2025, 8, 12))
+
+    value = await repository.get_latest_snapshot_date_for_current_epoch_as_of(
+        "P1", date(2025, 8, 20)
+    )
+
+    assert value == date(2025, 8, 12)
+    stmt = mock_db_session.execute.call_args[0][0]
+    compiled = str(stmt.compile(compile_kwargs={"literal_binds": True}))
+    assert "daily_position_snapshots.date <= '2025-08-20'" in compiled
 
 
 async def test_get_position_state(repository: OperationsRepository, mock_db_session: AsyncMock):

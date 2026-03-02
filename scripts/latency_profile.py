@@ -61,6 +61,71 @@ def _run_compose_up(build: bool) -> None:
     subprocess.run(cmd, check=True)
 
 
+def _pick_identifier_from_payload(payload: Any, keys: tuple[str, ...]) -> str | None:
+    if isinstance(payload, dict):
+        for key in keys:
+            value = payload.get(key)
+            if isinstance(value, str) and value.strip():
+                return value
+        for value in payload.values():
+            picked = _pick_identifier_from_payload(value, keys)
+            if picked:
+                return picked
+    if isinstance(payload, list):
+        for item in payload:
+            picked = _pick_identifier_from_payload(item, keys)
+            if picked:
+                return picked
+    return None
+
+
+def _resolve_runtime_ids(
+    session: requests.Session,
+    *,
+    query_base_url: str,
+    portfolio_id: str,
+    benchmark_id: str,
+) -> tuple[str, str]:
+    resolved_portfolio_id = portfolio_id
+    resolved_benchmark_id = benchmark_id
+
+    try:
+        response = session.get(f"{query_base_url}/lookups/portfolios?limit=1", timeout=10)
+        if response.status_code == 200:
+            candidate = _pick_identifier_from_payload(
+                response.json(),
+                ("portfolio_id", "id", "portfolioId"),
+            )
+            if candidate and candidate != portfolio_id:
+                print(
+                    f"Latency profile portfolio_id override: '{portfolio_id}' -> '{candidate}'"
+                )
+                resolved_portfolio_id = candidate
+    except requests.RequestException:
+        pass
+
+    try:
+        response = session.post(
+            f"{query_base_url}/integration/benchmarks/catalog",
+            json={"as_of_date": "2026-03-01"},
+            timeout=15,
+        )
+        if response.status_code == 200:
+            candidate = _pick_identifier_from_payload(
+                response.json(),
+                ("benchmark_id", "id", "benchmarkId"),
+            )
+            if candidate and candidate != benchmark_id:
+                print(
+                    f"Latency profile benchmark_id override: '{benchmark_id}' -> '{candidate}'"
+                )
+                resolved_benchmark_id = candidate
+    except requests.RequestException:
+        pass
+
+    return resolved_portfolio_id, resolved_benchmark_id
+
+
 def _cases(
     ingestion_base_url: str,
     query_base_url: str,
@@ -346,11 +411,19 @@ def main() -> int:
         timeout_seconds=args.ready_timeout_seconds,
     )
 
-    results = run_profile(
-        ingestion_base_url=args.ingestion_base_url,
+    session = requests.Session()
+    resolved_portfolio_id, resolved_benchmark_id = _resolve_runtime_ids(
+        session,
         query_base_url=args.query_base_url,
         portfolio_id=args.portfolio_id,
         benchmark_id=args.benchmark_id,
+    )
+
+    results = run_profile(
+        ingestion_base_url=args.ingestion_base_url,
+        query_base_url=args.query_base_url,
+        portfolio_id=resolved_portfolio_id,
+        benchmark_id=resolved_benchmark_id,
         include_protected_ops=args.include_protected_ops,
         warmup_runs=args.warmup_runs,
         measured_runs=args.measured_runs,
