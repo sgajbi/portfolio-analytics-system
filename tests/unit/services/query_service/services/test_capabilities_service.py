@@ -126,3 +126,49 @@ def test_capabilities_workflow_required_features_are_canonical() -> None:
     for workflow in response.workflows:
         assert workflow.required_features
         assert set(workflow.required_features).issubset(feature_keys)
+
+
+def test_resolve_as_of_date_uses_latest_business_date_from_db(monkeypatch):
+    class _MockResult:
+        @staticmethod
+        def scalar_one_or_none():
+            from datetime import date
+
+            return date(2026, 2, 27)
+
+    class _MockSession:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        @staticmethod
+        def execute(_stmt):
+            return _MockResult()
+
+    monkeypatch.setenv("DATABASE_URL", "postgresql://dummy")
+    monkeypatch.setattr(
+        "src.services.query_service.app.services.capabilities_service.SessionLocal",
+        lambda: _MockSession(),
+    )
+
+    assert CapabilitiesService._resolve_as_of_date().isoformat() == "2026-02-27"
+
+
+def test_resolve_as_of_date_falls_back_when_db_access_fails(monkeypatch):
+    class _FailSession:
+        def __enter__(self):
+            raise RuntimeError("db not available")
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    monkeypatch.setenv("DATABASE_URL", "postgresql://dummy")
+    monkeypatch.setattr(
+        "src.services.query_service.app.services.capabilities_service.SessionLocal",
+        lambda: _FailSession(),
+    )
+
+    resolved = CapabilitiesService._resolve_as_of_date()
+    assert resolved.isoformat() >= "2026-01-01"

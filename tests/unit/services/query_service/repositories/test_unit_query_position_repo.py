@@ -186,6 +186,24 @@ async def test_portfolio_exists_false(repository: PositionRepository, mock_db_se
     assert exists is False
 
 
+async def test_get_latest_business_date(repository: PositionRepository, mock_db_session: AsyncMock):
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = date(2026, 3, 1)
+    mock_db_session.execute = AsyncMock(return_value=mock_result)
+
+    latest = await repository.get_latest_business_date()
+
+    assert latest == date(2026, 3, 1)
+    executed_stmt = mock_db_session.execute.call_args[0][0]
+    compiled_query = str(executed_stmt.compile(compile_kwargs={"literal_binds": True}))
+    assert "from business_dates" in compiled_query.lower()
+
+
+async def test_get_held_since_dates_empty_input(repository: PositionRepository):
+    held_since_map = await repository.get_held_since_dates("P1", [])
+    assert held_since_map == {}
+
+
 async def test_get_latest_positions_by_portfolio_as_of_date_builds_expected_query(
     repository: PositionRepository, mock_db_session: AsyncMock
 ):

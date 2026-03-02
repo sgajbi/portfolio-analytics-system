@@ -1,7 +1,9 @@
 from datetime import date
 from typing import Optional
 
+from portfolio_common.config import DEFAULT_BUSINESS_CALENDAR_CODE
 from portfolio_common.database_models import (
+    BusinessDate,
     DailyPositionSnapshot,
     Portfolio,
     PortfolioAggregationJob,
@@ -67,6 +69,21 @@ class OperationsRepository:
         )
         return (await self.db.execute(stmt)).scalar_one_or_none()
 
+    async def get_latest_transaction_date_as_of(
+        self, portfolio_id: str, as_of_date: date
+    ) -> Optional[date]:
+        stmt = select(func.max(func.date(Transaction.transaction_date))).where(
+            Transaction.portfolio_id == portfolio_id,
+            func.date(Transaction.transaction_date) <= as_of_date,
+        )
+        return (await self.db.execute(stmt)).scalar_one_or_none()
+
+    async def get_latest_business_date(self) -> Optional[date]:
+        stmt = select(func.max(BusinessDate.date)).where(
+            BusinessDate.calendar_code == DEFAULT_BUSINESS_CALENDAR_CODE
+        )
+        return (await self.db.execute(stmt)).scalar_one_or_none()
+
     async def get_latest_snapshot_date_for_current_epoch(self, portfolio_id: str) -> Optional[date]:
         stmt = (
             select(func.max(DailyPositionSnapshot.date))
@@ -79,6 +96,26 @@ class OperationsRepository:
                 ),
             )
             .where(DailyPositionSnapshot.portfolio_id == portfolio_id)
+        )
+        return (await self.db.execute(stmt)).scalar_one_or_none()
+
+    async def get_latest_snapshot_date_for_current_epoch_as_of(
+        self, portfolio_id: str, as_of_date: date
+    ) -> Optional[date]:
+        stmt = (
+            select(func.max(DailyPositionSnapshot.date))
+            .join(
+                PositionState,
+                and_(
+                    DailyPositionSnapshot.portfolio_id == PositionState.portfolio_id,
+                    DailyPositionSnapshot.security_id == PositionState.security_id,
+                    DailyPositionSnapshot.epoch == PositionState.epoch,
+                ),
+            )
+            .where(
+                DailyPositionSnapshot.portfolio_id == portfolio_id,
+                DailyPositionSnapshot.date <= as_of_date,
+            )
         )
         return (await self.db.execute(stmt)).scalar_one_or_none()
 

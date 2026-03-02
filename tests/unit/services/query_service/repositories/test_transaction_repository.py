@@ -1,11 +1,12 @@
 # tests/unit/services/query_service/repositories/test_transaction_repository.py
-import pytest
-from unittest.mock import AsyncMock, MagicMock
 from datetime import date
+from unittest.mock import AsyncMock, MagicMock
 
-from sqlalchemy.ext.asyncio import AsyncSession
-from src.services.query_service.app.repositories.transaction_repository import TransactionRepository
+import pytest
 from portfolio_common.database_models import Transaction
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from src.services.query_service.app.repositories.transaction_repository import TransactionRepository
 
 pytestmark = pytest.mark.asyncio
 
@@ -126,6 +127,21 @@ async def test_get_transactions_with_all_filters(
     assert "date(transactions.transaction_date) <= '2025-01-31'" in compiled_query
 
 
+async def test_get_transactions_with_as_of_date_filter(
+    repository: TransactionRepository, mock_db_session: AsyncMock
+):
+    await repository.get_transactions(
+        portfolio_id="P1",
+        skip=0,
+        limit=100,
+        as_of_date=date(2025, 1, 15),
+    )
+
+    executed_stmt = mock_db_session.execute.call_args[0][0]
+    compiled_query = str(executed_stmt.compile(compile_kwargs={"literal_binds": True}))
+    assert "date(transactions.transaction_date) <= '2025-01-15'" in compiled_query
+
+
 async def test_get_transactions_count(
     repository: TransactionRepository, mock_db_session: AsyncMock
 ):
@@ -197,3 +213,21 @@ async def test_get_transactions_count_with_date_filters(
     compiled_query = str(executed_stmt.compile(compile_kwargs={"literal_binds": True}))
     assert "date(transactions.transaction_date) >= '2025-01-01'" in compiled_query
     assert "date(transactions.transaction_date) <= '2025-01-31'" in compiled_query
+
+
+async def test_get_transactions_count_with_as_of_date(
+    repository: TransactionRepository, mock_db_session: AsyncMock
+):
+    mock_result = MagicMock()
+    mock_result.scalar.return_value = 3
+    mock_db_session.execute = AsyncMock(return_value=mock_result)
+
+    count = await repository.get_transactions_count(
+        portfolio_id="P1",
+        as_of_date=date(2025, 1, 15),
+    )
+
+    assert count == 3
+    executed_stmt = mock_db_session.execute.call_args[0][0]
+    compiled_query = str(executed_stmt.compile(compile_kwargs={"literal_binds": True}))
+    assert "date(transactions.transaction_date) <= '2025-01-15'" in compiled_query

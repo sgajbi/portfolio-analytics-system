@@ -6,6 +6,12 @@ import os
 from datetime import UTC, date, datetime
 from typing import Any
 
+from sqlalchemy import func, select
+
+from portfolio_common.config import DEFAULT_BUSINESS_CALENDAR_CODE
+from portfolio_common.database_models import BusinessDate
+from portfolio_common.db import SessionLocal
+
 from ..dtos.capabilities_dto import (
     ConsumerSystem,
     FeatureCapability,
@@ -47,6 +53,25 @@ _DEFAULT_INPUT_MODES_BY_CONSUMER: dict[str, list[str]] = {
 
 
 class CapabilitiesService:
+    @staticmethod
+    def _resolve_as_of_date() -> date:
+        if not (os.getenv("HOST_DATABASE_URL") or os.getenv("DATABASE_URL")):
+            return datetime.now(UTC).date()
+        try:
+            with SessionLocal() as db:
+                stmt = select(func.max(BusinessDate.date)).where(
+                    BusinessDate.calendar_code == DEFAULT_BUSINESS_CALENDAR_CODE
+                )
+                latest = db.execute(stmt).scalar_one_or_none()
+                if latest:
+                    return latest
+        except Exception:
+            logger.warning(
+                "Failed to resolve as_of_date from business_dates; falling back to current UTC date.",
+                exc_info=True,
+            )
+        return datetime.now(UTC).date()
+
     @staticmethod
     def _env_bool(name: str, default: bool) -> bool:
         value = os.getenv(name)
@@ -212,7 +237,7 @@ class CapabilitiesService:
             consumer_system=consumer_system,
             tenant_id=tenant_id,
             generated_at=datetime.now(UTC),
-            as_of_date=date.today(),
+            as_of_date=self._resolve_as_of_date(),
             policy_version=policy_version,
             supported_input_modes=supported_input_modes,
             features=features,

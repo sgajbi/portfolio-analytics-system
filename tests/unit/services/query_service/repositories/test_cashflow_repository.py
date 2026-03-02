@@ -55,3 +55,50 @@ async def test_get_income_cashflows_for_position_query(
     assert "position_state.epoch = cashflows.epoch" in compiled_query
     assert "cashflows.security_id = 'SEC_1'" in compiled_query
     assert "cashflows.classification = 'INCOME'" in compiled_query
+
+
+async def test_portfolio_exists_true(repository: CashflowRepository, mock_db_session: AsyncMock):
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = "P1"
+    mock_db_session.execute = AsyncMock(return_value=mock_result)
+
+    exists = await repository.portfolio_exists("P1")
+
+    assert exists is True
+
+
+async def test_portfolio_exists_false(repository: CashflowRepository, mock_db_session: AsyncMock):
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = None
+    mock_db_session.execute = AsyncMock(return_value=mock_result)
+
+    exists = await repository.portfolio_exists("P404")
+
+    assert exists is False
+
+
+async def test_get_latest_business_date(repository: CashflowRepository, mock_db_session: AsyncMock):
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = date(2026, 3, 1)
+    mock_db_session.execute = AsyncMock(return_value=mock_result)
+
+    latest = await repository.get_latest_business_date()
+
+    assert latest == date(2026, 3, 1)
+    executed_stmt = mock_db_session.execute.call_args[0][0]
+    compiled_query = str(executed_stmt.compile(compile_kwargs={"literal_binds": True}))
+    assert "from business_dates" in compiled_query.lower()
+
+
+async def test_get_portfolio_cashflow_series_query(
+    repository: CashflowRepository, mock_db_session: AsyncMock
+):
+    result = await repository.get_portfolio_cashflow_series(
+        "P1", date(2025, 1, 1), date(2025, 1, 31)
+    )
+
+    assert result[0][0] == date(2025, 1, 15)
+    executed_stmt = mock_db_session.execute.call_args[0][0]
+    compiled_query = str(executed_stmt.compile(compile_kwargs={"literal_binds": True}))
+    assert "sum(cashflows.amount)" in compiled_query.lower()
+    assert "cashflows.is_portfolio_flow" in compiled_query

@@ -2,7 +2,7 @@
 from datetime import date
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from portfolio_common.db import get_async_db_session
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -29,7 +29,7 @@ def get_position_service(
     ),
 )
 async def get_position_history(
-    portfolio_id: str,
+    portfolio_id: str = Path(..., description="Portfolio identifier."),
     security_id: str = Query(..., description="The unique identifier for the security to query."),
     start_date: Optional[date] = Query(
         None, description="The start date for the date range filter (inclusive)."
@@ -66,10 +66,29 @@ async def get_position_history(
     ),
 )
 async def get_latest_positions(
-    portfolio_id: str, service: PositionService = Depends(get_position_service)
+    portfolio_id: str = Path(..., description="Portfolio identifier."),
+    as_of_date: Optional[date] = Query(
+        None,
+        description=(
+            "Optional as-of date for booked position state. "
+            "If omitted and include_projected is false, latest business_date is used."
+        ),
+    ),
+    include_projected: bool = Query(
+        False,
+        description=(
+            "When true, includes future-dated projected position state "
+            "beyond current business_date."
+        ),
+    ),
+    service: PositionService = Depends(get_position_service),
 ):
     try:
-        return await service.get_portfolio_positions(portfolio_id)
+        return await service.get_portfolio_positions(
+            portfolio_id=portfolio_id,
+            as_of_date=as_of_date,
+            include_projected=include_projected,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
     except Exception as exc:

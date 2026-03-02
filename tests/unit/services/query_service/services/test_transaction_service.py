@@ -1,13 +1,14 @@
 # tests/unit/services/query_service/services/test_transaction_service.py
-import pytest
-from unittest.mock import AsyncMock, patch
 from datetime import date, datetime
 from decimal import Decimal
+from unittest.mock import AsyncMock, patch
 
+import pytest
+from portfolio_common.database_models import Cashflow, Transaction
 from sqlalchemy.ext.asyncio import AsyncSession
-from src.services.query_service.app.services.transaction_service import TransactionService
+
 from src.services.query_service.app.repositories.transaction_repository import TransactionRepository
-from portfolio_common.database_models import Transaction, Cashflow
+from src.services.query_service.app.services.transaction_service import TransactionService
 
 pytestmark = pytest.mark.asyncio
 
@@ -43,6 +44,7 @@ def mock_transaction_repo() -> AsyncMock:
         ),
     ]
     repo.get_transactions_count.return_value = 25
+    repo.get_latest_business_date.return_value = date(2025, 1, 15)
     return repo
 
 
@@ -78,8 +80,12 @@ async def test_get_transactions(mock_transaction_repo: AsyncMock):
             security_id=params["security_id"],
             start_date=params["start_date"],
             end_date=params["end_date"],
+            as_of_date=date(2025, 1, 15),
         )
-        mock_transaction_repo.get_transactions.assert_awaited_once_with(**params)
+        mock_transaction_repo.get_transactions.assert_awaited_once_with(
+            **params,
+            as_of_date=date(2025, 1, 15),
+        )
 
         assert response_dto.total == 25
         assert response_dto.skip == 5
@@ -153,3 +159,29 @@ async def test_get_transactions_raises_when_portfolio_missing(mock_transaction_r
 
         with pytest.raises(ValueError, match="Portfolio with id P404 not found"):
             await service.get_transactions(portfolio_id="P404", skip=0, limit=10)
+
+
+async def test_get_transactions_include_projected_skips_business_date_default(
+    mock_transaction_repo: AsyncMock,
+):
+    with patch(
+        "src.services.query_service.app.services.transaction_service.TransactionRepository",
+        return_value=mock_transaction_repo,
+    ):
+        service = TransactionService(AsyncMock(spec=AsyncSession))
+
+        await service.get_transactions(
+            portfolio_id="P1",
+            skip=0,
+            limit=10,
+            include_projected=True,
+        )
+
+        mock_transaction_repo.get_latest_business_date.assert_not_awaited()
+        mock_transaction_repo.get_transactions_count.assert_awaited_once_with(
+            portfolio_id="P1",
+            security_id=None,
+            start_date=None,
+            end_date=None,
+            as_of_date=None,
+        )

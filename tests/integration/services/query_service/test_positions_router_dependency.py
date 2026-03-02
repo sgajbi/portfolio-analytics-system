@@ -80,6 +80,11 @@ async def test_get_latest_positions_success(async_test_client):
 
     assert response.status_code == 200
     assert response.json()["portfolio_id"] == "P1"
+    mock_service.get_portfolio_positions.assert_awaited_once_with(
+        portfolio_id="P1",
+        as_of_date=None,
+        include_projected=False,
+    )
 
 
 async def test_get_latest_positions_unexpected_maps_to_500(async_test_client):
@@ -110,6 +115,22 @@ async def test_get_latest_positions_not_found_maps_to_404(async_test_client):
 
     assert response.status_code == 404
     assert "not found" in response.json()["detail"].lower()
+
+
+async def test_get_latest_positions_forwards_as_of_and_include_projected(async_test_client):
+    client, mock_service = async_test_client
+    mock_service.get_portfolio_positions.return_value = {"portfolio_id": "P1", "positions": []}
+
+    response = await client.get(
+        "/portfolios/P1/positions?as_of_date=2026-02-28&include_projected=true"
+    )
+
+    assert response.status_code == 200
+    mock_service.get_portfolio_positions.assert_awaited_once_with(
+        portfolio_id="P1",
+        as_of_date=date(2026, 2, 28),
+        include_projected=True,
+    )
 
 
 async def test_get_position_service_dependency_factory():

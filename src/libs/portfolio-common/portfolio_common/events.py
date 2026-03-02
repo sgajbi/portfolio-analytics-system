@@ -8,6 +8,10 @@ class BusinessDateEvent(BaseModel):
     """Event model for a raw business date."""
     model_config = ConfigDict(from_attributes=True)
     business_date: date = Field(...)
+    calendar_code: str = Field("GLOBAL")
+    market_code: Optional[str] = Field(None)
+    source_system: Optional[str] = Field(None)
+    source_batch_id: Optional[str] = Field(None)
 
 class PortfolioEvent(BaseModel):
     """

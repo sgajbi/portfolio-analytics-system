@@ -26,22 +26,28 @@ def service(mock_ops_repo: AsyncMock) -> OperationsService:
 
 
 async def test_get_support_overview(service: OperationsService, mock_ops_repo: AsyncMock):
+    mock_ops_repo.get_latest_business_date.return_value = date(2025, 8, 30)
     mock_ops_repo.get_current_portfolio_epoch.return_value = 2
     mock_ops_repo.get_active_reprocessing_keys_count.return_value = 1
     mock_ops_repo.get_pending_valuation_jobs_count.return_value = 4
     mock_ops_repo.get_pending_aggregation_jobs_count.return_value = 1
-    mock_ops_repo.get_latest_transaction_date.return_value = date(2025, 8, 31)
+    mock_ops_repo.get_latest_transaction_date.return_value = date(2025, 9, 2)
+    mock_ops_repo.get_latest_transaction_date_as_of.return_value = date(2025, 8, 30)
     mock_ops_repo.get_latest_snapshot_date_for_current_epoch.return_value = date(2025, 8, 30)
+    mock_ops_repo.get_latest_snapshot_date_for_current_epoch_as_of.return_value = date(2025, 8, 30)
 
     response = await service.get_support_overview("P1")
 
     assert response.portfolio_id == "P1"
+    assert response.business_date == date(2025, 8, 30)
     assert response.current_epoch == 2
     assert response.active_reprocessing_keys == 1
     assert response.pending_valuation_jobs == 4
     assert response.pending_aggregation_jobs == 1
-    assert response.latest_transaction_date == date(2025, 8, 31)
+    assert response.latest_transaction_date == date(2025, 9, 2)
+    assert response.latest_booked_transaction_date == date(2025, 8, 30)
     assert response.latest_position_snapshot_date == date(2025, 8, 30)
+    assert response.latest_booked_position_snapshot_date == date(2025, 8, 30)
 
 
 async def test_get_lineage_raises_when_state_missing(
@@ -150,3 +156,23 @@ async def test_get_support_overview_raises_when_portfolio_missing(
 
     with pytest.raises(ValueError, match="Portfolio with id P404 not found"):
         await service.get_support_overview("P404")
+
+
+async def test_get_support_overview_without_business_date(
+    service: OperationsService, mock_ops_repo: AsyncMock
+):
+    mock_ops_repo.get_latest_business_date.return_value = None
+    mock_ops_repo.get_current_portfolio_epoch.return_value = 1
+    mock_ops_repo.get_active_reprocessing_keys_count.return_value = 0
+    mock_ops_repo.get_pending_valuation_jobs_count.return_value = 0
+    mock_ops_repo.get_pending_aggregation_jobs_count.return_value = 0
+    mock_ops_repo.get_latest_transaction_date.return_value = date(2025, 8, 31)
+    mock_ops_repo.get_latest_snapshot_date_for_current_epoch.return_value = date(2025, 8, 31)
+
+    response = await service.get_support_overview("P1")
+
+    assert response.business_date is None
+    assert response.latest_booked_transaction_date is None
+    assert response.latest_booked_position_snapshot_date is None
+    mock_ops_repo.get_latest_transaction_date_as_of.assert_not_awaited()
+    mock_ops_repo.get_latest_snapshot_date_for_current_epoch_as_of.assert_not_awaited()

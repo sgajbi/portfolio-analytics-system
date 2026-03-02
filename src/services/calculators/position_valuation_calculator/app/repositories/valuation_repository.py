@@ -15,6 +15,7 @@ from portfolio_common.database_models import (
     PortfolioValuationJob, Transaction, BusinessDate, PortfolioTimeseries, PositionTimeseries,
     PositionState, InstrumentReprocessingState
 )
+from portfolio_common.config import DEFAULT_BUSINESS_CALENDAR_CODE
 from portfolio_common.utils import async_timed
 
 logger = logging.getLogger(__name__)
@@ -103,7 +104,11 @@ class ValuationRepository:
 
         s = aliased(PositionState)
         dps = aliased(DailyPositionSnapshot)
-        max_business_date_subq = select(func.max(BusinessDate.date)).scalar_subquery()
+        max_business_date_subq = (
+            select(func.max(BusinessDate.date))
+            .where(BusinessDate.calendar_code == DEFAULT_BUSINESS_CALENDAR_CODE)
+            .scalar_subquery()
+        )
 
         # Correlated subquery to generate the series of expected dates for each state.
         date_series_subq = (
@@ -240,6 +245,7 @@ class ValuationRepository:
         Finds the most recent date present in the dedicated business_dates table.
         """
         stmt = select(func.max(BusinessDate.date))
+        stmt = stmt.where(BusinessDate.calendar_code == DEFAULT_BUSINESS_CALENDAR_CODE)
         result = await self.db.execute(stmt)
         latest_date = result.scalar_one_or_none()
         return latest_date

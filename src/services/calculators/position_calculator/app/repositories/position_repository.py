@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from portfolio_common.database_models import (
     PositionHistory, Transaction, DailyPositionSnapshot, BusinessDate
 )
+from portfolio_common.config import DEFAULT_BUSINESS_CALENDAR_CODE
 from portfolio_common.utils import async_timed
 
 logger = logging.getLogger(__name__)
@@ -96,7 +97,9 @@ class PositionRepository:
         """
         Finds the most recent date present in the dedicated business_dates table.
         """
-        stmt = select(func.max(BusinessDate.date))
+        stmt = select(func.max(BusinessDate.date)).where(
+            BusinessDate.calendar_code == DEFAULT_BUSINESS_CALENDAR_CODE
+        )
         result = await self.db.execute(stmt)
         latest_date = result.scalar_one_or_none()
         return latest_date

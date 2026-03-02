@@ -68,7 +68,12 @@ class PositionService:
             portfolio_id=portfolio_id, security_id=security_id, positions=positions
         )
 
-    async def get_portfolio_positions(self, portfolio_id: str) -> PortfolioPositionsResponse:
+    async def get_portfolio_positions(
+        self,
+        portfolio_id: str,
+        as_of_date: Optional[date] = None,
+        include_projected: bool = False,
+    ) -> PortfolioPositionsResponse:
         """
         Retrieves and formats the latest positions for a given portfolio.
         """
@@ -77,11 +82,25 @@ class PositionService:
         if not await self.repo.portfolio_exists(portfolio_id):
             raise ValueError(f"Portfolio with id {portfolio_id} not found")
 
-        db_results = await self.repo.get_latest_positions_by_portfolio(portfolio_id)
+        effective_as_of_date = as_of_date
+        if effective_as_of_date is None and not include_projected:
+            effective_as_of_date = await self.repo.get_latest_business_date() or date.today()
+
+        if effective_as_of_date is not None:
+            db_results = await self.repo.get_latest_positions_by_portfolio_as_of_date(
+                portfolio_id, effective_as_of_date
+            )
+        else:
+            db_results = await self.repo.get_latest_positions_by_portfolio(portfolio_id)
         using_snapshot_data = True
         fallback_valuation_map: dict[str, dict[str, float | None]] = {}
         if not db_results:
-            db_results = await self.repo.get_latest_position_history_by_portfolio(portfolio_id)
+            if effective_as_of_date is not None:
+                db_results = await self.repo.get_latest_position_history_by_portfolio_as_of_date(
+                    portfolio_id, effective_as_of_date
+                )
+            else:
+                db_results = await self.repo.get_latest_position_history_by_portfolio(portfolio_id)
             using_snapshot_data = False
             fallback_valuation_map = await self.repo.get_latest_snapshot_valuation_map(portfolio_id)
 
@@ -169,9 +188,13 @@ class PositionService:
         if held_since_requests:
             held_since_map = await self.repo.get_held_since_dates(
                 portfolio_id=portfolio_id,
-                security_epoch_pairs=[(security_id, epoch) for _, security_id, epoch, _ in held_since_requests],
+                security_epoch_pairs=[
+                    (security_id, epoch) for _, security_id, epoch, _ in held_since_requests
+                ],
             )
             for idx, security_id, epoch, default_date in held_since_requests:
-                positions[idx].held_since_date = held_since_map.get((security_id, epoch), default_date)
+                positions[idx].held_since_date = held_since_map.get(
+                    (security_id, epoch), default_date
+                )
 
         return PortfolioPositionsResponse(portfolio_id=portfolio_id, positions=positions)

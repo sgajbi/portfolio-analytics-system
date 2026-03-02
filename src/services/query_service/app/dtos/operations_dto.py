@@ -6,6 +6,14 @@ from pydantic import BaseModel, Field
 
 class SupportOverviewResponse(BaseModel):
     portfolio_id: str = Field(..., description="Unique portfolio identifier.", examples=["PF-001"])
+    business_date: Optional[date] = Field(
+        None,
+        description=(
+            "Latest business date from the default business calendar used as the "
+            "booked-state boundary."
+        ),
+        examples=["2025-12-30"],
+    )
     current_epoch: Optional[int] = Field(
         None,
         description="Current active epoch for the portfolio across position state keys.",
@@ -28,12 +36,31 @@ class SupportOverviewResponse(BaseModel):
     )
     latest_transaction_date: Optional[date] = Field(
         None,
-        description="Most recent transaction business date observed for the portfolio.",
+        description="Most recent transaction business date observed for the portfolio (unbounded).",
+        examples=["2026-01-05"],
+    )
+    latest_booked_transaction_date: Optional[date] = Field(
+        None,
+        description=(
+            "Most recent transaction business date observed for the portfolio "
+            "up to business_date."
+        ),
         examples=["2025-12-30"],
     )
     latest_position_snapshot_date: Optional[date] = Field(
         None,
-        description="Most recent daily position snapshot date in the current epoch.",
+        description=(
+            "Most recent daily position snapshot date in the current epoch "
+            "(unbounded, may include projected state)."
+        ),
+        examples=["2026-01-05"],
+    )
+    latest_booked_position_snapshot_date: Optional[date] = Field(
+        None,
+        description=(
+            "Most recent daily position snapshot date in the current epoch "
+            "up to business_date."
+        ),
         examples=["2025-12-30"],
     )
 
