@@ -97,9 +97,7 @@ def _resolve_runtime_ids(
                 ("portfolio_id", "id", "portfolioId"),
             )
             if candidate and candidate != portfolio_id:
-                print(
-                    f"Latency profile portfolio_id override: '{portfolio_id}' -> '{candidate}'"
-                )
+                print(f"Latency profile portfolio_id override: '{portfolio_id}' -> '{candidate}'")
                 resolved_portfolio_id = candidate
     except requests.RequestException:
         pass
@@ -116,9 +114,7 @@ def _resolve_runtime_ids(
                 ("benchmark_id", "id", "benchmarkId"),
             )
             if candidate and candidate != benchmark_id:
-                print(
-                    f"Latency profile benchmark_id override: '{benchmark_id}' -> '{candidate}'"
-                )
+                print(f"Latency profile benchmark_id override: '{benchmark_id}' -> '{candidate}'")
                 resolved_benchmark_id = candidate
     except requests.RequestException:
         pass
